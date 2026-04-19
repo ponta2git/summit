@@ -1,5 +1,5 @@
 import { closeDb, db } from "./db/client.js";
-import { waitForInFlightSend } from "./discord/askMessage.js";
+import { waitForInFlightSend } from "./discord/ask/send.js";
 import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/interactions.js";
 import { env } from "./env.js";

@@ -13,7 +13,7 @@ import {
   sendAskMessage,
   type SendAskMessageContext,
   type SendAskMessageResult
-} from "../discord/askMessage.js";
+} from "../discord/ask/send.js";
 import { settleAskingSession, tryDecideIfAllTimeSlots } from "../discord/settle.js";
 import { env } from "../env.js";
 import { logger } from "../logger.js";

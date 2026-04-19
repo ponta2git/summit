@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  __resetSendStateForTest,
   buildAskRow,
   renderAskBody
-} from "../../src/discord/askMessage.js";
-import type { ResponseRow, SessionRow } from "../../src/db/repositories/sessions.js";
-import { env } from "../../src/env.js";
-import { __resetShutdownStateForTest } from "../../src/shutdown.js";
+} from "../../../src/discord/ask/render.js";
+import { __resetSendStateForTest } from "../../../src/discord/ask/send.js";
+import type { ResponseRow, SessionRow } from "../../../src/db/repositories/sessions.js";
+import { env } from "../../../src/env.js";
+import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 
 const memberUserId = (() => {
   const userId = env.MEMBER_USER_IDS[0];

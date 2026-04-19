@@ -1,62 +1,26 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ChannelType,
-  type Client,
-  type MessageCreateOptions,
-  type MessageEditOptions
-} from "discord.js";
+import { ChannelType, type Client } from "discord.js";
 
-import { db as defaultDb } from "../db/client.js";
+import { db as defaultDb } from "../../db/client.js";
 import {
   createAskSession,
   findSessionByWeekKeyAndPostponeCount,
-  listResponses,
   setAskMessageId,
-  type DbLike,
-  type ResponseRow,
-  type SessionRow
-} from "../db/repositories/sessions.js";
-import { env } from "../env.js";
-import { logger } from "../logger.js";
-import { buildMemberLines } from "../members.js";
-import { isShuttingDown } from "../shutdown.js";
+  type DbLike
+} from "../../db/repositories/sessions.js";
+import { env } from "../../env.js";
+import { logger } from "../../logger.js";
+import { isShuttingDown } from "../../shutdown.js";
 import {
   candidateDateForAsk,
-  decidedStartAt,
   deadlineFor,
   formatCandidateDateIso,
-  formatCandidateJa,
   isoWeekKey,
-  parseCandidateDateIso,
   systemClock,
-  type AskTimeChoice,
   type Clock
-} from "../time/index.js";
-
-const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const;
-type AskChoice = (typeof ASK_CHOICES)[number];
-
-// invariant: Discord button の custom_id は `ask:{sessionId}:{choice}` 形式。
-//   choice は ASK_CHOICES の小文字値と一致しなければならない (interactions.ts の zod schema と同期必須)。
-const ASK_BUTTON_LABELS: Record<AskChoice, string> = {
-  t2200: "22:00",
-  t2230: "22:30",
-  t2300: "23:00",
-  t2330: "23:30",
-  absent: "欠席"
-};
-
-const CHOICE_LABEL_FOR_RESPONSE: Record<string, string> = {
-  T2200: "22:00",
-  T2230: "22:30",
-  T2300: "23:00",
-  T2330: "23:30",
-  ABSENT: "欠席"
-};
+} from "../../time/index.js";
+import { renderInitialAskBody } from "./render.js";
 
 export interface SendAskMessageContext {
   trigger: "cron" | "command";
@@ -71,99 +35,6 @@ export interface SendAskMessageResult {
   messageId?: string;
   sessionId?: string;
 }
-
-export const buildAskRow = (
-  sessionId: string,
-  options: { disabled?: boolean } = {}
-): ActionRowBuilder<ButtonBuilder> => {
-  // invariant: custom_id は interactions.ts の askCustomIdSchema (UUID v4 + choice regex) で検証される。
-  //   ここで組み立てる ID はその正規表現にマッチしなければならない。
-  const buttons = ASK_CHOICES.map((choice) =>
-    new ButtonBuilder()
-      .setCustomId(`ask:${sessionId}:${choice}`)
-      .setLabel(ASK_BUTTON_LABELS[choice])
-      .setStyle(choice === "absent" ? ButtonStyle.Danger : ButtonStyle.Secondary)
-      .setDisabled(Boolean(options.disabled))
-  );
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
-};
-
-const memberLinesFromState = (
-  memberUserIds: readonly string[],
-  responsesByUserId: ReadonlyMap<string, string>
-): string =>
-  buildMemberLines(memberUserIds)
-    .map((member) => {
-      const choice = responsesByUserId.get(member.userId);
-      const label = choice ? CHOICE_LABEL_FOR_RESPONSE[choice] ?? choice : "未回答";
-      return `- ${member.displayName} : ${label}`;
-    })
-    .join("\n");
-
-const buildAskContent = (
-  candidateDate: Date,
-  memberUserIds: readonly string[],
-  responsesByUserId: ReadonlyMap<string, string>,
-  extraFooter: string | undefined
-): string => {
-  const mentions = memberUserIds.map((userId) => `<@${userId}>`).join(" ");
-  const statusLines = memberLinesFromState(memberUserIds, responsesByUserId);
-
-  const lines = [
-    mentions,
-    "🎲 今週の桃鉄1年勝負の出欠確認です",
-    "",
-    `開催候補日: ${formatCandidateJa(candidateDate)}`,
-    "回答締切: 21:30（未回答者が残っていれば中止）",
-    "ルール: 「欠席」が1人でも出た時点で中止 / 押した時刻 \"以降\" なら参加OK",
-    "      （例: 23:00 を押すと 23:00/23:30 でも参加可能として集計されます）",
-    "",
-    "【回答状況】",
-    statusLines
-  ];
-  if (extraFooter) {
-    lines.push("", extraFooter);
-  }
-  return lines.join("\n");
-};
-
-export interface RenderAskBodyOptions {
-  footer?: string;
-}
-
-export const renderAskBody = (
-  session: Pick<SessionRow, "id" | "candidateDate" | "status">,
-  responses: readonly ResponseRow[],
-  memberLookup: ReadonlyMap<string, string>,
-  options: RenderAskBodyOptions = {}
-): MessageCreateOptions & MessageEditOptions => {
-  const responsesByUserId = new Map<string, string>();
-  for (const response of responses) {
-    const userId = memberLookup.get(response.memberId);
-    if (userId) {responsesByUserId.set(userId, response.choice);}
-  }
-
-  const disabled = session.status !== "ASKING";
-  const candidateDate = parseCandidateDateIso(session.candidateDate);
-
-  return {
-    content: buildAskContent(
-      candidateDate,
-      env.MEMBER_USER_IDS,
-      responsesByUserId,
-      options.footer
-    ),
-    components: [buildAskRow(session.id, { disabled })]
-  };
-};
-
-const renderInitialAskBody = (
-  sessionId: string,
-  candidateDate: Date
-): MessageCreateOptions => ({
-  content: buildAskContent(candidateDate, env.MEMBER_USER_IDS, new Map(), undefined),
-  components: [buildAskRow(sessionId, { disabled: false })]
-});
 
 // single-instance: プロセス内 in-flight マップ。Fly app を 2 インスタンス以上にスケールすると
 //   このロックは効かず、DB の sessions_week_key_postpone_count_unique 制約が最終防衛線になる。
@@ -318,33 +189,4 @@ export const waitForInFlightSend = async (): Promise<void> => {
 
 export const __resetSendStateForTest = (): void => {
   inFlightSends.clear();
-};
-
-/**
- * Load session + responses from DB and return a MessageEditOptions that
- * reflects the current state. Used by interaction/cron paths.
- */
-export const buildAskRenderFromDb = async (
-  db: DbLike,
-  session: SessionRow,
-  memberLookup: ReadonlyMap<string, string>
-): Promise<MessageEditOptions> => {
-  const responses = await listResponses(db, session.id);
-
-  let footer: string | undefined;
-  if (session.status === "DECIDED" && session.decidedStartAt) {
-    const timeChoices = responses
-      .map((r) => r.choice)
-      .filter((c): c is AskTimeChoice => c === "T2200" || c === "T2230" || c === "T2300" || c === "T2330");
-    const start = decidedStartAt(parseCandidateDateIso(session.candidateDate), timeChoices);
-    if (start) {
-      const hh = String(start.getHours()).padStart(2, "0");
-      const mm = String(start.getMinutes()).padStart(2, "0");
-      footer = `✅ 全員回答により ${hh}:${mm} 開始で確定（開催決定メッセージは追って送信）`;
-    }
-  } else if (session.status === "CANCELLED") {
-    footer = "🛑 中止。この週の募集は締め切りました";
-  }
-
-  return renderAskBody(session, responses, memberLookup, footer ? { footer } : {});
 };

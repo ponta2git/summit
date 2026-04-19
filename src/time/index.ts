@@ -18,8 +18,6 @@ export const systemClock: Clock = {
   now: () => new Date()
 };
 
-export const nowJst = (clock: Clock = systemClock): Date => clock.now();
-
 /**
  * Returns the ISO-week key in `YYYY-Www` form for a given instant.
  *

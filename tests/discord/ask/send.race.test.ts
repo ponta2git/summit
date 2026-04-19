@@ -1,10 +1,10 @@
 import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { __resetSendStateForTest, sendAskMessage } from "../../src/discord/askMessage.js";
-import type { DbLike, SessionRow } from "../../src/db/repositories/sessions.js";
-import { env } from "../../src/env.js";
-import { __resetShutdownStateForTest } from "../../src/shutdown.js";
+import { __resetSendStateForTest, sendAskMessage } from "../../../src/discord/ask/send.js";
+import type { DbLike, SessionRow } from "../../../src/db/repositories/sessions.js";
+import { env } from "../../../src/env.js";
+import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 
 const memberUserId = (() => {
   const userId = env.MEMBER_USER_IDS[0];

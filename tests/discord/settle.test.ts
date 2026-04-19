@@ -18,7 +18,7 @@ vi.mock("../../src/db/repositories/sessions.js", async () => {
   };
 });
 
-vi.mock("../../src/discord/askMessage.js", () => ({
+vi.mock("../../src/discord/ask/render.js", () => ({
   buildAskRenderFromDb: vi.fn(async () => ({ content: "ask", components: [] }))
 }));
 

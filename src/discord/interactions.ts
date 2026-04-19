@@ -25,17 +25,17 @@ import {
   type AskTimeChoice,
   type Clock
 } from "../time/index.js";
+import { buildAskRenderFromDb } from "./ask/render.js";
 import {
-  buildAskRenderFromDb,
   sendAskMessage,
   type SendAskMessageContext,
   type SendAskMessageResult
-} from "./askMessage.js";
+} from "./ask/send.js";
 import { settleAskingSession, tryDecideIfAllTimeSlots } from "./settle.js";
 import { randomUUID } from "node:crypto";
 
 // invariant: Discord button custom_id (小文字) → DB enum (大文字) の 1:1 変換。
-//   askMessage.ts の ASK_CHOICES / askCustomIdSchema と同期必須。new choice 追加時は 3 箇所同時更新。
+//   ask/render.ts の ASK_CHOICES / 当ファイルの askCustomIdSchema と同期必須。new choice 追加時は 3 箇所同時更新。
 const ASK_CUSTOM_ID_TO_DB_CHOICE: Record<string, "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT"> = {
   t2200: "T2200",
   t2230: "T2230",
