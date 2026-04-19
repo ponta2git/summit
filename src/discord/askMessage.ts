@@ -268,6 +268,20 @@ const doSendAskMessage = async (
   };
 };
 
+/**
+ * Sends (or reuses) the weekly /ask message for `isoWeekKey(now)` with `postponeCount=0`.
+ *
+ * @param client - Logged-in Discord client.
+ * @param context - Trigger metadata and optional DB/clock overrides for tests.
+ * @returns
+ *   - `{ status: "sent" }` when a new session was created and a Discord message was posted.
+ *   - `{ status: "skipped" }` when another path (cron / /ask) already handled the same week.
+ *
+ * @remarks
+ * cron と /ask の同時起動、プロセス内並走、複数インスタンス (想定外) いずれでも
+ * 二重投稿を避けるため、in-flight マップ + DB の `(weekKey, postponeCount)` unique 制約の
+ * 二段構えで守る。Discord 投稿失敗時も DB は正本として保持される。
+ */
 export const sendAskMessage = async (
   client: Client,
   context: SendAskMessageContext

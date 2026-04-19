@@ -22,6 +22,16 @@ const beginShutdown = (): boolean => {
   return true;
 };
 
+/**
+ * Gracefully tears down the Bot: scheduler → in-flight sends → DB → Discord client.
+ *
+ * @returns `true` if this invocation performed the shutdown, `false` if another signal
+ *   already initiated shutdown (idempotent).
+ *
+ * @remarks
+ * SIGINT / SIGTERM の連続受信でも 1 度だけ実行される。停止順序を逆にすると待機中に
+ * 新たな cron tick で in-flight が積み増されるため、必ず scheduler を先に止めること。
+ */
 export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> => {
   // idempotent: SIGINT + SIGTERM 連続受信や重複発火でも 1 回だけ shutdown を走らせる。
   if (!beginShutdown()) {

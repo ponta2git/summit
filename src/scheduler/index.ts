@@ -104,6 +104,12 @@ const settleAtDeadline = async (
   await settleAskingSession(client, db, session.id, "deadline_unanswered");
 };
 
+/**
+ * Runs one deadline tick: settles every ASKING session whose deadline has passed.
+ *
+ * @remarks
+ * cron (毎分) と起動時リカバリの双方から呼ばれる。例外は外に漏らさず log に集約する。
+ */
 export const runDeadlineTick = async (
   client: Client,
   db: DbLike,
@@ -119,6 +125,13 @@ export const runDeadlineTick = async (
   }
 };
 
+/**
+ * Re-settles overdue ASKING sessions found in the DB at startup.
+ *
+ * @remarks
+ * プロセス再起動で cron tick を取りこぼしても整合を回復させる入口。CAS 済みのため
+ * 二重実行安全。非終端 Session を全件スキャンして締切超過のものだけ処理する。
+ */
 export const runStartupRecovery = async (
   client: Client,
   db: DbLike,
@@ -153,6 +166,17 @@ export interface SchedulerHandles {
   deadlineTask: ScheduledTask;
 }
 
+/**
+ * Registers the /ask send and deadline cron tasks.
+ *
+ * @returns Handles to the scheduled tasks (for shutdown).
+ *
+ * @remarks
+ * プロセス内で 1 度だけ呼ぶこと。複数インスタンスで同時駆動すると Discord への
+ * 二重送信や race になる。Fly app は 1 インスタンス固定前提。
+ *
+ * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+ */
 export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => {
   const clock = deps.clock ?? systemClock;
   const db = deps.db ?? defaultDb;

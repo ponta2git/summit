@@ -96,6 +96,16 @@ export interface CreateAskSessionInput {
   deadlineAt: Date;
 }
 
+/**
+ * Creates an ASKING session for the given (weekKey, postponeCount).
+ *
+ * @returns The newly created session, or `undefined` if another process already inserted one
+ *   for the same (weekKey, postponeCount) pair (race lost).
+ *
+ * @remarks
+ * `(weekKey, postponeCount)` unique 制約と `onConflictDoNothing` で race を吸収する。
+ * 呼び出し側は `undefined` を skipped として扱い、多重送信を回避する。
+ */
 export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
@@ -184,6 +194,20 @@ export interface TransitionInput {
   reminderAt?: Date;
 }
 
+/**
+ * Atomically transitions a session's status using a conditional UPDATE (CAS).
+ *
+ * @returns The updated session row if the CAS succeeded, or `undefined` if another handler
+ *   already transitioned the session first (race lost).
+ * @throws Never. Race losses are expressed as `undefined`, not exceptions.
+ *
+ * @remarks
+ * `WHERE status = input.from` を付けた UPDATE 文で、競合時も片方だけが成功する。
+ * 呼び出し側は `undefined` を観測したら DB から再取得して最新状態に合わせて処理を続ける。
+ * 状態を巻き戻してはならない。
+ *
+ * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+ */
 export const transitionStatus = async (
   db: DbLike,
   input: TransitionInput
@@ -249,6 +273,16 @@ export interface UpsertResponseInput {
   answeredAt: Date;
 }
 
+/**
+ * Inserts or updates a member's response to a session (押し直し可).
+ *
+ * @returns The resulting response row after upsert.
+ * @throws Error if the upsert returns no row (should never happen under the current schema).
+ *
+ * @remarks
+ * `(sessionId, memberId)` unique 制約で二重投入を防ぎつつ、同一メンバーの回答変更は
+ * `onConflictDoUpdate` で最新値に上書きする。
+ */
 export const upsertResponse = async (
   db: DbLike,
   input: UpsertResponseInput

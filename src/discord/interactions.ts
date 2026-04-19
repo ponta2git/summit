@@ -302,6 +302,16 @@ const handleButton = async (
   );
 };
 
+/**
+ * Dispatches a Discord interaction to the appropriate handler (slash command / button).
+ *
+ * @remarks
+ * 入口で即 ack (3 秒制約) し、検証順は guildId → channelId → user → custom_id → DB 状態。
+ * 認可失敗は ephemeral で却下し、DB 状態を一切変更しない。再描画は DB の Session + Response
+ * から組み立て直す。
+ *
+ * @see docs/adr/0004-discord-interaction-architecture.md
+ */
 export const handleInteraction = async (
   interaction: Interaction,
   deps: InteractionHandlerDeps
