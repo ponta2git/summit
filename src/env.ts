@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { z } from "zod";
 
 config({ path: ".env.local" });
+process.env.TZ ??= "Asia/Tokyo";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 

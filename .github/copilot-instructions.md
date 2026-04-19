@@ -39,3 +39,24 @@ TypeScript / Node 24 LTS / pnpm v10 / mise / discord.js v14 / node-cron / pino /
 ## コミット / PR
 - Conventional Commits（英語）。
 - PR 本文は日本語で「変更点 / 仮定 / 要確認事項 / 影響範囲 / テスト / 運用影響 / リスク」を記載。
+
+## ADR 作成プロトコル（設計判断は逐次記録）
+**設計判断を行ったら、その PR 内で ADR を新規作成または更新する**。判断を忘れないためのローカル専用ルールではなく、`docs/adr/` に永続化するまでが 1 つの作業単位。
+
+1. **ADR 化が必要な判断の例**（いずれかに該当したら必ず作る）:
+   - 業務仕様に影響する決定（締切・週キー・順延・参加条件・状態・`custom_id` 形式・手動/自動経路の扱い等）。
+   - アーキテクチャ層の選択（ライブラリ採用・永続化方式・スケジューラ方式・並行制御方式など）。
+   - 既存 ADR の原則と一時的にでも衝突する妥協（過渡期実装・in-memory で済ます選択など）。
+   - 運用ポリシー（デプロイ窓・権限設計・秘密情報の扱い・cron 時刻の変更など）。
+   - 代替案を明確に却下した判断（後から「なぜこうしたか」を問われる可能性があるもの）。
+2. **ADR 化が不要な例**（記録しなくてよい）:
+   - 命名の微修正、リファクタ、import 整理など再現性の低い・可逆な小変更。
+   - 既存 ADR の方針を**そのまま**適用した実装（新規判断が存在しない）。
+3. **作成手順**:
+   - `docs/adr/` に `NNNN-kebab-case-title.md` を新規作成（番号は既存最大 + 1、ゼロ詰め 4 桁）。
+   - フォーマットは `docs/adr/README.md` の MADR 準拠テンプレートに従う（frontmatter + Context / Decision / Consequences / Alternatives considered）。
+   - `docs/adr/README.md` の Index 表へ 1 行追記。
+   - 既存 ADR を置き換える場合は旧 ADR の `status` を `superseded` に変え `superseded-by` を埋める。削除はしない。
+4. **過渡期の妥協も必ず記録**: 「暫定対応だから ADR 不要」と判断しない。過渡期であることを `status: accepted` + Consequences / Operational implications で明示し、移行条件を書く。
+5. **PR 本文との関係**: PR 本文「変更点」「影響範囲」に `docs/adr/NNNN-*.md` へのリンクを添える。PR 本文は一時的、ADR は永続。
+

@@ -50,3 +50,5 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0004](./0004-discord-interaction-architecture.md) | Discord Interaction ハンドリングと Slash Command 同期 | accepted | 2026-04-19 | discord, runtime |
 | [0005](./0005-operations-policy.md) | 運用ポリシー（Staging 不採用・禁止窓・依存更新・最小権限） | accepted | 2026-04-19 | ops |
 | [0006](./0006-documentation-structure.md) | ドキュメント構造（業務要求 / 運用 / レビュー規約の分離） | accepted | 2026-04-19 | docs |
+| [0007](./0007-ask-command-always-available-and-08-jst-cron.md) | `/ask` コマンドの常時実行許可と自動送信時刻 08:00 JST | accepted | 2026-04-20 | discord, ops, runtime, time |
+| [0008](./0008-transitional-send-only-implementation-without-db.md) | 送信専用フェーズにおける DB 未使用実装と in-memory 重複防止（過渡期） | accepted | 2026-04-20 | runtime, db, ops |

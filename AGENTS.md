@@ -49,6 +49,24 @@ pnpm db:check
 3. 業務仕様に関わる判断（締切・週キー・順延ルール・参加条件・状態・custom_id 形式）で明記なし → 実装せず `// TODO(ai): spec clarification needed - <issue>` を残し、PR の「要確認事項」に書いて質問。
 4. どの場合でも **本番破壊的操作 / デプロイ禁止窓違反 / 秘匿値露出 / 単一インスタンス前提の逸脱** は仮定で進めるな。
 
+## ADR 作成プロトコル（設計判断は逐次記録）
+**設計判断を行ったら、その PR 内で必ず `docs/adr/` に ADR を新規作成または更新**する。判断の永続化までを 1 作業単位として扱う。
+
+- **対象となる判断**（いずれか該当で必須）:
+  - 業務仕様に影響する決定（締切・週キー・順延・参加条件・状態・`custom_id` 形式・手動/自動経路の扱い 等）。
+  - アーキテクチャ層の選択（ライブラリ採用・永続化方式・スケジューラ方式・並行制御方式 など）。
+  - 既存 ADR の原則と一時的にでも衝突する妥協（過渡期実装・in-memory で済ます選択 など）。
+  - 運用ポリシー（デプロイ窓・権限設計・秘密情報の扱い・cron 時刻の変更 など）。
+  - 明確に代替案を却下した判断。
+- **不要な例**: 命名・リファクタ・import 整理など可逆で小さい変更、既存 ADR をそのまま適用した実装。
+- **手順**:
+  1. `docs/adr/NNNN-kebab-case-title.md` を新規作成（番号は既存最大 + 1、ゼロ詰め 4 桁）。
+  2. `docs/adr/README.md` のテンプレート（MADR 準拠）に従い、Context / Decision / Consequences / Alternatives considered を書く。
+  3. 同 README の Index 表に 1 行追記。
+  4. 置き換えの場合、旧 ADR を `status: superseded` にし `superseded-by` を埋める（削除しない）。
+- **過渡期の妥協も必ず記録**: 「暫定だから不要」と判断しない。`status: accepted` のまま移行条件を Consequences / Operational implications に書く。
+- **PR との関係**: PR 本文の「変更点」「影響範囲」に該当 ADR へのリンクを添える。PR は一時的、ADR は永続。
+
 ## 禁止領域（違反即リジェクト）
 - **単一インスタンス逸脱**: Fly app を 2 instance 以上に scale しない。ローカルでも同一 Bot を二重起動しない。`node-cron` を起動時に多重登録しない。cron / reminder は DB 状態を正として 1 系統だけ動かす。
 - **secrets 実値の混入**: `.env*`、token、`DATABASE_URL`、`DIRECT_URL`、`HEALTHCHECK_PING_URL` の実値をコード・fixture・ログ・PR 本文に載せない。commit 可能なのは `.env.example` の雛形のみ。

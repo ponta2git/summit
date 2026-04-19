@@ -1,9 +1,8 @@
-process.env.TZ = "Asia/Tokyo";
-
-import { REST, Routes, SlashCommandBuilder } from "discord.js";
+import { REST, Routes } from "discord.js";
 
 import { env } from "../env.js";
 import { logger } from "../logger.js";
+import { slashCommands } from "./definitions.js";
 
 const parseApplicationIdFromToken = (token: string): string => {
   const [encoded] = token.split(".");
@@ -19,24 +18,19 @@ const parseApplicationIdFromToken = (token: string): string => {
   return decoded;
 };
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("cancel_week")
-    .setDescription("Cancel the current attendance session for this ISO week.")
-].map((command) => command.toJSON());
-
 const run = async (): Promise<void> => {
   const applicationId = parseApplicationIdFromToken(env.DISCORD_TOKEN);
   const rest = new REST({ version: "10" }).setToken(env.DISCORD_TOKEN);
 
   await rest.put(
     Routes.applicationGuildCommands(applicationId, env.DISCORD_GUILD_ID),
-    { body: commands }
+    { body: slashCommands }
   );
 
   logger.info(
     {
-      guildId: env.DISCORD_GUILD_ID
+      guildId: env.DISCORD_GUILD_ID,
+      commandCount: slashCommands.length
     },
     "Slash commands synced."
   );
