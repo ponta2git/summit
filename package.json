@@ -7,13 +7,14 @@
   "engines": {
     "node": "24.x"
   },
-  "packageManager": "pnpm@10.8.0",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "dotenv -e .env.local -- tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "dotenv -e .env.local -- node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "oxlint . --tsconfig tsconfig.json --deny-warnings",
+    "lint:fix": "oxlint . --tsconfig tsconfig.json --fix",
     "test": "vitest run --passWithNoTests",
     "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm db:check && pnpm verify:forbidden",
     "db:up": "docker compose up -d postgres",
@@ -34,24 +35,22 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
-    "discord.js": "^14.21.0",
-    "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.45.0",
+    "discord.js": "^14.26.3",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "node-cron": "^4.2.1",
-    "pino": "^9.13.1",
-    "postgres": "^3.4.7",
-    "zod": "^4.1.12"
+    "pino": "^10.3.1",
+    "postgres": "^3.4.9",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint/js": "^9.38.0",
-    "@types/node": "^24.7.2",
+    "@types/node": "^24.12.2",
     "dotenv-cli": "^11.0.0",
-    "drizzle-kit": "^0.31.4",
-    "eslint": "^9.38.0",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.1",
-    "vitest": "^3.2.4"
+    "drizzle-kit": "^0.31.10",
+    "oxlint": "^1.60.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
   }
 }
