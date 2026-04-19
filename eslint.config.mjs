@@ -11,6 +11,33 @@ export default tseslint.config(
     }
   },
   {
+    files: ["src/**/*.ts", "tests/**/*.ts"],
+    rules: {
+      "no-console": ["error"],
+      "@typescript-eslint/no-explicit-any": ["error"],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[object.name='process'][property.name='env']",
+          message:
+            "Use env from src/env.ts. process.env is forbidden in application code."
+        }
+      ]
+    }
+  },
+  {
+    files: [
+      "src/env.ts",
+      "src/index.ts",
+      "src/commands/sync.ts",
+      "src/db/seed.ts"
+    ],
+    rules: {
+      "no-restricted-syntax": "off"
+    }
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "drizzle/**"]
   }
 );

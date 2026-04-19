@@ -58,6 +58,24 @@ pnpm commands:sync  # Discord slash commands を guild-scoped で同期
 
 schema を変えたら `pnpm db:generate` → 生成 SQL をレビュー → `pnpm db:migrate` → `pnpm db:check` の順。`drizzle-kit push` は使いません。slash command の定義を変えたら `pnpm commands:sync` を忘れないでください。
 
+## 検証ハーネス
+Phase 2 では、静的チェックと運用ガードを CI/ローカルで再現可能な形にそろえています。
+
+- ローカル推奨順序:
+  ```bash
+  pnpm typecheck
+  pnpm lint
+  pnpm test
+  pnpm build
+  pnpm db:check
+  pnpm verify:forbidden
+  pnpm verify:drift
+  ```
+- `pnpm run ci`: required チェックを直列実行（`typecheck/lint/test/build/db:check/verify:forbidden`）。
+- `.github/instructions/`: 変更ファイル領域ごとのレビュー観点を AI に注入。
+- `.github/PULL_REQUEST_TEMPLATE.md`: 仕様整合・運用安全チェックの記入テンプレート。
+- 現在カバレッジ（Phase 2）: A1/A2/A3/A4/A5/A6/A11 + B1/B2/B3/B4/B5/B6/B7/B8。
+
 ## 環境変数
 詳細な一覧・意味・既定値は [`requirements/base.md` §10](./requirements/base.md) を参照してください。起動に直結する最小限だけ抜粋:
 

@@ -1,6 +1,6 @@
 import pino from "pino";
 
-export const logger = pino({
+export const loggerOptions = {
   level: "info",
   redact: {
     paths: [
@@ -16,4 +16,6 @@ export const logger = pino({
     ],
     remove: true
   }
-});
+} satisfies pino.LoggerOptions;
+
+export const logger = pino(loggerOptions);

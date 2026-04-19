@@ -5,7 +5,7 @@ config({ path: ".env.local" });
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 
-const envSchema = z.object({
+export const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_GUILD_ID: discordId,
   DISCORD_CHANNEL_ID: discordId,
