@@ -59,7 +59,7 @@ export const runScheduledAskTick = async (
  * - all 4 members answered with time slots → DECIDED (no announcement in scope).
  * - otherwise → CANCELLED + postpone voting message.
  */
-const settleAtDeadline = async (
+const settleDueAskingSession = async (
   client: Client,
   db: DbLike,
   session: SessionRow
@@ -118,7 +118,7 @@ export const runDeadlineTick = async (
   try {
     const due = await findDueAskingSessions(db, clock.now());
     for (const session of due) {
-      await settleAtDeadline(client, db, session);
+      await settleDueAskingSession(client, db, session);
     }
   } catch (error: unknown) {
     logger.error({ error }, "Deadline tick failed.");
@@ -137,7 +137,7 @@ export const runStartupRecovery = async (
   db: DbLike,
   clock: Clock
 ): Promise<void> => {
-  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば settleAtDeadline を呼ぶ。
+  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば settleDueAskingSession を呼ぶ。
   //   プロセス再起動で cron tick を取りこぼしても整合を回復できる。
   // idempotent: settleAskingSession / tryDecideIfAllTimeSlots は CAS 済みのため二重呼び出し安全。
   try {
@@ -153,7 +153,7 @@ export const runStartupRecovery = async (
           },
           "Startup recovery: settling overdue ASKING session."
         );
-        await settleAtDeadline(client, db, session);
+        await settleDueAskingSession(client, db, session);
       }
     }
   } catch (error: unknown) {

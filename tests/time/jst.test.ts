@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { candidateDateForSend, formatCandidateJa, isoWeekKey } from "../../src/time/index.js";
+import { candidateDateForAsk, formatCandidateJa, isoWeekKey } from "../../src/time/index.js";
 
 describe("time utilities", () => {
   it("builds ISO week keys across year boundaries", () => {
@@ -16,7 +16,7 @@ describe("time utilities", () => {
     ];
 
     for (const sample of samples) {
-      expect(candidateDateForSend(sample)).toBe(sample);
+      expect(candidateDateForAsk(sample)).toBe(sample);
     }
   });
 

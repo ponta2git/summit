@@ -42,7 +42,7 @@ export const isoWeekKey = (value: Date): string => {
 //   cron (金 08:00 JST) でも /ask コマンドでも now を候補日として扱う。
 //   日付境界を跨ぐ操作 (翌日候補化等) が必要になった場合のみここに集約する。
 // @see docs/adr/0007-ask-command-always-available-and-08-jst-cron.md
-export const candidateDateForSend = (now: Date): Date => now;
+export const candidateDateForAsk = (now: Date): Date => now;
 
 export const formatCandidateJa = (value: Date): string =>
   `${format(value, "yyyy-MM-dd(E)", { locale: ja })} 22:00 以降`;

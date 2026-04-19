@@ -13,7 +13,7 @@ import {
 import { db as defaultDb } from "../db/client.js";
 import {
   createAskSession,
-  findActiveSessionByWeekKey,
+  findSessionByWeekKeyAndPostponeCount,
   listResponses,
   setAskMessageId,
   type DbLike,
@@ -25,7 +25,7 @@ import { logger } from "../logger.js";
 import { buildMemberLines } from "../members.js";
 import { isShuttingDown } from "../shutdown.js";
 import {
-  candidateDateForSend,
+  candidateDateForAsk,
   decidedStartAt,
   deadlineFor,
   formatCandidateDateIso,
@@ -185,11 +185,11 @@ const doSendAskMessage = async (
   const clock = context.clock ?? systemClock;
   const now = clock.now();
   const weekKey = isoWeekKey(now);
-  const candidateDate = candidateDateForSend(now);
+  const candidateDate = candidateDateForAsk(now);
   const candidateIso = formatCandidateDateIso(candidateDate);
   const deadline = deadlineFor(candidateDate);
 
-  const existing = await findActiveSessionByWeekKey(db, weekKey, 0);
+  const existing = await findSessionByWeekKeyAndPostponeCount(db, weekKey, 0);
   if (existing) {
     // idempotent: 同一週 (postponeCount=0) は 1 Session のみ。cron + /ask の二重起動でも skipped を返して副作用を出さない。
     logger.warn(
@@ -222,7 +222,7 @@ const doSendAskMessage = async (
   if (!created) {
     // race: unique 制約で弾かれた。別プロセス / 別 tick が先に作成したケース。
     //   DB 再取得で勝者の Session を返し、呼び出し側は重複送信を回避する。
-    const raced = await findActiveSessionByWeekKey(db, weekKey, 0);
+    const raced = await findSessionByWeekKeyAndPostponeCount(db, weekKey, 0);
     logger.warn(
       {
         weekKey,

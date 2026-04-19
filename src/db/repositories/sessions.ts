@@ -131,7 +131,7 @@ export const createAskSession = async (
   return row ? mapSession(row) : undefined;
 };
 
-export const findActiveSessionByWeekKey = async (
+export const findSessionByWeekKeyAndPostponeCount = async (
   db: DbLike,
   weekKey: string,
   postponeCount: number

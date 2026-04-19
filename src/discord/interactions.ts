@@ -36,7 +36,7 @@ import { randomUUID } from "node:crypto";
 
 // invariant: Discord button custom_id (小文字) → DB enum (大文字) の 1:1 変換。
 //   askMessage.ts の ASK_CHOICES / askCustomIdSchema と同期必須。new choice 追加時は 3 箇所同時更新。
-const ASK_CHOICE_MAP: Record<string, "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT"> = {
+const ASK_CUSTOM_ID_TO_DB_CHOICE: Record<string, "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT"> = {
   t2200: "T2200",
   t2230: "T2230",
   t2300: "T2300",
@@ -158,7 +158,7 @@ const handleAskButton = async (
 
   const [, sessionId, lowerChoice] = parsed.data.split(":");
   if (!sessionId || !lowerChoice) {return;}
-  const choice = ASK_CHOICE_MAP[lowerChoice];
+  const choice = ASK_CUSTOM_ID_TO_DB_CHOICE[lowerChoice];
   if (!choice) {return;}
 
   const session = await findSessionById(db, sessionId);
