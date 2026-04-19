@@ -80,8 +80,9 @@ const settleAtDeadline = async (
     );
 
   if (hasAbsent) {
-    // Absent case should already have triggered settleAskingSession from
-    // the button handler, but if we somehow reach here, settle now.
+    // race: 通常は absent 押下時の button handler で settleAskingSession 済み。
+    //   ここに到達するのは button handler の edit 失敗 / プロセス落ちからの復帰ケース。
+    //   idempotent: transitionStatus の CAS で勝者のみ副作用を実行するため二重実行安全。
     await settleAskingSession(client, db, session.id, "absent");
     return;
   }
@@ -123,6 +124,9 @@ export const runStartupRecovery = async (
   db: DbLike,
   clock: Clock
 ): Promise<void> => {
+  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば settleAtDeadline を呼ぶ。
+  //   プロセス再起動で cron tick を取りこぼしても整合を回復できる。
+  // idempotent: settleAskingSession / tryDecideIfAllTimeSlots は CAS 済みのため二重呼び出し安全。
   try {
     const sessions = await findNonTerminalSessions(db);
     const now = clock.now();
@@ -157,12 +161,19 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
     ((context: SendAskMessageContext) => sendAskMessage(deps.client, context));
   const cronModule = deps.cronAdapter ?? cron;
 
+  // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
+  // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
+  // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
+  // hack: ADR-0007 により暫定で金 08:00 JST (`0 8 * * 5`) で送信する。requirements/base.md の 18:00 記述は過渡期の未同期。
+  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+  // @see docs/adr/0007-ask-command-always-available-and-08-jst-cron.md
   const askTask = cronModule.schedule(
     "0 8 * * 5",
     () => void runScheduledAskTick(sendAsk, clock),
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 
+  // jst: 金曜 21:30 JST。candidateDate=当日 / deadlineAt=当日 21:30 の組に対応する。
   const deadlineTask = cronModule.schedule(
     "30 21 * * 5",
     () => void runDeadlineTick(deps.client, db, clock),

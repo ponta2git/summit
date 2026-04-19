@@ -36,6 +36,7 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
 };
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  // idempotent: once で同一シグナル多重発火を防ぐ。二重 shutdown は shutdownGracefully 側でもガード。
   process.once(signal, () => {
     handleShutdownSignal(signal);
   });
@@ -52,6 +53,8 @@ const run = async (): Promise<void> => {
     "Discord bot started."
   );
 
+  // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
+  //   login 後に実行することで Discord message の edit もできる状態で呼び出す。
   await runStartupRecovery(client, db, systemClock);
 };
 

@@ -34,6 +34,8 @@ import {
 import { settleAskingSession, tryDecideIfAllTimeSlots } from "./settle.js";
 import { randomUUID } from "node:crypto";
 
+// invariant: Discord button custom_id (小文字) → DB enum (大文字) の 1:1 変換。
+//   askMessage.ts の ASK_CHOICES / askCustomIdSchema と同期必須。new choice 追加時は 3 箇所同時更新。
 const ASK_CHOICE_MAP: Record<string, "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT"> = {
   t2200: "T2200",
   t2230: "T2230",
@@ -42,12 +44,15 @@ const ASK_CHOICE_MAP: Record<string, "T2200" | "T2230" | "T2300" | "T2330" | "AB
   absent: "ABSENT"
 };
 
+// invariant: custom_id 形式は `ask:{UUIDv4}:{choice}`。
+//   送信側 (buildAskRow) が生成する形式と一致させる。UUID 以外 / 未知 choice は cheap-reject する。
 const askCustomIdSchema = z
   .string()
   .regex(
     /^ask:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:(t2200|t2230|t2300|t2330|absent)$/
   );
 
+// invariant: 順延投票 custom_id は `postpone:{UUIDv4}:{ok|ng}`。
 const postponeCustomIdSchema = z
   .string()
   .regex(
@@ -63,6 +68,9 @@ export interface InteractionHandlerDeps {
   clock?: Clock;
 }
 
+// invariant: Guild / Channel / Member の 3 点ガード。
+//   cheap-first 検証 (network I/O なし) で対象外の interaction を DB 読み出し前に弾く。
+// @see docs/adr/0004-discord-interaction-architecture.md
 const isAllowedActor = (
   guildId: string | null,
   channelId: string,
@@ -78,6 +86,7 @@ const handleAskCommand = async (
   interaction: ChatInputCommandInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
+  // ack: Slash command は 3 秒以内に defer/reply しないと失敗する。ephemeral で個人宛に即 ack。
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (!isAllowedActor(interaction.guildId, interaction.channelId, interaction.user.id)) {
@@ -228,10 +237,13 @@ const handleAskButton = async (
   const fresh = await findSessionById(db, sessionId);
   if (!fresh || !fresh.askMessageId) {return;}
 
+  // source-of-truth: メッセージ再描画は常に DB から再構築する。interaction.message の内容を
+  //   編集ベースに使うと、同時押下時に古い回答状況で上書きしてしまう。
   try {
     const rendered = await buildAskRenderFromDb(db, fresh, memberLookup);
     await interaction.message.edit(rendered);
   } catch (error: unknown) {
+    // race: edit 失敗は DB 状態を巻き戻さない。次 tick / 次押下で再描画される。
     logger.warn(
       { error, sessionId, messageId: fresh.askMessageId },
       "Failed to edit ask message after response."
@@ -263,6 +275,8 @@ const handleButton = async (
   interaction: ButtonInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
+  // ack: Component interaction は 3 秒以内の deferUpdate が必須。検証・DB アクセスより先に ack する。
+  //   deferUpdate 後はメッセージ編集で応答し、失敗時は ephemeral followUp で却下メッセージを返す。
   await interaction.deferUpdate();
 
   if (!isAllowedActor(interaction.guildId, interaction.channelId, interaction.user.id)) {

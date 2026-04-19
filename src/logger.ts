@@ -1,5 +1,9 @@
 import pino from "pino";
 
+// redact: token / 接続文字列 / Authorization ヘッダをログに露出させない。
+//   remove:true で path 自体を消すことで、JSON ログから完全に排除される。
+// secret: env.DIRECT_URL / HEALTHCHECK_PING_URL の実値もここで防御。
+// @see .github/instructions/secrets-review.instructions.md
 export const loggerOptions = {
   level: "info",
   redact: {

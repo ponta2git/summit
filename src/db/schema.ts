@@ -65,14 +65,22 @@ export const sessions = pgTable(
       .defaultNow()
   },
   (table) => [
+    // unique: (weekKey, postponeCount) で同一週×順延回数の Session を 0..1 件に制約。
+    //   金曜 Session (postponeCount=0) と土曜 Session (postponeCount=1) は同一週キーを共有するため
+    //   複合ユニークでないと両立できない。sendAskMessage / createAskSession の race は
+    //   この制約違反で検出し、呼び出し側は findSessionByWeekKeyAndPostponeCount で再取得して skipped を返す。
     uniqueIndex("sessions_week_key_postpone_count_unique").on(
       table.weekKey,
       table.postponeCount
     ),
+    // invariant: status は SESSION_STATUSES と DB CHECK で二重ガード。
+    //   DB 側で未知状態の書き込みを弾くことで drizzle 型と実データの乖離を防ぐ。
     check(
       "sessions_status_check",
       sql`${table.status} IN ('ASKING','POSTPONE_VOTING','POSTPONED','DECIDED','CANCELLED','COMPLETED','SKIPPED')`
     ),
+    // invariant: 順延は 1 回まで (金 → 土)。postponeCount >= 2 は仕様違反。
+    // @see requirements/base.md §4
     check(
       "sessions_postpone_count_check",
       sql`${table.postponeCount} IN (0, 1)`
@@ -96,10 +104,14 @@ export const responses = pgTable(
       .defaultNow()
   },
   (table) => [
+    // unique: (sessionId, memberId) で同一メンバーの二重回答を排除。
+    //   4 名同時押下 / 同一メンバーの連打は unique 違反として ON CONFLICT で最後の choice に upsert する。
+    // race: upsertResponse が ON CONFLICT DO UPDATE を使う根拠。
     uniqueIndex("responses_session_member_unique").on(
       table.sessionId,
       table.memberId
     ),
+    // invariant: choice は RESPONSE_CHOICES と二重ガード。未知値を DB 層で拒否する。
     check(
       "responses_choice_check",
       sql`${table.choice} IN ('T2200','T2230','T2300','T2330','ABSENT','POSTPONE_OK','POSTPONE_NG')`

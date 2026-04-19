@@ -40,6 +40,8 @@ import {
 const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const;
 type AskChoice = (typeof ASK_CHOICES)[number];
 
+// invariant: Discord button の custom_id は `ask:{sessionId}:{choice}` 形式。
+//   choice は ASK_CHOICES の小文字値と一致しなければならない (interactions.ts の zod schema と同期必須)。
 const ASK_BUTTON_LABELS: Record<AskChoice, string> = {
   t2200: "22:00",
   t2230: "22:30",
@@ -74,6 +76,8 @@ export const buildAskRow = (
   sessionId: string,
   options: { disabled?: boolean } = {}
 ): ActionRowBuilder<ButtonBuilder> => {
+  // invariant: custom_id は interactions.ts の askCustomIdSchema (UUID v4 + choice regex) で検証される。
+  //   ここで組み立てる ID はその正規表現にマッチしなければならない。
   const buttons = ASK_CHOICES.map((choice) =>
     new ButtonBuilder()
       .setCustomId(`ask:${sessionId}:${choice}`)
@@ -161,6 +165,12 @@ const renderInitialAskBody = (
   components: [buildAskRow(sessionId, { disabled: false })]
 });
 
+// single-instance: プロセス内 in-flight マップ。Fly app を 2 インスタンス以上にスケールすると
+//   このロックは効かず、DB の sessions_week_key_postpone_count_unique 制約が最終防衛線になる。
+// race: 同一 weekKey に対する cron tick と /ask 手動実行の並走を 1 本化する (重複 Discord 投稿の抑制)。
+// idempotent: ロック外側でも findSessionByWeekKeyAndPostponeCount による既存検出と unique 制約で重複は防がれる。
+//   このマップは「Discord API 呼び出し前の無駄な往復」を省く最適化の役割。
+// @see docs/adr/0001-single-instance-db-as-source-of-truth.md
 const inFlightSends = new Map<string, Promise<SendAskMessageResult>>();
 
 const doSendAskMessage = async (
@@ -181,6 +191,7 @@ const doSendAskMessage = async (
 
   const existing = await findActiveSessionByWeekKey(db, weekKey, 0);
   if (existing) {
+    // idempotent: 同一週 (postponeCount=0) は 1 Session のみ。cron + /ask の二重起動でも skipped を返して副作用を出さない。
     logger.warn(
       {
         weekKey,
@@ -209,6 +220,8 @@ const doSendAskMessage = async (
   });
 
   if (!created) {
+    // race: unique 制約で弾かれた。別プロセス / 別 tick が先に作成したケース。
+    //   DB 再取得で勝者の Session を返し、呼び出し側は重複送信を回避する。
     const raced = await findActiveSessionByWeekKey(db, weekKey, 0);
     logger.warn(
       {

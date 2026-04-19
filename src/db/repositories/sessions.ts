@@ -100,6 +100,8 @@ export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
 ): Promise<SessionRow | undefined> => {
+  // race: (weekKey, postponeCount) unique 制約と onConflictDoNothing で race 敗者は undefined。
+  //   呼び出し側は undefined を「既に別プロセス / 別 tick が作成済み」として skipped 扱いする。
   const rows = await db
     .insert(sessions)
     .values({
@@ -194,6 +196,10 @@ export const transitionStatus = async (
   if (input.decidedStartAt !== undefined) {patch.decidedStartAt = input.decidedStartAt;}
   if (input.reminderAt !== undefined) {patch.reminderAt = input.reminderAt;}
 
+  // race: CAS primitive。WHERE status = input.from で現在状態を条件にし、勝者だけが UPDATE 成功する。
+  //   undefined が返ったら「別ハンドラが先に遷移させた (race lost)」を意味する。呼び出し側は
+  //   状態を巻き戻さず DB 再取得して処理を続ける。
+  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
   const rows = await db
     .update(sessions)
     .set(patch)
@@ -247,6 +253,8 @@ export const upsertResponse = async (
   db: DbLike,
   input: UpsertResponseInput
 ): Promise<ResponseRow> => {
+  // unique: (sessionId, memberId) unique 制約で二重投入を防ぐ。
+  //   同一メンバーの回答変更 (押し直し) は onConflictDoUpdate で最新値に上書きする。
   const rows = await db
     .insert(responses)
     .values({
