@@ -4,7 +4,11 @@ applyTo: "{src,tests}/**/*.ts"
 
 # Runtime Rules (TypeScript / Node 24)
 
-> 時刻仕様・状態名・`custom_id` 形式は `requirements/base.md` §10/§13/§14 を正本とする。本書は実装作法のみを扱う。
+本書は TypeScript / Node 24 で書かれた Bot 本体の実装作法を定める。対象は `{src,tests}/**/*.ts`。業務前提は以下のみを想定し、詳細は本書内で完結させる。
+
+- 状態名: `ASKING` / `POSTPONE_VOTING` / `POSTPONED` / `DECIDED` / `CANCELLED` / `COMPLETED` / `SKIPPED`（終端は `COMPLETED` / `SKIPPED`）。
+- `custom_id` は Component（ボタン）でのみ使用し、`ask:{sessionId}:{choice}` / `postpone:{sessionId}:{ok|ng}` 形式。
+- Interaction 応答: Component は `deferUpdate()`、Slash command は `deferReply()` / `reply()`（3 秒制約）。
 
 ## 型システム
 - `tsconfig.json` では `strict: true`、`noImplicitAny: true`、`exactOptionalPropertyTypes: true` を前提に実装しろ。設定を弱める提案、局所無効化、`// @ts-ignore` の常用をするな。
@@ -25,7 +29,7 @@ applyTo: "{src,tests}/**/*.ts"
 - `src/env.ts` に zod v4 スキーマを定義し、起動時に一度だけ parse しろ。失敗を起動後まで遅延させるな。
 - 起動時 invariant（env / config）は `parse()` を使え。parse 失敗時は人間が読める内容を `stderr` へ出し、必ず `process.exit(1)` で停止しろ。
 - アプリコードは `env.XXX` だけを参照しろ。`process.env` を直接読むコードを追加するな。
-- `DIRECT_URL` は `src/env.ts` のアプリ実行時 env には含めず、`drizzle.config.ts` でのみ扱え。`requirements/base.md` §13.3 の zod 例は「必要 env 一覧」の例示であり、アプリ側 env スキーマに `DIRECT_URL` を加える根拠ではない。
+- `DIRECT_URL` は `src/env.ts` のアプリ実行時 env には含めず、`drizzle.config.ts` でのみ扱え。アプリ側 env スキーマに `DIRECT_URL` を加えるな。
 - `HEALTHCHECK_PING_URL` は任意。未設定時は ping を no-op にしろ。
 - カンマ区切り値・時刻文字列・整数分数も `zod` で parse 済みの型として export しろ。呼び出し側で都度 split や `parseInt` を繰り返すな。数値文字列は `zod` で形式検証してから変換しろ。`Number('')` や radix 未指定 `parseInt` に依存するな。
 
@@ -50,7 +54,7 @@ export { env };
 - 裸の Promise を残すな。独立 I/O は `Promise.all`、fire-and-forget は `void task().catch(logger.error)` に限定しろ。
 
 ## Discord Interaction ハンドラの骨格
-1. 入口で即 `interaction.deferUpdate()` しろ（3 秒制約）。
+1. 入口で即応答しろ（3 秒制約）。Component / Button は `interaction.deferUpdate()`、Slash command は `interaction.deferReply({ ephemeral: true })` または `interaction.reply(...)` を使え。
 2. `interaction.guildId` / `interaction.channelId` / `interaction.user.id ∈ env.MEMBER_USER_IDS` を検証しろ。対象外は状態変更せず ephemeral で却下。
 3. `custom_id` を `zod` で `safeParse` しろ。失敗なら却下。
 4. DB から Session / Response を再取得し、最新状態を正として処理しろ。押下前のメッセージ内容を信用するな。
@@ -72,6 +76,7 @@ const session = await repo.findSessionById(parsed.data.sessionId);
 - `responses` は `(sessionId, memberId)` unique 制約を前提に二重挿入を防げ。競合時は再取得して再描画しろ。
 - cron と interaction が競合する前提で設計しろ。単一インスタンスでも同時押下は起こる。
 - アプリ DB クライアントは `env.DATABASE_URL` を使い、Neon pooler 互換のため `postgres(url, { prepare: false })` を明示しろ。
+- cron は **プロセス起動中 1 回だけ登録**しろ。`node-cron` をモジュール初期化時にグローバル登録し、同じスケジュールを複数箇所から重ねて登録するな。テスト用の動的登録は DI やファクトリで分離しろ。
 - cron は毎 tick DB から再計算しろ。in-memory 状態を正本にするな。起動時は active session を再読込して締切・リマインドを復元しろ。同一 tick 重複実行でも結果が変わらないよう冪等に。
 
 ## Do / Don't（まとめ）
@@ -82,7 +87,7 @@ const session = await repo.findSessionById(parsed.data.sessionId);
 | `src/env.ts` で起動時 validate | 実行中に `process.env` を点在参照 |
 | `pino` に固定コンテキストを載せる | `console.log` / payload 全量出力 |
 | 業務エラーは状態で表現 | 仕様分岐を例外で制御 |
-| 入口で `deferUpdate` → 検証 → DB 更新 → 再描画 | 3 秒以内応答を後回し |
+| 入口で deferUpdate / deferReply → 検証 → DB 更新 → 再描画 | 3 秒以内応答を後回し |
 | Drizzle transaction と条件付き更新 | 生 SQL や `sql.raw()` に入力直結 |
 | unique 制約 + 再取得で競合に耐える | 同時押下を単一スレッド前提で扱う |
 | DB を正本に cron を冪等化 | in-memory 状態を信頼する |
