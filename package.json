@@ -1,0 +1,54 @@
+{
+  "name": "summit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord Bot for weekly Momotetsu attendance automation",
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "pnpm@10.8.0",
+  "scripts": {
+    "dev": "dotenv -e .env.local -- tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "dotenv -e .env.local -- node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
+    "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
+    "db:check": "dotenv -e .env.local -- drizzle-kit check",
+    "db:seed": "dotenv -e .env.local -- tsx src/db/seed.ts",
+    "commands:sync": "dotenv -e .env.local -- tsx src/commands/sync.ts",
+    "setup": "pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.0",
+    "drizzle-zod": "^0.8.3",
+    "node-cron": "^4.2.1",
+    "pino": "^9.13.1",
+    "postgres": "^3.4.7",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "^24.7.2",
+    "dotenv-cli": "^11.0.0",
+    "drizzle-kit": "^0.31.4",
+    "eslint": "^9.38.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.1",
+    "vitest": "^3.2.4"
+  }
+}

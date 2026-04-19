@@ -27,7 +27,7 @@ Summit は、固定 4 名で毎週金曜深夜に遊ぶ「桃鉄1年勝負」の
    Discord / DB / 運用設定の値を埋める。ローカルでは `DATABASE_URL` と `DIRECT_URL` は同一値で構わない。
 7. 依存インストール + DB 起動 + migration + seed を一括で実行:
    ```bash
-   pnpm setup   # pnpm install -> db:up -> db:migrate -> db:seed
+   pnpm run setup   # pnpm install -> db:up -> db:migrate -> db:seed
    ```
 8. Discord slash command を同期（guild-scoped）:
    ```bash

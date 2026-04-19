@@ -1,0 +1,7 @@
+.env.local
+.env
+node_modules/
+dist/
+.pnpm-store/
+coverage/
+.DS_Store
