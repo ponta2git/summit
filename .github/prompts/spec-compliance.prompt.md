@@ -1,5 +1,5 @@
 ---
-mode: ask
+agent: Ask
 description: "requirements/base.md と差分の仕様整合レビュー"
 ---
 
