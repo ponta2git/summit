@@ -1,5 +1,7 @@
 process.env.TZ = "Asia/Tokyo";
 
+import { sql } from "drizzle-orm";
+
 import { db, closeDb } from "./client.js";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
@@ -11,9 +13,13 @@ const run = async (): Promise<void> => {
     userId
   }));
 
-  await db.insert(members).values(values).onConflictDoNothing({
-    target: members.userId
-  });
+  await db
+    .insert(members)
+    .values(values)
+    .onConflictDoUpdate({
+      target: members.id,
+      set: { userId: sql`excluded.user_id` }
+    });
 
   logger.info(
     {

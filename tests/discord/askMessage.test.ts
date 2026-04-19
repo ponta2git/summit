@@ -1,12 +1,11 @@
-import { ChannelType, type Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   __resetSendStateForTest,
   buildAskRow,
-  renderAskBody,
-  sendAskMessage
+  renderAskBody
 } from "../../src/discord/askMessage.js";
+import type { ResponseRow, SessionRow } from "../../src/db/repositories/sessions.js";
 import { env } from "../../src/env.js";
 import { __resetShutdownStateForTest } from "../../src/shutdown.js";
 
@@ -18,12 +17,24 @@ const memberUserId = (() => {
   return userId;
 })();
 
-const createMockClient = (channel: unknown): Client =>
-  ({
-    channels: {
-      fetch: vi.fn(async () => channel)
-    }
-  }) as unknown as Client;
+const mockSession = (overrides: Partial<SessionRow> = {}): SessionRow => ({
+  id: "00000000-0000-4000-8000-000000000001",
+  weekKey: "2026-W17",
+  postponeCount: 0,
+  candidateDate: "2026-04-24",
+  status: "ASKING",
+  channelId: env.DISCORD_CHANNEL_ID,
+  askMessageId: null,
+  postponeMessageId: null,
+  deadlineAt: new Date("2026-04-24T21:30:00+09:00"),
+  decidedStartAt: null,
+  cancelReason: null,
+  reminderAt: null,
+  reminderSentAt: null,
+  createdAt: new Date("2026-04-24T08:00:00+09:00"),
+  updatedAt: new Date("2026-04-24T08:00:00+09:00"),
+  ...overrides
+});
 
 describe("askMessage", () => {
   beforeEach(() => {
@@ -46,51 +57,37 @@ describe("askMessage", () => {
     ]);
   });
 
-  it("renders ask message body with mentions and candidate date", () => {
-    const rendered = renderAskBody("session-id", new Date("2026-04-24T22:00:00+09:00"));
+  it("renders ask message body with mentions, candidate date, and response state", () => {
+    const session = mockSession();
+    const memberLookup = new Map([["m1", memberUserId]]);
+    const responses: ResponseRow[] = [
+      {
+        id: "r1",
+        sessionId: session.id,
+        memberId: "m1",
+        choice: "T2330",
+        answeredAt: new Date("2026-04-24T20:00:00+09:00")
+      }
+    ];
+
+    const rendered = renderAskBody(session, responses, memberLookup);
 
     for (const memberId of env.MEMBER_USER_IDS) {
       expect(rendered.content).toContain(`<@${memberId}>`);
     }
     expect(rendered.content).toContain("開催候補日: 2026-04-24(金) 22:00 以降");
+    expect(rendered.content).toContain("23:30");
     expect(rendered.components).toHaveLength(1);
   });
 
-  it("sends once per week and then skips duplicates", async () => {
-    const send = vi.fn(async () => ({ id: "message-1" }));
-    const channel = {
-      type: ChannelType.GuildText,
-      isSendable: () => true,
-      send
+  it("disables ask buttons when session is not ASKING", () => {
+    const session = mockSession({ status: "CANCELLED", cancelReason: "absent" });
+    const rendered = renderAskBody(session, [], new Map());
+    const first = rendered.components?.[0] as unknown as {
+      toJSON?: () => { components: { disabled?: boolean }[] };
     };
-    const client = createMockClient(channel);
-    const fixedClock = { now: () => new Date("2026-04-24T18:00:00+09:00") };
-
-    const first = await sendAskMessage(client, {
-      trigger: "command",
-      invokerId: memberUserId,
-      clock: fixedClock
-    });
-    const second = await sendAskMessage(client, {
-      trigger: "command",
-      invokerId: memberUserId,
-      clock: fixedClock
-    });
-
-    expect(first.status).toBe("sent");
-    expect(second.status).toBe("skipped");
-    expect(send).toHaveBeenCalledTimes(1);
-  });
-
-  it("throws when configured channel is not sendable", async () => {
-    const client = createMockClient(null);
-
-    await expect(
-      sendAskMessage(client, {
-        trigger: "command",
-        invokerId: memberUserId,
-        clock: { now: () => new Date("2026-04-25T23:30:00+09:00") }
-      })
-    ).rejects.toThrow("Configured channel is not sendable.");
+    const row = first?.toJSON?.();
+    const allDisabled = row?.components.every((c) => c.disabled === true);
+    expect(allDisabled).toBe(true);
   });
 });

@@ -1,10 +1,10 @@
 ---
 adr: 0008
 title: 送信専用フェーズにおける DB 未使用実装と in-memory 重複防止（過渡期）
-status: accepted
+status: superseded
 date: 2026-04-20
 supersedes: []
-superseded-by: null
+superseded-by: 9
 tags: [runtime, db, ops]
 ---
 

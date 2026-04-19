@@ -1,4 +1,5 @@
-import { MessageFlags, type Interaction } from "discord.js";
+import type { Client, Interaction } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../src/discord/interactions.js";
@@ -63,6 +64,13 @@ const createButtonInteraction = (customId: string, overrides?: Partial<Record<st
   return { ...interaction, ...overrides };
 };
 
+const stubClient = {} as unknown as Client;
+
+const defaultDeps = (sendAsk: ReturnType<typeof vi.fn>) => ({
+  sendAsk: sendAsk as unknown as (c: unknown) => Promise<unknown>,
+  client: stubClient
+}) as unknown as Parameters<typeof handleInteraction>[1];
+
 describe("interaction router", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,7 +80,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = createAskInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.deferReply).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith("送信しました");
@@ -88,7 +96,7 @@ describe("interaction router", () => {
       user: { id: "999999999999999999" }
     });
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.editReply).toHaveBeenCalledWith("対象外です");
     expect(sendAsk).not.toHaveBeenCalled();
@@ -100,7 +108,7 @@ describe("interaction router", () => {
     });
     const interaction = createAskInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.editReply).toHaveBeenCalledWith("送信に失敗しました");
   });
@@ -109,7 +117,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = createCancelInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.reply).toHaveBeenCalledWith({
       content: "未実装です（将来 PR で実装予定）",
@@ -121,7 +129,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = createButtonInteraction("ask:not-a-uuid:t2200");
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
@@ -130,16 +138,16 @@ describe("interaction router", () => {
     });
   });
 
-  it("acknowledges valid ask button presses with placeholder message", async () => {
+  it("rejects postpone button presses with placeholder message (not-yet-implemented)", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = createButtonInteraction(
-      "ask:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:t2330"
+      "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok"
     );
 
-    await handleInteraction(interaction as unknown as Interaction, { sendAsk });
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: "まだ受付準備中です。受付機能は近日公開予定です。",
+      content: "順延投票は受付準備中です。近日公開予定です。",
       flags: MessageFlags.Ephemeral
     });
   });

@@ -16,13 +16,13 @@ describe("ask scheduler", () => {
     const client = {} as Client;
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
 
-    const task = createAskScheduler({
+    const handles = createAskScheduler({
       client,
       sendAsk,
       cronAdapter: { schedule }
     });
 
-    expect(task.stop).toBe(stop);
+    expect(handles.askTask.stop).toBe(stop);
     expect(schedule).toHaveBeenCalledWith("0 8 * * 5", expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true

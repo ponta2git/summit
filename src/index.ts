@@ -1,21 +1,25 @@
-import { closeDb } from "./db/client.js";
+import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./discord/askMessage.js";
 import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/interactions.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
-import { createAskScheduler } from "./scheduler/index.js";
+import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
+import { systemClock } from "./time/index.js";
 
 const client = createDiscordClient();
 registerInteractionHandlers(client);
 
-const schedulerTask = createAskScheduler({ client });
+const scheduler = createAskScheduler({ client });
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
-    stopScheduler: () => schedulerTask.stop(),
+    stopScheduler: () => {
+      scheduler.askTask.stop();
+      scheduler.deadlineTask.stop();
+    },
     waitForInFlightSend,
     closeDb,
     destroyClient: () => client.destroy()
@@ -47,6 +51,8 @@ const run = async (): Promise<void> => {
     },
     "Discord bot started."
   );
+
+  await runStartupRecovery(client, db, systemClock);
 };
 
 void run().catch((error: unknown) => {
