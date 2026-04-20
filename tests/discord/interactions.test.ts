@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction, registerInteractionHandlers } from "../../src/discord/dispatcher.js";
 import { logger } from "../../src/logger.js";
+import { messages } from "../../src/messages.js";
 import { memberUserId } from "../helpers/env.js";
 
 import {
@@ -46,7 +47,7 @@ describe("interaction router", () => {
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
-    expect(interaction.editReply).toHaveBeenCalledWith("対象外です");
+    expect(interaction.editReply).toHaveBeenCalledWith(messages.interaction.reject.notMember);
     expect(sendAsk).not.toHaveBeenCalled();
   });
 
@@ -81,7 +82,7 @@ describe("interaction router", () => {
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: "未知の操作です",
+      content: messages.interaction.reject.invalidCustomId,
       flags: MessageFlags.Ephemeral
     });
   });
@@ -167,6 +168,73 @@ describe("interaction router", () => {
     expect(reply).toHaveBeenCalledWith({
       content: "内部エラーが発生しました。管理者に連絡してください。",
       flags: MessageFlags.Ephemeral
+    });
+  });
+
+  describe("reject reason split — ephemeral messages per guard failure", () => {
+    it("rejects button from wrong channel with channel-specific message", async () => {
+      const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+      const interaction = buildButtonInteraction(
+        "ask:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:t2200",
+        { channelId: "000000000000000000" }
+      );
+
+      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+      expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+      expect(interaction.followUp).toHaveBeenCalledWith({
+        content: messages.interaction.reject.wrongChannel,
+        flags: MessageFlags.Ephemeral
+      });
+      expect(sendAsk).not.toHaveBeenCalled();
+    });
+
+    it("rejects button from non-member with member-specific message", async () => {
+      const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+      const interaction = buildButtonInteraction(
+        "ask:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:t2200",
+        { user: { id: "999999999999999999" } }
+      );
+
+      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+      expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+      expect(interaction.followUp).toHaveBeenCalledWith({
+        content: messages.interaction.reject.notMember,
+        flags: MessageFlags.Ephemeral
+      });
+      expect(sendAsk).not.toHaveBeenCalled();
+    });
+
+    it("rejects button from wrong guild with guild-specific message", async () => {
+      const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+      const interaction = buildButtonInteraction(
+        "ask:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:t2200",
+        { guildId: "000000000000000000" }
+      );
+
+      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+      expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+      expect(interaction.followUp).toHaveBeenCalledWith({
+        content: messages.interaction.reject.wrongGuild,
+        flags: MessageFlags.Ephemeral
+      });
+      expect(sendAsk).not.toHaveBeenCalled();
+    });
+
+    it("rejects cancel_week from non-member with member-specific message", async () => {
+      const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+      const interaction = buildCancelInteraction({
+        user: { id: "999999999999999999" }
+      });
+
+      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: messages.interaction.reject.notMember,
+        flags: MessageFlags.Ephemeral
+      });
     });
   });
 });

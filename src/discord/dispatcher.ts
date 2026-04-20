@@ -18,7 +18,7 @@ import {
 import { handlePostponeButton } from "./buttons/postponeButton.js";
 import { handleAskButton } from "./buttons/askButton.js";
 import { handleAskCommand } from "./commands/ask.js";
-import { assertGuildAndChannel, assertMember } from "./guards.js";
+import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -32,11 +32,10 @@ export interface InteractionHandlerDeps {
 const handleCancelWeekCommand = async (
   interaction: ChatInputCommandInteraction
 ): Promise<void> => {
-  if (!assertGuildAndChannel(interaction.guildId, interaction.channelId) || !assertMember(interaction.user.id)) {
-    await interaction.reply({
-      content: messages.interaction.reject.notMember,
-      flags: MessageFlags.Ephemeral
-    });
+  // why: UX 判断 — 拒否理由を具体的メッセージで返す
+  const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
+  if (reason) {
+    await interaction.reply(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
     return;
   }
 
@@ -52,11 +51,10 @@ const handleButton = async (
 ): Promise<void> => {
   await interaction.deferUpdate();
 
-  if (!assertGuildAndChannel(interaction.guildId, interaction.channelId) || !assertMember(interaction.user.id)) {
-    await interaction.followUp({
-      content: messages.interaction.reject.outOfScopeButton,
-      flags: MessageFlags.Ephemeral
-    });
+  // why: UX 判断 — guild/channel/member 各ガードの拒否理由を個別メッセージで伝える
+  const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
+  if (reason) {
+    await interaction.followUp(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
     return;
   }
 

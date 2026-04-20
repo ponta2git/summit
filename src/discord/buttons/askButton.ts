@@ -1,16 +1,34 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 
 import { db as defaultDb } from "../../db/client.js";
 import { findMemberIdByUserId, findSessionById, listMembers, listResponses, upsertResponse } from "../../db/repositories/index.js";
+import type { SessionRow, DbLike } from "../../db/types.js";
+import {
+  DatabaseError,
+  type AppError,
+  type AppResult,
+  okResult,
+  toAppError
+} from "../../errors/index.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
 import { evaluateDeadline } from "../../domain/index.js";
 import { systemClock } from "../../time/index.js";
 import { renderAskBody } from "../ask/render.js";
 import { buildAskMessageViewModel } from "../viewModels.js";
-import { parseCustomId, type AskCustomIdChoice } from "../customId.js";
-import { loadSessionOrReject } from "../guards.js";
+import type { AskCustomIdChoice } from "../customId.js";
+import {
+  getGuardFailureReason,
+  guardAskCustomId,
+  guardChannelId,
+  guardGuildId,
+  guardMemberUserId,
+  guardRegisteredMemberId,
+  guardSessionAsking,
+  guardSessionExists,
+  GUARD_REASON_TO_MESSAGE
+} from "../guards.js";
 import { applyDeadlineDecision } from "../settle.js";
 import { env } from "../../env.js";
 import type { InteractionHandlerDeps } from "../dispatcher.js";
@@ -23,102 +41,235 @@ const ASK_CUSTOM_ID_TO_DB_CHOICE: Record<AskCustomIdChoice, "T2200" | "T2230" | 
   absent: "ABSENT"
 };
 
-export const handleAskButton = async (
-  interaction: ButtonInteraction,
-  deps: InteractionHandlerDeps
-): Promise<void> => {
-  const db = deps.db ?? defaultDb;
-  const clock = deps.clock ?? systemClock;
+interface AskPipelineStart {
+  readonly interaction: ButtonInteraction;
+  readonly deps: InteractionHandlerDeps;
+  readonly db: DbLike;
+  readonly clock: {
+    now: () => Date;
+  };
+}
 
-  const parsed = parseCustomId(interaction.customId);
-  if (!parsed.success || parsed.data.kind !== "ask") {
+interface AskPipelineParsed extends AskPipelineStart {
+  readonly sessionId: string;
+  readonly choice: "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT";
+}
+
+interface AskPipelineWithSession extends AskPipelineParsed {
+  readonly session: SessionRow;
+}
+
+interface AskPipelineReady extends AskPipelineWithSession {
+  readonly memberId: string;
+}
+
+const toResultAsync = <T, E extends AppError>(result: AppResult<T, E>): ResultAsync<T, E> =>
+  result.match(
+    (value) => okAsync(value),
+    (error) => errAsync(error)
+  );
+
+const fromDatabasePromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DatabaseError> =>
+  ResultAsync.fromPromise(
+    promise,
+    (cause) => new DatabaseError(message, { cause })
+  );
+
+const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelineParsed, AppError> =>
+  okResult(context)
+    // invariant: interaction-review.instructions.md の cheap-first 順序を ask ハンドラ単体でも維持する。
+    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
+    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
+    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
+    .andThen((current) =>
+      guardAskCustomId(current.interaction.customId).map((parsed) => ({
+        ...current,
+        sessionId: parsed.sessionId,
+        choice: ASK_CUSTOM_ID_TO_DB_CHOICE[parsed.choice]
+      }))
+    );
+
+const loadSessionStep = (context: AskPipelineParsed): ResultAsync<AskPipelineWithSession, AppError> =>
+  fromDatabasePromise(
+    findSessionById(context.db, context.sessionId),
+    "Failed to load session while handling ask button."
+  )
+    .andThen((session) => toResultAsync(guardSessionExists(session)))
+    .andThen((session) => toResultAsync(guardSessionAsking(session)))
+    .map((session) => ({
+      ...context,
+      session
+    }));
+
+const loadMemberStep = (context: AskPipelineWithSession): ResultAsync<AskPipelineReady, AppError> =>
+  fromDatabasePromise(
+    findMemberIdByUserId(context.db, context.interaction.user.id),
+    "Failed to resolve member while handling ask button."
+  )
+    .andThen((memberId) => toResultAsync(guardRegisteredMemberId(memberId)))
+    .map((memberId) => ({
+      ...context,
+      memberId
+    }));
+
+const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> =>
+  fromDatabasePromise(
+    upsertResponse(context.db, {
+      id: randomUUID(),
+      sessionId: context.sessionId,
+      memberId: context.memberId,
+      choice: context.choice,
+      answeredAt: context.clock.now()
+    }),
+    "Failed to record ask response."
+  )
+    // race: responses.(sessionId, memberId) unique 制約 + upsert で同時押下でも最終回答 1 件に収束。
+    .map(() => context)
+    .andTee((current) => {
+      logger.info(
+        {
+          sessionId: current.sessionId,
+          weekKey: current.session.weekKey,
+          userId: current.interaction.user.id,
+          memberId: current.memberId,
+          choice: current.choice
+        },
+        "Ask response recorded."
+      );
+    });
+
+const applyDecisionStep = (
+  context: AskPipelineReady,
+  decision: ReturnType<typeof evaluateDeadline>
+): ResultAsync<void, AppError> => {
+  if (decision.kind === "pending") {
+    return okAsync(undefined);
+  }
+
+  return ResultAsync.fromPromise(
+    applyDeadlineDecision(context.deps.client, context.db, context.session, decision),
+    (cause) => toAppError(cause, "Failed to apply ask deadline decision.")
+  );
+};
+
+const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
+  fromDatabasePromise(
+    Promise.all([
+      listResponses(context.db, context.sessionId),
+      listMembers(context.db)
+    ]),
+    "Failed to load ask message snapshot."
+  )
+    .andThen(([responses, memberRows]) => {
+      const activeMembers = memberRows.filter((member) =>
+        env.MEMBER_USER_IDS.includes(member.userId)
+      );
+      // source-of-truth: 判定ロジックは domain/deadline.ts が正本。
+      const decision = evaluateDeadline(context.session, responses, {
+        memberCountExpected: activeMembers.length
+      });
+
+      return applyDecisionStep(context, decision).map(() => ({
+        responses,
+        memberRows
+      }));
+    })
+    .andThen(({ responses, memberRows }) =>
+      fromDatabasePromise(
+        findSessionById(context.db, context.sessionId),
+        "Failed to reload session after ask response."
+      ).map((freshSession) => ({
+        freshSession,
+        responses,
+        memberRows
+      }))
+    )
+    .andThen(({ freshSession, responses, memberRows }) => {
+      if (!freshSession || !freshSession.askMessageId) {
+        return okAsync(undefined);
+      }
+
+      const vm = buildAskMessageViewModel(freshSession, responses, memberRows);
+      const rendered = renderAskBody(vm);
+      // source-of-truth: 再描画は常に DB の最新 Session + Response から再構築する。
+      return ResultAsync.fromPromise(
+        context.interaction.message.edit(rendered),
+        (cause) => toAppError(cause, "Failed to edit ask message after response.")
+      )
+        .map(() => undefined)
+        .orElse((error) => {
+          // race: edit 失敗でも DB は巻き戻さず、次 tick / 次押下で再描画して回復する。
+          logger.warn(
+            {
+              error,
+              sessionId: context.sessionId,
+              messageId: freshSession.askMessageId
+            },
+            "Failed to edit ask message after response."
+          );
+          return okAsync(undefined);
+        });
+    });
+
+// invariant: GuardFailureReason → reject message の網羅を GUARD_REASON_TO_MESSAGE で担保し、
+//   reason ごとに適切な ephemeral 文言を返す。reason 不明なら再 throw して上位で捕捉する。
+const handleAskPipelineError = async (
+  interaction: ButtonInteraction,
+  error: AppError
+): Promise<void> => {
+  const reason = getGuardFailureReason(error);
+  if (!reason) {
+    throw error;
+  }
+
+  // why: invalid_custom_id / member_not_registered は内部整合性の問題として warn ログを残す
+  if (reason === "invalid_custom_id") {
     logger.warn(
       { interactionId: interaction.id, userId: interaction.user.id },
       "Invalid custom_id for ask button."
     );
-    await interaction.followUp({
-      content: messages.interaction.reject.invalidCustomId,
-      flags: MessageFlags.Ephemeral
-    });
-    return;
   }
-
-  const sessionId = parsed.data.sessionId;
-  const choice = ASK_CUSTOM_ID_TO_DB_CHOICE[parsed.data.choice];
-
-  const session = await loadSessionOrReject(interaction, db, sessionId);
-  if (!session) {
-    return;
-  }
-
-  if (session.status !== "ASKING") {
-    await interaction.followUp({
-      content: messages.interaction.reject.staleSession,
-      flags: MessageFlags.Ephemeral
-    });
-    return;
-  }
-
-  const memberId = await findMemberIdByUserId(db, interaction.user.id);
-  if (!memberId) {
+  if (reason === "member_not_registered") {
     logger.warn(
       { interactionId: interaction.id, userId: interaction.user.id },
       "User is allowed but no matching member row."
     );
-    await interaction.followUp({
-      content: messages.interaction.reject.memberNotRegistered,
-      flags: MessageFlags.Ephemeral
-    });
-    return;
   }
 
-  // idempotent: responses.(sessionId, memberId) unique 制約 + upsert で同時押下でも最終回答 1 件に収束。
-  await upsertResponse(db, {
-    id: randomUUID(),
-    sessionId,
-    memberId,
-    choice,
-    answeredAt: clock.now()
+  await interaction.followUp({
+    content: GUARD_REASON_TO_MESSAGE[reason],
+    flags: MessageFlags.Ephemeral
   });
+};
 
-  logger.info(
-    {
-      sessionId,
-      weekKey: session.weekKey,
-      userId: interaction.user.id,
-      memberId,
-      choice
-    },
-    "Ask response recorded."
+/**
+ * Handle ask button interactions via cheap-first validation and DB-backed pipeline composition.
+ *
+ * @remarks
+ * `deferUpdate()` は dispatcher 側で先に実行済み。ここでは検証 → 状態更新 → 再描画だけを扱う。
+ */
+export const handleAskButton = async (
+  interaction: ButtonInteraction,
+  deps: InteractionHandlerDeps
+): Promise<void> => {
+  // ack: component interaction の deferUpdate は dispatcher 入口で完了済み。
+  // why: 分岐を局所化し、validation -> state transition -> response の pipeline を維持する。
+  const pipelineStart: AskPipelineStart = {
+    interaction,
+    deps,
+    db: deps.db ?? defaultDb,
+    clock: deps.clock ?? systemClock
+  };
+
+  const result = await validateAskPipeline(pipelineStart)
+    .asyncMap(async (validated) => validated)
+    .andThen(loadSessionStep)
+    .andThen(loadMemberStep)
+    .andThen(recordResponseStep)
+    .andThen(refreshAskMessageStep);
+
+  await result.match(
+    async () => undefined,
+    async (error) => handleAskPipelineError(interaction, error)
   );
-
-  const responses = await listResponses(db, sessionId);
-  const memberRows = await listMembers(db);
-  const activeMembers = memberRows.filter((m) => env.MEMBER_USER_IDS.includes(m.userId));
-  // source-of-truth: 判定ロジックは domain/deadline.ts が正本。
-  const decision = evaluateDeadline(session, responses, {
-    memberCountExpected: activeMembers.length
-  });
-  if (decision.kind !== "pending") {
-    await applyDeadlineDecision(deps.client, db, session, decision);
-  }
-
-  const fresh = await findSessionById(db, sessionId);
-  if (!fresh || !fresh.askMessageId) {
-    return;
-  }
-
-  // source-of-truth: 再描画は常に DB の最新 Session + Response から再構築する。
-  try {
-    // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-    const vm = buildAskMessageViewModel(fresh, responses, memberRows);
-    const rendered = renderAskBody(vm);
-    await interaction.message.edit(rendered);
-  } catch (error: unknown) {
-    // race: edit 失敗でも DB は巻き戻さず、次 tick / 次押下で再描画して回復する。
-    logger.warn(
-      { error, sessionId, messageId: fresh.askMessageId },
-      "Failed to edit ask message after response."
-    );
-  }
 };

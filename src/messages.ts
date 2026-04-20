@@ -96,13 +96,14 @@ export const messages = {
         : "🛑 未回答があったため、今週はお流れです。"
   },
   interaction: {
+    // why: UX 判断 — 拒否理由ごとに具体的な日本語メッセージを返し、ユーザーが「なぜ操作できなかったか」を理解できるようにする。
     reject: {
-      notMember: "対象外です",
-      wrongChannel: "対象外です",
-      wrongGuild: "対象外です",
-      invalidCustomId: "未知の操作です",
-      staleSession: "この募集は既に締め切られています",
-      sessionNotFound: "セッションが見つかりません",
+      notMember: "このボットは登録メンバーのみ操作できます",
+      wrongChannel: "このチャンネル以外からは操作できません",
+      wrongGuild: "このサーバー以外からは操作できません",
+      invalidCustomId: "ボタンの形式が不正です",
+      staleSession: "この募集は既に締切されています",
+      sessionNotFound: "このセッションは存在しません",
       memberNotRegistered: "メンバー登録がありません",
       outOfScopeButton: "このボタンは対象外です"
     },
