@@ -133,7 +133,28 @@ describe("sendReminderForSession", () => {
     expect(send).toHaveBeenCalledTimes(1);
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
     expect(persisted?.status).toBe("DECIDED");
+    // regression: claim-first 導入後も、送信失敗時は revert で reminderSentAt が NULL に戻ること。
+    //   NULL でないと findDueReminderSessions が拾わず reminder が永久に送られなくなる。
     expect(persisted?.reminderSentAt).toBeNull();
+  });
+
+  it("dispatches exactly once when called concurrently (claim-first prevents duplicate send)", async () => {
+    // regression: cron tick と startup recovery の race で二重送信しないこと。
+    //   claim-first の条件付き UPDATE (ADR-0024) が DB 層で先着 1 件だけを勝者にする。
+    const session = decidedSession();
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    const { client, send } = makeChannel();
+    const now = new Date("2026-04-24T12:45:00.000Z");
+
+    await Promise.all([
+      sendReminderForSession(client, ctx, session.id, now),
+      sendReminderForSession(client, ctx, session.id, now)
+    ]);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
+    expect(persisted?.status).toBe("COMPLETED");
+    expect(persisted?.reminderSentAt?.toISOString()).toBe(now.toISOString());
   });
 
   it("omits mention line when DEV_SUPPRESS_MENTIONS is true", async () => {

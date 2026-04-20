@@ -4,6 +4,7 @@
 
 import type { DbLike } from "./rows.js";
 import {
+  claimReminderDispatch,
   createAskSession,
   findDueAskingSessions,
   findDuePostponeVotingSessions,
@@ -13,6 +14,7 @@ import {
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   isNonTerminal,
+  revertReminderClaim,
   skipSession,
   transitionStatus,
   updateAskMessageId,
@@ -47,6 +49,8 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   updateAskMessageId: (id, messageId) => updateAskMessageId(db, id, messageId),
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
   transitionStatus: (input) => transitionStatus(db, input),
+  claimReminderDispatch: (id, now) => claimReminderDispatch(db, id, now),
+  revertReminderClaim: (id, claimedAt) => revertReminderClaim(db, id, claimedAt),
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
   findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findDueReminderSessions: (now) => findDueReminderSessions(db, now),

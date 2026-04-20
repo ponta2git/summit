@@ -155,6 +155,42 @@ export const createFakeSessionsPort = (
       byId.set(next.id, next);
       return clone(next);
     },
+    claimReminderDispatch: async (id, now) => {
+      recordCall(calls, "claimReminderDispatch", { id, now });
+      const found = byId.get(id);
+      // race: `(status=DECIDED, reminder_sent_at IS NULL)` を両方満たすときのみ claim 成立。
+      //   失敗時は undefined (他経路が先行)。
+      if (!found || found.status !== "DECIDED" || found.reminderSentAt !== null) {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        reminderSentAt: now,
+        updatedAt: new Date()
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    revertReminderClaim: async (id, claimedAt) => {
+      recordCall(calls, "revertReminderClaim", { id, claimedAt });
+      const found = byId.get(id);
+      // race: claim と同じタイムスタンプで DECIDED のままの場合に限って NULL に戻す。
+      if (
+        !found ||
+        found.status !== "DECIDED" ||
+        found.reminderSentAt === null ||
+        found.reminderSentAt.getTime() !== claimedAt.getTime()
+      ) {
+        return false;
+      }
+      const next = makeSession({
+        ...found,
+        reminderSentAt: null,
+        updatedAt: new Date()
+      });
+      byId.set(next.id, next);
+      return true;
+    },
     findDueAskingSessions: async (now) => {
       recordCall(calls, "findDueAskingSessions", { now });
       return Array.from(byId.values())

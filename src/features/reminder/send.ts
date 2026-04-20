@@ -117,9 +117,15 @@ const completeAfterReminder = async (
  *
  * @remarks
  * DB を正本とし、呼び出し時点で Session を再取得してから処理する。
- * `reminder_sent_at IS NULL` AND `status=DECIDED` でなければ no-op（冪等）。
- * メッセージ送信失敗時は COMPLETED へ遷移させず、次の tick で再試行する。
+ * race: Discord 送信の**前に** `claimReminderDispatch` で `reminder_sent_at=now` を
+ *   条件付き UPDATE (status=DECIDED AND reminder_sent_at IS NULL) で原子的に確保する。
+ *   これにより cron tick と起動時 recovery が同じ reminder を並行送信する race を DB 層で防ぐ。
+ * idempotent: 敗者 (undefined 返却) は no-op。既に COMPLETED / 既に送信済みの経路も同様。
+ * 失敗回復: Discord 送信が throw したら `revertReminderClaim` で claim を戻し、次 tick で
+ *   再試行する (at-least-once semantics; 送信後に throw したケースでは重複送信の可能性を
+ *   受容する。§5.2 の「送る」側を優先)。
  * @see requirements/base.md §5.2, §9.1
+ * @see docs/adr/0024-reminder-dispatch.md
  */
 export const sendReminderForSession = async (
   client: Client,
@@ -146,21 +152,34 @@ export const sendReminderForSession = async (
     return;
   }
 
-  const content = buildReminderContent(fresh.decidedStartAt);
-
-  try {
-    const channel = await getTextChannel(client, fresh.channelId);
-    await channel.send(content);
-  } catch (error: unknown) {
-    // source-of-truth: 送信失敗時は DECIDED のまま据え置き、次 tick で再試行する。
-    logger.warn(
-      { error, sessionId: fresh.id, weekKey: fresh.weekKey },
-      "Failed to send reminder; will retry on next tick."
+  // race: claim-first。DB 層で先着 1 件のみ勝者とし、以降の同時呼び出しは undefined を観測する。
+  const claimed = await ctx.ports.sessions.claimReminderDispatch(fresh.id, now);
+  if (!claimed) {
+    logger.info(
+      { sessionId: fresh.id, weekKey: fresh.weekKey },
+      "Reminder claim lost race; another path already claimed dispatch."
     );
     return;
   }
 
-  await completeAfterReminder(ctx, fresh, now, "reminder_sent");
+  const content = buildReminderContent(claimed.decidedStartAt ?? fresh.decidedStartAt);
+
+  try {
+    const channel = await getTextChannel(client, claimed.channelId);
+    await channel.send(content);
+  } catch (error: unknown) {
+    // source-of-truth: 送信失敗時は claim を戻して DECIDED + reminderSentAt=NULL に復元し、次 tick で再試行。
+    //   at-least-once: 送信 API が throw したが実際には配送済みだった場合、次 tick で重複送信し得る。
+    //   §5.2「送る」を優先し、欠落より重複を選ぶトレードオフ。
+    const reverted = await ctx.ports.sessions.revertReminderClaim(fresh.id, now);
+    logger.warn(
+      { error, sessionId: fresh.id, weekKey: fresh.weekKey, reverted },
+      "Failed to send reminder; reverted claim, will retry on next tick."
+    );
+    return;
+  }
+
+  await completeAfterReminder(ctx, claimed, now, "reminder_sent");
 };
 
 /**

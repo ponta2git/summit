@@ -55,6 +55,18 @@ export interface SessionsPort {
   updateAskMessageId(id: string, messageId: string): Promise<void>;
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
   transitionStatus(input: TransitionInput): Promise<SessionRow | undefined>;
+  /**
+   * Claim the reminder dispatch slot atomically BEFORE sending to Discord.
+   * Returns the row on CAS win (session was DECIDED and `reminder_sent_at` was NULL),
+   * `undefined` if a concurrent path already claimed/completed it.
+   * @see docs/adr/0024-reminder-dispatch.md
+   */
+  claimReminderDispatch(id: string, now: Date): Promise<SessionRow | undefined>;
+  /**
+   * Release a reminder claim if Discord send fails so the next tick can retry.
+   * Only reverts when `(status=DECIDED, reminder_sent_at=claimedAt)` still holds.
+   */
+  revertReminderClaim(id: string, claimedAt: Date): Promise<boolean>;
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;

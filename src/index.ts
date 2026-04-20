@@ -1,3 +1,5 @@
+import type { ScheduledTask } from "node-cron";
+
 import { createAppContext } from "./appContext.js";
 import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./features/ask-session/send.js";
@@ -14,12 +16,18 @@ const appContext = createAppContext();
 const client = createDiscordClient();
 registerInteractionHandlers(client, appContext);
 
-const scheduler = createAskScheduler({ client, context: appContext });
+// why: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
+//   auto-start するため、モジュール top で生成すると startup recovery と reminder cron tick が
+//   並行し、同じ DECIDED セッションに対して二重送信の race を作る (ADR-0024)。
+let scheduler: readonly ScheduledTask[] | undefined;
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
     stopScheduler: () => {
+      if (!scheduler) {
+        return;
+      }
       for (const task of scheduler) {
         task.stop();
       }
@@ -76,7 +84,12 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   //   login 後に実行することで Discord message の edit もできる状態で呼び出す。
+  // race: scheduler は本呼び出しの完了**後に**生成する。先に生成すると reminder tick と
+  //   recovery が並行し、同じ DECIDED セッションへ二重送信の race を開く (ADR-0024)。
   await runStartupRecovery(client, appContext);
+
+  // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
+  scheduler = createAskScheduler({ client, context: appContext });
 };
 
 void run().catch((error: unknown) => {
