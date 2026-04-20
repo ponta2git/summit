@@ -1,8 +1,6 @@
 import {
-  addDays,
   addMinutes,
   format,
-  getDay,
   getISOWeek,
   getISOWeekYear,
   set,
@@ -47,17 +45,6 @@ export const formatCandidateJa = (value: Date): string =>
 
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
-
-export const nextFriday18JST = (now: Date): Date => {
-  const day = getDay(now);
-  const daysUntilFriday = (5 - day + 7) % 7;
-  return set(addDays(now, daysUntilFriday), {
-    hours: 18,
-    minutes: 0,
-    seconds: 0,
-    milliseconds: 0
-  });
-};
 
 export const ASK_TIME_CHOICES = ["T2200", "T2230", "T2300", "T2330"] as const;
 export type AskTimeChoice = (typeof ASK_TIME_CHOICES)[number];
