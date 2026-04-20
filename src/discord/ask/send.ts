@@ -2,14 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ChannelType, type Client } from "discord.js";
 
-import { db as defaultDb } from "../../db/client.js";
-import {
-  createAskSession,
-  findSessionByWeekKeyAndPostponeCount,
-  listMembers,
-  updateAskMessageId
-} from "../../db/repositories/index.js";
-import type { DbLike } from "../../db/types.js";
+import type { AppContext } from "../../composition.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import { isShuttingDown } from "../../shutdown.js";
@@ -17,18 +10,15 @@ import {
   candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
-  isoWeekKey,
-  systemClock,
-  type Clock
+  isoWeekKey
 } from "../../time/index.js";
 import { renderAskBody } from "./render.js";
 import { buildInitialAskMessageViewModel } from "../viewModels.js";
 
 export interface SendAskMessageContext {
-  trigger: "cron" | "command";
-  invokerId?: string;
-  clock?: Clock;
-  db?: DbLike;
+  readonly trigger: "cron" | "command";
+  readonly invokerId?: string;
+  readonly context: AppContext;
 }
 
 export interface SendAskMessageResult {
@@ -54,15 +44,14 @@ const doSendAskMessage = async (
     throw new Error("Shutdown in progress.");
   }
 
-  const db = context.db ?? defaultDb;
-  const clock = context.clock ?? systemClock;
+  const { ports, clock } = context.context;
   const now = clock.now();
   const weekKey = isoWeekKey(now);
   const candidateDate = candidateDateForAsk(now);
   const candidateIso = formatCandidateDateIso(candidateDate);
   const deadline = deadlineFor(candidateDate);
 
-  const existing = await findSessionByWeekKeyAndPostponeCount(db, weekKey, 0);
+  const existing = await ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0);
   if (existing) {
     // idempotent: 同一週 (postponeCount=0) は 1 Session のみ。cron + /ask の二重起動でも skipped を返して副作用を出さない。
     logger.warn(
@@ -83,7 +72,7 @@ const doSendAskMessage = async (
   }
 
   const sessionId = randomUUID();
-  const created = await createAskSession(db, {
+  const created = await ports.sessions.createAskSession({
     id: sessionId,
     weekKey,
     postponeCount: 0,
@@ -95,7 +84,7 @@ const doSendAskMessage = async (
   if (!created) {
     // race: unique 制約で弾かれた。別プロセス / 別 tick が先に作成したケース。
     //   DB 再取得で勝者の Session を返し、呼び出し側は重複送信を回避する。
-    const raced = await findSessionByWeekKeyAndPostponeCount(db, weekKey, 0);
+    const raced = await ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0);
     logger.warn(
       {
         weekKey,
@@ -118,11 +107,11 @@ const doSendAskMessage = async (
     throw new Error("Configured channel is not sendable.");
   }
 
-  const memberRows = await listMembers(db);
+  const memberRows = await ports.members.listMembers();
   // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
   const vm = buildInitialAskMessageViewModel(created.id, candidateDate, memberRows);
   const sentMessage = await channel.send(renderAskBody(vm));
-  await updateAskMessageId(db, created.id, sentMessage.id);
+  await ports.sessions.updateAskMessageId(created.id, sentMessage.id);
 
   logger.info(
     {
@@ -147,12 +136,6 @@ const doSendAskMessage = async (
 /**
  * Sends (or reuses) the weekly /ask message for `isoWeekKey(now)` with `postponeCount=0`.
  *
- * @param client - Logged-in Discord client.
- * @param context - Trigger metadata and optional DB/clock overrides for tests.
- * @returns
- *   - `{ status: "sent" }` when a new session was created and a Discord message was posted.
- *   - `{ status: "skipped" }` when another path (cron / /ask) already handled the same week.
- *
  * @remarks
  * cron と /ask の同時起動、プロセス内並走、複数インスタンス (想定外) いずれでも
  * 二重投稿を避けるため、in-flight マップ + DB の `(weekKey, postponeCount)` unique 制約の
@@ -162,8 +145,7 @@ export const sendAskMessage = async (
   client: Client,
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
-  const clock = context.clock ?? systemClock;
-  const weekKey = isoWeekKey(clock.now());
+  const weekKey = isoWeekKey(context.context.clock.now());
   const ongoing = inFlightSends.get(weekKey);
   if (ongoing) {
     const settled = await ongoing;

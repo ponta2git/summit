@@ -10,7 +10,7 @@ import type {
   ResponseChoice,
   ResponseRow
 } from "../types.js";
-import type { ResponsesPort } from "../../ports/index.js";
+
 
 const assertChoice = (value: string): ResponseChoice => {
   if ((RESPONSE_CHOICES as readonly string[]).includes(value)) {
@@ -86,11 +86,3 @@ export const upsertResponse = async (
   return mapResponse(row);
 };
 
-
-// why: repository 実装が port 契約を満たすことを型レベルで保証する。
-// invariant: ResponsesPort の破壊的変更は repository 側の satisfies で検知できる。
-const _typecheckResponsesPort = {
-  listResponses,
-  upsertResponse
-} satisfies ResponsesPort<DbLike, ResponseRow>;
-void _typecheckResponsesPort;

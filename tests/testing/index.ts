@@ -4,10 +4,14 @@ export {
   makeSession
 } from "./fixtures.js";
 export {
-  createFakeDiscordPort,
   createFakeMembersPort,
+  createFakePorts,
   createFakeResponsesPort,
-  createFakeSessionsPort
+  createFakeSessionsPort,
+  createTestAppContext,
+  type FakePorts,
+  type FakePortsSeed,
+  type TestAppContext
 } from "./ports.js";
 export {
   restoreNow,

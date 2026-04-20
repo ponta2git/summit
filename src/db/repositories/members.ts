@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 
 import { members } from "../schema.js";
 import type { DbLike } from "../types.js";
-import type { MembersPort } from "../../ports/index.js";
 
 export const findMemberIdByUserId = async (
   db: DbLike,
@@ -25,11 +24,3 @@ export const listMembers = async (
     displayName: members.displayName
   }).from(members);
 
-
-// why: repository 実装が MembersPort 契約と一致することを固定する。
-// invariant: listMembers は ReadonlyArray 互換の配列を返す実装契約を保つ。
-const _typecheckMembersPort = {
-  findMemberIdByUserId,
-  listMembers
-} satisfies MembersPort<DbLike>;
-void _typecheckMembersPort;

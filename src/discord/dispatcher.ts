@@ -6,13 +6,11 @@ import {
   MessageFlags
 } from "discord.js";
 
-import type { DbLike } from "../db/types.js";
+import type { AppContext } from "../composition.js";
 import { logger } from "../logger.js";
 import { messages } from "../messages.js";
-import { type Clock } from "../time/index.js";
 import {
   sendAskMessage,
-  type SendAskMessageContext,
   type SendAskMessageResult
 } from "./ask/send.js";
 import { handlePostponeButton } from "./buttons/postponeButton.js";
@@ -20,13 +18,15 @@ import { handleAskButton } from "./buttons/askButton.js";
 import { handleAskCommand } from "./commands/ask.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 
-type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
+export type SendAsk = (args: {
+  readonly trigger: "cron" | "command";
+  readonly invokerId?: string;
+}) => Promise<SendAskMessageResult>;
 
 export interface InteractionHandlerDeps {
-  sendAsk: SendAsk;
-  client: Client;
-  db?: DbLike;
-  clock?: Clock;
+  readonly sendAsk: SendAsk;
+  readonly client: Client;
+  readonly context: AppContext;
 }
 
 const handleCancelWeekCommand = async (
@@ -118,14 +118,15 @@ export const handleInteraction = async (
   }
 };
 
-export const registerInteractionHandlers = (client: Client): void => {
+export const registerInteractionHandlers = (client: Client, context: AppContext): void => {
   client.on("interactionCreate", (interaction) => {
     // ack: 3 秒制約・入口 try/catch を集約
     void (async () => {
       try {
         await handleInteraction(interaction, {
           client,
-          sendAsk: (context) => sendAskMessage(client, context)
+          context,
+          sendAsk: (args) => sendAskMessage(client, { ...args, context })
         });
       } catch (err: unknown) {
         const customId = interaction.isMessageComponent() ? interaction.customId : undefined;

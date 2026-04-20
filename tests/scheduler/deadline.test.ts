@@ -1,39 +1,15 @@
 import type { Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as SessionRepos from "../../src/db/repositories/sessions.js";
-import type * as ResponseRepos from "../../src/db/repositories/responses.js";
-import type { DbLike, ResponseRow, SessionRow } from "../../src/db/types.js";
+import type { ResponseRow, SessionRow } from "../../src/db/types.js";
+import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
-
-vi.mock("../../src/db/repositories/sessions.js", async () => {
-  const actual = await vi.importActual<typeof SessionRepos>(
-    "../../src/db/repositories/sessions.js"
-  );
-  return {
-    ...actual,
-    findDueAskingSessions: vi.fn(),
-    findNonTerminalSessions: vi.fn()
-  };
-});
-
-vi.mock("../../src/db/repositories/responses.js", async () => {
-  const actual = await vi.importActual<typeof ResponseRepos>(
-    "../../src/db/repositories/responses.js"
-  );
-  return {
-    ...actual,
-    listResponses: vi.fn(async () => [])
-  };
-});
 
 vi.mock("../../src/discord/settle.js", () => ({
   evaluateAndApplyDeadlineDecision: vi.fn(async () => {})
 }));
 
-const repos = await import("../../src/db/repositories/sessions.js");
-const responseRepos = await import("../../src/db/repositories/responses.js");
 const settle = await import("../../src/discord/settle.js");
 const { runDeadlineTick, runStartupRecovery } = await import("../../src/scheduler/index.js");
 
@@ -49,7 +25,6 @@ const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-1", ...overrides });
 
-const db = {} as unknown as DbLike;
 const client = {} as unknown as Client;
 
 describe("runDeadlineTick", () => {
@@ -58,61 +33,75 @@ describe("runDeadlineTick", () => {
   });
 
   it("evaluates each due ASKING session with shared now timestamp", async () => {
-    const s1 = sessionRow({ id: "a" });
-    const s2 = sessionRow({ id: "b" });
-    vi.mocked(repos.findDueAskingSessions).mockResolvedValue([s1, s2]);
+    const s1 = sessionRow({
+      id: "a",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
+    const s2 = sessionRow({
+      id: "b",
+      weekKey: "2026-W18",
+      postponeCount: 0,
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
     const now = new Date("2026-04-24T12:31:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
 
-    await runDeadlineTick(client, db, { now: () => now });
+    await runDeadlineTick(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(2);
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenNthCalledWith(
       1,
       client,
-      db,
-      s1,
+      ctx,
+      expect.objectContaining({ id: "a" }),
       [],
       { memberCountExpected: 4, now }
     );
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenNthCalledWith(
       2,
       client,
-      db,
-      s2,
+      ctx,
+      expect.objectContaining({ id: "b" }),
       [],
       { memberCountExpected: 4, now }
     );
   });
 
   it("passes full responses to deadline evaluator", async () => {
-    const s = sessionRow({ id: "a" });
+    const s = sessionRow({
+      id: "a",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
     const responses = [
-      responseRow({ id: "r1", memberId: "m1", choice: "T2200" }),
-      responseRow({ id: "r2", memberId: "m2", choice: "T2230" }),
-      responseRow({ id: "r3", memberId: "m3", choice: "T2300" }),
-      responseRow({ id: "r4", memberId: "m4", choice: "T2330" })
+      responseRow({ id: "r1", sessionId: "a", memberId: "m1", choice: "T2200" }),
+      responseRow({ id: "r2", sessionId: "a", memberId: "m2", choice: "T2230" }),
+      responseRow({ id: "r3", sessionId: "a", memberId: "m3", choice: "T2300" }),
+      responseRow({ id: "r4", sessionId: "a", memberId: "m4", choice: "T2330" })
     ];
-    vi.mocked(repos.findDueAskingSessions).mockResolvedValue([s]);
-    vi.mocked(responseRepos.listResponses).mockResolvedValue(responses);
     const now = new Date("2026-04-24T12:31:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [s], responses } });
 
-    await runDeadlineTick(client, db, { now: () => now });
+    await runDeadlineTick(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledWith(
       client,
-      db,
-      s,
-      responses,
+      ctx,
+      expect.objectContaining({ id: "a" }),
+      expect.arrayContaining(responses),
       { memberCountExpected: 4, now }
     );
   });
 
   it("swallows errors so cron keeps running", async () => {
-    vi.mocked(repos.findDueAskingSessions).mockRejectedValue(new Error("boom"));
-    await expect(
-      runDeadlineTick(client, db, { now: () => new Date() })
-    ).resolves.toBeUndefined();
+    const ctx = createTestAppContext();
+    // race: ports の findDueAskingSessions を throw させて最外周の try/catch が握り潰すことを確認する。
+    vi.spyOn(ctx.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("boom"));
+    await expect(runDeadlineTick(client, ctx)).resolves.toBeUndefined();
   });
 });
 
@@ -122,20 +111,37 @@ describe("runStartupRecovery", () => {
   });
 
   it("settles overdue ASKING sessions on startup", async () => {
-    vi.mocked(responseRepos.listResponses).mockResolvedValue([]);
-    const overdue = sessionRow({ id: "overdue", deadlineAt: new Date("2026-04-24T12:30:00.000Z") });
-    const notDue = sessionRow({ id: "notdue", deadlineAt: new Date("2026-04-24T12:31:00.000Z") });
-    const nonAsking = sessionRow({ id: "posted", status: "POSTPONE_VOTING" });
-    vi.mocked(repos.findNonTerminalSessions).mockResolvedValue([overdue, notDue, nonAsking]);
+    const overdue = sessionRow({
+      id: "overdue",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
+    const notDue = sessionRow({
+      id: "notdue",
+      weekKey: "2026-W18",
+      postponeCount: 0,
+      deadlineAt: new Date("2026-04-24T12:31:00.000Z")
+    });
+    const nonAsking = sessionRow({
+      id: "posted",
+      weekKey: "2026-W19",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING"
+    });
     const now = new Date("2026-04-24T12:30:30.000Z");
+    const ctx = createTestAppContext({
+      now,
+      seed: { sessions: [overdue, notDue, nonAsking] }
+    });
 
-    await runStartupRecovery(client, db, { now: () => now });
+    await runStartupRecovery(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledWith(
       client,
-      db,
-      overdue,
+      ctx,
+      expect.objectContaining({ id: "overdue" }),
       [],
       { memberCountExpected: 4, now }
     );

@@ -1,14 +1,7 @@
 import { ChannelType, type Client } from "discord.js";
 
-import {
-  findSessionById,
-  listMembers,
-  listResponses,
-  updatePostponeMessageId,
-  transitionStatus
-} from "../db/repositories/index.js";
+import type { AppContext } from "../composition.js";
 import type {
-  DbLike,
   ResponseRow,
   SessionRow
 } from "../db/types.js";
@@ -51,16 +44,16 @@ export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string
 
 export const updateAskMessage = async (
   client: Client,
-  db: DbLike,
+  ctx: AppContext,
   session: SessionRow
 ): Promise<void> => {
   if (!session.askMessageId) {return;}
   const channel = await getTextChannel(client, session.channelId);
-  const memberRows = await listMembers(db);
-  const fresh = await findSessionById(db, session.id);
+  const memberRows = await ctx.ports.members.listMembers();
+  const fresh = await ctx.ports.sessions.findSessionById(session.id);
   if (!fresh) {return;}
   // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-  const responses = await listResponses(db, fresh.id);
+  const responses = await ctx.ports.responses.listResponses(fresh.id);
   const vm = buildAskMessageViewModel(fresh, responses, memberRows);
   const rendered = renderAskBody(vm);
   try {
@@ -81,11 +74,11 @@ export const updateAskMessage = async (
  */
 export const settleAskingSession = async (
   client: Client,
-  db: DbLike,
+  ctx: AppContext,
   sessionId: string,
   reason: CancelReason
 ): Promise<void> => {
-  const current = await findSessionById(db, sessionId);
+  const current = await ctx.ports.sessions.findSessionById(sessionId);
   if (!current) {return;}
   if (current.status !== "ASKING") {
     // state: ASKING 以外は遷移せず skip 理由を明示して終了する
@@ -96,7 +89,7 @@ export const settleAskingSession = async (
     return;
   }
 
-  const cancelled = await transitionStatus(db, {
+  const cancelled = await ctx.ports.sessions.transitionStatus({
     id: sessionId,
     from: "ASKING",
     to: "CANCELLED",
@@ -116,7 +109,7 @@ export const settleAskingSession = async (
     "Session cancelled."
   );
 
-  await updateAskMessage(client, db, cancelled);
+  await updateAskMessage(client, ctx, cancelled);
 
   const channel = await getTextChannel(client, cancelled.channelId);
 
@@ -126,9 +119,9 @@ export const settleAskingSession = async (
 
   const postponeVm = buildPostponeMessageViewModel(cancelled);
   const postponeSent = await channel.send(renderPostponeBody(postponeVm));
-  await updatePostponeMessageId(db, cancelled.id, postponeSent.id);
+  await ctx.ports.sessions.updatePostponeMessageId(cancelled.id, postponeSent.id);
 
-  const transitioned = await transitionStatus(db, {
+  const transitioned = await ctx.ports.sessions.transitionStatus({
     id: sessionId,
     from: "CANCELLED",
     to: "POSTPONE_VOTING"
@@ -155,11 +148,11 @@ export const settleAskingSession = async (
  * Returns true when the transition was performed.
  */
 export const tryDecideIfAllTimeSlots = async (
-  db: DbLike,
+  ctx: AppContext,
   session: SessionRow,
   decidedStart: Date
 ): Promise<boolean> => {
-  const result = await transitionStatus(db, {
+  const result = await ctx.ports.sessions.transitionStatus({
     id: session.id,
     from: "ASKING",
     to: "DECIDED",
@@ -185,7 +178,7 @@ export const tryDecideIfAllTimeSlots = async (
 
 type DeadlineDecisionContext = Readonly<{
   client: Client;
-  db: DbLike;
+  ctx: AppContext;
   session: SessionRow;
 }>;
 
@@ -206,11 +199,11 @@ const toCancelReason = (
 // invariant: DecisionResult.kind の全ケースを map key として要求し、未実装を型エラーで検知する
 // source-of-truth: 分岐の起点は DecisionResult.kind（domain/deadline.ts の判定結果）
 const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
-  decided: async ({ db, session }, decision) => {
-    await tryDecideIfAllTimeSlots(db, session, decision.startAt);
+  decided: async ({ ctx, session }, decision) => {
+    await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
   },
-  cancelled: async ({ client, db, session }, decision) => {
-    await settleAskingSession(client, db, session.id, toCancelReason(decision.reason));
+  cancelled: async ({ client, ctx, session }, decision) => {
+    await settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));
   },
   pending: async () => {}
 };
@@ -222,21 +215,21 @@ const applyDeadlineDecisionByStrategy = async <K extends DecisionResult["kind"]>
 
 export const applyDeadlineDecision = async (
   client: Client,
-  db: DbLike,
+  ctx: AppContext,
   session: SessionRow,
   decision: DecisionResult
 ): Promise<void> => {
-  await applyDeadlineDecisionByStrategy({ client, db, session }, decision);
+  await applyDeadlineDecisionByStrategy({ client, ctx, session }, decision);
 };
 
 // source-of-truth: 判定ロジックは domain/deadline.ts が正本
 export const evaluateAndApplyDeadlineDecision = async (
   client: Client,
-  db: DbLike,
+  ctx: AppContext,
   session: SessionRow,
   responses: readonly ResponseRow[],
   options: EvaluateDeadlineOptions
 ): Promise<void> => {
   const decision = evaluateDeadline(session, responses, options);
-  await applyDeadlineDecision(client, db, session, decision);
+  await applyDeadlineDecision(client, ctx, session, decision);
 };

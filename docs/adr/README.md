@@ -61,3 +61,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0015](./0015-error-core-apperror-neverthrow.md) | エラーコア（AppError 判別 union + neverthrow を境界で） | accepted | 2026-04-23 | runtime, ops |
 | [0016](./0016-customid-codec-hmac-rejected.md) | customId codec を typed にする（HMAC 署名は現時点で却下） | accepted | 2026-04-23 | discord, runtime |
 | [0017](./0017-rejected-architecture-alternatives.md) | 却下したアーキテクチャ代替案（XState / effect-ts / OpenTelemetry / event sourcing 他） | accepted | 2026-04-23 | runtime, ops, docs |
+| [0018](./0018-port-wiring-and-factory-injection.md) | ポート境界と factory 注入によるテスト可能な合成 | accepted | 2026-04-24 | runtime, testing, docs |

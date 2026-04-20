@@ -1,7 +1,6 @@
-import { MessageFlags, type ButtonInteraction } from "discord.js";
+import { MessageFlags } from "discord.js";
 
-import { findSessionById } from "../db/repositories/index.js";
-import type { DbLike, SessionRow } from "../db/types.js";
+import type { SessionRow } from "../db/types.js";
 import { env } from "../env.js";
 import {
   InvariantViolationError,
@@ -170,18 +169,4 @@ export const cheapFirstGuard = (
     return "not_member";
   }
   return undefined;
-};
-
-export const loadSessionOrReject = async (
-  interaction: ButtonInteraction,
-  db: DbLike,
-  sessionId: string
-): Promise<SessionRow | undefined> => {
-  const session = await findSessionById(db, sessionId);
-  if (!session) {
-    await interaction.followUp(buildEphemeralReject(messages.interaction.reject.sessionNotFound));
-    return undefined;
-  }
-
-  return session;
 };

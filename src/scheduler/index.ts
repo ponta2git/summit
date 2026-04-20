@@ -1,18 +1,13 @@
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
+import type { AppContext } from "../composition.js";
 import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
-import { db as defaultDb } from "../db/client.js";
-import {
-  findDueAskingSessions,
-  findNonTerminalSessions,
-  listResponses
-} from "../db/repositories/index.js";
-import type { DbLike, SessionRow } from "../db/types.js";
+import type { SessionRow } from "../db/types.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -20,7 +15,6 @@ import {
 } from "../discord/ask/send.js";
 import { evaluateAndApplyDeadlineDecision } from "../discord/settle.js";
 import { logger } from "../logger.js";
-import { systemClock, type Clock } from "../time/index.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -33,19 +27,18 @@ interface CronAdapter {
 }
 
 export interface AskSchedulerDeps {
-  client: Client;
-  sendAsk?: SendAsk;
-  clock?: Clock;
-  cronAdapter?: CronAdapter;
-  db?: DbLike;
+  readonly client: Client;
+  readonly context: AppContext;
+  readonly sendAsk?: SendAsk;
+  readonly cronAdapter?: CronAdapter;
 }
 
 export const runScheduledAskTick = async (
   sendAsk: SendAsk,
-  clock: Clock
+  context: AppContext
 ): Promise<void> => {
   try {
-    await sendAsk({ trigger: "cron", clock });
+    await sendAsk({ trigger: "cron", context });
   } catch (error: unknown) {
     logger.error({ error }, "Scheduled /ask delivery failed.");
   }
@@ -53,17 +46,15 @@ export const runScheduledAskTick = async (
 
 /**
  * Evaluate a single ASKING session at the 21:30 deadline.
- * - all 4 members answered with time slots → DECIDED (no announcement in scope).
- * - otherwise → CANCELLED + postpone voting message.
  */
 const settleDueAskingSession = async (
   client: Client,
-  db: DbLike,
+  ctx: AppContext,
   session: SessionRow,
   now: Date
 ): Promise<void> => {
-  const responses = await listResponses(db, session.id);
-  await evaluateAndApplyDeadlineDecision(client, db, session, responses, {
+  const responses = await ctx.ports.responses.listResponses(session.id);
+  await evaluateAndApplyDeadlineDecision(client, ctx, session, responses, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
   });
@@ -77,14 +68,13 @@ const settleDueAskingSession = async (
  */
 export const runDeadlineTick = async (
   client: Client,
-  db: DbLike,
-  clock: Clock
+  ctx: AppContext
 ): Promise<void> => {
   try {
-    const now = clock.now();
-    const due = await findDueAskingSessions(db, now);
+    const now = ctx.clock.now();
+    const due = await ctx.ports.sessions.findDueAskingSessions(now);
     for (const session of due) {
-      await settleDueAskingSession(client, db, session, now);
+      await settleDueAskingSession(client, ctx, session, now);
     }
   } catch (error: unknown) {
     logger.error({ error }, "Deadline tick failed.");
@@ -100,15 +90,13 @@ export const runDeadlineTick = async (
  */
 export const runStartupRecovery = async (
   client: Client,
-  db: DbLike,
-  clock: Clock
+  ctx: AppContext
 ): Promise<void> => {
   // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば settleDueAskingSession を呼ぶ。
-  //   プロセス再起動で cron tick を取りこぼしても整合を回復できる。
   // idempotent: settleAskingSession / tryDecideIfAllTimeSlots は CAS 済みのため二重呼び出し安全。
   try {
-    const sessions = await findNonTerminalSessions(db);
-    const now = clock.now();
+    const sessions = await ctx.ports.sessions.findNonTerminalSessions();
+    const now = ctx.clock.now();
     for (const session of sessions) {
       if (session.status === "ASKING" && session.deadlineAt.getTime() <= now.getTime()) {
         logger.info(
@@ -119,7 +107,7 @@ export const runStartupRecovery = async (
           },
           "Startup recovery: settling overdue ASKING session."
         );
-        await settleDueAskingSession(client, db, session, now);
+        await settleDueAskingSession(client, ctx, session, now);
       }
     }
   } catch (error: unknown) {
@@ -135,8 +123,6 @@ export interface SchedulerHandles {
 /**
  * Registers the /ask send and deadline cron tasks.
  *
- * @returns Handles to the scheduled tasks (for shutdown).
- *
  * @remarks
  * プロセス内で 1 度だけ呼ぶこと。複数インスタンスで同時駆動すると Discord への
  * 二重送信や race になる。Fly app は 1 インスタンス固定前提。
@@ -144,30 +130,25 @@ export interface SchedulerHandles {
  * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
  */
 export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => {
-  const clock = deps.clock ?? systemClock;
-  const db = deps.db ?? defaultDb;
+  const { context, client } = deps;
   const sendAsk =
-    deps.sendAsk ??
-    ((context: SendAskMessageContext) => sendAskMessage(deps.client, context));
+    deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(client, sendContext));
   const cronModule = deps.cronAdapter ?? cron;
 
   // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
   // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
   // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
-  // why: runtime tunables を config.ts に集約 (ADR-0013)
   // invariant: ADR-0007 により暫定で金 08:00 JST を維持する。requirements/base.md の 18:00 記述は過渡期の未同期。
-  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
-  // @see docs/adr/0007-ask-command-always-available-and-08-jst-cron.md
   const askTask = cronModule.schedule(
     CRON_ASK_SCHEDULE,
-    () => void runScheduledAskTick(sendAsk, clock),
+    () => void runScheduledAskTick(sendAsk, context),
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 
   // jst: 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
   const deadlineTask = cronModule.schedule(
     CRON_DEADLINE_SCHEDULE,
-    () => void runDeadlineTick(deps.client, db, clock),
+    () => void runDeadlineTick(client, context),
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 

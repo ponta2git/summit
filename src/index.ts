@@ -1,3 +1,4 @@
+import { createAppContext } from "./composition.js";
 import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./discord/ask/send.js";
 import { createDiscordClient } from "./discord/client.js";
@@ -8,12 +9,12 @@ import { buildMemberReconcileInputs } from "./members.js";
 import { reconcileMembers } from "./members/reconcile.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
-import { systemClock } from "./time/index.js";
 
+const appContext = createAppContext();
 const client = createDiscordClient();
-registerInteractionHandlers(client);
+registerInteractionHandlers(client, appContext);
 
-const scheduler = createAskScheduler({ client });
+const scheduler = createAskScheduler({ client, context: appContext });
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
@@ -74,7 +75,7 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   //   login 後に実行することで Discord message の edit もできる状態で呼び出す。
-  await runStartupRecovery(client, db, systemClock);
+  await runStartupRecovery(client, appContext);
 };
 
 void run().catch((error: unknown) => {

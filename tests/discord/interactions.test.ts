@@ -2,43 +2,19 @@ import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  findMemberIdByUserId,
-  findSessionById,
-  listMembers,
-  listResponses,
-  upsertResponse
-} from "../../src/db/repositories/index.js";
 import { handleInteraction, registerInteractionHandlers } from "../../src/discord/dispatcher.js";
 import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
 import { messages } from "../../src/messages.js";
 import { memberUserId } from "../helpers/env.js";
 import { buildSessionRow } from "../discord/factories/session.js";
+import { createTestAppContext, type TestAppContext } from "../testing/index.js";
 
 import {
   buildAskInteraction,
   buildButtonInteraction,
   buildCancelInteraction
 } from "../helpers/interaction.js";
-
-// why: askButton 成功パスの検証に必要な DB repository / render のモック。
-//   既存テストは validation 失敗で DB に到達しないため影響しない。
-vi.mock("../../src/db/repositories/index.js", () => ({
-  findSessionById: vi.fn(),
-  findMemberIdByUserId: vi.fn(),
-  upsertResponse: vi.fn(),
-  listResponses: vi.fn(),
-  listMembers: vi.fn(),
-  createAskSession: vi.fn(),
-  findDueAskingSessions: vi.fn(),
-  findNonTerminalSessions: vi.fn(),
-  findSessionByWeekKeyAndPostponeCount: vi.fn(),
-  isNonTerminal: vi.fn(),
-  updateAskMessageId: vi.fn(),
-  updatePostponeMessageId: vi.fn(),
-  transitionStatus: vi.fn()
-}));
 
 vi.mock("../../src/discord/ask/render.js", () => ({
   renderAskBody: vi.fn(() => ({ content: "mocked-render", components: [] })),
@@ -47,9 +23,13 @@ vi.mock("../../src/discord/ask/render.js", () => ({
 
 const stubClient = {} as unknown as Client;
 
-const defaultDeps = (sendAsk: ReturnType<typeof vi.fn>) => ({
+const defaultDeps = (
+  sendAsk: ReturnType<typeof vi.fn>,
+  context: TestAppContext = createTestAppContext()
+) => ({
   sendAsk: sendAsk as unknown as (c: unknown) => Promise<unknown>,
-  client: stubClient
+  client: stubClient,
+  context
 }) as unknown as Parameters<typeof handleInteraction>[1];
 
 describe("interaction router", () => {
@@ -162,7 +142,7 @@ describe("interaction router", () => {
     const client = { on } as unknown as Client;
     const loggerErrorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
 
-    registerInteractionHandlers(client);
+    registerInteractionHandlers(client, createTestAppContext());
 
     const listener = on.mock.calls[0]?.[1] as ((interaction: Interaction) => void) | undefined;
     expect(listener).toBeTypeOf("function");
@@ -279,16 +259,9 @@ describe("interaction router", () => {
       displayName: `Member ${i}`
     }));
 
-    vi.mocked(findSessionById).mockResolvedValue(session);
-    vi.mocked(findMemberIdByUserId).mockResolvedValue("member-0");
-    vi.mocked(upsertResponse).mockResolvedValue({
-      id: "r1", sessionId: testSessionId, memberId: "member-0",
-      choice: "T2200", answeredAt: new Date()
-    } as never);
-    vi.mocked(listResponses).mockResolvedValue([
-      { id: "r1", sessionId: testSessionId, memberId: "member-0", choice: "T2200", answeredAt: new Date() } as never
-    ]);
-    vi.mocked(listMembers).mockResolvedValue(mockMembers as never);
+    const ctx = createTestAppContext({
+      seed: { sessions: [session], members: mockMembers }
+    });
 
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const baseInteraction = buildButtonInteraction(`ask:${testSessionId}:t2200`);
@@ -297,9 +270,13 @@ describe("interaction router", () => {
       message: { edit: vi.fn(async () => undefined) }
     };
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk, ctx));
 
-    expect(upsertResponse).toHaveBeenCalledOnce();
+    // invariant: upsertResponse は ports 経由で呼ばれ、responses 側に 1 件記録される。
+    const responses = await ctx.ports.responses.listResponses(testSessionId);
+    expect(responses).toHaveLength(1);
+    expect(responses[0]?.choice).toBe("T2200");
+    expect(responses[0]?.memberId).toBe("member-0");
     expect(interaction.message.edit).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
       content: messages.interaction.voteConfirmed.ask("T2200"),

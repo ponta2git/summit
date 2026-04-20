@@ -1,127 +1,72 @@
-export type SessionStatus =
-  | "ASKING"
-  | "POSTPONE_VOTING"
-  | "POSTPONED"
-  | "DECIDED"
-  | "CANCELLED"
-  | "COMPLETED"
-  | "SKIPPED";
+// source-of-truth: domain 層が依存する infra 契約。repository 実装はここを `satisfies` し、
+//   テストは Fake 実装でここを満たす。call-site は `ctx.ports.sessions.findSessionById(id)` 形で読める。
+// why: db ハンドルは port 実装が closure で保持する。call-site を db 非依存にし、vi.mock への依存を解消する。
+// @see docs/adr/0018-port-wiring-and-factory-injection.md
 
-export type ResponseChoice =
-  | "T2200"
-  | "T2230"
-  | "T2300"
-  | "T2330"
-  | "ABSENT"
-  | "POSTPONE_OK"
-  | "POSTPONE_NG";
+import type {
+  MemberRow,
+  ResponseRow,
+  SessionRow,
+  SessionStatus
+} from "../db/types.js";
+import type {
+  CreateAskSessionInput,
+  TransitionInput
+} from "../db/repositories/sessions.js";
+import type { UpsertResponseInput } from "../db/repositories/responses.js";
 
-export interface SessionRecord {
-  id: string;
-  weekKey: string;
-  postponeCount: number;
-  candidateDateIso: string;
-  status: SessionStatus;
-  channelId: string;
-  askMessageId: string | null;
-  postponeMessageId: string | null;
-  deadlineAt: Date;
-  decidedStartAt: Date | null;
-  cancelReason: string | null;
-  reminderAt: Date | null;
-  reminderSentAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
+export type {
+  MemberRow,
+  ResponseRow,
+  SessionRow,
+  SessionStatus,
+  CreateAskSessionInput,
+  TransitionInput,
+  UpsertResponseInput
+};
+export type { ResponseChoice } from "../db/types.js";
 
-export interface ResponseRecord {
-  id: string;
-  sessionId: string;
-  memberId: string;
-  choice: ResponseChoice;
-  answeredAt: Date;
-}
-
-export interface MemberRecord {
-  id: string;
-  userId: string;
-  displayName: string;
-}
-
-export interface CreateAskSessionInput {
-  id: string;
-  weekKey: string;
-  postponeCount: number;
-  candidateDateIso: string;
-  channelId: string;
-  deadlineAt: Date;
-}
-
-export interface TransitionInput {
-  id: string;
-  from: SessionStatus;
-  to: SessionStatus;
-  cancelReason?: string;
-  decidedStartAt?: Date;
-  reminderAt?: Date;
-}
-
-export interface UpsertResponseInput {
-  id: string;
-  sessionId: string;
-  memberId: string;
-  choice: ResponseChoice;
-  answeredAt: Date;
-}
-
-// why: port を先に固定し、後続の DI 導入で依存反転を段階的に進める。
-// invariant: src/ports は純粋な型定義のみを持ち、runtime 依存を持ち込まない。
 /**
  * Session repository operations exposed as a DI port.
  *
  * @remarks
  * 各実装は DB を正本とし、競合時に `undefined` を返す CAS 契約を維持する。
- * @see docs/adr/0015-ports-and-repositories.md
+ * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
  */
-export interface SessionsPort<TDb = unknown, TSession extends SessionRecord = SessionRecord> {
-  createAskSession(db: TDb, input: CreateAskSessionInput): Promise<TSession | undefined>;
+export interface SessionsPort {
+  createAskSession(input: CreateAskSessionInput): Promise<SessionRow | undefined>;
   findSessionByWeekKeyAndPostponeCount(
-    db: TDb,
     weekKey: string,
     postponeCount: number
-  ): Promise<TSession | undefined>;
-  findSessionById(db: TDb, id: string): Promise<TSession | undefined>;
-  updateAskMessageId(db: TDb, id: string, messageId: string): Promise<void>;
-  updatePostponeMessageId(db: TDb, id: string, messageId: string): Promise<void>;
-  transitionStatus(db: TDb, input: TransitionInput): Promise<TSession | undefined>;
-  findDueAskingSessions(db: TDb, now: Date): Promise<ReadonlyArray<TSession>>;
-  findNonTerminalSessions(db: TDb): Promise<ReadonlyArray<TSession>>;
+  ): Promise<SessionRow | undefined>;
+  findSessionById(id: string): Promise<SessionRow | undefined>;
+  updateAskMessageId(id: string, messageId: string): Promise<void>;
+  updatePostponeMessageId(id: string, messageId: string): Promise<void>;
+  transitionStatus(input: TransitionInput): Promise<SessionRow | undefined>;
+  findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
+  findNonTerminalSessions(): Promise<readonly SessionRow[]>;
   isNonTerminal(status: SessionStatus): boolean;
 }
 
-export interface ResponsesPort<TDb = unknown, TResponse extends ResponseRecord = ResponseRecord> {
-  listResponses(db: TDb, sessionId: string): Promise<ReadonlyArray<TResponse>>;
-  upsertResponse(db: TDb, input: UpsertResponseInput): Promise<TResponse>;
+export interface ResponsesPort {
+  listResponses(sessionId: string): Promise<readonly ResponseRow[]>;
+  upsertResponse(input: UpsertResponseInput): Promise<ResponseRow>;
 }
 
-export interface MembersPort<TDb = unknown, TMember extends MemberRecord = MemberRecord> {
-  findMemberIdByUserId(db: TDb, userId: string): Promise<string | undefined>;
-  listMembers(db: TDb): Promise<ReadonlyArray<TMember>>;
+export interface MembersPort {
+  findMemberIdByUserId(userId: string): Promise<string | undefined>;
+  listMembers(): Promise<readonly MemberRow[]>;
 }
 
-export interface DiscordPort {
-  sendMessage(input: {
-    channelId: string;
-    payload: Readonly<Record<string, unknown>>;
-  }): Promise<{ messageId: string }>;
-  editMessage(input: {
-    channelId: string;
-    messageId: string;
-    payload: Readonly<Record<string, unknown>>;
-  }): Promise<void>;
-  replyEphemeral(input: {
-    interactionId: string;
-    payload: Readonly<Record<string, unknown>>;
-  }): Promise<void>;
-  deferUpdate(input: { interactionId: string }): Promise<void>;
+/**
+ * Aggregate port bundle supplied to handlers / scheduler / workflow via AppContext.
+ *
+ * @remarks
+ * Discord client は抽象化しない (ADR-0017 参照)。本 Bot 規模では discord.js の Client / ButtonInteraction
+ * を直接扱う方がシンプルで、追加の抽象レイヤは便益を生まない。
+ */
+export interface AppPorts {
+  readonly sessions: SessionsPort;
+  readonly responses: ResponsesPort;
+  readonly members: MembersPort;
 }

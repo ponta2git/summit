@@ -2,19 +2,10 @@ import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetSendStateForTest, sendAskMessage } from "../../../src/discord/ask/send.js";
-import type { DbLike, SessionRow } from "../../../src/db/types.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import { memberUserId } from "../../helpers/env.js";
-
-vi.mock("../../../src/db/repositories/members.js", () => ({
-  listMembers: vi.fn(async () => [
-    { id: "member-1", userId: "323456789012345678", displayName: "いーゆー" },
-    { id: "member-2", userId: "423456789012345678", displayName: "おーたか" },
-    { id: "member-3", userId: "523456789012345678", displayName: "あかねまみ" },
-    { id: "member-4", userId: "623456789012345678", displayName: "ぽんた" }
-  ])
-}));
+import { createTestAppContext } from "../../testing/index.js";
 
 const createMockClient = (channel: unknown): Client =>
   ({
@@ -23,65 +14,12 @@ const createMockClient = (channel: unknown): Client =>
     }
   }) as unknown as Client;
 
-/**
- * Build an in-memory DbLike mock for sendAskMessage.
- * Mimics uniqueness on (weekKey, postponeCount) for ASKING sessions.
- */
-const createMockDb = () => {
-  const sessions: SessionRow[] = [];
-  const selectBuilder = () => ({
-    from: () => ({
-      where: () => ({
-        limit: async () => sessions
-      })
-    })
-  });
-  const insertBuilder = () => ({
-    values: (row: Partial<SessionRow>) => ({
-      onConflictDoNothing: () => ({
-        returning: async () => {
-          const conflict = sessions.some(
-            (s) => s.weekKey === row.weekKey && s.postponeCount === row.postponeCount
-          );
-          if (conflict) {
-            return [];
-          }
-          const full: SessionRow = {
-            id: row.id ?? "",
-            weekKey: row.weekKey ?? "",
-            postponeCount: row.postponeCount ?? 0,
-            candidateDateIso: row.candidateDateIso ?? "",
-            status: row.status ?? "ASKING",
-            channelId: row.channelId ?? "",
-            askMessageId: null,
-            postponeMessageId: null,
-            deadlineAt: row.deadlineAt ?? new Date(0),
-            decidedStartAt: null,
-            cancelReason: null,
-            reminderAt: null,
-            reminderSentAt: null,
-            createdAt: new Date(0),
-            updatedAt: new Date(0)
-          };
-          sessions.push(full);
-          return [full];
-        }
-      })
-    })
-  });
-  const updateBuilder = () => ({
-    set: () => ({
-      where: async () => undefined
-    })
-  });
-  const mock = {
-    __sessions: sessions,
-    select: vi.fn(selectBuilder),
-    insert: vi.fn(insertBuilder),
-    update: vi.fn(updateBuilder)
-  };
-  return mock as unknown as DbLike & { __sessions: SessionRow[] };
-};
+const seedMembers = [
+  { id: "member-1", userId: "323456789012345678", displayName: "いーゆー" },
+  { id: "member-2", userId: "423456789012345678", displayName: "おーたか" },
+  { id: "member-3", userId: "523456789012345678", displayName: "あかねまみ" },
+  { id: "member-4", userId: "623456789012345678", displayName: "ぽんた" }
+];
 
 describe("askMessage race handling", () => {
   beforeEach(() => {
@@ -105,15 +43,16 @@ describe("askMessage race handling", () => {
       send
     };
     const client = createMockClient(channel);
-    const clock = { now: () => new Date("2026-04-24T18:00:00+09:00") };
-    const db = createMockDb();
+    const context = createTestAppContext({
+      now: new Date("2026-04-24T18:00:00+09:00"),
+      seed: { members: seedMembers }
+    });
 
-    const first = sendAskMessage(client, { trigger: "cron", clock, db });
+    const first = sendAskMessage(client, { trigger: "cron", context });
     const second = sendAskMessage(client, {
       trigger: "command",
       invokerId: memberUserId,
-      clock,
-      db
+      context
     });
 
     await sendCalled.promise;

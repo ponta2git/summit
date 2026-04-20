@@ -1,0 +1,54 @@
+// why: repository を束ねて AppPorts を構成する production 実装。db ハンドルを closure で保持する。
+// invariant: 契約は src/ports/index.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue に徹する。
+// @see docs/adr/0018-port-wiring-and-factory-injection.md
+
+import type { DbLike } from "../db/types.js";
+import {
+  createAskSession,
+  findDueAskingSessions,
+  findNonTerminalSessions,
+  findSessionById,
+  findSessionByWeekKeyAndPostponeCount,
+  isNonTerminal,
+  transitionStatus,
+  updateAskMessageId,
+  updatePostponeMessageId
+} from "../db/repositories/sessions.js";
+import {
+  listResponses,
+  upsertResponse
+} from "../db/repositories/responses.js";
+import {
+  findMemberIdByUserId,
+  listMembers
+} from "../db/repositories/members.js";
+import type { AppPorts, MembersPort, ResponsesPort, SessionsPort } from "./index.js";
+
+const makeSessionsPort = (db: DbLike): SessionsPort => ({
+  createAskSession: (input) => createAskSession(db, input),
+  findSessionByWeekKeyAndPostponeCount: (weekKey, postponeCount) =>
+    findSessionByWeekKeyAndPostponeCount(db, weekKey, postponeCount),
+  findSessionById: (id) => findSessionById(db, id),
+  updateAskMessageId: (id, messageId) => updateAskMessageId(db, id, messageId),
+  updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
+  transitionStatus: (input) => transitionStatus(db, input),
+  findDueAskingSessions: (now) => findDueAskingSessions(db, now),
+  findNonTerminalSessions: () => findNonTerminalSessions(db),
+  isNonTerminal
+});
+
+const makeResponsesPort = (db: DbLike): ResponsesPort => ({
+  listResponses: (sessionId) => listResponses(db, sessionId),
+  upsertResponse: (input) => upsertResponse(db, input)
+});
+
+const makeMembersPort = (db: DbLike): MembersPort => ({
+  findMemberIdByUserId: (userId) => findMemberIdByUserId(db, userId),
+  listMembers: () => listMembers(db)
+});
+
+export const makeRealPorts = (db: DbLike): AppPorts => ({
+  sessions: makeSessionsPort(db),
+  responses: makeResponsesPort(db),
+  members: makeMembersPort(db)
+});

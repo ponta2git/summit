@@ -28,6 +28,7 @@ Copilot Coding Agent では `.github/copilot-instructions.md` は常時注入さ
 | migration 接続設定 | `drizzle.config.ts` | `DIRECT_URL` はここでのみ参照 |
 | DB schema 定義 | `src/db/schema.ts`（または `src/db/schema/`） | 生成 SQL の正本は `drizzle/` |
 | 時刻計算 | `src/time/` | JST・ISO week・締切・`POSTPONE_DEADLINE` 解釈 |
+| 依存合成（composition root） | `src/composition.ts`（`AppContext` = `{ ports, clock }`） | handler / scheduler / workflow は `AppContext` を受け取り、DB / 時計は `ctx.ports.*` / `ctx.clock` 経由で使う。production は `src/index.ts` で `createAppContext()`、テストは `tests/testing/ports.ts` の `createTestAppContext({ seed, now })`。詳細は `docs/adr/0018-port-wiring-and-factory-injection.md` |
 | 入口・ローカル手順 | `README.md` | 詳細仕様は `requirements/base.md` |
 | 判断の根拠（Why） | `docs/adr/` | 単一インスタンス / 時刻 / DB 運用 / Interaction / 運用ポリシー / ドキュメント構造。索引は `docs/adr/README.md` |
 
@@ -108,3 +109,4 @@ Bot の挙動確認で週の流れをやり直したいとき、**`docker exec` 
 10. **POSTPONE_DEADLINE="24:00" の解釈**: 「候補日翌日 00:00 JST」のみ。`25:00` など 24 超え表記は受け入れない。
 11. **guild-scoped slash command**: コマンド登録は `DISCORD_GUILD_ID` 単位。global 登録は反映まで最大 1 時間かかる。`commands:sync` の guild 指定を確認。
 12. **HEALTHCHECK_PING_URL 未設定時は ping 無効**（no-op）。未設定で起動を止めるな。設定時のみ cron 成功後に ping。
+13. **依存は `AppContext` 経由で受け取る**。新規 handler / scheduler / workflow 関数は `src/db/repositories/*` を直接 import せず、`ctx.ports.*` / `ctx.clock` を使え。テストは `vi.mock("../../src/db/repositories/...")` を新規に追加せず、`tests/testing/ports.ts` の `createTestAppContext({ seed })` で Fake ports を注入する（interface drift を型で検出）。renderer など純粋関数は対象外。`docs/adr/0018-port-wiring-and-factory-injection.md` 参照。

@@ -3,7 +3,6 @@ import type { db as defaultDb } from "./client.js";
 import {
   RESPONSE_CHOICES,
   SESSION_STATUSES,
-  type members,
   type responses,
   type sessions,
   type ResponseChoice,
@@ -20,7 +19,13 @@ export type ResponseRow = Omit<typeof responses.$inferSelect, "choice"> & {
   choice: ResponseChoice;
 };
 
-export type MemberRow = typeof members.$inferSelect;
+// why: listMembers は 3 列のみ select しているため、port / fixtures が見る MemberRow は
+//   schema 全列ではなく実運用で surface される shape に合わせる。
+export type MemberRow = {
+  readonly id: string;
+  readonly userId: string;
+  readonly displayName: string;
+};
 
 export {
   RESPONSE_CHOICES,

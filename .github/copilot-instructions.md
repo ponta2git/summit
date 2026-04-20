@@ -23,6 +23,7 @@
 7. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST はデプロイ・再起動・schema 変更を提案・実行しない。
 8. **ログに秘匿値を出さない**。`pino` の redact で token / 接続文字列 / `Authorization` を除去。interaction payload 全量を出さない。`sessionId` / `weekKey` / `interactionId` / `messageId` / `userId` を構造化フィールドで付与。状態遷移は `from` / `to` / `reason` を含める。`console.log` / `console.error` を残さない。
 9. **型・エラー処理**。`any` を導入せず外部入力は `unknown` → `zod` narrow。`as` キャストを最後の手段に。業務エラー（中止・順延 NG 等）は状態で表現し throw しない。cron tick は最外周 `try/catch`。裸 Promise を残さない。
+10. **依存は AppContext 経由で注入する**。handler / scheduler / workflow は `src/db/repositories/*` や `src/db/client` を直接 import せず、`AppContext = { ports, clock }`（`src/composition.ts`）を受け取り `ctx.ports.*` / `ctx.clock` を使う。production の合成点は `src/index.ts` の `createAppContext()`、テストは `tests/testing/ports.ts` の `createTestAppContext({ seed, now })` で Fake ports を注入する（`vi.mock("../../src/db/repositories/...")` を新規に書かない）。renderer など DB 非依存の純粋関数は対象外。根拠は `docs/adr/0018-port-wiring-and-factory-injection.md`。
 
 ## 技術スタック（確定）
 TypeScript / Node 24 LTS / pnpm v10 / mise / discord.js v14 / node-cron / pino / zod v4 / Drizzle 0.45 + postgres.js / drizzle-kit / drizzle-zod / Neon PostgreSQL 16 / Fly.io（単一インスタンス）/ healthchecks.io

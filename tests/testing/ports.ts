@@ -1,21 +1,23 @@
+// why: AppPorts の in-memory 実装。production と同じ AppContext を組み立ててテストに注入する。
+// invariant: 呼び出し順と引数を call log で記録し、assertion 可能にする。CAS / unique 制約などの
+//   業務 invariant は real port と同じ semantics で模倣する。
+// @see docs/adr/0018-port-wiring-and-factory-injection.md
+
 import type {
-  DiscordPort,
-  MemberRecord,
+  AppPorts,
+  CreateAskSessionInput,
+  MemberRow,
   MembersPort,
-  ResponseRecord,
+  ResponseRow,
   ResponsesPort,
-  SessionRecord,
+  SessionRow,
   SessionStatus,
   SessionsPort,
   TransitionInput,
   UpsertResponseInput
 } from "../../src/ports/index.js";
 
-import {
-  makeMember,
-  makeResponse,
-  makeSession
-} from "./fixtures.js";
+import { makeMember, makeResponse, makeSession } from "./fixtures.js";
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
@@ -25,86 +27,60 @@ const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "CANCELLED"
 ];
 
-type CallRecord<TName extends string, TArgs> = {
-  readonly name: TName;
-  readonly args: TArgs;
-};
+type AnyCall = { readonly name: string; readonly args: unknown };
 
-const recordCall = <TName extends string, TArgs>(
-  target: Array<CallRecord<string, unknown>>,
-  name: TName,
-  args: TArgs
-): void => {
+const recordCall = (target: AnyCall[], name: string, args: unknown): void => {
   target.push({ name, args });
 };
 
-export interface FakeSessionsPort extends SessionsPort<unknown, SessionRecord> {
-  readonly calls: ReadonlyArray<CallRecord<string, unknown>>;
-  listSessions(): ReadonlyArray<SessionRecord>;
+export interface FakeSessionsPort extends SessionsPort {
+  readonly calls: ReadonlyArray<AnyCall>;
+  listSessions(): ReadonlyArray<SessionRow>;
 }
 
-export interface FakeResponsesPort extends ResponsesPort<unknown, ResponseRecord> {
-  readonly calls: ReadonlyArray<CallRecord<string, unknown>>;
-  listAllResponses(): ReadonlyArray<ResponseRecord>;
+export interface FakeResponsesPort extends ResponsesPort {
+  readonly calls: ReadonlyArray<AnyCall>;
+  listAllResponses(): ReadonlyArray<ResponseRow>;
 }
 
-export interface FakeMembersPort extends MembersPort<unknown, MemberRecord> {
-  readonly calls: ReadonlyArray<CallRecord<string, unknown>>;
+export interface FakeMembersPort extends MembersPort {
+  readonly calls: ReadonlyArray<AnyCall>;
 }
 
-export interface DiscordCallMap {
-  readonly sendMessage: ReadonlyArray<{ channelId: string; payload: Readonly<Record<string, unknown>> }>;
-  readonly editMessage: ReadonlyArray<{
-    channelId: string;
-    messageId: string;
-    payload: Readonly<Record<string, unknown>>;
-  }>;
-  readonly replyEphemeral: ReadonlyArray<{
-    interactionId: string;
-    payload: Readonly<Record<string, unknown>>;
-  }>;
-  readonly deferUpdate: ReadonlyArray<{ interactionId: string }>;
+export interface FakePorts extends AppPorts {
+  readonly sessions: FakeSessionsPort;
+  readonly responses: FakeResponsesPort;
+  readonly members: FakeMembersPort;
 }
 
-export interface FakeDiscordPort extends DiscordPort {
-  readonly calls: DiscordCallMap;
-}
-
-// why: DI 可能な port interface の in-memory 実装。純粋・決定論的。
-// invariant: 呼び出し順と引数を記録し、テストから assert 可能にする。
 /**
- * Creates an in-memory fake for `SessionsPort`.
+ * Create an in-memory fake for {@link SessionsPort}.
  *
  * @remarks
- * Emulates CAS semantics by returning `undefined` when `transitionStatus` loses the expected `from` match.
- * @see docs/adr/0014-naming-dictionary-v2.md
- * @see docs/adr/0015-error-core-apperror-neverthrow.md
+ * CAS semantics (`transitionStatus` returns `undefined` when `from` mismatches) and the
+ * `(weekKey, postponeCount)` uniqueness are modelled faithfully.
  */
 export const createFakeSessionsPort = (
-  seed: ReadonlyArray<SessionRecord> = []
+  seed: ReadonlyArray<SessionRow> = []
 ): FakeSessionsPort => {
-  const calls: Array<CallRecord<string, unknown>> = [];
-  const sessions = new Map(
-    seed.map((session) => [
-      session.id,
-      makeSession(session)
-    ])
+  const calls: AnyCall[] = [];
+  const byId = new Map<string, SessionRow>(
+    seed.map((session) => [session.id, makeSession(session)])
   );
+
+  const clone = (session: SessionRow): SessionRow => makeSession(session);
 
   return {
     calls,
-    listSessions: () => Array.from(sessions.values()).map((session) => makeSession(session)),
-    createAskSession: async (_db, input) => {
+    listSessions: () => Array.from(byId.values()).map(clone),
+    createAskSession: async (input: CreateAskSessionInput) => {
       recordCall(calls, "createAskSession", { input });
-      const exists = Array.from(sessions.values()).find(
-        (session) =>
-          session.weekKey === input.weekKey &&
-          session.postponeCount === input.postponeCount
+      const dup = Array.from(byId.values()).find(
+        (s) => s.weekKey === input.weekKey && s.postponeCount === input.postponeCount
       );
-      if (exists) {
+      if (dup) {
         return undefined;
       }
-
       const created = makeSession({
         id: input.id,
         weekKey: input.weekKey,
@@ -116,44 +92,44 @@ export const createFakeSessionsPort = (
         createdAt: new Date(input.deadlineAt),
         updatedAt: new Date(input.deadlineAt)
       });
-      sessions.set(created.id, created);
-      return makeSession(created);
+      byId.set(created.id, created);
+      return clone(created);
     },
-    findSessionByWeekKeyAndPostponeCount: async (_db, weekKey, postponeCount) => {
+    findSessionByWeekKeyAndPostponeCount: async (weekKey, postponeCount) => {
       recordCall(calls, "findSessionByWeekKeyAndPostponeCount", { weekKey, postponeCount });
-      const found = Array.from(sessions.values()).find(
-        (session) => session.weekKey === weekKey && session.postponeCount === postponeCount
+      const found = Array.from(byId.values()).find(
+        (s) => s.weekKey === weekKey && s.postponeCount === postponeCount
       );
-      return found ? makeSession(found) : undefined;
+      return found ? clone(found) : undefined;
     },
-    findSessionById: async (_db, id) => {
+    findSessionById: async (id) => {
       recordCall(calls, "findSessionById", { id });
-      const found = sessions.get(id);
-      return found ? makeSession(found) : undefined;
+      const found = byId.get(id);
+      return found ? clone(found) : undefined;
     },
-    updateAskMessageId: async (_db, id, messageId) => {
+    updateAskMessageId: async (id, messageId) => {
       recordCall(calls, "updateAskMessageId", { id, messageId });
-      const found = sessions.get(id);
+      const found = byId.get(id);
       if (!found) {
         return;
       }
-      sessions.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: new Date() }));
+      byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: new Date() }));
     },
-    updatePostponeMessageId: async (_db, id, messageId) => {
+    updatePostponeMessageId: async (id, messageId) => {
       recordCall(calls, "updatePostponeMessageId", { id, messageId });
-      const found = sessions.get(id);
+      const found = byId.get(id);
       if (!found) {
         return;
       }
-      sessions.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: new Date() }));
+      byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: new Date() }));
     },
-    transitionStatus: async (_db, input: TransitionInput) => {
+    transitionStatus: async (input: TransitionInput) => {
       recordCall(calls, "transitionStatus", { input });
-      const found = sessions.get(input.id);
+      const found = byId.get(input.id);
+      // race: CAS. WHERE status = from 相当の条件一致のみ遷移成功。
       if (!found || found.status !== input.from) {
         return undefined;
       }
-
       const next = makeSession({
         ...found,
         status: input.to,
@@ -162,148 +138,129 @@ export const createFakeSessionsPort = (
         decidedStartAt: input.decidedStartAt ?? found.decidedStartAt,
         reminderAt: input.reminderAt ?? found.reminderAt
       });
-      sessions.set(next.id, next);
-      return makeSession(next);
+      byId.set(next.id, next);
+      return clone(next);
     },
-    findDueAskingSessions: async (_db, now) => {
+    findDueAskingSessions: async (now) => {
       recordCall(calls, "findDueAskingSessions", { now });
-      return Array.from(sessions.values())
-        .filter((session) => session.status === "ASKING" && session.deadlineAt <= now)
-        .map((session) => makeSession(session));
+      return Array.from(byId.values())
+        .filter((s) => s.status === "ASKING" && s.deadlineAt <= now)
+        .map(clone);
     },
-    findNonTerminalSessions: async (_db) => {
+    findNonTerminalSessions: async () => {
       recordCall(calls, "findNonTerminalSessions", {});
-      return Array.from(sessions.values())
-        .filter((session) => NON_TERMINAL_STATUSES.includes(session.status))
-        .map((session) => makeSession(session));
+      return Array.from(byId.values())
+        .filter((s) => NON_TERMINAL_STATUSES.includes(s.status))
+        .map(clone);
     },
     isNonTerminal: (status) => NON_TERMINAL_STATUSES.includes(status)
   };
 };
 
-// why: DI 可能な port interface の in-memory 実装。純粋・決定論的。
-// invariant: 呼び出し順と引数を記録し、テストから assert 可能にする。
 /**
- * Creates an in-memory fake for `ResponsesPort`.
+ * Create an in-memory fake for {@link ResponsesPort}.
  *
  * @remarks
- * Maintains the `(sessionId, memberId)` uniqueness by upserting in-place.
- * @see docs/adr/0014-naming-dictionary-v2.md
- * @see docs/adr/0015-error-core-apperror-neverthrow.md
+ * `(sessionId, memberId)` unique 制約を in-place upsert で模倣する。
  */
 export const createFakeResponsesPort = (
-  seed: ReadonlyArray<ResponseRecord> = []
+  seed: ReadonlyArray<ResponseRow> = []
 ): FakeResponsesPort => {
-  const calls: Array<CallRecord<string, unknown>> = [];
-  const responses = seed.map((response) => makeResponse(response));
+  const calls: AnyCall[] = [];
+  const responses: ResponseRow[] = seed.map((r) => makeResponse(r));
+  const clone = (r: ResponseRow): ResponseRow => makeResponse(r);
 
   return {
     calls,
-    listAllResponses: () => responses.map((response) => makeResponse(response)),
-    listResponses: async (_db, sessionId) => {
+    listAllResponses: () => responses.map(clone),
+    listResponses: async (sessionId) => {
       recordCall(calls, "listResponses", { sessionId });
-      return responses
-        .filter((response) => response.sessionId === sessionId)
-        .map((response) => makeResponse(response));
+      return responses.filter((r) => r.sessionId === sessionId).map(clone);
     },
-    upsertResponse: async (_db, input: UpsertResponseInput) => {
+    upsertResponse: async (input: UpsertResponseInput) => {
       recordCall(calls, "upsertResponse", { input });
-      const index = responses.findIndex(
-        (response) =>
-          response.sessionId === input.sessionId &&
-          response.memberId === input.memberId
+      const idx = responses.findIndex(
+        (r) => r.sessionId === input.sessionId && r.memberId === input.memberId
       );
-
-      if (index === -1) {
+      if (idx === -1) {
         const created = makeResponse(input);
         responses.push(created);
-        return makeResponse(created);
+        return clone(created);
       }
-
-      const current = responses[index];
+      const current = responses[idx] as ResponseRow;
       const next = makeResponse({
         ...current,
         choice: input.choice,
         answeredAt: input.answeredAt
       });
-      responses[index] = next;
-      return makeResponse(next);
+      responses[idx] = next;
+      return clone(next);
     }
   };
 };
 
-// why: DI 可能な port interface の in-memory 実装。純粋・決定論的。
-// invariant: 呼び出し順と引数を記録し、テストから assert 可能にする。
 /**
- * Creates an in-memory fake for `MembersPort`.
- *
- * @remarks
- * Keeps member ordering stable for deterministic assertions.
- * @see docs/adr/0014-naming-dictionary-v2.md
- * @see docs/adr/0015-error-core-apperror-neverthrow.md
+ * Create an in-memory fake for {@link MembersPort}.
  */
 export const createFakeMembersPort = (
-  seed: ReadonlyArray<MemberRecord> = []
+  seed: ReadonlyArray<MemberRow> = []
 ): FakeMembersPort => {
-  const calls: Array<CallRecord<string, unknown>> = [];
-  const members = seed.map((member) => makeMember(member));
+  const calls: AnyCall[] = [];
+  const members = seed.map((m) => makeMember(m));
 
   return {
     calls,
-    findMemberIdByUserId: async (_db, userId) => {
+    findMemberIdByUserId: async (userId) => {
       recordCall(calls, "findMemberIdByUserId", { userId });
-      return members.find((member) => member.userId === userId)?.id;
+      return members.find((m) => m.userId === userId)?.id;
     },
-    listMembers: async (_db) => {
+    listMembers: async () => {
       recordCall(calls, "listMembers", {});
-      return members.map((member) => makeMember(member));
+      return members.map((m) => makeMember(m));
     }
   };
 };
 
-// why: DI 可能な port interface の in-memory 実装。純粋・決定論的。
-// invariant: 呼び出し順と引数を記録し、テストから assert 可能にする。
+export interface FakePortsSeed {
+  readonly sessions?: ReadonlyArray<SessionRow>;
+  readonly responses?: ReadonlyArray<ResponseRow>;
+  readonly members?: ReadonlyArray<MemberRow>;
+}
+
 /**
- * Creates an in-memory fake for `DiscordPort`.
+ * Build a complete {@link FakePorts} bundle. Tests should prefer this over partial construction,
+ * so that AppContext wiring parallels production.
+ */
+export const createFakePorts = (seed: FakePortsSeed = {}): FakePorts => ({
+  sessions: createFakeSessionsPort(seed.sessions ?? []),
+  responses: createFakeResponsesPort(seed.responses ?? []),
+  members: createFakeMembersPort(seed.members ?? [])
+});
+
+export interface TestAppContext {
+  readonly ports: FakePorts;
+  readonly clock: { readonly now: () => Date };
+}
+
+/**
+ * Build an AppContext-shaped value for tests without depending on production's `createAppContext`.
  *
  * @remarks
- * Stores outbound payloads so tests can assert side-effects without Discord I/O.
- * @see docs/adr/0014-naming-dictionary-v2.md
- * @see docs/adr/0015-error-core-apperror-neverthrow.md
+ * Keeps the fake ports bundle typed as {@link FakePorts} so tests can inspect `calls` and seed
+ * data while still passing structurally where an {@link import("../../src/composition.js").AppContext}
+ * is expected.
  */
-export const createFakeDiscordPort = (
-  options: { messageIds?: ReadonlyArray<string> } = {}
-): FakeDiscordPort => {
-  let nextId = 1;
-  const queuedIds = [...(options.messageIds ?? [])];
-  const calls: {
-    sendMessage: Array<{ channelId: string; payload: Readonly<Record<string, unknown>> }>;
-    editMessage: Array<{ channelId: string; messageId: string; payload: Readonly<Record<string, unknown>> }>;
-    replyEphemeral: Array<{ interactionId: string; payload: Readonly<Record<string, unknown>> }>;
-    deferUpdate: Array<{ interactionId: string }>;
-  } = {
-    sendMessage: [],
-    editMessage: [],
-    replyEphemeral: [],
-    deferUpdate: []
+export const createTestAppContext = (options: {
+  readonly ports?: FakePorts;
+  readonly now?: Date | (() => Date);
+  readonly seed?: FakePortsSeed;
+} = {}): TestAppContext => {
+  const now = options.now ?? new Date();
+  const clock = {
+    now: typeof now === "function" ? now : () => now
   };
-
   return {
-    calls,
-    sendMessage: async (input) => {
-      calls.sendMessage.push(input);
-      const messageId = queuedIds.shift() ?? `fake-message-${nextId}`;
-      nextId += 1;
-      return { messageId };
-    },
-    editMessage: async (input) => {
-      calls.editMessage.push(input);
-    },
-    replyEphemeral: async (input) => {
-      calls.replyEphemeral.push(input);
-    },
-    deferUpdate: async (input) => {
-      calls.deferUpdate.push(input);
-    }
+    ports: options.ports ?? createFakePorts(options.seed ?? {}),
+    clock
   };
 };

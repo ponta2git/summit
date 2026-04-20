@@ -10,7 +10,7 @@ import type {
   SessionRow,
   SessionStatus
 } from "../types.js";
-import type { SessionsPort } from "../../ports/index.js";
+
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
@@ -215,18 +215,3 @@ export const findNonTerminalSessions = async (
 export const isNonTerminal = (status: SessionStatus): boolean =>
   (NON_TERMINAL_STATUSES as readonly string[]).includes(status);
 
-
-// why: repository 実装が port 契約を満たすことをコンパイル時に固定する。
-// invariant: DI 未導入段階でも公開 API の破壊的変更を型検査で即検知する。
-const _typecheckSessionsPort = {
-  createAskSession,
-  findSessionByWeekKeyAndPostponeCount,
-  findSessionById,
-  updateAskMessageId,
-  updatePostponeMessageId,
-  transitionStatus,
-  findDueAskingSessions,
-  findNonTerminalSessions,
-  isNonTerminal
-} satisfies SessionsPort<DbLike, SessionRow>;
-void _typecheckSessionsPort;

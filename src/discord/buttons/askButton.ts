@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 
-import { db as defaultDb } from "../../db/client.js";
-import { findMemberIdByUserId, findSessionById, listMembers, listResponses, upsertResponse } from "../../db/repositories/index.js";
-import type { SessionRow, DbLike } from "../../db/types.js";
+import type { AppContext } from "../../composition.js";
+import type { SessionRow } from "../../db/types.js";
 import {
   DatabaseError,
   type AppError,
@@ -15,7 +14,6 @@ import {
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
 import { evaluateDeadline } from "../../domain/index.js";
-import { systemClock } from "../../time/index.js";
 import { renderAskBody } from "../ask/render.js";
 import { buildAskMessageViewModel } from "../viewModels.js";
 import type { AskCustomIdChoice } from "../customId.js";
@@ -45,10 +43,7 @@ const ASK_CUSTOM_ID_TO_DB_CHOICE: Record<AskCustomIdChoice, "T2200" | "T2230" | 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
   readonly deps: InteractionHandlerDeps;
-  readonly db: DbLike;
-  readonly clock: {
-    now: () => Date;
-  };
+  readonly context: AppContext;
 }
 
 interface AskPipelineParsed extends AskPipelineStart {
@@ -92,7 +87,7 @@ const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelinePa
 
 const loadSessionStep = (context: AskPipelineParsed): ResultAsync<AskPipelineWithSession, AppError> =>
   fromDatabasePromise(
-    findSessionById(context.db, context.sessionId),
+    context.context.ports.sessions.findSessionById(context.sessionId),
     "Failed to load session while handling ask button."
   )
     .andThen((session) => toResultAsync(guardSessionExists(session)))
@@ -104,7 +99,7 @@ const loadSessionStep = (context: AskPipelineParsed): ResultAsync<AskPipelineWit
 
 const loadMemberStep = (context: AskPipelineWithSession): ResultAsync<AskPipelineReady, AppError> =>
   fromDatabasePromise(
-    findMemberIdByUserId(context.db, context.interaction.user.id),
+    context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
     "Failed to resolve member while handling ask button."
   )
     .andThen((memberId) => toResultAsync(guardRegisteredMemberId(memberId)))
@@ -115,12 +110,12 @@ const loadMemberStep = (context: AskPipelineWithSession): ResultAsync<AskPipelin
 
 const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> =>
   fromDatabasePromise(
-    upsertResponse(context.db, {
+    context.context.ports.responses.upsertResponse({
       id: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,
       choice: context.choice,
-      answeredAt: context.clock.now()
+      answeredAt: context.context.clock.now()
     }),
     "Failed to record ask response."
   )
@@ -148,7 +143,7 @@ const applyDecisionStep = (
   }
 
   return ResultAsync.fromPromise(
-    applyDeadlineDecision(context.deps.client, context.db, context.session, decision),
+    applyDeadlineDecision(context.deps.client, context.context, context.session, decision),
     (cause) => toAppError(cause, "Failed to apply ask deadline decision.")
   );
 };
@@ -156,8 +151,8 @@ const applyDecisionStep = (
 const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
   fromDatabasePromise(
     Promise.all([
-      listResponses(context.db, context.sessionId),
-      listMembers(context.db)
+      context.context.ports.responses.listResponses(context.sessionId),
+      context.context.ports.members.listMembers()
     ]),
     "Failed to load ask message snapshot."
   )
@@ -177,7 +172,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
     })
     .andThen(({ responses, memberRows }) =>
       fromDatabasePromise(
-        findSessionById(context.db, context.sessionId),
+        context.context.ports.sessions.findSessionById(context.sessionId),
         "Failed to reload session after ask response."
       ).map((freshSession) => ({
         freshSession,
@@ -258,8 +253,7 @@ export const handleAskButton = async (
   const pipelineStart: AskPipelineStart = {
     interaction,
     deps,
-    db: deps.db ?? defaultDb,
-    clock: deps.clock ?? systemClock
+    context: deps.context
   };
 
   const result = await validateAskPipeline(pipelineStart)
