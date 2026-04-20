@@ -14,10 +14,39 @@ describe("time utilities", () => {
     // regression: 2021-01-01 は ISO 的には 2020-W53 に属する (年跨ぎ)。
     expect(isoWeekKey(new Date("2021-01-01T00:00:00+09:00"))).toBe("2020-W53");
     expect(isoWeekKey(new Date("2026-01-02T00:00:00+09:00"))).toBe("2026-W01");
-    // regression: 2027-01-01 (金) と 2027-01-02 (土) は同一 ISO week (2026-W53) でなければならない。
-    //   金曜 Session と翌土曜順延 Session が同じ weekKey を共有する前提。
-    expect(isoWeekKey(new Date("2027-01-01T08:00:00+09:00"))).toBe("2026-W53");
-    expect(isoWeekKey(new Date("2027-01-02T08:00:00+09:00"))).toBe("2026-W53");
+  });
+
+  // regression: 金曜 Session と翌土曜順延 Session は同一 weekKey を共有しなければならない。
+  //   calendar year 跨ぎ (Fri=12/31 / Sat=01/01) や ISO W53 年 (2026/2032 isoYear) で暦年と
+  //   ISO year が乖離するケースが仕様上最もズレやすい。2024–2035 の境界ペアを網羅。
+  // iso-week: date-fns/getISOWeekYear + getISOWeek の併用が守られているかを検証する invariant。
+  // @see src/time/index.ts isoWeekKey, requirements/base.md §2 (weekKey)
+  describe.each<{
+    label: string;
+    fri: string;
+    sat: string;
+    weekKey: string;
+  }>([
+    // 年跨ぎ + ISO W53 (Fri が 12/31、Sat が 01/01、両日とも前暦年の W53)
+    { label: "2026→2027 boundary (W53)", fri: "2026-12-31", sat: "2027-01-01", weekKey: "2026-W53" },
+    // 年跨ぎ + ISO W52 (Fri が 12/31、Sat が 01/01、両日とも前暦年の W52)
+    { label: "2027→2028 boundary (W52)", fri: "2027-12-31", sat: "2028-01-01", weekKey: "2027-W52" },
+    // 年跨ぎ + ISO W53 (2032 は 53 週年)
+    { label: "2032→2033 boundary (W53)", fri: "2032-12-31", sat: "2033-01-01", weekKey: "2032-W53" },
+    // 暦年内だが Jan 第1週 / Dec 最終週 (ISO year は暦年と一致)
+    { label: "2025 first week", fri: "2025-01-03", sat: "2025-01-04", weekKey: "2025-W01" },
+    { label: "2025 last week", fri: "2025-12-26", sat: "2025-12-27", weekKey: "2025-W52" },
+    { label: "2028 first week", fri: "2028-01-07", sat: "2028-01-08", weekKey: "2028-W01" },
+    { label: "2030 last week", fri: "2030-12-27", sat: "2030-12-28", weekKey: "2030-W52" },
+    { label: "2034 first week", fri: "2034-01-06", sat: "2034-01-07", weekKey: "2034-W01" },
+    { label: "2035 last week", fri: "2035-12-28", sat: "2035-12-29", weekKey: "2035-W52" }
+  ])("Fri/Sat pair shares weekKey: $label", ({ fri, sat, weekKey }) => {
+    it(`${fri} (Fri) → ${weekKey}`, () => {
+      expect(isoWeekKey(new Date(`${fri}T08:00:00+09:00`))).toBe(weekKey);
+    });
+    it(`${sat} (Sat) → ${weekKey}`, () => {
+      expect(isoWeekKey(new Date(`${sat}T08:00:00+09:00`))).toBe(weekKey);
+    });
   });
 
   it("returns the input date as candidate date for /ask", () => {

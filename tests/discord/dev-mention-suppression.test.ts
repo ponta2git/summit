@@ -2,7 +2,7 @@
 //   filter(Boolean) の空行消失や settle.ts の先頭改行残存など、実装時の地雷の回帰防止を兼ねる。
 // @see docs/adr/0011-dev-mention-suppression.md
 import { ChannelType, type Client } from "discord.js";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type * as SessionRepos from "../../src/db/repositories/sessions.js";
 import type { DbLike, SessionRow } from "../../src/db/repositories/sessions.js";
@@ -39,6 +39,12 @@ let settle: Settle;
 let envModule: Env;
 let repos: typeof SessionRepos;
 
+// why: 対象モジュール (render / postponeMessage / settle / env / repos) は全て env を
+//   モジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下で
+//   再 import する必要がある。cold load が支配的コスト (~1.5s) なので `beforeAll` で
+//   1 度だけ償却する。`beforeEach` 化すると 4 倍に増える。
+// invariant: 以下のテストは全て DEV_SUPPRESS_MENTIONS=true を前提にした regression。
+//   env-independent な assertion は含めない (env=false 側は client.test.ts / render.test.ts でカバー)。
 beforeAll(async () => {
   vi.stubEnv("DEV_SUPPRESS_MENTIONS", "true");
   vi.resetModules();
@@ -47,6 +53,12 @@ beforeAll(async () => {
   postponeRender = await import("../../src/discord/postponeMessage.js");
   settle = await import("../../src/discord/settle.js");
   repos = await import("../../src/db/repositories/sessions.js");
+});
+
+// race: beforeAll で import した repos のモック履歴がテスト間で共有されるのを防ぐ。
+//   将来のテスト追加時に順序結合バグを招かないためのガード。
+afterEach(() => {
+  vi.clearAllMocks();
 });
 
 afterAll(() => {
@@ -58,11 +70,13 @@ const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-suppress", askMessageId: "ask-msg-1", ...overrides });
 
 describe("DEV_SUPPRESS_MENTIONS=true", () => {
-  it("env parses the flag as true", () => {
-    expect(envModule.env.DEV_SUPPRESS_MENTIONS).toBe(true);
-  });
-
+  // why: 以下 4 件はどれも env=true を前提にした振る舞いを検証する。env parse 自体の
+  //   invariant (defaults / "true"/"false"/"1"/"0"/"yes"/"no" / invalid) は
+  //   tests/env/env.test.ts で網羅済みのためここでは重複させない。
+  //   beforeAll の setup が誤ると下 4 件が同時に失敗するため、故障検知の側面でも冗長。
   it("renderAskBody content contains no <@ mentions", () => {
+    // invariant: envModule は stub 後に import 済みであること (setup 故障検知)。
+    expect(envModule.env.DEV_SUPPRESS_MENTIONS).toBe(true);
     const rendered = askRender.renderAskBody(sessionRow(), [], new Map());
     expect(rendered.content).not.toContain("<@");
     expect(rendered.content).toContain("開催候補日");

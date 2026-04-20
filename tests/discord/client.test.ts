@@ -1,40 +1,37 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("createDiscordClient", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
   });
 
-  it("does not set allowedMentions when DEV_SUPPRESS_MENTIONS is unset (production default)", async () => {
-    vi.stubEnv("DEV_SUPPRESS_MENTIONS", "");
-    const { createDiscordClient } = await import("../../src/discord/client.js");
-    const client = createDiscordClient();
+  // regression: DEV_SUPPRESS_MENTIONS が false 側 (未設定 / "" / "false") のとき Client-level の
+  //   allowedMentions は抑止モードにならないこと。discord.js は未指定時の値に `{}` / `undefined` の
+  //   ぶれがあるため、`parse !== []` (= 全抑止ではない) だけを invariant として検証する。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  it.each<{ label: string; value: string }>([
+    { label: "unset (empty)", value: "" },
+    { label: "explicit false", value: "false" }
+  ])(
+    "does not suppress mentions when DEV_SUPPRESS_MENTIONS is $label",
+    async ({ value }) => {
+      vi.stubEnv("DEV_SUPPRESS_MENTIONS", value);
+      vi.resetModules();
+      const { createDiscordClient } = await import("../../src/discord/client.js");
+      const client = createDiscordClient();
 
-    // why: discord.js は未指定時に {} または undefined を入れる実装上の幅がある。
-    //   parse:[] (全抑止) になっていないことだけを回帰テストで担保する。
-    const am = client.options.allowedMentions;
-    expect(am?.parse).not.toEqual([]);
-  });
+      const am = client.options.allowedMentions;
+      expect(am?.parse).not.toEqual([]);
+    }
+  );
 
   it("sets allowedMentions.parse=[] when DEV_SUPPRESS_MENTIONS=true", async () => {
     vi.stubEnv("DEV_SUPPRESS_MENTIONS", "true");
+    vi.resetModules();
     const { createDiscordClient } = await import("../../src/discord/client.js");
     const client = createDiscordClient();
 
     expect(client.options.allowedMentions).toEqual({ parse: [] });
-  });
-
-  it("keeps default allowedMentions when DEV_SUPPRESS_MENTIONS=false", async () => {
-    vi.stubEnv("DEV_SUPPRESS_MENTIONS", "false");
-    const { createDiscordClient } = await import("../../src/discord/client.js");
-    const client = createDiscordClient();
-
-    const am = client.options.allowedMentions;
-    expect(am?.parse).not.toEqual([]);
   });
 });
