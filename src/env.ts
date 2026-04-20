@@ -9,11 +9,16 @@ process.env.TZ ??= "Asia/Tokyo";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 
+// why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
+// invariant: 固定 4 名運用（requirements/base.md §1）。env.MEMBER_USER_IDS はこの長さを満たす。
+//   config.ts が env.ts に依存するため、循環参照回避のためこの位置で定義し config.ts から re-export する。
+export const MEMBER_COUNT_EXPECTED = 4 as const;
+
 export const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_GUILD_ID: discordId,
   DISCORD_CHANNEL_ID: discordId,
-  // invariant: 固定 4 名運用。length(4) を崩すと勝敗判定・通知対象・seed が破綻する。
+  // invariant: 固定 4 名運用。MEMBER_COUNT_EXPECTED を崩すと勝敗判定・通知対象・seed が破綻する。
   //   5 人目メンバーの扱いは仕様未定 (todo(ai)) のため、追加時は requirements/base.md の更新と合わせて変更する。
   MEMBER_USER_IDS: z
     .string()
@@ -23,7 +28,7 @@ export const envSchema = z.object({
         .map((part) => part.trim())
         .filter((part) => part.length > 0)
     )
-    .pipe(z.array(discordId).length(4)),
+    .pipe(z.array(discordId).length(MEMBER_COUNT_EXPECTED)),
   DATABASE_URL: z.string().url(),
   // jst: TZ は Asia/Tokyo 固定のみ許可する (DST なし、仕様上他地域での運用想定なし)。
   TZ: z.literal("Asia/Tokyo"),

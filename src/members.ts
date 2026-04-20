@@ -1,3 +1,5 @@
+import { MEMBER_COUNT_EXPECTED } from "./config.js";
+
 const DISPLAY_NAMES = ["いーゆー", "おーたか", "あかねまみ", "ぽんた"] as const;
 
 export interface MemberLine {
@@ -7,13 +9,13 @@ export interface MemberLine {
 
 export const buildMemberLines = (memberUserIds: readonly string[]): ReadonlyArray<MemberLine> => {
   if (memberUserIds.length !== DISPLAY_NAMES.length) {
-    throw new Error("MEMBER_USER_IDS must contain exactly 4 members.");
+    throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
   }
 
   return DISPLAY_NAMES.map((displayName, index) => {
     const userId = memberUserIds[index];
     if (!userId) {
-      throw new Error("MEMBER_USER_IDS must contain exactly 4 members.");
+      throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
     }
     return {
       userId,
