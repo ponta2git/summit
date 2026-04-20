@@ -46,11 +46,11 @@ describeDb("sessions repository contract (integration)", () => {
 
     // members 4 名 seed。beforeEach の TRUNCATE では CASCADE しないため、ここで一度だけ挿入する。
     await db.execute(sql`
-      INSERT INTO members (id, user_id) VALUES
-        ('m1','333333333333333333'),
-        ('m2','444444444444444444'),
-        ('m3','555555555555555555'),
-        ('m4','666666666666666666')
+      INSERT INTO members (id, user_id, display_name) VALUES
+        ('m1','333333333333333333','Member1'),
+        ('m2','444444444444444444','Member2'),
+        ('m3','555555555555555555','Member3'),
+        ('m4','666666666666666666','Member4')
       ON CONFLICT (id) DO NOTHING
     `);
   });
