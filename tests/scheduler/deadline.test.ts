@@ -6,12 +6,12 @@ import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
-vi.mock("../../src/discord/settle.js", () => ({
+vi.mock("../../src/discord/settle/index.js", () => ({
   evaluateAndApplyDeadlineDecision: vi.fn(async () => {}),
   settlePostponeVotingSession: vi.fn(async () => {})
 }));
 
-const settle = await import("../../src/discord/settle.js");
+const settle = await import("../../src/discord/settle/index.js");
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
   "../../src/scheduler/index.js"
 );

@@ -63,3 +63,5 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0017](./0017-rejected-architecture-alternatives.md) | 却下したアーキテクチャ代替案（XState / effect-ts / OpenTelemetry / event sourcing 他） | accepted | 2026-04-23 | runtime, ops, docs |
 | [0018](./0018-port-wiring-and-factory-injection.md) | ポート境界と factory 注入によるテスト可能な合成 | accepted | 2026-04-24 | runtime, testing, docs |
 | [0019](./0019-postpone-voting-and-saturday-reask-flow.md) | 順延投票と土曜再募集フローの確定（POSTPONE_VOTING / 即時 Saturday ASKING） | accepted | 2026-04-24 | runtime, discord, db, time, ops |
+| [0020](./0020-discord-module-restructuring.md) | Discord モジュール再編（postpone/ 対称化と settle/ 分割） | accepted | 2026-04-24 | runtime, discord, docs |
+| [0021](./0021-neverthrow-scope-reaffirmed.md) | neverthrow 全面採用の却下とスコープ再確認 | accepted | 2026-04-24 | runtime, ops |

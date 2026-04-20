@@ -6,7 +6,7 @@ import {
   applyDeadlineDecision,
   settleAskingSession,
   settlePostponeVotingSession
-} from "../../src/discord/settle.js";
+} from "../../src/discord/settle/index.js";
 import { env } from "../../src/env.js";
 import { createTestAppContext } from "../testing/index.js";
 

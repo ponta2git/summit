@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import { ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../composition.js";
 import type { SessionRow } from "../../db/types.js";
 import {
-  DatabaseError,
   type AppError,
   type AppResult,
   okResult,
   toAppError
 } from "../../errors/index.js";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
-import { renderPostponeBody } from "../postponeMessage.js";
+import { renderPostponeBody } from "../postpone/render.js";
 import { buildPostponeMessageViewModel } from "../viewModels.js";
 import {
   getGuardFailureReason,
@@ -27,7 +27,7 @@ import {
   guardSessionPostponeVoting,
   GUARD_REASON_TO_MESSAGE
 } from "../guards.js";
-import { settlePostponeVotingSession } from "../settle.js";
+import { settlePostponeVotingSession } from "../settle/index.js";
 import type { InteractionHandlerDeps } from "../dispatcher.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
@@ -54,18 +54,6 @@ interface PostponePipelineWithSession extends PostponePipelineParsed {
 interface PostponePipelineReady extends PostponePipelineWithSession {
   readonly memberId: string;
 }
-
-const toResultAsync = <T, E extends AppError>(result: AppResult<T, E>): ResultAsync<T, E> =>
-  result.match(
-    (value) => okAsync(value),
-    (error) => errAsync(error)
-  );
-
-const fromDatabasePromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DatabaseError> =>
-  ResultAsync.fromPromise(
-    promise,
-    (cause) => new DatabaseError(message, { cause })
-  );
 
 const validatePostponePipeline = (context: PostponePipelineStart): AppResult<PostponePipelineParsed, AppError> =>
   okResult(context)
@@ -243,8 +231,7 @@ export const handlePostponeButton = async (
     context: deps.context
   };
 
-  const result = await validatePostponePipeline(pipelineStart)
-    .asyncMap(async (validated) => validated)
+  const result = await toResultAsync(validatePostponePipeline(pipelineStart))
     .andThen(loadSessionStep)
     .andThen(loadMemberStep)
     .andThen(recordResponseStep)

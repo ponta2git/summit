@@ -171,9 +171,9 @@ export const transitionStatus = async (
   db: DbLike,
   input: TransitionInput
 ): Promise<SessionRow | undefined> => {
-  const patch: Record<string, unknown> = {
+  const patch: Partial<typeof sessions.$inferInsert> = {
     status: input.to,
-    updatedAt: sql`now()`
+    updatedAt: sql`now()` as unknown as Date
   };
   if (input.cancelReason !== undefined) {patch.cancelReason = input.cancelReason;}
   if (input.decidedStartAt !== undefined) {patch.decidedStartAt = input.decidedStartAt;}

@@ -3,8 +3,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import type { SessionRow } from "../../src/db/types.js";
 import type * as AskRenderModule from "../../src/discord/ask/render.js";
-import type * as PostponeModule from "../../src/discord/postponeMessage.js";
-import type * as SettleModule from "../../src/discord/settle.js";
+import type * as PostponeModule from "../../src/discord/postpone/render.js";
+import type * as SettleModule from "../../src/discord/settle/index.js";
 import type * as ViewModelsModule from "../../src/discord/viewModels.js";
 import type * as EnvModule from "../../src/env.js";
 import type * as TestingModule from "../testing/index.js";
@@ -25,7 +25,7 @@ let viewModels: ViewModels;
 let envModule: Env;
 let testing: Testing;
 
-// why: 対象モジュール (render / postponeMessage / settle / viewModels / env) は全て env を
+// why: 対象モジュール (render / postpone/render / settle / viewModels / env) は全て env を
 //   モジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下で
 //   再 import する必要がある。cold load が支配的コスト (~1.5s) なので `beforeAll` で
 //   1 度だけ償却する。`beforeEach` 化すると 4 倍に増える。
@@ -36,8 +36,8 @@ beforeAll(async () => {
   vi.resetModules();
   envModule = await import("../../src/env.js");
   askRender = await import("../../src/discord/ask/render.js");
-  postponeRender = await import("../../src/discord/postponeMessage.js");
-  settle = await import("../../src/discord/settle.js");
+  postponeRender = await import("../../src/discord/postpone/render.js");
+  settle = await import("../../src/discord/settle/index.js");
   viewModels = await import("../../src/discord/viewModels.js");
   testing = await import("../testing/index.js");
 });

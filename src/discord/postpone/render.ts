@@ -9,10 +9,10 @@ import {
   BUTTON_LABEL_POSTPONE_OK,
   BUTTON_STYLE_POSTPONE_NG,
   BUTTON_STYLE_POSTPONE_OK
-} from "../constants.js";
-import { messages } from "../messages.js";
-import { buildCustomId } from "./customId.js";
-import type { PostponeMessageViewModel } from "./viewModels.js";
+} from "../../constants.js";
+import { messages } from "../../messages.js";
+import { buildCustomId } from "../customId.js";
+import type { PostponeMessageViewModel } from "../viewModels.js";
 
 export const buildPostponeRow = (
   sessionId: string,

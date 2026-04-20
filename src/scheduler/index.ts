@@ -14,7 +14,7 @@ import {
   type SendAskMessageContext,
   type SendAskMessageResult
 } from "../discord/ask/send.js";
-import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../discord/settle.js";
+import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../discord/settle/index.js";
 import { logger } from "../logger.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;

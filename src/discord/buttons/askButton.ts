@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import { ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../composition.js";
 import type { SessionRow } from "../../db/types.js";
 import {
-  DatabaseError,
   type AppError,
   type AppResult,
   okResult,
   toAppError
 } from "../../errors/index.js";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
 import { evaluateDeadline } from "../../domain/index.js";
 import { renderAskBody } from "../ask/render.js";
+import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "../ask/choiceMap.js";
 import { buildAskMessageViewModel } from "../viewModels.js";
-import type { AskCustomIdChoice } from "../customId.js";
 import {
   getGuardFailureReason,
   guardAskCustomId,
@@ -28,17 +28,9 @@ import {
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
 } from "../guards.js";
-import { applyDeadlineDecision } from "../settle.js";
+import { applyDeadlineDecision } from "../settle/index.js";
 import { env } from "../../env.js";
 import type { InteractionHandlerDeps } from "../dispatcher.js";
-
-const ASK_CUSTOM_ID_TO_DB_CHOICE: Record<AskCustomIdChoice, "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT"> = {
-  t2200: "T2200",
-  t2230: "T2230",
-  t2300: "T2300",
-  t2330: "T2330",
-  absent: "ABSENT"
-};
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -48,7 +40,7 @@ interface AskPipelineStart {
 
 interface AskPipelineParsed extends AskPipelineStart {
   readonly sessionId: string;
-  readonly choice: "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT";
+  readonly choice: AskDbChoice;
 }
 
 interface AskPipelineWithSession extends AskPipelineParsed {
@@ -58,18 +50,6 @@ interface AskPipelineWithSession extends AskPipelineParsed {
 interface AskPipelineReady extends AskPipelineWithSession {
   readonly memberId: string;
 }
-
-const toResultAsync = <T, E extends AppError>(result: AppResult<T, E>): ResultAsync<T, E> =>
-  result.match(
-    (value) => okAsync(value),
-    (error) => errAsync(error)
-  );
-
-const fromDatabasePromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DatabaseError> =>
-  ResultAsync.fromPromise(
-    promise,
-    (cause) => new DatabaseError(message, { cause })
-  );
 
 const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelineParsed, AppError> =>
   okResult(context)
@@ -256,8 +236,7 @@ export const handleAskButton = async (
     context: deps.context
   };
 
-  const result = await validateAskPipeline(pipelineStart)
-    .asyncMap(async (validated) => validated)
+  const result = await toResultAsync(validateAskPipeline(pipelineStart))
     .andThen(loadSessionStep)
     .andThen(loadMemberStep)
     .andThen(recordResponseStep)
