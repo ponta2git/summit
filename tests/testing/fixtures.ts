@@ -4,7 +4,7 @@ import type {
   ResponseRow,
   SessionRow,
   SessionStatus
-} from "../../src/ports/index.js";
+} from "../../src/db/ports.js";
 
 export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => ({
   id: "session-1",

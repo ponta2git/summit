@@ -15,7 +15,7 @@ import {
 import { messages } from "../../messages.js";
 import {
   slotKeyFromCustomIdChoice
-} from "../../domain/index.js";
+} from "../../slot.js";
 import { buildCustomId, type AskCustomIdChoice } from "../../discord/shared/customId.js";
 import type { AskMessageViewModel } from "../../discord/shared/viewModels.js";
 

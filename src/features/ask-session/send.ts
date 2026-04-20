@@ -5,7 +5,7 @@ import { ChannelType, type Client } from "discord.js";
 import type { AppContext } from "../../composition.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
-import type { SessionRow } from "../../ports/index.js";
+import type { SessionRow } from "../../db/ports.js";
 import { isShuttingDown } from "../../shutdown.js";
 import {
   candidateDateForAsk,

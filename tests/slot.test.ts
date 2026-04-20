@@ -8,9 +8,9 @@ import {
   slotKeyFromCustomIdChoice,
   slotKeyFromDbChoice,
   slotKeySchema
-} from "../../src/domain/slot.js";
+} from "../src/slot.js";
 
-describe("domain slot", () => {
+describe("slot", () => {
   it("parses valid SlotKey values via zod schema", () => {
     for (const slotKey of SLOT_KEYS) {
       expect(slotKeySchema.parse(slotKey)).toBe(slotKey);

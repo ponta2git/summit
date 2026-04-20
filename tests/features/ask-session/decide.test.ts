@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { ResponseRow, SessionRow } from "../../src/db/types.js";
-import { evaluateDeadline } from "../../src/domain/deadline.js";
-import { buildSessionRow } from "../scheduler/factories/session.js";
+import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
+import { evaluateDeadline } from "../../../src/features/ask-session/decide.js";
+import { buildSessionRow } from "../../scheduler/factories/session.js";
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-1", ...overrides });

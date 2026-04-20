@@ -4,7 +4,7 @@ import { ButtonStyle } from "discord.js";
 import {
   dbChoiceFromSlotKey,
   type SlotKey
-} from "./domain/slot.js";
+} from "./slot.js";
 
 // --- Ask button labels ---
 export const BUTTON_LABEL_ASK_T2200 = "22:00" as const;
@@ -27,7 +27,7 @@ export const BUTTON_STYLE_POSTPONE_NG = ButtonStyle.Secondary;
  * Ask button label map keyed by canonical SlotKey.
  *
  * @remarks
- * source-of-truth: SlotKey は domain/slot.ts
+ * source-of-truth: SlotKey は src/slot.ts
  */
 export const ASK_BUTTON_LABELS = {
   T2200: BUTTON_LABEL_ASK_T2200,

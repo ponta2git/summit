@@ -15,7 +15,7 @@ import type {
   SessionsPort,
   TransitionInput,
   UpsertResponseInput
-} from "../../src/ports/index.js";
+} from "../../src/db/ports.js";
 
 import { makeMember, makeResponse, makeSession } from "./fixtures.js";
 

@@ -69,3 +69,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0023](./0023-cancel-week-command-flow.md) | `/cancel_week` の確認ダイアログと週単位 SKIPPED 収束フロー | accepted | 2026-04-24 | discord, runtime, db, ops |
 | [0024](./0024-reminder-dispatch.md) | 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング | accepted | 2026-04-25 | runtime, discord, db, time |
 | [0025](./0025-features-directory-migration.md) | feature 単位ディレクトリ（src/features/）への再編 | accepted | 2026-04-25 | runtime, discord, docs |
+| [0026](./0026-boundary-rationalization.md) | 境界の再整理（domain 廃止・ports の DB 境界明示・非対称性の追認） | accepted | 2026-04-25 | runtime, db, discord, docs |

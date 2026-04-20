@@ -1,8 +1,8 @@
 // why: repository を束ねて AppPorts を構成する production 実装。db ハンドルを closure で保持する。
-// invariant: 契約は src/ports/index.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue に徹する。
+// invariant: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue に徹する。
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
 
-import type { DbLike } from "../db/types.js";
+import type { DbLike } from "./types.js";
 import {
   createAskSession,
   findDueAskingSessions,
@@ -17,16 +17,16 @@ import {
   transitionStatus,
   updateAskMessageId,
   updatePostponeMessageId
-} from "../db/repositories/sessions.js";
+} from "./repositories/sessions.js";
 import {
   listResponses,
   upsertResponse
-} from "../db/repositories/responses.js";
+} from "./repositories/responses.js";
 import {
   findMemberIdByUserId,
   listMembers
-} from "../db/repositories/members.js";
-import type { AppPorts, MembersPort, ResponsesPort, SessionsPort } from "./index.js";
+} from "./repositories/members.js";
+import type { AppPorts, MembersPort, ResponsesPort, SessionsPort } from "./ports.js";
 
 const makeSessionsPort = (db: DbLike): SessionsPort => ({
   createAskSession: (input) => createAskSession(db, input),

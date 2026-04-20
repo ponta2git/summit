@@ -4,8 +4,8 @@
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
 
 import { db as defaultDb } from "./db/client.js";
-import type { AppPorts } from "./ports/index.js";
-import { makeRealPorts } from "./ports/real.js";
+import type { AppPorts } from "./db/ports.js";
+import { makeRealPorts } from "./db/ports.real.js";
 import { systemClock, type Clock } from "./time/index.js";
 
 export interface AppContext {

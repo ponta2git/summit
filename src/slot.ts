@@ -2,8 +2,7 @@ import { z } from "zod";
 
 export type SlotKey = "T2200" | "T2230" | "T2300" | "T2330";
 
-// why: slot SSoT を domain/slot.ts に統一 (ADR-0013, ADR-0014)
-// source-of-truth: SlotKey は domain/slot.ts
+// source-of-truth: wire format (customId / DB choice) と label mapping の SSoT。cross-cutting なため src/ 直下に配置（ADR-0026）。
 export const SLOT_KEYS: readonly SlotKey[] = ["T2200", "T2230", "T2300", "T2330"] as const;
 
 export const slotKeySchema = z.enum(SLOT_KEYS);

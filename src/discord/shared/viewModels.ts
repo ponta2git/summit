@@ -1,7 +1,7 @@
 // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
 // invariant: viewModel は pure (I/O なし、Date.now なし)
 
-import { slotKeySchema } from "../../domain/index.js";
+import { slotKeySchema } from "../../slot.js";
 import { env } from "../../env.js";
 import { messages, type SettleCancelReason } from "../../messages.js";
 import {
@@ -233,7 +233,7 @@ const SLOT_TO_LABEL: Record<AskTimeChoice, string> = {
  *
  * @remarks
  * Pure. session.decidedStartAt と env.MEMBER_USER_IDS 順の response+member から memberLines を組む。
- * DECIDED セッションは全員が時間回答済み (ABSENT 不在) の invariant を domain/deadline で保証しており、
+ * DECIDED セッションは全員が時間回答済み (ABSENT 不在) の invariant を features/ask-session/decide で保証しており、
  * ここでは未回答/ABSENT は "-" で fallback 表示する (直前に race で変わっても壊れないように)。
  * @see requirements/base.md §5.1
  */

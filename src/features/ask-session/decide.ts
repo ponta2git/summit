@@ -1,10 +1,10 @@
-import type { ResponseRow, SessionRow } from "../db/types.js";
+import type { ResponseRow, SessionRow } from "../../db/types.js";
 import {
   decidedStartAt,
   latestChoice,
   parseCandidateDateIso,
   type AskTimeChoice
-} from "../time/index.js";
+} from "../../time/index.js";
 
 export type SlotKey = AskTimeChoice;
 
@@ -23,7 +23,7 @@ const isAskTimeChoice = (choice: ResponseRow["choice"]): choice is AskTimeChoice
 
 // why: decision logic を domain に抽出して interactions/settle 重複排除
 // invariant: evaluateDeadline は pure (I/O 無し、Date.now 無し)
-// source-of-truth: 判定ロジックは domain/deadline.ts が正本
+// source-of-truth: ask session の締切判定ロジックは本ファイルが正本
 export const evaluateDeadline = (
   session: SessionRow,
   responses: readonly ResponseRow[],

@@ -13,7 +13,7 @@ import {
 import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
-import { evaluateDeadline } from "../../domain/index.js";
+import { evaluateDeadline } from "./decide.js";
 import { renderAskBody } from "./render.js";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
 import { buildAskMessageViewModel } from "../../discord/shared/viewModels.js";
@@ -140,7 +140,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
       const activeMembers = memberRows.filter((member) =>
         env.MEMBER_USER_IDS.includes(member.userId)
       );
-      // source-of-truth: 判定ロジックは domain/deadline.ts が正本。
+      // source-of-truth: 判定ロジックは features/ask-session/decide.ts が正本。
       const decision = evaluateDeadline(context.session, responses, {
         memberCountExpected: activeMembers.length
       });

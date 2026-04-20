@@ -1,5 +1,5 @@
 import { formatCandidateJa, parseCandidateDateIso } from "./time/index.js";
-import type { SlotKey } from "./domain/slot.js";
+import type { SlotKey } from "./slot.js";
 
 export type SettleCancelReason = "absent" | "deadline_unanswered" | "saturday_cancelled";
 

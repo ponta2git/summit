@@ -1,19 +1,21 @@
-// source-of-truth: domain 層が依存する infra 契約。repository 実装はここを `satisfies` し、
+// source-of-truth: DB 境界を表す port 契約。repository 実装はここを `satisfies` し、
 //   テストは Fake 実装でここを満たす。call-site は `ctx.ports.sessions.findSessionById(id)` 形で読める。
-// why: db ハンドルは port 実装が closure で保持する。call-site を db 非依存にし、vi.mock への依存を解消する。
+// why: db ハンドルを port 実装が closure で保持し、call-site を db 非依存にする。Discord client は
+//   抽象化しない（ADR-0017）。この非対称は意図的で、DB は testability の要、Discord は discord.js を直接扱う方がシンプル。
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
+// @see docs/adr/0026-boundary-rationalization.md
 
 import type {
   MemberRow,
   ResponseRow,
   SessionRow,
   SessionStatus
-} from "../db/types.js";
+} from "./types.js";
 import type {
   CreateAskSessionInput,
   TransitionInput
-} from "../db/repositories/sessions.js";
-import type { UpsertResponseInput } from "../db/repositories/responses.js";
+} from "./repositories/sessions.js";
+import type { UpsertResponseInput } from "./repositories/responses.js";
 
 export type {
   MemberRow,
@@ -24,7 +26,7 @@ export type {
   TransitionInput,
   UpsertResponseInput
 };
-export type { ResponseChoice } from "../db/types.js";
+export type { ResponseChoice } from "./types.js";
 
 /**
  * Session repository operations exposed as a DI port.

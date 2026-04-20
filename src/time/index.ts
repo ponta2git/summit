@@ -16,7 +16,7 @@ import {
   SLOT_KEYS,
   SLOT_TO_MINUTES,
   type SlotKey
-} from "../domain/slot.js";
+} from "../slot.js";
 
 export interface Clock {
   now(): Date;

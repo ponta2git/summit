@@ -2,7 +2,7 @@ import type { Client } from "discord.js";
 
 import type { AppContext } from "../../composition.js";
 import type { ResponseRow, SessionRow } from "../../db/types.js";
-import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "../../domain/index.js";
+import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "./decide.js";
 import { logger } from "../../logger.js";
 import { renderPostponeBody } from "../postpone-voting/render.js";
 import { buildPostponeMessageViewModel, buildSettleNoticeViewModel } from "../../discord/shared/viewModels.js";
@@ -141,7 +141,7 @@ const toCancelReason = (reason: Extract<DecisionResult, { kind: "cancelled" }>["
 
 // why: DecisionResult.kind ごとの処理を strategy map 化し、分岐追加時の影響範囲を局所化する
 // invariant: DecisionResult.kind の全ケースを map key として要求し、未実装を型エラーで検知する
-// source-of-truth: 分岐の起点は DecisionResult.kind（domain/deadline.ts の判定結果）
+// source-of-truth: 分岐の起点は DecisionResult.kind（./decide.ts の判定結果）
 const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
   decided: async ({ client, ctx, session }, decision) => {
     const decided = await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
@@ -178,7 +178,7 @@ export const applyDeadlineDecision = async (
   await applyDeadlineDecisionByStrategy({ client, ctx, session }, decision);
 };
 
-// source-of-truth: 判定ロジックは domain/deadline.ts が正本
+// source-of-truth: 判定ロジックは ./decide.ts が正本
 export const evaluateAndApplyDeadlineDecision = async (
   client: Client,
   ctx: AppContext,

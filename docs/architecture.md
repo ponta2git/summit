@@ -22,16 +22,17 @@ summit（Discord Bot）の実装トポロジ。詳細根拠は `docs/adr/`、業
 
 ## feature 外（変更少）
 - `src/time/`: JST / ISO week / 締切計算（ADR-0002）
-- `src/db/`: Drizzle schema / repositories / client（ADR-0003）
-- `src/ports/`: AppContext とポート群（ADR-0018）
+- `src/db/`: Drizzle schema / repositories / client / **ports**（ADR-0003, ADR-0018, ADR-0026）
+- `src/slot.ts`: wire format SSoT（SlotKey / customId choice / DB enum mapping, ADR-0013, ADR-0026）
 - `src/scheduler/`: cron 登録（registry 方式）
+- `src/members/`: 起動時 env→DB 同期
 - `src/env.ts`, `src/config.ts`, `src/messages.ts`: SSoT（ADR-0022）
 
 ## 依存方向
 ```
-features/* ──► discord/shared/ ──► ports/ ──► db/, time/
-          ╰────► messages.ts, env.ts, config.ts
+features/* ──► discord/shared/ ──► db/ports ──► db/repositories, time/
+          ╰────► slot.ts, messages.ts, env.ts, config.ts
 scheduler/ ──► features/*.settle, features/*.send
 index.ts ──► scheduler/, dispatcher
 ```
-feature 相互依存は避ける。共通化が必要なら `discord/shared/` に抽出する（ADR-0025）。
+feature 相互依存は避ける。共通化が必要なら `discord/shared/` に抽出する（ADR-0025, ADR-0026）。

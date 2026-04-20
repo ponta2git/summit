@@ -8,7 +8,7 @@ import type { ResponseRow, SessionRow } from "../../db/types.js";
 import {
   evaluatePostponeVote,
   type PostponeDecisionResult
-} from "../../domain/index.js";
+} from "./decide.js";
 import { logger } from "../../logger.js";
 import {
   deadlineFor,
