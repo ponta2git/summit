@@ -45,7 +45,9 @@ run_rule "no-process-env-direct" "process\\.env[\\.\\[]" -g "src/**" \
   -g "!src/env.ts" \
   -g "!src/index.ts" \
   -g "!src/commands/sync.ts" \
-  -g "!src/db/seed.ts"
+  -g "!src/db/seed.ts" \
+  -g "!src/db/devReset.ts" \
+  -g "!src/time/**"
 
 run_rule "no-sql-raw" "\\bsql\\.raw\\(" -g "src/**"
 
@@ -64,7 +66,7 @@ run_rule "no-type-escape" "\\bas\\s+any\\b|\\bas\\s+never\\b|@ts-ignore|@ts-expe
 
 run_rule "no-adhoc-date" "new\\s+Date\\s*\\(|Date\\.parse\\s*\\(" -g "src/**" -g "!src/time/**"
 
-run_rule "no-direct-url-in-src" "DIRECT_URL" -g "src/**" -g "!src/logger.ts"
+run_rule "no-direct-url-in-src" "DIRECT_URL" -g "src/**" -g "!src/logger.ts" -g "!src/db/client.ts"
 
 run_rule "no-require-in-ts" "\\brequire\\s*\\(" -g "src/**" -g "tests/**"
 

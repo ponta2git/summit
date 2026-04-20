@@ -18,7 +18,8 @@ export default defineConfig({
   },
   casing: "snake_case",
   // why: strict/verbose を有効にしてマイグレーション生成時の曖昧さを排除し、
-  //   運用者が SQL 差分をレビューしやすくする。drizzle-kit push は使わない (generate → migrate 運用)。
+  //   運用者が SQL 差分をレビューしやすくする。generate → review → migrate 運用。
+  // @see docs/adr/0003-postgres-drizzle-operations.md
   strict: true,
   verbose: true
 });
