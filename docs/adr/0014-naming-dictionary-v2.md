@@ -17,7 +17,7 @@ ADR-0010 で動詞辞書（`build*` = pure、`send*` = 副作用、`find*` = DB 
 - `refreshAskMessage`: 辞書にない動詞 `refresh*`。副作用の種類（DB 再読込 / Discord 送信）が名前から読めない。
 - `setAskMessageId` / `setPostponeMessageId`: `set*` prefix は辞書外で、repository の private mutation に該当するものが public に露出している。
 - `candidateDate`（string 型）: `requirements/base.md` の SSoT 語彙は `candidateDateIso`。型と語彙が乖離。
-- `nextFriday18JST`: dead export。現 cron は `0 8 * * 5` で 18 時との整合が失われており、命名が現状と食い違う。
+- `nextFriday18JST`: dead export。現 cron は `src/config.ts` の `CRON_ASK_SCHEDULE` を参照しており、命名に含まれる「18」が現状と食い違う。
 
 これらは ADR-0010 が狙った「grep 可読性」「動詞で副作用の種類が判別できる」効能を損なう。ADR-0010 をそのまま残しつつ、運用ルールを強化する ADR が必要。
 

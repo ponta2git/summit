@@ -186,7 +186,7 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
   // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
   // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
   // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
-  // invariant: ADR-0007 により暫定で金 08:00 JST を維持する。requirements/base.md の 18:00 記述は過渡期の未同期。
+  // why: 暫定スケジュール採用の根拠 → ADR-0007（値は CRON_ASK_SCHEDULE 参照）
   const askTask = cronModule.schedule(
     CRON_ASK_SCHEDULE,
     () => void runScheduledAskTick(sendAsk, context),

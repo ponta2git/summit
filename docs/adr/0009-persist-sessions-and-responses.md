@@ -23,7 +23,7 @@ tags: [runtime, db, discord, ops]
 - 週次重複防止は UNIQUE 制約 + `ON CONFLICT DO NOTHING` で DB 側に寄せ、`lastSentWeekKey` を撤去する。`inFlightSends` は同一プロセス内の同時送信を直列化する Promise mutex として残す（DB チェック前の競合を吸収）。
 - 出欠ボタン押下は `interaction.deferUpdate()` → cheap-first 検証 → `custom_id` zod parse → DB から Session 再取得 → transaction で Response upsert と status 条件付き遷移 → DB から組み立てた内容で `message.edit(...)` する。時刻選択で 4 名全員の時刻が揃えば `ASKING → DECIDED` に遷移する。
 - 欠席押下 / 21:30 締切での未回答検出は共通 helper `settleAskingSession` で扱い、`ASKING → CANCELLED(reason)` → 募集メッセージ再描画 → 中止メッセージ投稿 → 順延確認メッセージ投稿 → `CANCELLED → POSTPONE_VOTING` 遷移 + `postpone_message_id` 保存 を原子的かつ冪等に行う（条件付き UPDATE を使い、複数経路から呼ばれても最初の 1 回だけが後続処理を実行する）。
-- `30 21 * * 5 Asia/Tokyo` の cron tick を `createAskScheduler` に追加し、deadline を過ぎた `ASKING` Session を `settleAskingSession` に流す。scheduler の戻り値は `{askTask, deadlineTask}` に拡張する。
+- 金曜締切の cron tick を `createAskScheduler` に追加し、deadline を過ぎた `ASKING` Session を `settleAskingSession` に流す。cron 式は `src/config.ts` の `CRON_DEADLINE_SCHEDULE`（timezone `Asia/Tokyo`）。scheduler の戻り値は `{askTask, deadlineTask}` に拡張する。
 - 起動時に `findNonTerminalSessions()` で非終端 Session を読み直し、deadline を経過している `ASKING` Session に `settleAskingSession` を走らせる（in-memory 状態を信頼しない）。
 - 順延ボタン (`postpone:{sessionId}:{ok|ng}`) は custom_id 形式と zod 検証だけ ADR-0004 準拠で整え、押下処理は placeholder ephemeral 応答に留める（次 PR で実装）。
 - ADR-0008 は `status: superseded`, `superseded-by: 9` とし、`docs/adr/README.md` Index を更新する。
@@ -31,7 +31,7 @@ tags: [runtime, db, discord, ops]
 ## Consequences
 - **DB が正本**に回帰し、再起動・同時押下・cron と interaction の競合下でも状態整合が保たれる。条件付き UPDATE + UNIQUE 制約で二重実行・二重書き込みが物理的に排除される。
 - 新たに Neon (pooled) への接続が interaction 経路に加わる。`postgres(url, { prepare: false })` の明示が必須。
-- `30 21 * * 5` の新 cron をデプロイ禁止窓（金 17:30〜土 01:00 JST）の **前** にマージ・デプロイする必要がある。PR 本文の運用影響欄で明示する。
+- 新 `CRON_DEADLINE_SCHEDULE`（`src/config.ts`）をデプロイ禁止窓（金 17:30〜土 01:00 JST）の **前** にマージ・デプロイする必要がある。PR 本文の運用影響欄で明示する。
 - 起動時 recovery により、restart で ASKING Session を取りこぼさなくなる代わりに、起動直後に DB I/O が走る。DB 未起動時はアプリ起動に失敗する。
 - ボタン押下で `message.edit` が失敗しても DB 状態は維持し、次 cron tick や次押下での再描画で自然に回復する（DB を巻き戻さない方針、ADR-0004 に準拠）。
 - Operational implications:

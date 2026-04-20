@@ -25,7 +25,7 @@ tags: [runtime, discord, db, time, ops]
 3. `POSTPONE_VOTING` 中に 1 名でも `POSTPONE_NG` を選んだ場合は `CANCELLED`（`cancelReason="postpone_ng"`）で終端化する。
 4. `POSTPONE_VOTING` の締切（候補日翌日 00:00 JST）超過時に未回答者が残る場合は `CANCELLED`（`cancelReason="postpone_unanswered"`）で終端化する。
 5. 土曜 `ASKING`（`postponeCount=1`）は金曜回と同様に判定するが、締切時に未回答または欠席があれば `CANCELLED`（`cancelReason="saturday_cancelled"`）で終端化する。再順延は行わない（`postponeCount` は 0/1 のみ）。
-6. 順延投票締切判定の cron として `CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6"`（JST 土曜 00:00）を採用する。
+6. 順延投票締切判定の cron を `src/config.ts` の `CRON_POSTPONE_DEADLINE_SCHEDULE`（JST 土曜 00:00、`POSTPONE_DEADLINE="24:00"` に対応）として採用する。
 7. 起動時リカバリでは、期限切れ `POSTPONE_VOTING` Session も対象に含めて settle する。
 
 ## Consequences

@@ -17,7 +17,7 @@ tags: [discord, ops, runtime, time]
 - 当プロジェクトは固定 4 名の Bot で不特定多数には公開されないため、手動コマンドの乱用リスクは極めて低く、むしろ手動経路の自由度を確保するメリットが大きい。
 
 ## Decision
-- 自動送信スケジュールを **毎週金曜 08:00 JST** に固定する。cron 式は `0 8 * * 5`（timezone `Asia/Tokyo`、多重起動防止付き）。
+- 自動送信スケジュールを **毎週金曜朝** に固定する。現行値は `src/config.ts` の `CRON_ASK_SCHEDULE`（timezone `Asia/Tokyo`、多重起動防止付き）を参照。
 - `/ask` スラッシュコマンドは **曜日・時刻の制限を設けず、常時実行可能**とする。
   - ただし Interaction 検証（guild / channel / member）と週次重複防止（同一 ISO 週に 1 通）は常に適用する。
 - 手動 `/ask` と cron 自動送信が同一週に重複しないよう、送信経路は共通の `sendAskMessage` に集約し、週キー単位で冪等化する（cron と `/ask` のどちらが先でも、2 通目はスキップされる）。

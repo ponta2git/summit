@@ -3,7 +3,7 @@ import { env } from "./env.js";
 type Hhmm = Readonly<{ hour: number; minute: number }>;
 
 // why: runtime tunables を config.ts に集約 (ADR-0013)
-// invariant: cron 送信時刻は ADR-0007 に基づき金曜 08:00 JST を維持する。
+// why: cron 送信スケジュールは暫定 → ADR-0007
 export const CRON_ASK_SCHEDULE = "0 8 * * 5" as const;
 export const CRON_DEADLINE_SCHEDULE = "30 21 * * 5" as const;
 // jst: 土 00:00 JST = POSTPONE_DEADLINE="24:00" の「候補日翌日 00:00 JST」に対応する。

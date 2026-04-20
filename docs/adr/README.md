@@ -65,3 +65,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0019](./0019-postpone-voting-and-saturday-reask-flow.md) | 順延投票と土曜再募集フローの確定（POSTPONE_VOTING / 即時 Saturday ASKING） | accepted | 2026-04-24 | runtime, discord, db, time, ops |
 | [0020](./0020-discord-module-restructuring.md) | Discord モジュール再編（postpone/ 対称化と settle/ 分割） | accepted | 2026-04-24 | runtime, discord, docs |
 | [0021](./0021-neverthrow-scope-reaffirmed.md) | neverthrow 全面採用の却下とスコープ再確認 | accepted | 2026-04-24 | runtime, ops |
+| [0022](./0022-ssot-taxonomy.md) | SSoT taxonomy（ADR / コード / コメント の役割分担と drift 防止） | accepted | 2026-04-24 | docs, runtime, ops |
