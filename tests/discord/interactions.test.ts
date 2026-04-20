@@ -2,8 +2,10 @@ import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleInteraction } from "../../src/discord/interactions.js";
+import { handleInteraction, registerInteractionHandlers } from "../../src/discord/dispatcher.js";
+import { logger } from "../../src/logger.js";
 import { memberUserId } from "../helpers/env.js";
+
 import {
   buildAskInteraction,
   buildButtonInteraction,
@@ -94,6 +96,76 @@ describe("interaction router", () => {
 
     expect(interaction.followUp).toHaveBeenCalledWith({
       content: "順延投票は受付準備中です。近日公開予定です。",
+      flags: MessageFlags.Ephemeral
+    });
+  });
+
+  it("sends ephemeral feedback for unknown/stale button custom_id", async () => {
+    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const interaction = buildButtonInteraction("totally:unknown:id");
+
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+    expect(interaction.followUp).toHaveBeenCalledWith({
+      content: "このボタンは現在有効ではありません。最新のメッセージから操作してください。",
+      flags: MessageFlags.Ephemeral
+    });
+    expect(loggerWarnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interactionId: "interaction-button",
+        userId: memberUserId,
+        customId: "totally:unknown:id",
+        reason: "unknown_or_stale_button"
+      }),
+      "Unknown or stale button custom_id."
+    );
+    expect(sendAsk).not.toHaveBeenCalled();
+  });
+
+  it("logs and replies when interaction handler crashes in event listener", async () => {
+    const on = vi.fn();
+    const client = { on } as unknown as Client;
+    const loggerErrorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+
+    registerInteractionHandlers(client);
+
+    const listener = on.mock.calls[0]?.[1] as ((interaction: Interaction) => void) | undefined;
+    expect(listener).toBeTypeOf("function");
+    if (!listener) {
+      return;
+    }
+
+    const reply = vi.fn(async () => undefined);
+    const interaction = {
+      id: "interaction-crash",
+      user: { id: memberUserId },
+      replied: false,
+      deferred: false,
+      isChatInputCommand: () => {
+        throw new Error("boom");
+      },
+      isButton: () => false,
+      isMessageComponent: () => false,
+      isRepliable: () => true,
+      reply
+    } as unknown as Interaction;
+
+    listener(interaction);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.any(Error),
+        interactionId: "interaction-crash",
+        userId: memberUserId,
+        customId: undefined
+      }),
+      "interaction handler crashed"
+    );
+    expect(reply).toHaveBeenCalledWith({
+      content: "内部エラーが発生しました。管理者に連絡してください。",
       flags: MessageFlags.Ephemeral
     });
   });
