@@ -2,16 +2,48 @@ import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  findMemberIdByUserId,
+  findSessionById,
+  listMembers,
+  listResponses,
+  upsertResponse
+} from "../../src/db/repositories/index.js";
 import { handleInteraction, registerInteractionHandlers } from "../../src/discord/dispatcher.js";
+import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
 import { messages } from "../../src/messages.js";
 import { memberUserId } from "../helpers/env.js";
+import { buildSessionRow } from "../discord/factories/session.js";
 
 import {
   buildAskInteraction,
   buildButtonInteraction,
   buildCancelInteraction
 } from "../helpers/interaction.js";
+
+// why: askButton 成功パスの検証に必要な DB repository / render のモック。
+//   既存テストは validation 失敗で DB に到達しないため影響しない。
+vi.mock("../../src/db/repositories/index.js", () => ({
+  findSessionById: vi.fn(),
+  findMemberIdByUserId: vi.fn(),
+  upsertResponse: vi.fn(),
+  listResponses: vi.fn(),
+  listMembers: vi.fn(),
+  createAskSession: vi.fn(),
+  findDueAskingSessions: vi.fn(),
+  findNonTerminalSessions: vi.fn(),
+  findSessionByWeekKeyAndPostponeCount: vi.fn(),
+  isNonTerminal: vi.fn(),
+  updateAskMessageId: vi.fn(),
+  updatePostponeMessageId: vi.fn(),
+  transitionStatus: vi.fn()
+}));
+
+vi.mock("../../src/discord/ask/render.js", () => ({
+  renderAskBody: vi.fn(() => ({ content: "mocked-render", components: [] })),
+  buildAskRow: vi.fn()
+}));
 
 const stubClient = {} as unknown as Client;
 
@@ -235,6 +267,43 @@ describe("interaction router", () => {
         content: messages.interaction.reject.notMember,
         flags: MessageFlags.Ephemeral
       });
+    });
+  });
+
+  it("sends ephemeral vote confirmation on successful ask button press", async () => {
+    const testSessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
+    const session = buildSessionRow({ id: testSessionId, askMessageId: "test-msg-id" });
+    const mockMembers = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `member-${i}`,
+      userId,
+      displayName: `Member ${i}`
+    }));
+
+    vi.mocked(findSessionById).mockResolvedValue(session);
+    vi.mocked(findMemberIdByUserId).mockResolvedValue("member-0");
+    vi.mocked(upsertResponse).mockResolvedValue({
+      id: "r1", sessionId: testSessionId, memberId: "member-0",
+      choice: "T2200", answeredAt: new Date()
+    } as never);
+    vi.mocked(listResponses).mockResolvedValue([
+      { id: "r1", sessionId: testSessionId, memberId: "member-0", choice: "T2200", answeredAt: new Date() } as never
+    ]);
+    vi.mocked(listMembers).mockResolvedValue(mockMembers as never);
+
+    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const baseInteraction = buildButtonInteraction(`ask:${testSessionId}:t2200`);
+    const interaction = {
+      ...baseInteraction,
+      message: { edit: vi.fn(async () => undefined) }
+    };
+
+    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+
+    expect(upsertResponse).toHaveBeenCalledOnce();
+    expect(interaction.message.edit).toHaveBeenCalledOnce();
+    expect(interaction.followUp).toHaveBeenCalledWith({
+      content: messages.interaction.voteConfirmed.ask("T2200"),
+      flags: MessageFlags.Ephemeral
     });
   });
 });

@@ -39,6 +39,9 @@ interface PostponeCancelledParams {
   reason: "ng" | "unanswered";
 }
 
+type AskVoteChoice = "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT";
+type PostponeVoteChoice = "ok" | "ng";
+
 // why: user-facing 文言を messages.ts に集約 (ADR-0013)
 // source-of-truth: ユーザー向け文言は messages.ts
 export const messages = {
@@ -118,6 +121,25 @@ export const messages = {
     postpone: {
       pending: "順延投票は受付準備中です。近日公開予定です。"
     },
+    voteConfirmed: {
+      ask: (choice: AskVoteChoice): string => {
+        const labels: Record<AskVoteChoice, string> = {
+          T2200: "22:00 OK",
+          T2230: "22:30 OK",
+          T2300: "23:00 OK",
+          T2330: "23:30 OK",
+          ABSENT: "欠席"
+        };
+        return `回答を受け付けました: ${labels[choice]}`;
+      },
+      postpone: (choice: PostponeVoteChoice): string => {
+        const labels: Record<PostponeVoteChoice, string> = {
+          ok: "OK",
+          ng: "NG"
+        };
+        return `順延投票を受け付けました: ${labels[choice]}`;
+      }
+    },
     unknownCommand: "未対応コマンドです",
     staleButton: "このボタンは現在有効ではありません。最新のメッセージから操作してください。",
     internalError: "内部エラーが発生しました。管理者に連絡してください。"
@@ -161,6 +183,10 @@ export const messages = {
     };
     postpone: {
       pending: string;
+    };
+    voteConfirmed: {
+      ask: (choice: "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT") => string;
+      postpone: (choice: "ok" | "ng") => string;
     };
     unknownCommand: string;
     staleButton: string;

@@ -13,6 +13,7 @@ import {
   toAppError
 } from "../../errors/index.js";
 import { logger } from "../../logger.js";
+import { messages } from "../../messages.js";
 import { evaluateDeadline } from "../../domain/index.js";
 import { systemClock } from "../../time/index.js";
 import { renderAskBody } from "../ask/render.js";
@@ -266,10 +267,38 @@ export const handleAskButton = async (
     .andThen(loadSessionStep)
     .andThen(loadMemberStep)
     .andThen(recordResponseStep)
-    .andThen(refreshAskMessageStep);
+    .andThen((context) =>
+      refreshAskMessageStep(context).map(() => context)
+    );
 
   await result.match(
-    async () => undefined,
+    async (context) => {
+      // why: ボタン押下者に操作の反映を即座にフィードバックし、UX を改善する。
+      // race: followUp 失敗は本処理（DB 更新・メッセージ再描画）に影響させない。Discord 一時障害時でも本処理は完了済み。
+      try {
+        await interaction.followUp({
+          content: messages.interaction.voteConfirmed.ask(context.choice),
+          flags: MessageFlags.Ephemeral
+        });
+        logger.info(
+          {
+            userId: interaction.user.id,
+            sessionId: context.sessionId,
+            choice: context.choice
+          },
+          "voteConfirmSent"
+        );
+      } catch (err: unknown) {
+        logger.warn(
+          {
+            err,
+            userId: interaction.user.id,
+            sessionId: context.sessionId
+          },
+          "Failed to send vote confirmation followUp."
+        );
+      }
+    },
     async (error) => handleAskPipelineError(interaction, error)
   );
 };
