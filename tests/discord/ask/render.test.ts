@@ -5,36 +5,11 @@ import {
   renderAskBody
 } from "../../../src/discord/ask/render.js";
 import { __resetSendStateForTest } from "../../../src/discord/ask/send.js";
-import type { ResponseRow, SessionRow } from "../../../src/db/repositories/sessions.js";
+import type { ResponseRow } from "../../../src/db/repositories/sessions.js";
 import { env } from "../../../src/env.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
-
-const memberUserId = (() => {
-  const userId = env.MEMBER_USER_IDS[0];
-  if (!userId) {
-    throw new Error("member user id is required for test setup");
-  }
-  return userId;
-})();
-
-const mockSession = (overrides: Partial<SessionRow> = {}): SessionRow => ({
-  id: "00000000-0000-4000-8000-000000000001",
-  weekKey: "2026-W17",
-  postponeCount: 0,
-  candidateDate: "2026-04-24",
-  status: "ASKING",
-  channelId: env.DISCORD_CHANNEL_ID,
-  askMessageId: null,
-  postponeMessageId: null,
-  deadlineAt: new Date("2026-04-24T21:30:00+09:00"),
-  decidedStartAt: null,
-  cancelReason: null,
-  reminderAt: null,
-  reminderSentAt: null,
-  createdAt: new Date("2026-04-24T08:00:00+09:00"),
-  updatedAt: new Date("2026-04-24T08:00:00+09:00"),
-  ...overrides
-});
+import { memberUserId } from "../../helpers/env.js";
+import { buildSessionRow } from "../factories/session.js";
 
 describe("askMessage", () => {
   beforeEach(() => {
@@ -58,7 +33,7 @@ describe("askMessage", () => {
   });
 
   it("renders ask message body with mentions, candidate date, and response state", () => {
-    const session = mockSession();
+    const session = buildSessionRow();
     const memberLookup = new Map([["m1", memberUserId]]);
     const responses: ResponseRow[] = [
       {
@@ -81,7 +56,7 @@ describe("askMessage", () => {
   });
 
   it("disables ask buttons when session is not ASKING", () => {
-    const session = mockSession({ status: "CANCELLED", cancelReason: "absent" });
+    const session = buildSessionRow({ status: "CANCELLED", cancelReason: "absent" });
     const rendered = renderAskBody(session, [], new Map());
     const first = rendered.components?.[0] as unknown as {
       toJSON?: () => { components: { disabled?: boolean }[] };

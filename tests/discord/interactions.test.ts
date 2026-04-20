@@ -3,66 +3,12 @@ import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../src/discord/interactions.js";
-import { env } from "../../src/env.js";
-
-const memberUserId = (() => {
-  const userId = env.MEMBER_USER_IDS[0];
-  if (!userId) {
-    throw new Error("member user id is required for test setup");
-  }
-  return userId;
-})();
-
-const createAskInteraction = (overrides?: Partial<Record<string, unknown>>) => {
-  const interaction = {
-    id: "interaction-ask",
-    commandName: "ask",
-    guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID,
-    user: { id: memberUserId },
-    isChatInputCommand: () => true,
-    isButton: () => false,
-    deferReply: vi.fn(async () => undefined),
-    editReply: vi.fn(async () => undefined),
-    reply: vi.fn(async () => undefined)
-  };
-
-  return { ...interaction, ...overrides };
-};
-
-const createCancelInteraction = (overrides?: Partial<Record<string, unknown>>) => {
-  const interaction = {
-    id: "interaction-cancel",
-    commandName: "cancel_week",
-    guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID,
-    user: { id: memberUserId },
-    isChatInputCommand: () => true,
-    isButton: () => false,
-    deferReply: vi.fn(async () => undefined),
-    editReply: vi.fn(async () => undefined),
-    reply: vi.fn(async () => undefined)
-  };
-
-  return { ...interaction, ...overrides };
-};
-
-const createButtonInteraction = (customId: string, overrides?: Partial<Record<string, unknown>>) => {
-  const interaction = {
-    id: "interaction-button",
-    customId,
-    guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID,
-    user: { id: memberUserId },
-    isChatInputCommand: () => false,
-    isButton: () => true,
-    deferUpdate: vi.fn(async () => undefined),
-    followUp: vi.fn(async () => undefined),
-    reply: vi.fn(async () => undefined)
-  };
-
-  return { ...interaction, ...overrides };
-};
+import { memberUserId } from "../helpers/env.js";
+import {
+  buildAskInteraction,
+  buildButtonInteraction,
+  buildCancelInteraction
+} from "../helpers/interaction.js";
 
 const stubClient = {} as unknown as Client;
 
@@ -78,7 +24,7 @@ describe("interaction router", () => {
 
   it("handles /ask success", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
-    const interaction = createAskInteraction();
+    const interaction = buildAskInteraction();
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
@@ -92,7 +38,7 @@ describe("interaction router", () => {
 
   it("rejects /ask from non-members", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
-    const interaction = createAskInteraction({
+    const interaction = buildAskInteraction({
       user: { id: "999999999999999999" }
     });
 
@@ -106,7 +52,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => {
       throw new Error("discord api failed");
     });
-    const interaction = createAskInteraction();
+    const interaction = buildAskInteraction();
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
@@ -115,7 +61,7 @@ describe("interaction router", () => {
 
   it("keeps /cancel_week as cheap-first stub", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
-    const interaction = createCancelInteraction();
+    const interaction = buildCancelInteraction();
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
@@ -127,7 +73,7 @@ describe("interaction router", () => {
 
   it("rejects invalid ask button custom ids", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
-    const interaction = createButtonInteraction("ask:not-a-uuid:t2200");
+    const interaction = buildButtonInteraction("ask:not-a-uuid:t2200");
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
@@ -140,7 +86,7 @@ describe("interaction router", () => {
 
   it("rejects postpone button presses with placeholder message (not-yet-implemented)", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
-    const interaction = createButtonInteraction(
+    const interaction = buildButtonInteraction(
       "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok"
     );
 

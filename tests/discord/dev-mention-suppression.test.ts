@@ -12,6 +12,8 @@ import type * as PostponeModule from "../../src/discord/postponeMessage.js";
 import type * as SettleModule from "../../src/discord/settle.js";
 import type * as EnvModule from "../../src/env.js";
 
+import { buildSessionRow } from "./factories/session.js";
+
 type RenderAsk = typeof AskRenderModule;
 type RenderPostpone = typeof PostponeModule;
 type Settle = typeof SettleModule;
@@ -52,24 +54,8 @@ afterAll(() => {
   vi.resetModules();
 });
 
-const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow => ({
-  id: "session-suppress",
-  weekKey: "2026-W17",
-  postponeCount: 0,
-  candidateDate: "2026-04-24",
-  status: "ASKING",
-  channelId: "223456789012345678",
-  askMessageId: "ask-msg-1",
-  postponeMessageId: null,
-  deadlineAt: new Date("2026-04-24T12:30:00.000Z"),
-  decidedStartAt: null,
-  cancelReason: null,
-  reminderAt: null,
-  reminderSentAt: null,
-  createdAt: new Date(0),
-  updatedAt: new Date(0),
-  ...overrides
-});
+const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
+  buildSessionRow({ id: "session-suppress", askMessageId: "ask-msg-1", ...overrides });
 
 describe("DEV_SUPPRESS_MENTIONS=true", () => {
   it("env parses the flag as true", () => {

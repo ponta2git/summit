@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as SessionRepos from "../../src/db/repositories/sessions.js";
 import type { DbLike, SessionRow } from "../../src/db/repositories/sessions.js";
-import { env } from "../../src/env.js";
+
+import { buildSessionRow } from "./factories/session.js";
 
 vi.mock("../../src/db/repositories/sessions.js", async () => {
   const actual = await vi.importActual<typeof SessionRepos>(
@@ -25,24 +26,8 @@ vi.mock("../../src/discord/ask/render.js", () => ({
 const repos = await import("../../src/db/repositories/sessions.js");
 const { settleAskingSession } = await import("../../src/discord/settle.js");
 
-const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow => ({
-  id: "session-1",
-  weekKey: "2026-W17",
-  postponeCount: 0,
-  candidateDate: "2026-04-24",
-  status: "ASKING",
-  channelId: env.DISCORD_CHANNEL_ID,
-  askMessageId: "ask-msg-1",
-  postponeMessageId: null,
-  deadlineAt: new Date("2026-04-24T12:30:00.000Z"),
-  decidedStartAt: null,
-  cancelReason: null,
-  reminderAt: null,
-  reminderSentAt: null,
-  createdAt: new Date(0),
-  updatedAt: new Date(0),
-  ...overrides
-});
+const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
+  buildSessionRow({ id: "session-1", askMessageId: "ask-msg-1", ...overrides });
 
 const stubChannel = () => {
   const sentMessages: { id: string }[] = [];

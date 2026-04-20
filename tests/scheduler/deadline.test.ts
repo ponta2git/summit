@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as SessionRepos from "../../src/db/repositories/sessions.js";
 import type { DbLike, ResponseRow, SessionRow } from "../../src/db/repositories/sessions.js";
 
+import { buildSessionRow } from "./factories/session.js";
+
 vi.mock("../../src/db/repositories/sessions.js", async () => {
   const actual = await vi.importActual<typeof SessionRepos>(
     "../../src/db/repositories/sessions.js"
@@ -35,24 +37,8 @@ const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
   ...overrides
 });
 
-const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow => ({
-  id: "session-1",
-  weekKey: "2026-W17",
-  postponeCount: 0,
-  candidateDate: "2026-04-24",
-  status: "ASKING",
-  channelId: "channel",
-  askMessageId: null,
-  postponeMessageId: null,
-  deadlineAt: new Date("2026-04-24T12:30:00.000Z"),
-  decidedStartAt: null,
-  cancelReason: null,
-  reminderAt: null,
-  reminderSentAt: null,
-  createdAt: new Date(0),
-  updatedAt: new Date(0),
-  ...overrides
-});
+const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
+  buildSessionRow({ id: "session-1", ...overrides });
 
 const db = {} as unknown as DbLike;
 const client = {} as unknown as Client;

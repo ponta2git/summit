@@ -3,16 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetSendStateForTest, sendAskMessage } from "../../../src/discord/ask/send.js";
 import type { DbLike, SessionRow } from "../../../src/db/repositories/sessions.js";
-import { env } from "../../../src/env.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
-
-const memberUserId = (() => {
-  const userId = env.MEMBER_USER_IDS[0];
-  if (!userId) {
-    throw new Error("member user id is required for test setup");
-  }
-  return userId;
-})();
+import { deferred } from "../../helpers/deferred.js";
+import { memberUserId } from "../../helpers/env.js";
 
 const createMockClient = (channel: unknown): Client =>
   ({
@@ -88,13 +81,14 @@ describe("askMessage race handling", () => {
   });
 
   it("serializes concurrent sends and avoids duplicate posts", async () => {
-    let resolveSend: ((value: { id: string }) => void) | undefined;
-    const send = vi.fn(
-      () =>
-        new Promise<{ id: string }>((resolve) => {
-          resolveSend = resolve;
-        })
-    );
+    // race: 並走 send 呼び出しに対し、「first が channel.send に到達した瞬間」を明示的に awaitable にする。
+    //   vi.waitFor の timeout 依存 (flake 源) を排除するため、mock 内で deferred を解決する。
+    const sendCalled = deferred<void>();
+    const sendDone = deferred<{ id: string }>();
+    const send = vi.fn(() => {
+      sendCalled.resolve();
+      return sendDone.promise;
+    });
 
     const channel = {
       type: ChannelType.GuildText,
@@ -113,8 +107,8 @@ describe("askMessage race handling", () => {
       db
     });
 
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-    resolveSend?.({ id: "race-message" });
+    await sendCalled.promise;
+    sendDone.resolve({ id: "race-message" });
 
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
