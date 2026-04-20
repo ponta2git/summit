@@ -1,11 +1,16 @@
 import {
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
   type MessageCreateOptions,
   type MessageEditOptions
 } from "discord.js";
 
+import {
+  ASK_BUTTON_LABELS,
+  BUTTON_STYLE_ASK_ABSENT,
+  BUTTON_STYLE_ASK_TIME,
+  CHOICE_LABEL_FOR_RESPONSE
+} from "../../constants.js";
 import {
   listResponses,
   type DbLike,
@@ -20,39 +25,23 @@ import {
   parseCandidateDateIso,
   type AskTimeChoice
 } from "../../time/index.js";
+import { buildCustomId, type AskCustomIdChoice } from "../customId.js";
 
 // invariant: Discord button の custom_id 末尾は ASK_CHOICES の小文字値と一致しなければならない。
-//   interactions.ts の askCustomIdSchema / ASK_CUSTOM_ID_TO_DB_CHOICE と 3 箇所同時更新。
-const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const;
-type AskChoice = (typeof ASK_CHOICES)[number];
-
-const ASK_BUTTON_LABELS: Record<AskChoice, string> = {
-  t2200: "22:00",
-  t2230: "22:30",
-  t2300: "23:00",
-  t2330: "23:30",
-  absent: "欠席"
-};
-
-const CHOICE_LABEL_FOR_RESPONSE: Record<string, string> = {
-  T2200: "22:00",
-  T2230: "22:30",
-  T2300: "23:00",
-  T2330: "23:30",
-  ABSENT: "欠席"
-};
+//   customId codec / interactions.ts の ASK_CUSTOM_ID_TO_DB_CHOICE と 3 箇所同時更新。
+const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const satisfies readonly AskCustomIdChoice[];
 
 export const buildAskRow = (
   sessionId: string,
   options: { disabled?: boolean } = {}
 ): ActionRowBuilder<ButtonBuilder> => {
-  // invariant: custom_id は interactions.ts の askCustomIdSchema (UUID v4 + choice regex) で検証される。
-  //   ここで組み立てる ID はその正規表現にマッチしなければならない。
+  // invariant: custom_id は customId codec (UUID + choice discriminated union) で検証される。
+  //   ここで組み立てる ID は codec の round-trip を保つ必要がある。
   const buttons = ASK_CHOICES.map((choice) =>
     new ButtonBuilder()
-      .setCustomId(`ask:${sessionId}:${choice}`)
+      .setCustomId(buildCustomId({ kind: "ask", sessionId, choice }))
       .setLabel(ASK_BUTTON_LABELS[choice])
-      .setStyle(choice === "absent" ? ButtonStyle.Danger : ButtonStyle.Secondary)
+      .setStyle(choice === "absent" ? BUTTON_STYLE_ASK_ABSENT : BUTTON_STYLE_ASK_TIME)
       .setDisabled(Boolean(options.disabled))
   );
   return new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);

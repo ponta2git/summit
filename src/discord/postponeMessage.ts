@@ -1,27 +1,33 @@
 import {
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
   type MessageCreateOptions
 } from "discord.js";
 
+import {
+  BUTTON_LABEL_POSTPONE_NG,
+  BUTTON_LABEL_POSTPONE_OK,
+  BUTTON_STYLE_POSTPONE_NG,
+  BUTTON_STYLE_POSTPONE_OK
+} from "../constants.js";
 import { env } from "../env.js";
 import { formatCandidateJa, parseCandidateDateIso } from "../time/index.js";
 import type { SessionRow } from "../db/repositories/sessions.js";
+import { buildCustomId } from "./customId.js";
 
 export const buildPostponeRow = (
   sessionId: string,
   options: { disabled?: boolean } = {}
 ): ActionRowBuilder<ButtonBuilder> => {
   const ok = new ButtonBuilder()
-    .setCustomId(`postpone:${sessionId}:ok`)
-    .setLabel("翌日に順延で参加OK")
-    .setStyle(ButtonStyle.Primary)
+    .setCustomId(buildCustomId({ kind: "postpone", sessionId, choice: "ok" }))
+    .setLabel(BUTTON_LABEL_POSTPONE_OK)
+    .setStyle(BUTTON_STYLE_POSTPONE_OK)
     .setDisabled(Boolean(options.disabled));
   const ng = new ButtonBuilder()
-    .setCustomId(`postpone:${sessionId}:ng`)
-    .setLabel("NG")
-    .setStyle(ButtonStyle.Secondary)
+    .setCustomId(buildCustomId({ kind: "postpone", sessionId, choice: "ng" }))
+    .setLabel(BUTTON_LABEL_POSTPONE_NG)
+    .setStyle(BUTTON_STYLE_POSTPONE_NG)
     .setDisabled(Boolean(options.disabled));
   return new ActionRowBuilder<ButtonBuilder>().addComponents(ok, ng);
 };
