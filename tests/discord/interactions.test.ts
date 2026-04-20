@@ -2,7 +2,7 @@ import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleInteraction, registerInteractionHandlers } from "../../src/discord/dispatcher.js";
+import { handleInteraction, registerInteractionHandlers } from "../../src/discord/shared/dispatcher.js";
 import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
 import { messages } from "../../src/messages.js";

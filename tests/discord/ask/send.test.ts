@@ -5,7 +5,7 @@ import {
   __resetSendStateForTest,
   sendAskMessage,
   sendPostponedAskMessage
-} from "../../../src/discord/ask/send.js";
+} from "../../../src/features/ask-session/send.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import { createTestAppContext, makeSession } from "../../testing/index.js";

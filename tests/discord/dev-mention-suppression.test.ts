@@ -2,10 +2,10 @@ import { ChannelType, type Client } from "discord.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { SessionRow } from "../../src/db/types.js";
-import type * as AskRenderModule from "../../src/discord/ask/render.js";
-import type * as PostponeModule from "../../src/discord/postpone/render.js";
-import type * as SettleModule from "../../src/discord/settle/index.js";
-import type * as ViewModelsModule from "../../src/discord/viewModels.js";
+import type * as AskRenderModule from "../../src/features/ask-session/render.js";
+import type * as PostponeModule from "../../src/features/postpone-voting/render.js";
+import type * as SettleModule from "../../src/features/ask-session/settle.js";
+import type * as ViewModelsModule from "../../src/discord/shared/viewModels.js";
 import type * as EnvModule from "../../src/env.js";
 import type * as TestingModule from "../testing/index.js";
 
@@ -35,10 +35,10 @@ beforeAll(async () => {
   vi.stubEnv("DEV_SUPPRESS_MENTIONS", "true");
   vi.resetModules();
   envModule = await import("../../src/env.js");
-  askRender = await import("../../src/discord/ask/render.js");
-  postponeRender = await import("../../src/discord/postpone/render.js");
-  settle = await import("../../src/discord/settle/index.js");
-  viewModels = await import("../../src/discord/viewModels.js");
+  askRender = await import("../../src/features/ask-session/render.js");
+  postponeRender = await import("../../src/features/postpone-voting/render.js");
+  settle = await import("../../src/features/ask-session/settle.js");
+  viewModels = await import("../../src/discord/shared/viewModels.js");
   testing = await import("../testing/index.js");
 });
 

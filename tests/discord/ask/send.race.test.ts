@@ -1,7 +1,7 @@
 import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { __resetSendStateForTest, sendAskMessage } from "../../../src/discord/ask/send.js";
+import { __resetSendStateForTest, sendAskMessage } from "../../../src/features/ask-session/send.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import { memberUserId } from "../../helpers/env.js";

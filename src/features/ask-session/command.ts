@@ -4,8 +4,8 @@ import { DiscordApiError, toAppError } from "../../errors/index.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
 import { assertNever } from "../../util/assertNever.js";
-import { assertGuildAndChannel, assertMember } from "../guards.js";
-import type { InteractionHandlerDeps } from "../dispatcher.js";
+import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 
 const rejectMessage = messages.interaction.reject.notMember;
 

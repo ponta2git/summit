@@ -30,6 +30,16 @@ interface ReminderBodyParams {
   startTimeLabel: string;
 }
 
+interface DecidedMemberLine {
+  readonly displayName: string;
+  readonly slotLabel: string;
+}
+
+interface DecidedBodyParams {
+  startTimeLabel: string;
+  memberLines: readonly DecidedMemberLine[];
+}
+
 interface PostponeBodyParams {
   candidateDateIso: string;
   // source-of-truth: statusLines が空文字列のときは【順延投票】セクション全体を省略（初期投稿時の互換）
@@ -92,6 +102,30 @@ export const messages = {
   reminder: {
     body: ({ startTimeLabel }: ReminderBodyParams): string =>
       `⏰ 15分後に開始です（${startTimeLabel} 開始）`
+  },
+  decided: {
+    // why: §5.1 開催決定メッセージ。ask footer (footerDecided) とは別の独立投稿。
+    //   参加者メンション + 開始時刻 + 回答内訳を含む。
+    // source-of-truth: requirements/base.md §5.1
+    body: ({ startTimeLabel, memberLines }: DecidedBodyParams): string => {
+      // why: 表示名の最大長に合わせて右パディングし、スロット列を揃える。全角混在時も
+      //   完全整形は難しいので簡易に length のみで揃える（requirements/base.md §5.1 の例に近い見た目）。
+      const maxNameLen = memberLines.reduce(
+        (max, line) => Math.max(max, line.displayName.length),
+        0
+      );
+      const lines = [
+        "🎉 今週の桃鉄1年勝負は開催します！",
+        "",
+        `開始時刻: ${startTimeLabel}`,
+        "回答内訳:",
+        ...memberLines.map(
+          ({ displayName, slotLabel }) =>
+            `- ${displayName.padEnd(maxNameLen, " ")} : ${slotLabel}`
+        )
+      ];
+      return lines.join("\n");
+    }
   },
   postpone: {
     body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
@@ -190,6 +224,9 @@ export const messages = {
   };
   reminder: {
     body: (params: ReminderBodyParams) => string;
+  };
+  decided: {
+    body: (params: DecidedBodyParams) => string;
   };
   postpone: {
     body: (params: PostponeBodyParams) => string;

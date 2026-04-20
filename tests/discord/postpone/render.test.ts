@@ -7,8 +7,8 @@ import {
   buildPostponeMessageViewModel,
   type ViewModelMemberInput,
   type ViewModelResponseInput
-} from "../../../src/discord/viewModels.js";
-import { renderPostponeBody } from "../../../src/discord/postpone/render.js";
+} from "../../../src/discord/shared/viewModels.js";
+import { renderPostponeBody } from "../../../src/features/postpone-voting/render.js";
 import { env } from "../../../src/env.js";
 
 // invariant: テスト内メンバーの userId は env.MEMBER_USER_IDS と一致させる（buildPostponeMessageViewModel

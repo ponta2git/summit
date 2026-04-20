@@ -1,7 +1,7 @@
 import { MessageFlags } from "discord.js";
 
-import type { SessionRow } from "../db/types.js";
-import { env } from "../env.js";
+import type { SessionRow } from "../../db/types.js";
+import { env } from "../../env.js";
 import {
   InvariantViolationError,
   NotFoundError,
@@ -10,8 +10,8 @@ import {
   okResult,
   type AppError,
   type AppResult
-} from "../errors/index.js";
-import { messages } from "../messages.js";
+} from "../../errors/index.js";
+import { messages } from "../../messages.js";
 import {
   parseCustomId,
   type AskCustomIdChoice,

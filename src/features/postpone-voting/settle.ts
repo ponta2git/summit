@@ -16,8 +16,8 @@ import {
   parseCandidateDateIso,
   saturdayCandidateFrom
 } from "../../time/index.js";
-import { sendPostponedAskMessage } from "../ask/send.js";
-import { updatePostponeMessage } from "./messages.js";
+import { sendPostponedAskMessage } from "../ask-session/send.js";
+import { updatePostponeMessage } from "../../discord/shared/messages.js";
 
 const postponeDecisionFooter = (
   decision: Exclude<PostponeDecisionResult, { kind: "pending" }>

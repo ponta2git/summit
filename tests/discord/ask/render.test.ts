@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildAskRow,
   renderAskBody
-} from "../../../src/discord/ask/render.js";
+} from "../../../src/features/ask-session/render.js";
 import {
   buildAskMessageViewModel,
   type ViewModelResponseInput
-} from "../../../src/discord/viewModels.js";
-import { __resetSendStateForTest } from "../../../src/discord/ask/send.js";
+} from "../../../src/discord/shared/viewModels.js";
+import { __resetSendStateForTest } from "../../../src/features/ask-session/send.js";
 import { env } from "../../../src/env.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { memberUserId } from "../../helpers/env.js";

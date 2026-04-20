@@ -2,11 +2,8 @@ import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../src/db/types.js";
-import {
-  applyDeadlineDecision,
-  settleAskingSession,
-  settlePostponeVotingSession
-} from "../../src/discord/settle/index.js";
+import { applyDeadlineDecision, settleAskingSession } from "../../src/features/ask-session/settle.js"
+import { settlePostponeVotingSession } from "../../src/features/postpone-voting/settle.js";
 import { env } from "../../src/env.js";
 import { createTestAppContext } from "../testing/index.js";
 
@@ -133,7 +130,11 @@ describe("settleAskingSession", () => {
     );
     expect(persisted?.reminderSentAt).toBeNull();
     expect(messageEdit).toHaveBeenCalledTimes(1);
-    expect(channel.send).not.toHaveBeenCalled();
+    // why: DECIDED 遷移時に §5.1 開催決定メッセージ (別投稿) が送られる。ask footer 更新 + announcement 1 通。
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    const announcePayload = channel.send.mock.calls[0]?.[0] as { content: string };
+    expect(announcePayload.content).toContain("🎉 今週の桃鉄1年勝負は開催します！");
+    expect(announcePayload.content).toContain("開始時刻: 23:00");
   });
 });
 

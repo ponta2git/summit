@@ -15,7 +15,7 @@ import {
   parseCandidateDateIso
 } from "../../time/index.js";
 import { renderAskBody } from "./render.js";
-import { buildInitialAskMessageViewModel } from "../viewModels.js";
+import { buildInitialAskMessageViewModel } from "../../discord/shared/viewModels.js";
 
 export interface SendAskMessageContext {
   readonly trigger: "cron" | "command";

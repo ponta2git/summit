@@ -8,7 +8,7 @@ import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
 import { reminderAtFor } from "../../time/index.js";
 
-import { getTextChannel } from "./messages.js";
+import { getTextChannel } from "../../discord/shared/messages.js";
 
 // why: HH:MM を JST で整形する。process.env.TZ=Asia/Tokyo 前提で Date#getHours() は JST を返す。
 // @see docs/adr/0002-jst-fixed-time-handling.md

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOM_ID_SLOT_CHOICES } from "../domain/index.js";
+import { CUSTOM_ID_SLOT_CHOICES } from "../../domain/index.js";
 
 const askCustomIdChoiceSchema = z.union([
   z.enum(CUSTOM_ID_SLOT_CHOICES),

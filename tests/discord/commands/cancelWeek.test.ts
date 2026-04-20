@@ -1,8 +1,8 @@
 import { ChannelType, MessageFlags, type Client, type Interaction } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleInteraction } from "../../../src/discord/dispatcher.js";
-import type { InteractionHandlerDeps } from "../../../src/discord/dispatcher.js";
+import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
+import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
 import { messages } from "../../../src/messages.js";

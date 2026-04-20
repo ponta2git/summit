@@ -14,12 +14,10 @@ import {
   sendAskMessage,
   type SendAskMessageContext,
   type SendAskMessageResult
-} from "../discord/ask/send.js";
-import {
-  evaluateAndApplyDeadlineDecision,
-  sendReminderForSession,
-  settlePostponeVotingSession
-} from "../discord/settle/index.js";
+} from "../features/ask-session/send.js";
+import { evaluateAndApplyDeadlineDecision } from "../features/ask-session/settle.js"
+import { sendReminderForSession } from "../features/reminder/send.js"
+import { settlePostponeVotingSession } from "../features/postpone-voting/settle.js";
 import { logger } from "../logger.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
@@ -215,23 +213,17 @@ export const runStartupRecovery = async (
   }
 };
 
-export interface SchedulerHandles {
-  askTask: ScheduledTask;
-  deadlineTask: ScheduledTask;
-  postponeDeadlineTask: ScheduledTask;
-  reminderTask: ScheduledTask;
-}
-
 /**
- * Registers the /ask send, deadline, and postpone-deadline cron tasks.
+ * Registers all scheduled cron tasks.
  *
  * @remarks
  * プロセス内で 1 度だけ呼ぶこと。複数インスタンスで同時駆動すると Discord への
  * 二重送信や race になる。Fly app は 1 インスタンス固定前提。
+ * 戻り値は登録順の ScheduledTask 配列。shutdown 時は `for (const t of ...) t.stop()`。
  *
  * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
  */
-export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => {
+export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTask[] => {
   const { context, client } = deps;
   const sendAsk =
     deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(client, sendContext));
@@ -240,34 +232,23 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
   // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
   // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
   // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
-  // why: 暫定スケジュール採用の根拠 → ADR-0007（値は CRON_ASK_SCHEDULE 参照）
-  const askTask = cronModule.schedule(
-    CRON_ASK_SCHEDULE,
-    () => void runScheduledAskTick(sendAsk, context),
-    { timezone: "Asia/Tokyo", noOverlap: true }
-  );
+  // why: registry 化により feature 追加時の scheduler 変更箇所を 1 行に限定する。
+  //   各 tick の意味論 (cron 式と JST 前提) は config.ts 側の CRON_* 定数に集約。
+  const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
+    // ADR-0007: /ask 送信スケジュール (金曜朝)。
+    { schedule: CRON_ASK_SCHEDULE, tick: () => void runScheduledAskTick(sendAsk, context) },
+    // 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
+    { schedule: CRON_DEADLINE_SCHEDULE, tick: () => void runDeadlineTick(client, context) },
+    // 土曜 00:00 JST = POSTPONE_DEADLINE="24:00"（候補日翌日 00:00 JST）。
+    {
+      schedule: CRON_POSTPONE_DEADLINE_SCHEDULE,
+      tick: () => void runPostponeDeadlineTick(client, context)
+    },
+    // 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
+    { schedule: CRON_REMINDER_SCHEDULE, tick: () => void runReminderTick(client, context) }
+  ];
 
-  // jst: 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
-  const deadlineTask = cronModule.schedule(
-    CRON_DEADLINE_SCHEDULE,
-    () => void runDeadlineTick(client, context),
-    { timezone: "Asia/Tokyo", noOverlap: true }
+  return taskDefs.map((def) =>
+    cronModule.schedule(def.schedule, def.tick, { timezone: "Asia/Tokyo", noOverlap: true })
   );
-
-  // jst: 土曜 00:00 JST = POSTPONE_DEADLINE="24:00"（候補日翌日 00:00 JST）。
-  const postponeDeadlineTask = cronModule.schedule(
-    CRON_POSTPONE_DEADLINE_SCHEDULE,
-    () => void runPostponeDeadlineTick(client, context),
-    { timezone: "Asia/Tokyo", noOverlap: true }
-  );
-
-  // jst: 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
-  // source-of-truth: 毎 tick DB を再計算する (findDueReminderSessions)。
-  const reminderTask = cronModule.schedule(
-    CRON_REMINDER_SCHEDULE,
-    () => void runReminderTick(client, context),
-    { timezone: "Asia/Tokyo", noOverlap: true }
-  );
-
-  return { askTask, deadlineTask, postponeDeadlineTask, reminderTask };
 };

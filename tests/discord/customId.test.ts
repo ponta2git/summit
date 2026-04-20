@@ -5,7 +5,7 @@ import {
   buildCustomId,
   parseCancelWeekCustomId,
   parseCustomId
-} from "../../src/discord/customId.js";
+} from "../../src/discord/shared/customId.js";
 
 describe("customId codec", () => {
   const sessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";

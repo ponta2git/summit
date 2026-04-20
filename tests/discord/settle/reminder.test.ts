@@ -7,7 +7,7 @@ import {
   sendReminderForSession,
   shouldSkipReminder,
   skipReminderAndComplete
-} from "../../../src/discord/settle/reminder.js";
+} from "../../../src/features/reminder/send.js";
 import { env } from "../../../src/env.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";

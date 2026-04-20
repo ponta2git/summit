@@ -13,8 +13,8 @@ import {
 import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
-import { renderPostponeBody } from "../postpone/render.js";
-import { buildPostponeMessageViewModel } from "../viewModels.js";
+import { renderPostponeBody } from "./render.js";
+import { buildPostponeMessageViewModel } from "../../discord/shared/viewModels.js";
 import {
   getGuardFailureReason,
   guardChannelId,
@@ -26,9 +26,9 @@ import {
   guardSessionPostponeDeadlineOpen,
   guardSessionPostponeVoting,
   GUARD_REASON_TO_MESSAGE
-} from "../guards.js";
-import { settlePostponeVotingSession } from "../settle/index.js";
-import type { InteractionHandlerDeps } from "../dispatcher.js";
+} from "../../discord/shared/guards.js";
+import { settlePostponeVotingSession } from "./settle.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",

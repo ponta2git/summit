@@ -6,12 +6,17 @@ import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
-vi.mock("../../src/discord/settle/index.js", () => ({
-  evaluateAndApplyDeadlineDecision: vi.fn(async () => {}),
+vi.mock("../../src/features/ask-session/settle.js", () => ({
+  evaluateAndApplyDeadlineDecision: vi.fn(async () => {})
+}));
+vi.mock("../../src/features/postpone-voting/settle.js", () => ({
   settlePostponeVotingSession: vi.fn(async () => {})
 }));
 
-const settle = await import("../../src/discord/settle/index.js");
+const askSettle = await import("../../src/features/ask-session/settle.js");
+const postponeSettle = await import("../../src/features/postpone-voting/settle.js");
+// why: 旧来の `settle.foo` 参照をそのまま残すため、features 2 モジュールをマージした view を作る。
+const settle = { ...askSettle, ...postponeSettle };
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
   "../../src/scheduler/index.js"
 );

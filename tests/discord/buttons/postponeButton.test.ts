@@ -1,8 +1,8 @@
 import { ChannelType, MessageFlags, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handlePostponeButton } from "../../../src/discord/buttons/postponeButton.js";
-import type { InteractionHandlerDeps } from "../../../src/discord/dispatcher.js";
+import { handlePostponeButton } from "../../../src/features/postpone-voting/button.js";
+import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
 import { messages } from "../../../src/messages.js";

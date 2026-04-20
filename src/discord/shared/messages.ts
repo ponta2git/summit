@@ -6,13 +6,13 @@ import type {
   SessionRow
 } from "../../db/types.js";
 import { logger } from "../../logger.js";
-import { renderAskBody } from "../ask/render.js";
-import { renderPostponeBody } from "../postpone/render.js";
+import { renderAskBody } from "../../features/ask-session/render.js";
+import { renderPostponeBody } from "../../features/postpone-voting/render.js";
 import {
   buildAskMessageViewModel,
   buildPostponeMessageViewModel,
   type SettleNoticeViewModel
-} from "../viewModels.js";
+} from "./viewModels.js";
 
 export type CancelReason =
   | "absent"

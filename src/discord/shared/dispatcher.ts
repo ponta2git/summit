@@ -5,18 +5,18 @@ import {
   MessageFlags
 } from "discord.js";
 
-import type { AppContext } from "../composition.js";
-import { logger } from "../logger.js";
-import { messages } from "../messages.js";
+import type { AppContext } from "../../composition.js";
+import { logger } from "../../logger.js";
+import { messages } from "../../messages.js";
 import {
   sendAskMessage,
   type SendAskMessageResult
-} from "./ask/send.js";
-import { handlePostponeButton } from "./buttons/postponeButton.js";
-import { handleAskButton } from "./buttons/askButton.js";
-import { handleCancelWeekButton } from "./buttons/cancelWeekButton.js";
-import { handleAskCommand } from "./commands/ask.js";
-import { handleCancelWeekCommand } from "./commands/cancelWeek.js";
+} from "../../features/ask-session/send.js";
+import { handlePostponeButton } from "../../features/postpone-voting/button.js";
+import { handleAskButton } from "../../features/ask-session/button.js";
+import { handleCancelWeekButton } from "../../features/cancel-week/button.js";
+import { handleAskCommand } from "../../features/ask-session/command.js";
+import { handleCancelWeekCommand } from "../../features/cancel-week/command.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 
 export type SendAsk = (args: {

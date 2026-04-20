@@ -2,10 +2,10 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
-import { applyManualSkip } from "../settle/skipWeek.js";
-import { parseCancelWeekCustomId } from "../customId.js";
-import { assertGuildAndChannel, assertMember } from "../guards.js";
-import type { InteractionHandlerDeps } from "../dispatcher.js";
+import { applyManualSkip } from "./settle.js";
+import { parseCancelWeekCustomId } from "../../discord/shared/customId.js";
+import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 
 /**
  * Handle cancel_week confirm/abort button from the ephemeral confirmation dialog.

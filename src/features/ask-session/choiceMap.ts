@@ -1,4 +1,4 @@
-import type { AskCustomIdChoice } from "../customId.js";
+import type { AskCustomIdChoice } from "../../discord/shared/customId.js";
 
 export type AskDbChoice = "T2200" | "T2230" | "T2300" | "T2330" | "ABSENT";
 

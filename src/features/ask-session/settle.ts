@@ -4,10 +4,11 @@ import type { AppContext } from "../../composition.js";
 import type { ResponseRow, SessionRow } from "../../db/types.js";
 import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "../../domain/index.js";
 import { logger } from "../../logger.js";
-import { renderPostponeBody } from "../postpone/render.js";
-import { buildPostponeMessageViewModel, buildSettleNoticeViewModel } from "../viewModels.js";
-import { type CancelReason, getTextChannel, renderSettleNotice, updateAskMessage } from "./messages.js";
-import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "./reminder.js";
+import { renderPostponeBody } from "../postpone-voting/render.js";
+import { buildPostponeMessageViewModel, buildSettleNoticeViewModel } from "../../discord/shared/viewModels.js";
+import { type CancelReason, getTextChannel, renderSettleNotice, updateAskMessage } from "../../discord/shared/messages.js";
+import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "../reminder/send.js";
+import { sendDecidedAnnouncement } from "../decided-announcement/send.js";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
@@ -149,6 +150,9 @@ const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
     const fresh = await ctx.ports.sessions.findSessionById(session.id);
     if (!fresh) {return;}
     await updateAskMessage(client, ctx, fresh);
+    // why: §5.1 開催決定メッセージ (別投稿) を送る。ASKING→DECIDED の CAS が 1 回しか成功しないため冪等。
+    // source-of-truth: requirements/base.md §5.1
+    await sendDecidedAnnouncement(client, ctx, fresh);
     // state: reminderAt まで 10 分未満で DECIDED へ遷移した場合 (遅延 recovery 等) はリマインド省略して COMPLETED へ
     if (fresh.reminderAt && shouldSkipReminder(ctx.clock.now(), fresh.reminderAt)) {
       await skipReminderAndComplete(ctx, fresh, ctx.clock.now());

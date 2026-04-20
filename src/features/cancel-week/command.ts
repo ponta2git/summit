@@ -9,8 +9,8 @@ import {
 
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
-import { buildCancelWeekCustomId } from "../customId.js";
-import { assertGuildAndChannel, assertMember } from "../guards.js";
+import { buildCancelWeekCustomId } from "../../discord/shared/customId.js";
+import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
 
 const rejectMessage = messages.interaction.reject.notMember;
 

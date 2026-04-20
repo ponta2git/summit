@@ -8,7 +8,7 @@ import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext } from "../testing/index.js";
 
 describe("ask scheduler", () => {
-  it("registers friday 08:00 JST cron with noOverlap", () => {
+  it("registers friday 08:00 JST ask cron as the first task with noOverlap", () => {
     const stop = vi.fn();
     const schedule = vi.fn(
       () =>
@@ -20,15 +20,16 @@ describe("ask scheduler", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
-    const handles = createAskScheduler({
+    const tasks = createAskScheduler({
       client,
       context,
       sendAsk,
       cronAdapter: { schedule }
     });
 
-    expect(handles.askTask.stop).toBe(stop);
-    expect(schedule).toHaveBeenCalledWith("0 8 * * 5", expect.any(Function), {
+    expect(tasks).toHaveLength(4);
+    expect(tasks[0]?.stop).toBe(stop);
+    expect(schedule).toHaveBeenNthCalledWith(1, "0 8 * * 5", expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true
     });
@@ -46,14 +47,14 @@ describe("ask scheduler", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
-    const handles = createAskScheduler({
+    const tasks = createAskScheduler({
       client,
       context,
       sendAsk,
       cronAdapter: { schedule }
     });
 
-    expect(handles.postponeDeadlineTask.stop).toBe(stop);
+    expect(tasks).toHaveLength(4);
     expect(schedule).toHaveBeenCalledWith("0 0 * * 6", expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true
@@ -71,14 +72,14 @@ describe("ask scheduler", () => {
   it("registers reminder cron with noOverlap on Asia/Tokyo", () => {
     const stop = vi.fn();
     const schedule = vi.fn(() => ({ stop }) as unknown as ScheduledTask);
-    const handles = createAskScheduler({
+    const tasks = createAskScheduler({
       client: {} as Client,
       context: createTestAppContext(),
       sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
       cronAdapter: { schedule }
     });
 
-    expect(handles.reminderTask.stop).toBe(stop);
+    expect(tasks).toHaveLength(4);
     expect(schedule).toHaveBeenCalledWith(CRON_REMINDER_SCHEDULE, expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true

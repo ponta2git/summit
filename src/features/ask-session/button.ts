@@ -14,9 +14,9 @@ import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { messages } from "../../messages.js";
 import { evaluateDeadline } from "../../domain/index.js";
-import { renderAskBody } from "../ask/render.js";
-import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "../ask/choiceMap.js";
-import { buildAskMessageViewModel } from "../viewModels.js";
+import { renderAskBody } from "./render.js";
+import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
+import { buildAskMessageViewModel } from "../../discord/shared/viewModels.js";
 import {
   getGuardFailureReason,
   guardAskCustomId,
@@ -27,10 +27,10 @@ import {
   guardSessionAsking,
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
-} from "../guards.js";
-import { applyDeadlineDecision } from "../settle/index.js";
+} from "../../discord/shared/guards.js";
+import { applyDeadlineDecision } from "./settle.js";
 import { env } from "../../env.js";
-import type { InteractionHandlerDeps } from "../dispatcher.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;

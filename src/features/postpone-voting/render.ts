@@ -11,8 +11,8 @@ import {
   BUTTON_STYLE_POSTPONE_OK
 } from "../../constants.js";
 import { messages } from "../../messages.js";
-import { buildCustomId } from "../customId.js";
-import type { PostponeMessageViewModel } from "../viewModels.js";
+import { buildCustomId } from "../../discord/shared/customId.js";
+import type { PostponeMessageViewModel } from "../../discord/shared/viewModels.js";
 
 export const buildPostponeRow = (
   sessionId: string,

@@ -10,7 +10,7 @@ import {
   type ViewModelMemberInput,
   type ViewModelResponseInput,
   type ViewModelSessionInput
-} from "../../src/discord/viewModels.js";
+} from "../../src/discord/shared/viewModels.js";
 import { env } from "../../src/env.js";
 
 const session: ViewModelSessionInput = {

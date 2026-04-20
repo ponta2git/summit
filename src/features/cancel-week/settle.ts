@@ -10,7 +10,7 @@ import {
   getTextChannel,
   updateAskMessage,
   updatePostponeMessage
-} from "./messages.js";
+} from "../../discord/shared/messages.js";
 
 export interface SkipWeekOutcome {
   readonly skippedCount: number;

@@ -1,6 +1,6 @@
 import { createAppContext } from "./composition.js";
 import { closeDb, db } from "./db/client.js";
-import { waitForInFlightSend } from "./discord/ask/send.js";
+import { waitForInFlightSend } from "./features/ask-session/send.js";
 import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/index.js";
 import { env } from "./env.js";
@@ -20,10 +20,9 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
     stopScheduler: () => {
-      scheduler.askTask.stop();
-      scheduler.deadlineTask.stop();
-      scheduler.postponeDeadlineTask.stop();
-      scheduler.reminderTask.stop();
+      for (const task of scheduler) {
+        task.stop();
+      }
     },
     waitForInFlightSend,
     closeDb,
