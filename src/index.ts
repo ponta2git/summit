@@ -1,9 +1,11 @@
 import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./discord/ask/send.js";
 import { createDiscordClient } from "./discord/client.js";
-import { registerInteractionHandlers } from "./discord/interactions.js";
+import { registerInteractionHandlers } from "./discord/index.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
+import { buildMemberReconcileInputs } from "./members.js";
+import { reconcileMembers } from "./members/reconcile.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
 import { systemClock } from "./time/index.js";
@@ -43,6 +45,13 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 const run = async (): Promise<void> => {
+  // why: env を SSoT とし起動時に DB へ反映 (ADR-0012)
+  //   cron 登録・bot login より前に完了させ、失敗時は起動を中止する。
+  await reconcileMembers(
+    buildMemberReconcileInputs(env.MEMBER_USER_IDS, env.MEMBER_DISPLAY_NAMES),
+    db
+  );
+
   await client.login(env.DISCORD_TOKEN);
 
   // why: 本番 invariant (DEV_SUPPRESS_MENTIONS 未設定=false) を覆して通知挙動を変えている状態を

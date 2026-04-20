@@ -2,11 +2,11 @@ import { ChannelType, type Client } from "discord.js";
 
 import {
   findSessionById,
+  listMembers,
+  listResponses,
   setPostponeMessageId,
   transitionStatus
-} from "../db/repositories/sessions.js";
-import { listMembers } from "../db/repositories/members.js";
-import { listResponses } from "../db/repositories/responses.js";
+} from "../db/repositories/index.js";
 import type {
   DbLike,
   ResponseRow,
@@ -16,8 +16,9 @@ import {
   evaluateDeadline,
   type DecisionResult,
   type EvaluateDeadlineOptions
-} from "../domain/deadline.js";
+} from "../domain/index.js";
 import { logger } from "../logger.js";
+import { assertNever } from "../util/assertNever.js";
 import { renderAskBody } from "./ask/render.js";
 import { renderPostponeBody } from "./postponeMessage.js";
 import {
@@ -201,7 +202,15 @@ export const applyDeadlineDecision = async (
       session.id,
       decision.reason === "all_absent" ? "absent" : "deadline_unanswered"
     );
+    return;
   }
+
+  if (decision.kind === "pending") {
+    return;
+  }
+
+  // invariant: 将来 DecisionResult.kind を追加した際に型エラーで気付くため assertNever を残す
+  return assertNever(decision, "applyDeadlineDecision");
 };
 
 // source-of-truth: 判定ロジックは domain/deadline.ts が正本

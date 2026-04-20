@@ -1,7 +1,7 @@
 // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
 // invariant: viewModel は pure (I/O なし、Date.now なし)
 
-import { slotKeySchema } from "../domain/slot.js";
+import { slotKeySchema } from "../domain/index.js";
 import { env } from "../env.js";
 import { messages, type SettleCancelReason } from "../messages.js";
 import {

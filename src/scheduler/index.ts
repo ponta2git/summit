@@ -1,29 +1,26 @@
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
+import {
+  CRON_ASK_SCHEDULE,
+  CRON_DEADLINE_SCHEDULE,
+  MEMBER_COUNT_EXPECTED
+} from "../config.js";
 import { db as defaultDb } from "../db/client.js";
 import {
   findDueAskingSessions,
   findNonTerminalSessions,
-  listResponses,
-  type DbLike,
-  type SessionRow
-} from "../db/repositories/sessions.js";
+  listResponses
+} from "../db/repositories/index.js";
+import type { DbLike, SessionRow } from "../db/types.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
   type SendAskMessageResult
 } from "../discord/ask/send.js";
-import { settleAskingSession, tryDecideIfAllTimeSlots } from "../discord/settle.js";
-import { env } from "../env.js";
+import { evaluateAndApplyDeadlineDecision } from "../discord/settle.js";
 import { logger } from "../logger.js";
-import {
-  decidedStartAt,
-  parseCandidateDateIso,
-  systemClock,
-  type AskTimeChoice,
-  type Clock
-} from "../time/index.js";
+import { systemClock, type Clock } from "../time/index.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -62,46 +59,14 @@ export const runScheduledAskTick = async (
 const settleDueAskingSession = async (
   client: Client,
   db: DbLike,
-  session: SessionRow
+  session: SessionRow,
+  now: Date
 ): Promise<void> => {
   const responses = await listResponses(db, session.id);
-  const expected = env.MEMBER_USER_IDS.length;
-
-  const hasAbsent = responses.some((r) => r.choice === "ABSENT");
-  const allAnswered = responses.length === expected;
-  const allTime =
-    allAnswered &&
-    responses.every(
-      (r) =>
-        r.choice === "T2200" ||
-        r.choice === "T2230" ||
-        r.choice === "T2300" ||
-        r.choice === "T2330"
-    );
-
-  if (hasAbsent) {
-    // race: 通常は absent 押下時の button handler で settleAskingSession 済み。
-    //   ここに到達するのは button handler の edit 失敗 / プロセス落ちからの復帰ケース。
-    //   idempotent: transitionStatus の CAS で勝者のみ副作用を実行するため二重実行安全。
-    await settleAskingSession(client, db, session.id, "absent");
-    return;
-  }
-
-  if (allTime) {
-    const timeChoices = responses
-      .map((r) => r.choice)
-      .filter(
-        (c): c is AskTimeChoice =>
-          c === "T2200" || c === "T2230" || c === "T2300" || c === "T2330"
-      );
-    const start = decidedStartAt(parseCandidateDateIso(session.candidateDate), timeChoices);
-    if (start) {
-      await tryDecideIfAllTimeSlots(db, session, start);
-    }
-    return;
-  }
-
-  await settleAskingSession(client, db, session.id, "deadline_unanswered");
+  await evaluateAndApplyDeadlineDecision(client, db, session, responses, {
+    memberCountExpected: MEMBER_COUNT_EXPECTED,
+    now
+  });
 };
 
 /**
@@ -116,9 +81,10 @@ export const runDeadlineTick = async (
   clock: Clock
 ): Promise<void> => {
   try {
-    const due = await findDueAskingSessions(db, clock.now());
+    const now = clock.now();
+    const due = await findDueAskingSessions(db, now);
     for (const session of due) {
-      await settleDueAskingSession(client, db, session);
+      await settleDueAskingSession(client, db, session, now);
     }
   } catch (error: unknown) {
     logger.error({ error }, "Deadline tick failed.");
@@ -153,7 +119,7 @@ export const runStartupRecovery = async (
           },
           "Startup recovery: settling overdue ASKING session."
         );
-        await settleDueAskingSession(client, db, session);
+        await settleDueAskingSession(client, db, session, now);
       }
     }
   } catch (error: unknown) {
@@ -188,18 +154,19 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
   // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
   // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
   // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
-  // hack: ADR-0007 により暫定で金 08:00 JST (`0 8 * * 5`) で送信する。requirements/base.md の 18:00 記述は過渡期の未同期。
+  // why: runtime tunables を config.ts に集約 (ADR-0013)
+  // invariant: ADR-0007 により暫定で金 08:00 JST を維持する。requirements/base.md の 18:00 記述は過渡期の未同期。
   // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
   // @see docs/adr/0007-ask-command-always-available-and-08-jst-cron.md
   const askTask = cronModule.schedule(
-    "0 8 * * 5",
+    CRON_ASK_SCHEDULE,
     () => void runScheduledAskTick(sendAsk, clock),
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 
-  // jst: 金曜 21:30 JST。candidateDate=当日 / deadlineAt=当日 21:30 の組に対応する。
+  // jst: 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
   const deadlineTask = cronModule.schedule(
-    "30 21 * * 5",
+    CRON_DEADLINE_SCHEDULE,
     () => void runDeadlineTick(deps.client, db, clock),
     { timezone: "Asia/Tokyo", noOverlap: true }
   );

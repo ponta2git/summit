@@ -3,12 +3,12 @@ import { randomUUID } from "node:crypto";
 import { ChannelType, type Client } from "discord.js";
 
 import { db as defaultDb } from "../../db/client.js";
-import { listMembers } from "../../db/repositories/members.js";
 import {
   createAskSession,
   findSessionByWeekKeyAndPostponeCount,
+  listMembers,
   setAskMessageId
-} from "../../db/repositories/sessions.js";
+} from "../../db/repositories/index.js";
 import type { DbLike } from "../../db/types.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
