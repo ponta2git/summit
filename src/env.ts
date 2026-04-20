@@ -29,6 +29,21 @@ export const envSchema = z.object({
         .filter((part) => part.length > 0)
     )
     .pipe(z.array(discordId).length(MEMBER_COUNT_EXPECTED)),
+  MEMBER_DISPLAY_NAMES: z.preprocess(
+    (value) => {
+      if (value === "" || value === undefined) {
+        return undefined;
+      }
+      if (typeof value !== "string") {
+        return value;
+      }
+      return value
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+    },
+    z.array(z.string().min(1).max(32)).length(MEMBER_COUNT_EXPECTED).optional()
+  ),
   DATABASE_URL: z.string().url(),
   // jst: TZ は Asia/Tokyo 固定のみ許可する (DST なし、仕様上他地域での運用想定なし)。
   TZ: z.literal("Asia/Tokyo"),

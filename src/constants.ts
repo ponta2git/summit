@@ -1,6 +1,10 @@
 // why: UI cosmetic は constants に集約 (ADR-0013)
 // ボタンの label / style をここに集約する。user-facing 文言（メッセージ本文）は src/messages.ts が担当。
 import { ButtonStyle } from "discord.js";
+import {
+  dbChoiceFromSlotKey,
+  type SlotKey
+} from "./domain/slot.js";
 
 // --- Ask button labels ---
 export const BUTTON_LABEL_ASK_T2200 = "22:00" as const;
@@ -20,18 +24,17 @@ export const BUTTON_STYLE_POSTPONE_OK = ButtonStyle.Primary;
 export const BUTTON_STYLE_POSTPONE_NG = ButtonStyle.Secondary;
 
 /**
- * Ask button label map keyed by custom_id choice suffix (lowercase).
+ * Ask button label map keyed by canonical SlotKey.
  *
  * @remarks
- * invariant: キーは interactions.ts の askCustomIdSchema / ASK_CUSTOM_ID_TO_DB_CHOICE と一致する。
+ * source-of-truth: SlotKey は domain/slot.ts
  */
 export const ASK_BUTTON_LABELS = {
-  t2200: BUTTON_LABEL_ASK_T2200,
-  t2230: BUTTON_LABEL_ASK_T2230,
-  t2300: BUTTON_LABEL_ASK_T2300,
-  t2330: BUTTON_LABEL_ASK_T2330,
-  absent: BUTTON_LABEL_ASK_ABSENT,
-} as const satisfies Record<string, string>;
+  T2200: BUTTON_LABEL_ASK_T2200,
+  T2230: BUTTON_LABEL_ASK_T2230,
+  T2300: BUTTON_LABEL_ASK_T2300,
+  T2330: BUTTON_LABEL_ASK_T2330
+} as const satisfies Record<SlotKey, string>;
 
 /**
  * Choice display label map keyed by DB choice value (uppercase).
@@ -41,9 +44,9 @@ export const ASK_BUTTON_LABELS = {
  * string index が必要なため Record<string, string> で型付け。
  */
 export const CHOICE_LABEL_FOR_RESPONSE: Readonly<Record<string, string>> = {
-  T2200: BUTTON_LABEL_ASK_T2200,
-  T2230: BUTTON_LABEL_ASK_T2230,
-  T2300: BUTTON_LABEL_ASK_T2300,
-  T2330: BUTTON_LABEL_ASK_T2330,
+  [dbChoiceFromSlotKey("T2200")]: BUTTON_LABEL_ASK_T2200,
+  [dbChoiceFromSlotKey("T2230")]: BUTTON_LABEL_ASK_T2230,
+  [dbChoiceFromSlotKey("T2300")]: BUTTON_LABEL_ASK_T2300,
+  [dbChoiceFromSlotKey("T2330")]: BUTTON_LABEL_ASK_T2330,
   ABSENT: BUTTON_LABEL_ASK_ABSENT,
 };

@@ -16,7 +16,7 @@ vi.mock("../../src/db/repositories/sessions.js", async () => {
     ...actual,
     findSessionById: vi.fn(),
     transitionStatus: vi.fn(),
-    setPostponeMessageId: vi.fn()
+    updatePostponeMessageId: vi.fn()
   };
 });
 
@@ -102,7 +102,7 @@ describe("settleAskingSession", () => {
     });
     expect(channel.send).toHaveBeenCalledTimes(2);
     expect(sentMessages).toHaveLength(2);
-    expect(repos.setPostponeMessageId).toHaveBeenCalledWith(db, session.id, "posted-2");
+    expect(repos.updatePostponeMessageId).toHaveBeenCalledWith(db, session.id, "posted-2");
   });
 
   it("is idempotent when another path has already cancelled (race)", async () => {
@@ -115,7 +115,7 @@ describe("settleAskingSession", () => {
 
     expect(repos.transitionStatus).toHaveBeenCalledTimes(1);
     expect(channel.send).not.toHaveBeenCalled();
-    expect(repos.setPostponeMessageId).not.toHaveBeenCalled();
+    expect(repos.updatePostponeMessageId).not.toHaveBeenCalled();
   });
 
   it("skips when session status is already non-ASKING", async () => {

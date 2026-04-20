@@ -132,6 +132,7 @@ schema を変えたら `pnpm db:generate` → 生成 SQL をレビュー → `pn
 | `DISCORD_GUILD_ID` | `12345...` | 運用 Discord サーバー（Guild）ID |
 | `DISCORD_CHANNEL_ID` | `12345...` | 投稿先チャンネル ID |
 | `MEMBER_USER_IDS` | `id1,id2,id3,id4` | 固定 4 名の User ID（カンマ区切り、4 件ちょうど） |
+| `MEMBER_DISPLAY_NAMES` | `name1,name2,name3,name4` | 任意。指定時は `MEMBER_USER_IDS` と同順で `members.display_name` を起動時に上書き |
 | `CANDIDATE_TIMES` | `22:00,22:30,23:00,23:30` | 開催候補時刻 |
 | `ASK_TIME` | `08:00` | 自動送信時刻（金 / 土の当日） |
 | `ANSWER_DEADLINE` | `21:30` | 回答締切 |

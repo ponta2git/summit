@@ -7,7 +7,7 @@ import {
   createAskSession,
   findSessionByWeekKeyAndPostponeCount,
   listMembers,
-  setAskMessageId
+  updateAskMessageId
 } from "../../db/repositories/index.js";
 import type { DbLike } from "../../db/types.js";
 import { env } from "../../env.js";
@@ -122,7 +122,7 @@ const doSendAskMessage = async (
   // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
   const vm = buildInitialAskMessageViewModel(created.id, candidateDate, memberRows);
   const sentMessage = await channel.send(renderAskBody(vm));
-  await setAskMessageId(db, created.id, sentMessage.id);
+  await updateAskMessageId(db, created.id, sentMessage.id);
 
   logger.info(
     {

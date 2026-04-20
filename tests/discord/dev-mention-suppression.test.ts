@@ -31,7 +31,7 @@ vi.mock("../../src/db/repositories/sessions.js", async () => {
     ...actual,
     findSessionById: vi.fn(),
     transitionStatus: vi.fn(),
-    setPostponeMessageId: vi.fn()
+    updatePostponeMessageId: vi.fn()
   };
 });
 

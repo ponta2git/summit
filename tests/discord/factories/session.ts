@@ -1,4 +1,4 @@
-import type { SessionRow } from "../../../src/db/repositories/sessions.js";
+import type { SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
 
 // why: discord 系テスト (render / settle / dev-mention-suppression) で SessionRow を組み立てる重複を解消する。
@@ -9,7 +9,7 @@ export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow
   id: "session-default",
   weekKey: "2026-W17",
   postponeCount: 0,
-  candidateDate: "2026-04-24",
+  candidateDateIso: "2026-04-24",
   status: "ASKING",
   channelId: env.DISCORD_CHANNEL_ID,
   askMessageId: null,

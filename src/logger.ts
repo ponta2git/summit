@@ -8,6 +8,10 @@ export const loggerOptions = {
   level: "info",
   redact: {
     paths: [
+      "DATABASE_URL",
+      "DIRECT_URL",
+      "HEALTHCHECK_PING_URL",
+      "DISCORD_TOKEN",
       "token",
       "authorization",
       "Authorization",

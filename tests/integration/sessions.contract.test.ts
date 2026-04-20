@@ -7,10 +7,12 @@ import * as schema from "../../src/db/schema.js";
 import {
   createAskSession,
   findSessionByWeekKeyAndPostponeCount,
-  listResponses,
-  transitionStatus,
-  upsertResponse
+  transitionStatus
 } from "../../src/db/repositories/sessions.js";
+import {
+  listResponses,
+  upsertResponse
+} from "../../src/db/repositories/responses.js";
 
 // invariant: INTEGRATION_DB=1 のときだけ実行する。gate は vitest.integration.config.ts の
 //   include 側と二重化することで、誤って `pnpm test` に拾われても no-op にする。
@@ -66,7 +68,7 @@ describeDb("sessions repository contract (integration)", () => {
   const baseSession = {
     weekKey: "2026-W17",
     postponeCount: 0,
-    candidateDate: "2026-04-24",
+    candidateDateIso: "2026-04-24",
     channelId: "channel-1",
     deadlineAt: new Date("2026-04-24T12:30:00.000Z")
   };
@@ -154,7 +156,7 @@ describeDb("sessions repository contract (integration)", () => {
     try {
       await db.execute(sql`
         INSERT INTO sessions
-          (id, week_key, postpone_count, candidate_date, status, channel_id, deadline_at)
+          (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at)
         VALUES
           ('s-bad', '2026-W17', 2, '2026-04-24', 'ASKING', 'c1', now())
       `);

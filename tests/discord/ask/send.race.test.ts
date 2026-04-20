@@ -2,10 +2,19 @@ import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetSendStateForTest, sendAskMessage } from "../../../src/discord/ask/send.js";
-import type { DbLike, SessionRow } from "../../../src/db/repositories/sessions.js";
+import type { DbLike, SessionRow } from "../../../src/db/types.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import { memberUserId } from "../../helpers/env.js";
+
+vi.mock("../../../src/db/repositories/members.js", () => ({
+  listMembers: vi.fn(async () => [
+    { id: "member-1", userId: "323456789012345678", displayName: "いーゆー" },
+    { id: "member-2", userId: "423456789012345678", displayName: "おーたか" },
+    { id: "member-3", userId: "523456789012345678", displayName: "あかねまみ" },
+    { id: "member-4", userId: "623456789012345678", displayName: "ぽんた" }
+  ])
+}));
 
 const createMockClient = (channel: unknown): Client =>
   ({
@@ -41,7 +50,7 @@ const createMockDb = () => {
             id: row.id ?? "",
             weekKey: row.weekKey ?? "",
             postponeCount: row.postponeCount ?? 0,
-            candidateDate: row.candidateDate ?? "",
+            candidateDateIso: row.candidateDateIso ?? "",
             status: row.status ?? "ASKING",
             channelId: row.channelId ?? "",
             askMessageId: null,

@@ -65,6 +65,20 @@ describe("envSchema", () => {
     ]);
   });
 
+  it("parses optional MEMBER_DISPLAY_NAMES as a 4-member array", () => {
+    const parsed = envSchema.parse({
+      ...validEnvInput,
+      MEMBER_DISPLAY_NAMES: "いーゆー,おーたか,あかねまみ,ぽんた"
+    });
+
+    expect(parsed.MEMBER_DISPLAY_NAMES).toEqual([
+      "いーゆー",
+      "おーたか",
+      "あかねまみ",
+      "ぽんた"
+    ]);
+  });
+
   it("rejects invalid inputs", () => {
     const cases = [
       {
@@ -104,6 +118,13 @@ describe("envSchema", () => {
           ...validEnvInput,
           MEMBER_USER_IDS:
             "323456789012345678,423456789012345678,,623456789012345678"
+        }
+      },
+      {
+        name: "MEMBER_DISPLAY_NAMES has 3 entries",
+        input: {
+          ...validEnvInput,
+          MEMBER_DISPLAY_NAMES: "いーゆー,おーたか,あかねまみ"
         }
       },
       {

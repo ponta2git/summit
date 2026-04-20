@@ -7,6 +7,15 @@ import {
   startOfDay
 } from "date-fns";
 import { ja } from "date-fns/locale";
+import {
+  ASK_DEADLINE_HHMM,
+  REMINDER_LEAD_MINUTES
+} from "../config.js";
+import {
+  SLOT_KEYS,
+  SLOT_TO_MINUTES,
+  type SlotKey
+} from "../domain/slot.js";
 
 export interface Clock {
   now(): Date;
@@ -46,15 +55,8 @@ export const formatCandidateJa = (value: Date): string =>
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
 
-export const ASK_TIME_CHOICES = ["T2200", "T2230", "T2300", "T2330"] as const;
-export type AskTimeChoice = (typeof ASK_TIME_CHOICES)[number];
-
-const SLOT_MINUTES: Record<AskTimeChoice, { h: number; m: number }> = {
-  T2200: { h: 22, m: 0 },
-  T2230: { h: 22, m: 30 },
-  T2300: { h: 23, m: 0 },
-  T2330: { h: 23, m: 30 }
-};
+export const ASK_TIME_CHOICES = SLOT_KEYS;
+export type AskTimeChoice = SlotKey;
 
 /**
  * Parses a `YYYY-MM-DD` string as the JST midnight of that date.
@@ -95,8 +97,8 @@ export const deadlineFor = (candidateDate: Date): Date =>
   // jst: 締切は候補日当日 21:30 JST。送信時刻 (金 08:00) や順延 (候補日翌日 00:00) とは別物。
   // @see requirements/base.md §4
   set(startOfDay(candidateDate), {
-    hours: 21,
-    minutes: 30,
+    hours: ASK_DEADLINE_HHMM.hour,
+    minutes: ASK_DEADLINE_HHMM.minute,
     seconds: 0,
     milliseconds: 0
   });
@@ -131,13 +133,14 @@ export const decidedStartAt = (
 ): Date | undefined => {
   const latest = latestChoice(choices);
   if (!latest) {return undefined;}
-  const slot = SLOT_MINUTES[latest];
+  const slot = SLOT_TO_MINUTES[latest];
   return set(startOfDay(candidateDate), {
-    hours: slot.h,
-    minutes: slot.m,
+    hours: slot.hour,
+    minutes: slot.minute,
     seconds: 0,
     milliseconds: 0
   });
 };
 
-export const reminderAtFor = (startAt: Date): Date => addMinutes(startAt, -15);
+export const reminderAtFor = (startAt: Date): Date =>
+  addMinutes(startAt, REMINDER_LEAD_MINUTES);

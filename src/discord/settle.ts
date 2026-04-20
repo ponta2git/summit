@@ -4,7 +4,7 @@ import {
   findSessionById,
   listMembers,
   listResponses,
-  setPostponeMessageId,
+  updatePostponeMessageId,
   transitionStatus
 } from "../db/repositories/index.js";
 import type {
@@ -18,7 +18,6 @@ import {
   type EvaluateDeadlineOptions
 } from "../domain/index.js";
 import { logger } from "../logger.js";
-import { assertNever } from "../util/assertNever.js";
 import { renderAskBody } from "./ask/render.js";
 import { renderPostponeBody } from "./postponeMessage.js";
 import {
@@ -50,7 +49,7 @@ export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string
   return { content: lines.join("\n") };
 };
 
-export const refreshAskMessage = async (
+export const updateAskMessage = async (
   client: Client,
   db: DbLike,
   session: SessionRow
@@ -70,7 +69,7 @@ export const refreshAskMessage = async (
   } catch (error: unknown) {
     logger.warn(
       { error, sessionId: session.id, messageId: session.askMessageId },
-      "Failed to refresh ask message."
+      "Failed to update ask message."
     );
   }
 };
@@ -117,7 +116,7 @@ export const settleAskingSession = async (
     "Session cancelled."
   );
 
-  await refreshAskMessage(client, db, cancelled);
+  await updateAskMessage(client, db, cancelled);
 
   const channel = await getTextChannel(client, cancelled.channelId);
 
@@ -127,7 +126,7 @@ export const settleAskingSession = async (
 
   const postponeVm = buildPostponeMessageViewModel(cancelled);
   const postponeSent = await channel.send(renderPostponeBody(postponeVm));
-  await setPostponeMessageId(db, cancelled.id, postponeSent.id);
+  await updatePostponeMessageId(db, cancelled.id, postponeSent.id);
 
   const transitioned = await transitionStatus(db, {
     id: sessionId,
@@ -184,33 +183,50 @@ export const tryDecideIfAllTimeSlots = async (
   return false;
 };
 
+type DeadlineDecisionContext = Readonly<{
+  client: Client;
+  db: DbLike;
+  session: SessionRow;
+}>;
+
+type DeadlineDecisionStrategy<K extends DecisionResult["kind"]> = (
+  context: DeadlineDecisionContext,
+  decision: Extract<DecisionResult, { kind: K }>
+) => Promise<void>;
+
+type DeadlineDecisionStrategyMap = {
+  [K in DecisionResult["kind"]]: DeadlineDecisionStrategy<K>;
+};
+
+const toCancelReason = (
+  reason: Extract<DecisionResult, { kind: "cancelled" }>["reason"]
+): CancelReason => (reason === "all_absent" ? "absent" : "deadline_unanswered");
+
+// why: DecisionResult.kind ごとの処理を strategy map 化し、分岐追加時の影響範囲を局所化する
+// invariant: DecisionResult.kind の全ケースを map key として要求し、未実装を型エラーで検知する
+// source-of-truth: 分岐の起点は DecisionResult.kind（domain/deadline.ts の判定結果）
+const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
+  decided: async ({ db, session }, decision) => {
+    await tryDecideIfAllTimeSlots(db, session, decision.startAt);
+  },
+  cancelled: async ({ client, db, session }, decision) => {
+    await settleAskingSession(client, db, session.id, toCancelReason(decision.reason));
+  },
+  pending: async () => {}
+};
+
+const applyDeadlineDecisionByStrategy = async <K extends DecisionResult["kind"]>(
+  context: DeadlineDecisionContext,
+  decision: Extract<DecisionResult, { kind: K }>
+): Promise<void> => deadlineDecisionStrategies[decision.kind](context, decision);
+
 export const applyDeadlineDecision = async (
   client: Client,
   db: DbLike,
   session: SessionRow,
   decision: DecisionResult
 ): Promise<void> => {
-  if (decision.kind === "decided") {
-    await tryDecideIfAllTimeSlots(db, session, decision.startAt);
-    return;
-  }
-
-  if (decision.kind === "cancelled") {
-    await settleAskingSession(
-      client,
-      db,
-      session.id,
-      decision.reason === "all_absent" ? "absent" : "deadline_unanswered"
-    );
-    return;
-  }
-
-  if (decision.kind === "pending") {
-    return;
-  }
-
-  // invariant: 将来 DecisionResult.kind を追加した際に型エラーで気付くため assertNever を残す
-  return assertNever(decision, "applyDeadlineDecision");
+  await applyDeadlineDecisionByStrategy({ client, db, session }, decision);
 };
 
 // source-of-truth: 判定ロジックは domain/deadline.ts が正本
