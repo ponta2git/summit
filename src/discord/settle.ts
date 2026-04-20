@@ -2,16 +2,30 @@ import { ChannelType, type Client } from "discord.js";
 
 import {
   findSessionById,
-  listMembers,
   setPostponeMessageId,
-  transitionStatus,
-  type DbLike,
-  type SessionRow
+  transitionStatus
 } from "../db/repositories/sessions.js";
-import { env } from "../env.js";
+import { listMembers } from "../db/repositories/members.js";
+import { listResponses } from "../db/repositories/responses.js";
+import type {
+  DbLike,
+  ResponseRow,
+  SessionRow
+} from "../db/types.js";
+import {
+  evaluateDeadline,
+  type DecisionResult,
+  type EvaluateDeadlineOptions
+} from "../domain/deadline.js";
 import { logger } from "../logger.js";
-import { buildAskRenderFromDb } from "./ask/render.js";
+import { renderAskBody } from "./ask/render.js";
 import { renderPostponeBody } from "./postponeMessage.js";
+import {
+  buildAskMessageViewModel,
+  buildPostponeMessageViewModel,
+  buildSettleNoticeViewModel,
+  type SettleNoticeViewModel
+} from "./viewModels.js";
 
 export type CancelReason = "absent" | "deadline_unanswered";
 
@@ -23,6 +37,18 @@ const getTextChannel = async (client: Client, channelId: string) => {
   return channel;
 };
 
+// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
+export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string } => {
+  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く。単純な `${mentions}\n${cancel}` 連結だと
+  //   mentions="" のとき先頭改行が残るため、filter で空文字を除外してから join する。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  const lines = [
+    vm.suppressMentions ? "" : vm.memberUserIds.map((id) => `<@${id}>`).join(" "),
+    vm.cancelText
+  ].filter((line) => line.length > 0);
+  return { content: lines.join("\n") };
+};
+
 export const refreshAskMessage = async (
   client: Client,
   db: DbLike,
@@ -31,10 +57,12 @@ export const refreshAskMessage = async (
   if (!session.askMessageId) {return;}
   const channel = await getTextChannel(client, session.channelId);
   const memberRows = await listMembers(db);
-  const memberLookup = new Map(memberRows.map((m) => [m.id, m.userId]));
   const fresh = await findSessionById(db, session.id);
   if (!fresh) {return;}
-  const rendered = await buildAskRenderFromDb(db, fresh, memberLookup);
+  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
+  const responses = await listResponses(db, fresh.id);
+  const vm = buildAskMessageViewModel(fresh, responses, memberRows);
+  const rendered = renderAskBody(vm);
   try {
     const msg = await channel.messages.fetch(session.askMessageId);
     await msg.edit(rendered);
@@ -60,8 +88,9 @@ export const settleAskingSession = async (
   const current = await findSessionById(db, sessionId);
   if (!current) {return;}
   if (current.status !== "ASKING") {
+    // state: ASKING 以外は遷移せず skip 理由を明示して終了する
     logger.info(
-      { sessionId, status: current.status, reason },
+      { sessionId, weekKey: current.weekKey, status: current.status, reason: "non-asking status, skip settle" },
       "settleAskingSession called on non-ASKING session; skipping."
     );
     return;
@@ -74,7 +103,11 @@ export const settleAskingSession = async (
     cancelReason: reason
   });
   if (!cancelled) {
-    logger.info({ sessionId, reason }, "ASKING→CANCELLED race; another path settled first.");
+    // state: ASKING→CANCELLED の CAS 競合敗北は無害な race lost として扱う
+    logger.info(
+      { sessionId, weekKey: current.weekKey, from: "ASKING", to: "CANCELLED", reason: "race lost at transition" },
+      "ASKING→CANCELLED race; another path settled first."
+    );
     return;
   }
 
@@ -87,21 +120,12 @@ export const settleAskingSession = async (
 
   const channel = await getTextChannel(client, cancelled.channelId);
 
-  const cancelContent =
-    reason === "absent"
-      ? "🛑 欠席が出たため、今週の開催は中止です。"
-      : "🛑 21:30 までに未回答者がいたため、今週の開催は中止です。";
+  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
+  const settleVm = buildSettleNoticeViewModel(reason);
+  await channel.send(renderSettleNotice(settleVm));
 
-  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く。単純な `${mentions}\n${cancel}` 連結だと
-  //   mentions="" のとき先頭改行が残るため、filter で空文字を除外してから join する。
-  // @see docs/adr/0011-dev-mention-suppression.md
-  const cancelLines = [
-    env.DEV_SUPPRESS_MENTIONS ? "" : env.MEMBER_USER_IDS.map((id) => `<@${id}>`).join(" "),
-    cancelContent
-  ].filter((line) => line.length > 0);
-  await channel.send({ content: cancelLines.join("\n") });
-
-  const postponeSent = await channel.send(renderPostponeBody(cancelled));
+  const postponeVm = buildPostponeMessageViewModel(cancelled);
+  const postponeSent = await channel.send(renderPostponeBody(postponeVm));
   await setPostponeMessageId(db, cancelled.id, postponeSent.id);
 
   const transitioned = await transitionStatus(db, {
@@ -110,12 +134,14 @@ export const settleAskingSession = async (
     to: "POSTPONE_VOTING"
   });
   if (transitioned) {
+    // state: CANCELLED→POSTPONE_VOTING は順延投票メッセージ送信を契機に 1 回だけ遷移する
     logger.info(
       {
         sessionId,
         weekKey: cancelled.weekKey,
         from: "CANCELLED",
         to: "POSTPONE_VOTING",
+        reason: "postpone vote requested after cancel",
         postponeMessageId: postponeSent.id
       },
       "Postpone voting started."
@@ -140,12 +166,14 @@ export const tryDecideIfAllTimeSlots = async (
     decidedStartAt: decidedStart
   });
   if (result) {
+    // state: ASKING で全員の時間回答が揃った場合のみ DECIDED へ遷移する
     logger.info(
       {
         sessionId: session.id,
         weekKey: session.weekKey,
         from: "ASKING",
         to: "DECIDED",
+        reason: "all time-choice responses received",
         decidedStartAt: decidedStart.toISOString()
       },
       "Session decided."
@@ -153,4 +181,37 @@ export const tryDecideIfAllTimeSlots = async (
     return true;
   }
   return false;
+};
+
+export const applyDeadlineDecision = async (
+  client: Client,
+  db: DbLike,
+  session: SessionRow,
+  decision: DecisionResult
+): Promise<void> => {
+  if (decision.kind === "decided") {
+    await tryDecideIfAllTimeSlots(db, session, decision.startAt);
+    return;
+  }
+
+  if (decision.kind === "cancelled") {
+    await settleAskingSession(
+      client,
+      db,
+      session.id,
+      decision.reason === "all_absent" ? "absent" : "deadline_unanswered"
+    );
+  }
+};
+
+// source-of-truth: 判定ロジックは domain/deadline.ts が正本
+export const evaluateAndApplyDeadlineDecision = async (
+  client: Client,
+  db: DbLike,
+  session: SessionRow,
+  responses: readonly ResponseRow[],
+  options: EvaluateDeadlineOptions
+): Promise<void> => {
+  const decision = evaluateDeadline(session, responses, options);
+  await applyDeadlineDecision(client, db, session, decision);
 };

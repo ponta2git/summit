@@ -2,7 +2,9 @@ import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as SessionRepos from "../../src/db/repositories/sessions.js";
-import type { DbLike, SessionRow } from "../../src/db/repositories/sessions.js";
+import type * as MemberRepos from "../../src/db/repositories/members.js";
+import type * as ResponseRepos from "../../src/db/repositories/responses.js";
+import type { DbLike, SessionRow } from "../../src/db/types.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
@@ -14,14 +16,29 @@ vi.mock("../../src/db/repositories/sessions.js", async () => {
     ...actual,
     findSessionById: vi.fn(),
     transitionStatus: vi.fn(),
-    setPostponeMessageId: vi.fn(),
+    setPostponeMessageId: vi.fn()
+  };
+});
+
+vi.mock("../../src/db/repositories/members.js", async () => {
+  const actual = await vi.importActual<typeof MemberRepos>(
+    "../../src/db/repositories/members.js"
+  );
+  return {
+    ...actual,
     listMembers: vi.fn(async () => [])
   };
 });
 
-vi.mock("../../src/discord/ask/render.js", () => ({
-  buildAskRenderFromDb: vi.fn(async () => ({ content: "ask", components: [] }))
-}));
+vi.mock("../../src/db/repositories/responses.js", async () => {
+  const actual = await vi.importActual<typeof ResponseRepos>(
+    "../../src/db/repositories/responses.js"
+  );
+  return {
+    ...actual,
+    listResponses: vi.fn(async () => [])
+  };
+});
 
 const repos = await import("../../src/db/repositories/sessions.js");
 const { settleAskingSession } = await import("../../src/discord/settle.js");

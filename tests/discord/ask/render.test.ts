@@ -4,8 +4,11 @@ import {
   buildAskRow,
   renderAskBody
 } from "../../../src/discord/ask/render.js";
+import {
+  buildAskMessageViewModel,
+  type ViewModelResponseInput
+} from "../../../src/discord/viewModels.js";
 import { __resetSendStateForTest } from "../../../src/discord/ask/send.js";
-import type { ResponseRow } from "../../../src/db/repositories/sessions.js";
 import { env } from "../../../src/env.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { memberUserId } from "../../helpers/env.js";
@@ -34,30 +37,29 @@ describe("askMessage", () => {
 
   it("renders ask message body with mentions, candidate date, and response state", () => {
     const session = buildSessionRow();
-    const memberLookup = new Map([["m1", memberUserId]]);
-    const responses: ResponseRow[] = [
-      {
-        id: "r1",
-        sessionId: session.id,
-        memberId: "m1",
-        choice: "T2330",
-        answeredAt: new Date("2026-04-24T20:00:00+09:00")
-      }
+    const members = [
+      { id: "m1", userId: memberUserId, displayName: "いーゆー" }
+    ];
+    const responses: ViewModelResponseInput[] = [
+      { memberId: "m1", choice: "T2330" }
     ];
 
-    const rendered = renderAskBody(session, responses, memberLookup);
+    const vm = buildAskMessageViewModel(session, responses, members);
+    const rendered = renderAskBody(vm);
 
     for (const memberId of env.MEMBER_USER_IDS) {
       expect(rendered.content).toContain(`<@${memberId}>`);
     }
     expect(rendered.content).toContain("開催候補日: 2026-04-24(金) 22:00 以降");
+    expect(rendered.content).toContain("- いーゆー : 23:30");
     expect(rendered.content).toContain("23:30");
     expect(rendered.components).toHaveLength(1);
   });
 
   it("disables ask buttons when session is not ASKING", () => {
     const session = buildSessionRow({ status: "CANCELLED", cancelReason: "absent" });
-    const rendered = renderAskBody(session, [], new Map());
+    const vm = buildAskMessageViewModel(session, [], []);
+    const rendered = renderAskBody(vm);
     const first = rendered.components?.[0] as unknown as {
       toJSON?: () => { components: { disabled?: boolean }[] };
     };

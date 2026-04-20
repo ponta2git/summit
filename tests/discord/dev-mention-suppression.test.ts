@@ -5,11 +5,14 @@ import { ChannelType, type Client } from "discord.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type * as SessionRepos from "../../src/db/repositories/sessions.js";
-import type { DbLike, SessionRow } from "../../src/db/repositories/sessions.js";
+import type * as MemberRepos from "../../src/db/repositories/members.js";
+import type * as ResponseRepos from "../../src/db/repositories/responses.js";
+import type { DbLike, SessionRow } from "../../src/db/types.js";
 
 import type * as AskRenderModule from "../../src/discord/ask/render.js";
 import type * as PostponeModule from "../../src/discord/postponeMessage.js";
 import type * as SettleModule from "../../src/discord/settle.js";
+import type * as ViewModelsModule from "../../src/discord/viewModels.js";
 import type * as EnvModule from "../../src/env.js";
 
 import { buildSessionRow } from "./factories/session.js";
@@ -17,6 +20,7 @@ import { buildSessionRow } from "./factories/session.js";
 type RenderAsk = typeof AskRenderModule;
 type RenderPostpone = typeof PostponeModule;
 type Settle = typeof SettleModule;
+type ViewModels = typeof ViewModelsModule;
 type Env = typeof EnvModule;
 
 vi.mock("../../src/db/repositories/sessions.js", async () => {
@@ -27,19 +31,38 @@ vi.mock("../../src/db/repositories/sessions.js", async () => {
     ...actual,
     findSessionById: vi.fn(),
     transitionStatus: vi.fn(),
-    setPostponeMessageId: vi.fn(),
-    listResponses: vi.fn(async () => []),
+    setPostponeMessageId: vi.fn()
+  };
+});
+
+vi.mock("../../src/db/repositories/members.js", async () => {
+  const actual = await vi.importActual<typeof MemberRepos>(
+    "../../src/db/repositories/members.js"
+  );
+  return {
+    ...actual,
     listMembers: vi.fn(async () => [])
+  };
+});
+
+vi.mock("../../src/db/repositories/responses.js", async () => {
+  const actual = await vi.importActual<typeof ResponseRepos>(
+    "../../src/db/repositories/responses.js"
+  );
+  return {
+    ...actual,
+    listResponses: vi.fn(async () => [])
   };
 });
 
 let askRender: RenderAsk;
 let postponeRender: RenderPostpone;
 let settle: Settle;
+let viewModels: ViewModels;
 let envModule: Env;
 let repos: typeof SessionRepos;
 
-// why: 対象モジュール (render / postponeMessage / settle / env / repos) は全て env を
+// why: 対象モジュール (render / postponeMessage / settle / viewModels / env / repos) は全て env を
 //   モジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下で
 //   再 import する必要がある。cold load が支配的コスト (~1.5s) なので `beforeAll` で
 //   1 度だけ償却する。`beforeEach` 化すると 4 倍に増える。
@@ -52,6 +75,7 @@ beforeAll(async () => {
   askRender = await import("../../src/discord/ask/render.js");
   postponeRender = await import("../../src/discord/postponeMessage.js");
   settle = await import("../../src/discord/settle.js");
+  viewModels = await import("../../src/discord/viewModels.js");
   repos = await import("../../src/db/repositories/sessions.js");
 });
 
@@ -77,7 +101,8 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
   it("renderAskBody content contains no <@ mentions", () => {
     // invariant: envModule は stub 後に import 済みであること (setup 故障検知)。
     expect(envModule.env.DEV_SUPPRESS_MENTIONS).toBe(true);
-    const rendered = askRender.renderAskBody(sessionRow(), [], new Map());
+    const vm = viewModels.buildAskMessageViewModel(sessionRow(), [], []);
+    const rendered = askRender.renderAskBody(vm);
     expect(rendered.content).not.toContain("<@");
     expect(rendered.content).toContain("開催候補日");
     // regression: 本文の空行レイアウトが維持されていること（filter(Boolean) 地雷の回避）
@@ -85,12 +110,18 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
   });
 
   it("renderInitialAskBody content contains no <@ mentions", () => {
-    const rendered = askRender.renderInitialAskBody("session-id", new Date("2026-04-24T00:00:00+09:00"));
+    const vm = viewModels.buildInitialAskMessageViewModel(
+      "session-id",
+      new Date("2026-04-24T00:00:00+09:00"),
+      []
+    );
+    const rendered = askRender.renderAskBody(vm);
     expect(rendered.content).not.toContain("<@");
   });
 
   it("renderPostponeBody content contains no <@ mentions and no leading blank", () => {
-    const rendered = postponeRender.renderPostponeBody(sessionRow());
+    const vm = viewModels.buildPostponeMessageViewModel(sessionRow());
+    const rendered = postponeRender.renderPostponeBody(vm);
     expect(rendered.content).not.toContain("<@");
     expect(rendered.content?.startsWith("\n")).toBe(false);
     expect(rendered.content).toMatch(/^🔁/);

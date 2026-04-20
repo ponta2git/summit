@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { ChannelType, type Client } from "discord.js";
 
 import { db as defaultDb } from "../../db/client.js";
+import { listMembers } from "../../db/repositories/members.js";
 import {
   createAskSession,
   findSessionByWeekKeyAndPostponeCount,
-  setAskMessageId,
-  type DbLike
+  setAskMessageId
 } from "../../db/repositories/sessions.js";
+import type { DbLike } from "../../db/types.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import { isShuttingDown } from "../../shutdown.js";
@@ -20,7 +21,8 @@ import {
   systemClock,
   type Clock
 } from "../../time/index.js";
-import { renderInitialAskBody } from "./render.js";
+import { renderAskBody } from "./render.js";
+import { buildInitialAskMessageViewModel } from "../viewModels.js";
 
 export interface SendAskMessageContext {
   trigger: "cron" | "command";
@@ -85,7 +87,7 @@ const doSendAskMessage = async (
     id: sessionId,
     weekKey,
     postponeCount: 0,
-    candidateDate: candidateIso,
+    candidateDateIso: candidateIso,
     channelId: env.DISCORD_CHANNEL_ID,
     deadlineAt: deadline
   });
@@ -116,7 +118,10 @@ const doSendAskMessage = async (
     throw new Error("Configured channel is not sendable.");
   }
 
-  const sentMessage = await channel.send(renderInitialAskBody(created.id, candidateDate));
+  const memberRows = await listMembers(db);
+  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
+  const vm = buildInitialAskMessageViewModel(created.id, candidateDate, memberRows);
+  const sentMessage = await channel.send(renderAskBody(vm));
   await setAskMessageId(db, created.id, sentMessage.id);
 
   logger.info(
