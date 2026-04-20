@@ -14,15 +14,15 @@ summit（Discord Bot）の実装トポロジ。詳細根拠は `docs/adr/`、業
 | cancel-week | `features/cancel-week/` | `/cancel_week` 確認ダイアログと週単位 SKIPPED（§8, ADR-0023）|
 | interaction-reject | `features/interaction-reject/` | interaction 拒否時のユーザー可視文言（reject / unknownCommand / staleButton / internalError）|
 
-各 feature は原則 `messages.ts`（user-visible 文言）を持ち、ask-session / postpone-voting は `constants.ts`（UI cosmetic）と `messageEditor.ts`（既存メッセージ再描画）を追加で持つ。
+各 feature は原則 `messages.ts`（user-visible 文言）と `viewModel.ts`（DB 行 → UI VM の pure builder）を持ち、ask-session / postpone-voting は `constants.ts`（UI cosmetic）と `messageEditor.ts`（既存メッセージ再描画）を追加で持つ。ask-session は `cancelReason.ts`（週キャンセル理由語彙）も持つ（ADR-0028）。
 
 ## 共通 infra（`src/discord/shared/`）
-cross-cutting のみ。feature 固有のものは置かない（ADR-0027）。
+interaction 入口 / 出口 / DB decouple 契約のみ。feature 固有のものは置かない（ADR-0027, ADR-0028）。
 - `dispatcher.ts`: interaction 入口（ack → guard → route）
 - `guards.ts`: cheap-first 検証（guild / channel / user / custom_id）
 - `customId.ts`: `custom_id` の zod codec
-- `viewModels.ts`: pure な view model builder
-- `channels.ts`: `getTextChannel` / `CancelReason` / `renderSettleNotice`
+- `channels.ts`: `getTextChannel`（Discord SDK 薄ラッパ）
+- `viewModelInputs.ts`: `ViewModelMemberInput` / `ViewModelResponseInput` / `ViewModelSessionInput`（DB 行と UI builder を decouple する契約）
 
 ## feature 外（変更少）
 - `src/time/`: JST / ISO week / 締切計算（ADR-0002）

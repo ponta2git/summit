@@ -17,7 +17,7 @@ import {
   slotKeyFromCustomIdChoice
 } from "../../slot.js";
 import { buildCustomId, type AskCustomIdChoice } from "../../discord/shared/customId.js";
-import type { AskMessageViewModel } from "../../discord/shared/viewModels.js";
+import type { AskMessageViewModel } from "./viewModel.js";
 
 // invariant: Discord button の custom_id 末尾は ASK_CHOICES の小文字値と一致しなければならない。
 //   customId codec / interactions.ts の ASK_CUSTOM_ID_TO_DB_CHOICE と 3 箇所同時更新。

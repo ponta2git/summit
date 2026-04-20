@@ -7,7 +7,7 @@ import { decidedMessages } from "./messages.js";
 import {
   buildDecidedAnnouncementViewModel,
   type DecidedAnnouncementViewModel
-} from "../../discord/shared/viewModels.js";
+} from "./viewModel.js";
 
 import { getTextChannel } from "../../discord/shared/channels.js";
 

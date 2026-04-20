@@ -16,7 +16,7 @@ import { askMessages } from "./messages.js";
 import { evaluateDeadline } from "./decide.js";
 import { renderAskBody } from "./render.js";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
-import { buildAskMessageViewModel } from "../../discord/shared/viewModels.js";
+import { buildAskMessageViewModel } from "./viewModel.js";
 import {
   getGuardFailureReason,
   guardAskCustomId,

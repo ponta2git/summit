@@ -3,11 +3,11 @@
 //   pipeline で組み立てる。DB 型に依存しない。
 import { describe, expect, it } from "vitest";
 
-import {
-  buildPostponeMessageViewModel,
-  type ViewModelMemberInput,
-  type ViewModelResponseInput
-} from "../../../src/discord/shared/viewModels.js";
+import { buildPostponeMessageViewModel } from "../../../src/features/postpone-voting/viewModel.js";
+import type {
+  ViewModelMemberInput,
+  ViewModelResponseInput
+} from "../../../src/discord/shared/viewModelInputs.js";
 import { renderPostponeBody } from "../../../src/features/postpone-voting/render.js";
 import { env } from "../../../src/env.js";
 

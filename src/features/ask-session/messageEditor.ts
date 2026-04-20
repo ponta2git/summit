@@ -4,7 +4,7 @@ import type { AppContext } from "../../composition.js";
 import type { SessionRow } from "../../db/types.js";
 import { logger } from "../../logger.js";
 import { renderAskBody } from "./render.js";
-import { buildAskMessageViewModel } from "../../discord/shared/viewModels.js";
+import { buildAskMessageViewModel } from "./viewModel.js";
 import { getTextChannel } from "../../discord/shared/channels.js";
 
 export const updateAskMessage = async (

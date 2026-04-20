@@ -5,12 +5,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildAskMessageViewModel,
   buildInitialAskMessageViewModel,
-  buildPostponeMessageViewModel,
-  buildSettleNoticeViewModel,
-  type ViewModelMemberInput,
-  type ViewModelResponseInput,
-  type ViewModelSessionInput
-} from "../../src/discord/shared/viewModels.js";
+  buildSettleNoticeViewModel
+} from "../../src/features/ask-session/viewModel.js";
+import { buildPostponeMessageViewModel } from "../../src/features/postpone-voting/viewModel.js";
+import type {
+  ViewModelMemberInput,
+  ViewModelResponseInput,
+  ViewModelSessionInput
+} from "../../src/discord/shared/viewModelInputs.js";
 import { env } from "../../src/env.js";
 
 const session: ViewModelSessionInput = {

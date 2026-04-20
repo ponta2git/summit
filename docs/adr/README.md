@@ -71,3 +71,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0025](./0025-features-directory-migration.md) | feature 単位ディレクトリ（src/features/）への再編 | accepted | 2026-04-25 | runtime, discord, docs |
 | [0026](./0026-boundary-rationalization.md) | 境界の再整理（domain 廃止・ports の DB 境界明示・非対称性の追認） | accepted | 2026-04-25 | runtime, db, discord, docs |
 | [0027](./0027-ui-colocation-and-shared-boundary.md) | UI 資産の feature 同梱と discord/shared の境界明確化 | accepted | 2026-04-25 | runtime, discord, docs |
+| [0028](./0028-viewmodels-as-feature-assets.md) | viewModel の feature 所有と discord/shared の真 cross-cutting 化 | accepted | 2026-04-25 | runtime, discord, docs |

@@ -14,7 +14,7 @@ import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { postponeMessages } from "./messages.js";
 import { renderPostponeBody } from "./render.js";
-import { buildPostponeMessageViewModel } from "../../discord/shared/viewModels.js";
+import { buildPostponeMessageViewModel } from "./viewModel.js";
 import {
   getGuardFailureReason,
   guardChannelId,

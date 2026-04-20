@@ -12,7 +12,7 @@ import {
 } from "./constants.js";
 import { postponeMessages } from "./messages.js";
 import { buildCustomId } from "../../discord/shared/customId.js";
-import type { PostponeMessageViewModel } from "../../discord/shared/viewModels.js";
+import type { PostponeMessageViewModel } from "./viewModel.js";
 
 export const buildPostponeRow = (
   sessionId: string,

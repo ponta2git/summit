@@ -4,10 +4,8 @@ import {
   buildAskRow,
   renderAskBody
 } from "../../../src/features/ask-session/render.js";
-import {
-  buildAskMessageViewModel,
-  type ViewModelResponseInput
-} from "../../../src/discord/shared/viewModels.js";
+import { buildAskMessageViewModel } from "../../../src/features/ask-session/viewModel.js";
+import type { ViewModelResponseInput } from "../../../src/discord/shared/viewModelInputs.js";
 import { __resetSendStateForTest } from "../../../src/features/ask-session/send.js";
 import { env } from "../../../src/env.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";

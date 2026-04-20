@@ -8,7 +8,7 @@ import {
 } from "../../../src/features/decided-announcement/send.js";
 import {
   buildDecidedAnnouncementViewModel
-} from "../../../src/discord/shared/viewModels.js";
+} from "../../../src/features/decided-announcement/viewModel.js";
 import { env } from "../../../src/env.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";

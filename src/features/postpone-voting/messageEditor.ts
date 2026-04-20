@@ -4,7 +4,7 @@ import type { AppContext } from "../../composition.js";
 import type { ResponseRow, SessionRow } from "../../db/types.js";
 import { logger } from "../../logger.js";
 import { renderPostponeBody } from "./render.js";
-import { buildPostponeMessageViewModel } from "../../discord/shared/viewModels.js";
+import { buildPostponeMessageViewModel } from "./viewModel.js";
 import { getTextChannel } from "../../discord/shared/channels.js";
 
 export const updatePostponeMessage = async (
