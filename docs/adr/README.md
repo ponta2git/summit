@@ -55,3 +55,9 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0009](./0009-persist-sessions-and-responses.md) | Session / Response を DB に永続化し順延確認メッセージ投稿までを実装 | accepted | 2026-04-21 | runtime, db, discord, ops |
 | [0010](./0010-code-comment-and-naming-conventions.md) | コメント / ネーミング規約（AI フレンドリーな最小十分コメント） | accepted | 2026-04-22 | docs, runtime, ops |
 | [0011](./0011-dev-mention-suppression.md) | 開発用 mention 抑止スイッチ（DEV_SUPPRESS_MENTIONS） | accepted | 2026-04-20 | discord, ops, runtime |
+| [0012](./0012-member-ssot-env-db-hybrid.md) | member SSoT を env+DB ハイブリッドに統合する | accepted | 2026-04-23 | runtime, db, ops |
+| [0013](./0013-config-layering.md) | config 階層（messages / config / constants / domain slots SSoT） | accepted | 2026-04-23 | runtime, docs |
+| [0014](./0014-naming-dictionary-v2.md) | 命名辞書 v2（ADR-0010 の運用強化） | accepted | 2026-04-23 | docs, runtime |
+| [0015](./0015-error-core-apperror-neverthrow.md) | エラーコア（AppError 判別 union + neverthrow を境界で） | accepted | 2026-04-23 | runtime, ops |
+| [0016](./0016-customid-codec-hmac-rejected.md) | customId codec を typed にする（HMAC 署名は現時点で却下） | accepted | 2026-04-23 | discord, runtime |
+| [0017](./0017-rejected-architecture-alternatives.md) | 却下したアーキテクチャ代替案（XState / effect-ts / OpenTelemetry / event sourcing 他） | accepted | 2026-04-23 | runtime, ops, docs |
