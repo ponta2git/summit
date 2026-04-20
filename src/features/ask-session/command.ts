@@ -2,12 +2,13 @@ import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
 import { DiscordApiError, toAppError } from "../../errors/index.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { askMessages } from "./messages.js";
 import { assertNever } from "../../util/assertNever.js";
 import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+import { rejectMessages } from "../../discord/shared/rejectMessages.js";
 
-const rejectMessage = messages.interaction.reject.notMember;
+const rejectMessage = rejectMessages.reject.notMember;
 
 const sendAskOrThrow = async (
   deps: InteractionHandlerDeps,
@@ -38,12 +39,12 @@ export const handleAskCommand = async (
     const result = await sendAskOrThrow(deps, interaction.user.id);
 
     if (result.status === "sent") {
-      await interaction.editReply(messages.interaction.ask.sent);
+      await interaction.editReply(askMessages.interaction.ask.sent);
       return;
     }
 
     if (result.status === "skipped") {
-      await interaction.editReply(messages.interaction.ask.skippedAlreadySent);
+      await interaction.editReply(askMessages.interaction.ask.skippedAlreadySent);
       return;
     }
 
@@ -61,6 +62,6 @@ export const handleAskCommand = async (
       },
       "Failed to execute /ask."
     );
-    await interaction.editReply(messages.interaction.ask.failed);
+    await interaction.editReply(askMessages.interaction.ask.failed);
   }
 };

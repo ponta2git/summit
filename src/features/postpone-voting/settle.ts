@@ -17,7 +17,7 @@ import {
   saturdayCandidateFrom
 } from "../../time/index.js";
 import { sendPostponedAskMessage } from "../ask-session/send.js";
-import { updatePostponeMessage } from "../../discord/shared/messages.js";
+import { updatePostponeMessage } from "./messageEditor.js";
 
 const postponeDecisionFooter = (
   decision: Exclude<PostponeDecisionResult, { kind: "pending" }>

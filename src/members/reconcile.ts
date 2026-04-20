@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DbLike } from "../db/types.js";
 import { members } from "../db/schema.js";
 import { logger } from "../logger.js";
-import type { MemberReconcileInput } from "../members.js";
+import type { MemberReconcileInput } from "./inputs.js";
 
 /**
  * Idempotently reconcile env.MEMBER_USER_IDS with the DB members table.

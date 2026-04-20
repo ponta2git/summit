@@ -6,7 +6,8 @@ import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } f
 import { logger } from "../../logger.js";
 import { renderPostponeBody } from "../postpone-voting/render.js";
 import { buildPostponeMessageViewModel, buildSettleNoticeViewModel } from "../../discord/shared/viewModels.js";
-import { type CancelReason, getTextChannel, renderSettleNotice, updateAskMessage } from "../../discord/shared/messages.js";
+import { type CancelReason, getTextChannel, renderSettleNotice } from "../../discord/shared/channels.js";
+import { updateAskMessage } from "./messageEditor.js";
 import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "../reminder/send.js";
 import { sendDecidedAnnouncement } from "../decided-announcement/send.js";
 

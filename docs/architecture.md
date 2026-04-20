@@ -3,7 +3,7 @@
 summit（Discord Bot）の実装トポロジ。詳細根拠は `docs/adr/`、業務仕様は `requirements/base.md`。
 
 ## Feature 単位（`src/features/*`）
-1 feature = 1 ディレクトリ。barrel は作らない（ADR-0025）。
+1 feature = 1 ディレクトリ。barrel は作らない（ADR-0025）。UI cosmetic 定数・ユーザー可視メッセージ・feature 固有の message editor はすべて feature 内に同居する（ADR-0027）。
 
 | Feature | ディレクトリ | 責務 |
 |---|---|---|
@@ -13,26 +13,31 @@ summit（Discord Bot）の実装トポロジ。詳細根拠は `docs/adr/`、業
 | decided-announcement | `features/decided-announcement/` | 開催決定時の別投稿（§5.1）|
 | cancel-week | `features/cancel-week/` | `/cancel_week` 確認ダイアログと週単位 SKIPPED（§8, ADR-0023）|
 
+各 feature は原則 `messages.ts`（user-visible 文言）を持ち、ask-session / postpone-voting は `constants.ts`（UI cosmetic）と `messageEditor.ts`（既存メッセージ再描画）を追加で持つ。
+
 ## 共通 infra（`src/discord/shared/`）
+cross-cutting のみ。feature 固有のものは置かない（ADR-0027）。
 - `dispatcher.ts`: interaction 入口（ack → guard → route）
 - `guards.ts`: cheap-first 検証（guild / channel / user / custom_id）
 - `customId.ts`: `custom_id` の zod codec
 - `viewModels.ts`: pure な view model builder
-- `messages.ts`: 共有 render helper（`getTextChannel` / `updateAskMessage` / `updatePostponeMessage`）
+- `channels.ts`: `getTextChannel` / `CancelReason` / `renderSettleNotice`
+- `rejectMessages.ts`: interaction.reject / unknownCommand / staleButton / internalError
 
 ## feature 外（変更少）
 - `src/time/`: JST / ISO week / 締切計算（ADR-0002）
 - `src/db/`: Drizzle schema / repositories / client / **ports**（ADR-0003, ADR-0018, ADR-0026）
 - `src/slot.ts`: wire format SSoT（SlotKey / customId choice / DB enum mapping, ADR-0013, ADR-0026）
 - `src/scheduler/`: cron 登録（registry 方式）
-- `src/members/`: 起動時 env→DB 同期
-- `src/env.ts`, `src/config.ts`, `src/messages.ts`: SSoT（ADR-0022）
+- `src/members/`: 起動時 env→DB 同期（`inputs.ts` / `reconcile.ts`）
+- `src/env.ts`, `src/config.ts`, `src/logger.ts`: SSoT（ADR-0022）
 
 ## 依存方向
 ```
-features/* ──► discord/shared/ ──► db/ports ──► db/repositories, time/
-          ╰────► slot.ts, messages.ts, env.ts, config.ts
+features/* ──► discord/shared/{channels,rejectMessages,dispatcher,guards,viewModels,customId}
+          ╰──► db/ports ──► db/repositories, time/
+          ╰──► slot.ts, env.ts, config.ts, logger.ts
 scheduler/ ──► features/*.settle, features/*.send
 index.ts ──► scheduler/, dispatcher
 ```
-feature 相互依存は避ける。共通化が必要なら `discord/shared/` に抽出する（ADR-0025, ADR-0026）。
+feature 相互依存は避ける。共通化が必要なら `discord/shared/` に抽出する（ADR-0025, ADR-0026, ADR-0027）。

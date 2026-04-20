@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DbLike } from "../../src/db/types.js";
 import { reconcileMembers } from "../../src/members/reconcile.js";
-import type { MemberReconcileInput } from "../../src/members.js";
+import type { MemberReconcileInput } from "../../src/members/inputs.js";
 
 // why: DB 操作を stub し、reconcileMembers のロジック（upsert 判定・ログ出力）を検証する。
 vi.mock("../../src/db/schema.js", () => ({

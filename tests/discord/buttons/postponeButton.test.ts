@@ -5,7 +5,8 @@ import { handlePostponeButton } from "../../../src/features/postpone-voting/butt
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
-import { messages } from "../../../src/messages.js";
+import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
+import { rejectMessages } from "../../../src/discord/shared/rejectMessages.js";
 import { buildButtonInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";
@@ -96,7 +97,7 @@ describe("handlePostponeButton", () => {
     expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
     expect(messageEdit).toHaveBeenCalledOnce();
     expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.voteConfirmed.postpone("ok"),
+      content: postponeMessages.interaction.voteConfirmed.postpone("ok"),
       flags: MessageFlags.Ephemeral
     });
   });
@@ -129,7 +130,7 @@ describe("handlePostponeButton", () => {
     expect(persisted?.status).toBe("CANCELLED");
     expect(persisted?.cancelReason).toBe("postpone_ng");
     expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.voteConfirmed.postpone("ng"),
+      content: postponeMessages.interaction.voteConfirmed.postpone("ng"),
       flags: MessageFlags.Ephemeral
     });
   });
@@ -167,25 +168,25 @@ describe("handlePostponeButton", () => {
       name: "wrong guild",
       customId: "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok",
       override: { guildId: "000000000000000000" },
-      expectedMessage: messages.interaction.reject.wrongGuild
+      expectedMessage: rejectMessages.reject.wrongGuild
     },
     {
       name: "wrong channel",
       customId: "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok",
       override: { channelId: "000000000000000000" },
-      expectedMessage: messages.interaction.reject.wrongChannel
+      expectedMessage: rejectMessages.reject.wrongChannel
     },
     {
       name: "non-member user",
       customId: "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok",
       override: { user: { id: "999999999999999999" } },
-      expectedMessage: messages.interaction.reject.notMember
+      expectedMessage: rejectMessages.reject.notMember
     },
     {
       name: "invalid custom_id",
       customId: "postpone:not-a-uuid:ok",
       override: {},
-      expectedMessage: messages.interaction.reject.invalidCustomId
+      expectedMessage: rejectMessages.reject.invalidCustomId
     }
   ])("rejects guard failure: $name", async ({ customId, override, expectedMessage }) => {
     const session = postponeSession();
@@ -231,7 +232,7 @@ describe("handlePostponeButton", () => {
     );
 
     expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.reject.postponeVotingClosed,
+      content: rejectMessages.reject.postponeVotingClosed,
       flags: MessageFlags.Ephemeral
     });
   });

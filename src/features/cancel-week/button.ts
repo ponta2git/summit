@@ -1,7 +1,8 @@
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { cancelWeekMessages } from "./messages.js";
+import { rejectMessages } from "../../discord/shared/rejectMessages.js";
 import { applyManualSkip } from "./settle.js";
 import { parseCancelWeekCustomId } from "../../discord/shared/customId.js";
 import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
@@ -30,7 +31,7 @@ export const handleCancelWeekButton = async (
     !assertMember(interaction.user.id)
   ) {
     await interaction.followUp({
-      content: messages.interaction.reject.notMember,
+      content: rejectMessages.reject.notMember,
       flags: MessageFlags.Ephemeral
     });
     return;
@@ -43,7 +44,7 @@ export const handleCancelWeekButton = async (
       "Invalid cancel_week custom_id."
     );
     await interaction.editReply({
-      content: messages.interaction.reject.invalidCustomId,
+      content: rejectMessages.reject.invalidCustomId,
       components: []
     });
     return;
@@ -53,7 +54,7 @@ export const handleCancelWeekButton = async (
 
   if (choice === "abort") {
     await interaction.editReply({
-      content: messages.interaction.cancelWeek.aborted,
+      content: cancelWeekMessages.cancelWeek.aborted,
       components: []
     });
     logger.info(
@@ -69,7 +70,7 @@ export const handleCancelWeekButton = async (
   });
 
   await interaction.editReply({
-    content: messages.interaction.cancelWeek.done({ count: outcome.skippedCount }),
+    content: cancelWeekMessages.cancelWeek.done({ count: outcome.skippedCount }),
     components: []
   });
 };

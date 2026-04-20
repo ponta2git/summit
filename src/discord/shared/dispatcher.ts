@@ -7,7 +7,7 @@ import {
 
 import type { AppContext } from "../../composition.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { rejectMessages } from "./rejectMessages.js";
 import {
   sendAskMessage,
   type SendAskMessageResult
@@ -72,7 +72,7 @@ const handleButton = async (
   );
 
   await interaction.followUp({
-    content: messages.interaction.staleButton,
+    content: rejectMessages.staleButton,
     flags: MessageFlags.Ephemeral
   });
 };
@@ -93,7 +93,7 @@ export const handleInteraction = async (
     }
 
     await interaction.reply({
-      content: messages.interaction.unknownCommand,
+      content: rejectMessages.unknownCommand,
       flags: MessageFlags.Ephemeral
     });
     return;
@@ -135,7 +135,7 @@ export const registerInteractionHandlers = (client: Client, context: AppContext)
         try {
           if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
             await interaction.reply({
-              content: messages.interaction.internalError,
+              content: rejectMessages.internalError,
               flags: MessageFlags.Ephemeral
             });
           }

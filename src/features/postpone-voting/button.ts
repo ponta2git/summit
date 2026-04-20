@@ -12,7 +12,7 @@ import {
 } from "../../errors/index.js";
 import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { postponeMessages } from "./messages.js";
 import { renderPostponeBody } from "./render.js";
 import { buildPostponeMessageViewModel } from "../../discord/shared/viewModels.js";
 import {
@@ -242,7 +242,7 @@ export const handlePostponeButton = async (
     async (context) => {
       try {
         await interaction.followUp({
-          content: messages.interaction.voteConfirmed.postpone(context.choice),
+          content: postponeMessages.interaction.voteConfirmed.postpone(context.choice),
           flags: MessageFlags.Ephemeral
         });
         logger.info(

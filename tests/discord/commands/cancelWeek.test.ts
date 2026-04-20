@@ -5,7 +5,7 @@ import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
-import { messages } from "../../../src/messages.js";
+import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.js";
 import { buildCancelInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
@@ -89,7 +89,7 @@ describe("/cancel_week command flow", () => {
       content: string;
       components: readonly unknown[];
     };
-    expect(editCall.content).toBe(messages.interaction.cancelWeek.confirmPrompt);
+    expect(editCall.content).toBe(cancelWeekMessages.cancelWeek.confirmPrompt);
     expect(editCall.components).toHaveLength(1);
   });
 });
@@ -153,7 +153,7 @@ describe("cancel_week confirmation button", () => {
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: messages.interaction.cancelWeek.done({ count: 2 }),
+        content: cancelWeekMessages.cancelWeek.done({ count: 2 }),
         components: []
       })
     );
@@ -175,7 +175,7 @@ describe("cancel_week confirmation button", () => {
     expect(channelSend).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: messages.interaction.cancelWeek.aborted,
+        content: cancelWeekMessages.cancelWeek.aborted,
         components: []
       })
     );
@@ -194,7 +194,7 @@ describe("cancel_week confirmation button", () => {
     expect(channelSend).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: messages.interaction.cancelWeek.done({ count: 0 }),
+        content: cancelWeekMessages.cancelWeek.done({ count: 0 }),
         components: []
       })
     );
@@ -214,7 +214,7 @@ describe("cancel_week confirmation button", () => {
     expect(channelSend).not.toHaveBeenCalled();
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: messages.interaction.cancelWeek.done({ count: 0 })
+        content: cancelWeekMessages.cancelWeek.done({ count: 0 })
       })
     );
   });

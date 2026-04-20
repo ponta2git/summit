@@ -3,13 +3,13 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../../composition.js";
 import type { SessionRow } from "../../db/types.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { decidedMessages } from "./messages.js";
 import {
   buildDecidedAnnouncementViewModel,
   type DecidedAnnouncementViewModel
 } from "../../discord/shared/viewModels.js";
 
-import { getTextChannel } from "../../discord/shared/messages.js";
+import { getTextChannel } from "../../discord/shared/channels.js";
 
 /**
  * Render the decided announcement content (mentions line + body).
@@ -22,7 +22,7 @@ import { getTextChannel } from "../../discord/shared/messages.js";
 export const renderDecidedAnnouncement = (
   vm: DecidedAnnouncementViewModel
 ): { content: string } => {
-  const body = messages.decided.body({
+  const body = decidedMessages.decided.body({
     startTimeLabel: vm.startTimeLabel,
     memberLines: vm.memberLines
   });

@@ -11,8 +11,8 @@ import {
   BUTTON_STYLE_ASK_ABSENT,
   BUTTON_STYLE_ASK_TIME,
   CHOICE_LABEL_FOR_RESPONSE
-} from "../../constants.js";
-import { messages } from "../../messages.js";
+} from "./constants.js";
+import { askMessages } from "./messages.js";
 import {
   slotKeyFromCustomIdChoice
 } from "../../slot.js";
@@ -51,7 +51,7 @@ const memberLinesFromState = (
   memberUserIds
     .map((userId) => {
       const choice = responsesByUserId.get(userId);
-      const label = choice ? CHOICE_LABEL_FOR_RESPONSE[choice] ?? choice : messages.ask.unanswered;
+      const label = choice ? CHOICE_LABEL_FOR_RESPONSE[choice] ?? choice : askMessages.ask.unanswered;
       return `- ${displayNameByUserId.get(userId) ?? userId} : ${label}`;
     })
     .join("\n");
@@ -73,7 +73,7 @@ const buildAskContent = (vm: AskMessageViewModel): string => {
     lines.push(mentions);
   }
   lines.push(
-    messages.ask.body({
+    askMessages.ask.body({
       dateIso: vm.candidateDateIso,
       statusLines,
       ...(vm.footer ? { extraFooter: vm.footer } : {})

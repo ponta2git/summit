@@ -1,4 +1,4 @@
-import { MEMBER_COUNT_EXPECTED } from "./config.js";
+import { MEMBER_COUNT_EXPECTED } from "../config.js";
 
 const LEGACY_DISPLAY_NAME_BY_POSITION = {
   1: "いーゆー",

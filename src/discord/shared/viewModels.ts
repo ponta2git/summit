@@ -3,7 +3,7 @@
 
 import { slotKeySchema } from "../../slot.js";
 import { env } from "../../env.js";
-import { messages, type SettleCancelReason } from "../../messages.js";
+import { askMessages, type SettleCancelReason } from "../../features/ask-session/messages.js";
 import {
   decidedStartAt,
   formatCandidateDateIso,
@@ -91,15 +91,15 @@ const computeAskFooter = (
     if (start) {
       const hh = String(start.getHours()).padStart(2, "0");
       const mm = String(start.getMinutes()).padStart(2, "0");
-      return messages.ask.footerDecided({ startTimeLabel: `${hh}:${mm}` });
+      return askMessages.ask.footerDecided({ startTimeLabel: `${hh}:${mm}` });
     }
     return undefined;
   }
   if (session.status === "CANCELLED") {
-    return messages.ask.footerCancelled;
+    return askMessages.ask.footerCancelled;
   }
   if (session.status === "SKIPPED") {
-    return messages.ask.footerSkipped;
+    return askMessages.ask.footerSkipped;
   }
   return undefined;
 };
@@ -215,7 +215,7 @@ export const buildPostponeMessageViewModel = (
 export const buildSettleNoticeViewModel = (
   reason: SettleCancelReason
 ): SettleNoticeViewModel => ({
-  cancelText: messages.settle.cancelled(reason),
+  cancelText: askMessages.settle.cancelled(reason),
   memberUserIds: env.MEMBER_USER_IDS,
   suppressMentions: env.DEV_SUPPRESS_MENTIONS
 });

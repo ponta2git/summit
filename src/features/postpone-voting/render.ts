@@ -9,8 +9,8 @@ import {
   BUTTON_LABEL_POSTPONE_OK,
   BUTTON_STYLE_POSTPONE_NG,
   BUTTON_STYLE_POSTPONE_OK
-} from "../../constants.js";
-import { messages } from "../../messages.js";
+} from "./constants.js";
+import { postponeMessages } from "./messages.js";
 import { buildCustomId } from "../../discord/shared/customId.js";
 import type { PostponeMessageViewModel } from "../../discord/shared/viewModels.js";
 
@@ -53,7 +53,7 @@ export const renderPostponeBody = (
   if (!vm.suppressMentions) {
     lines.push(vm.memberUserIds.map((id) => `<@${id}>`).join(" "));
   }
-  lines.push(messages.postpone.body({ candidateDateIso: vm.candidateDateIso, statusLines }));
+  lines.push(postponeMessages.postpone.body({ candidateDateIso: vm.candidateDateIso, statusLines }));
   if (vm.footerText) {
     lines.push("", vm.footerText);
   }

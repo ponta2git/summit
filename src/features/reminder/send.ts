@@ -5,10 +5,10 @@ import { REMINDER_SKIP_THRESHOLD_MINUTES } from "../../config.js";
 import type { SessionRow } from "../../db/types.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { reminderMessages } from "./messages.js";
 import { reminderAtFor } from "../../time/index.js";
 
-import { getTextChannel } from "../../discord/shared/messages.js";
+import { getTextChannel } from "../../discord/shared/channels.js";
 
 // why: HH:MM を JST で整形する。process.env.TZ=Asia/Tokyo 前提で Date#getHours() は JST を返す。
 // @see docs/adr/0002-jst-fixed-time-handling.md
@@ -19,7 +19,7 @@ const formatJstHhmm = (instant: Date): string => {
 };
 
 const buildReminderContent = (startAt: Date): string => {
-  const body = messages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
+  const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
   // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く（settle と同じ方針）。
   // @see docs/adr/0011-dev-mention-suppression.md
   if (env.DEV_SUPPRESS_MENTIONS) {

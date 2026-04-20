@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleInteraction, registerInteractionHandlers } from "../../src/discord/shared/dispatcher.js";
 import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
-import { messages } from "../../src/messages.js";
+import { askMessages } from "../../src/features/ask-session/messages.js";
+import { cancelWeekMessages } from "../../src/features/cancel-week/messages.js";
+import { postponeMessages } from "../../src/features/postpone-voting/messages.js";
+import { rejectMessages } from "../../src/discord/shared/rejectMessages.js";
 import { memberUserId } from "../helpers/env.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
@@ -59,7 +62,7 @@ describe("interaction router", () => {
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
-    expect(interaction.editReply).toHaveBeenCalledWith(messages.interaction.reject.notMember);
+    expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.notMember);
     expect(sendAsk).not.toHaveBeenCalled();
   });
 
@@ -83,7 +86,7 @@ describe("interaction router", () => {
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: messages.interaction.cancelWeek.confirmPrompt,
+        content: cancelWeekMessages.cancelWeek.confirmPrompt,
         components: expect.any(Array)
       })
     );
@@ -97,7 +100,7 @@ describe("interaction router", () => {
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.reject.invalidCustomId,
+      content: rejectMessages.reject.invalidCustomId,
       flags: MessageFlags.Ephemeral
     });
   });
@@ -154,7 +157,7 @@ describe("interaction router", () => {
 
     expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
     expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.voteConfirmed.postpone("ok"),
+      content: postponeMessages.interaction.voteConfirmed.postpone("ok"),
       flags: MessageFlags.Ephemeral
     });
     expect(messageEdit).toHaveBeenCalledOnce();
@@ -242,7 +245,7 @@ describe("interaction router", () => {
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
-        content: messages.interaction.reject.wrongChannel,
+        content: rejectMessages.reject.wrongChannel,
         flags: MessageFlags.Ephemeral
       });
       expect(sendAsk).not.toHaveBeenCalled();
@@ -259,7 +262,7 @@ describe("interaction router", () => {
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
-        content: messages.interaction.reject.notMember,
+        content: rejectMessages.reject.notMember,
         flags: MessageFlags.Ephemeral
       });
       expect(sendAsk).not.toHaveBeenCalled();
@@ -276,7 +279,7 @@ describe("interaction router", () => {
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
-        content: messages.interaction.reject.wrongGuild,
+        content: rejectMessages.reject.wrongGuild,
         flags: MessageFlags.Ephemeral
       });
       expect(sendAsk).not.toHaveBeenCalled();
@@ -291,7 +294,7 @@ describe("interaction router", () => {
       await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
-      expect(interaction.editReply).toHaveBeenCalledWith(messages.interaction.reject.notMember);
+      expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.notMember);
     });
   });
 
@@ -324,7 +327,7 @@ describe("interaction router", () => {
     expect(responses[0]?.memberId).toBe("member-0");
     expect(interaction.message.edit).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: messages.interaction.voteConfirmed.ask("T2200"),
+      content: askMessages.interaction.voteConfirmed.ask("T2200"),
       flags: MessageFlags.Ephemeral
     });
   });

@@ -1,10 +1,10 @@
-// why: UI cosmetic は constants に集約 (ADR-0013)
+// why: ask-session feature 固有の UI cosmetic (ADR-0026)
 // ボタンの label / style をここに集約する。user-facing 文言（メッセージ本文）は src/messages.ts が担当。
 import { ButtonStyle } from "discord.js";
 import {
   dbChoiceFromSlotKey,
   type SlotKey
-} from "./slot.js";
+} from "../../slot.js";
 
 // --- Ask button labels ---
 export const BUTTON_LABEL_ASK_T2200 = "22:00" as const;
@@ -13,15 +13,9 @@ export const BUTTON_LABEL_ASK_T2300 = "23:00" as const;
 export const BUTTON_LABEL_ASK_T2330 = "23:30" as const;
 export const BUTTON_LABEL_ASK_ABSENT = "欠席" as const;
 
-// --- Postpone button labels ---
-export const BUTTON_LABEL_POSTPONE_OK = "翌日に順延で参加OK" as const;
-export const BUTTON_LABEL_POSTPONE_NG = "NG" as const;
-
 // --- Button styles ---
 export const BUTTON_STYLE_ASK_TIME = ButtonStyle.Secondary;
 export const BUTTON_STYLE_ASK_ABSENT = ButtonStyle.Danger;
-export const BUTTON_STYLE_POSTPONE_OK = ButtonStyle.Primary;
-export const BUTTON_STYLE_POSTPONE_NG = ButtonStyle.Secondary;
 
 /**
  * Ask button label map keyed by canonical SlotKey.

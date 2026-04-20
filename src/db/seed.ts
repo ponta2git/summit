@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { db, closeDb } from "./client.js";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
-import { buildMemberReconcileInputs } from "../members.js";
+import { buildMemberReconcileInputs } from "../members/inputs.js";
 import { members } from "./schema.js";
 
 const run = async (): Promise<void> => {

@@ -5,7 +5,7 @@ import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/index.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
-import { buildMemberReconcileInputs } from "./members.js";
+import { buildMemberReconcileInputs } from "./members/inputs.js";
 import { reconcileMembers } from "./members/reconcile.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";

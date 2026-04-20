@@ -12,7 +12,7 @@ import {
 } from "../../errors/index.js";
 import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { askMessages } from "./messages.js";
 import { evaluateDeadline } from "./decide.js";
 import { renderAskBody } from "./render.js";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
@@ -250,7 +250,7 @@ export const handleAskButton = async (
       // race: followUp 失敗は本処理（DB 更新・メッセージ再描画）に影響させない。Discord 一時障害時でも本処理は完了済み。
       try {
         await interaction.followUp({
-          content: messages.interaction.voteConfirmed.ask(context.choice),
+          content: askMessages.interaction.voteConfirmed.ask(context.choice),
           flags: MessageFlags.Ephemeral
         });
         logger.info(

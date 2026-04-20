@@ -4,13 +4,12 @@ import type { AppContext } from "../../composition.js";
 import type { SessionRow } from "../../db/types.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
-import { messages } from "../../messages.js";
+import { askMessages } from "../ask-session/messages.js";
+import { cancelWeekMessages } from "./messages.js";
 import { isoWeekKey } from "../../time/index.js";
-import {
-  getTextChannel,
-  updateAskMessage,
-  updatePostponeMessage
-} from "../../discord/shared/messages.js";
+import { getTextChannel } from "../../discord/shared/channels.js";
+import { updateAskMessage } from "../ask-session/messageEditor.js";
+import { updatePostponeMessage } from "../postpone-voting/messageEditor.js";
 
 export interface SkipWeekOutcome {
   readonly skippedCount: number;
@@ -66,7 +65,7 @@ export const applyManualSkip = async (
         ctx,
         session,
         responses,
-        messages.ask.footerSkipped
+        askMessages.ask.footerSkipped
       );
     }
   }
@@ -75,10 +74,10 @@ export const applyManualSkip = async (
   try {
     const channel = await getTextChannel(client, env.DISCORD_CHANNEL_ID);
     const content = env.DEV_SUPPRESS_MENTIONS
-      ? messages.interaction.cancelWeek.suppressedChannelNotice({
+      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({
           invokerUserId: params.invokerUserId
         })
-      : messages.interaction.cancelWeek.channelNotice({
+      : cancelWeekMessages.cancelWeek.channelNotice({
           invokerUserId: params.invokerUserId
         });
     await channel.send({ content });
