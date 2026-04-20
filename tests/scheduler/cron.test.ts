@@ -2,7 +2,9 @@ import type { Client } from "discord.js";
 import type { ScheduledTask } from "node-cron";
 import { describe, expect, it, vi } from "vitest";
 
-import { createAskScheduler, runScheduledAskTick } from "../../src/scheduler/index.js";
+import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
+import { CRON_REMINDER_SCHEDULE } from "../../src/config.js";
+import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext } from "../testing/index.js";
 
 describe("ask scheduler", () => {
@@ -64,5 +66,72 @@ describe("ask scheduler", () => {
     });
 
     await expect(runScheduledAskTick(sendAsk, createTestAppContext())).resolves.toBeUndefined();
+  });
+
+  it("registers reminder cron with noOverlap on Asia/Tokyo", () => {
+    const stop = vi.fn();
+    const schedule = vi.fn(() => ({ stop }) as unknown as ScheduledTask);
+    const handles = createAskScheduler({
+      client: {} as Client,
+      context: createTestAppContext(),
+      sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
+      cronAdapter: { schedule }
+    });
+
+    expect(handles.reminderTask.stop).toBe(stop);
+    expect(schedule).toHaveBeenCalledWith(CRON_REMINDER_SCHEDULE, expect.any(Function), {
+      timezone: "Asia/Tokyo",
+      noOverlap: true
+    });
+  });
+
+  it("dispatches reminders only for DECIDED sessions whose reminderAt has passed", async () => {
+    const now = new Date("2026-04-24T12:45:00.000Z");
+    const decidedStartAt = new Date("2026-04-24T13:00:00.000Z");
+    const dueSession = buildSessionRow({
+      id: "due-reminder",
+      status: "DECIDED",
+      decidedStartAt,
+      reminderAt: new Date(decidedStartAt.getTime() - 15 * 60_000),
+      reminderSentAt: null
+    });
+    const futureSession = buildSessionRow({
+      id: "future-reminder",
+      status: "DECIDED",
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z"),
+      reminderSentAt: null
+    });
+    const alreadySentSession = buildSessionRow({
+      id: "sent-reminder",
+      status: "DECIDED",
+      decidedStartAt,
+      reminderAt: new Date(decidedStartAt.getTime() - 15 * 60_000),
+      reminderSentAt: new Date("2026-04-24T12:45:00.000Z")
+    });
+
+    const ctx = createTestAppContext({
+      seed: { sessions: [dueSession, futureSession, alreadySentSession] },
+      now
+    });
+
+    const send = vi.fn(async () => ({ id: "reminder-posted" }));
+    const channel = {
+      type: 0,
+      isSendable: () => true,
+      send,
+      messages: { fetch: vi.fn() }
+    };
+    const client = { channels: { fetch: vi.fn(async () => channel) } } as unknown as Client;
+
+    await runReminderTick(client, ctx);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const persistedDue = ctx.ports.sessions.listSessions().find((s) => s.id === dueSession.id);
+    expect(persistedDue?.status).toBe("COMPLETED");
+    const persistedFuture = ctx.ports.sessions
+      .listSessions()
+      .find((s) => s.id === futureSession.id);
+    expect(persistedFuture?.status).toBe("DECIDED");
   });
 });

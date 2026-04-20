@@ -26,6 +26,10 @@ interface SettleCompletedParams {
   count: number;
 }
 
+interface ReminderBodyParams {
+  startTimeLabel: string;
+}
+
 interface PostponeBodyParams {
   candidateDateIso: string;
   // source-of-truth: statusLines が空文字列のときは【順延投票】セクション全体を省略（初期投稿時の互換）
@@ -84,6 +88,10 @@ export const messages = {
           : "🛑 土曜回も成立しなかったため、今週はお流れです。",
     completed: ({ count }: SettleCompletedParams): string =>
       `✅ ${count}名の回答を反映して完了しました。`
+  },
+  reminder: {
+    body: ({ startTimeLabel }: ReminderBodyParams): string =>
+      `⏰ 15分後に開始です（${startTimeLabel} 開始）`
   },
   postpone: {
     body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
@@ -179,6 +187,9 @@ export const messages = {
     decided: (params: SettleDecidedParams) => string;
     cancelled: (reason: SettleCancelReason) => string;
     completed: (params: SettleCompletedParams) => string;
+  };
+  reminder: {
+    body: (params: ReminderBodyParams) => string;
   };
   postpone: {
     body: (params: PostponeBodyParams) => string;

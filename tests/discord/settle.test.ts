@@ -108,19 +108,30 @@ describe("settleAskingSession", () => {
     expect(persisted?.cancelReason).toBe("saturday_cancelled");
   });
 
-  it("completes Saturday ASKING when deadline decision is decided", async () => {
+  it("transitions Saturday ASKING to DECIDED with reminderAt and does not complete immediately", async () => {
     const session = sessionRow({ postponeCount: 1, status: "ASKING", cancelReason: null });
-    const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
+    const ctx = createTestAppContext({
+      seed: { sessions: [session], members: seededMembers },
+      now: new Date("2026-04-25T12:00:00.000Z")
+    });
     const { channel, messageEdit } = stubChannel();
 
+    const startAt = new Date("2026-04-25T14:00:00.000Z");
     await applyDeadlineDecision(stubClient(channel), ctx, session, {
       kind: "decided",
       chosenSlot: "T2300",
-      startAt: new Date("2026-04-25T14:00:00.000Z")
+      startAt
     });
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.status).toBe("COMPLETED");
+    // state: DECIDED のまま。COMPLETED への遷移は reminder tick で行う (§5.2, §9.1)。
+    expect(persisted?.status).toBe("DECIDED");
+    expect(persisted?.decidedStartAt?.toISOString()).toBe(startAt.toISOString());
+    // invariant: reminderAt = decidedStartAt - 15 分。
+    expect(persisted?.reminderAt?.toISOString()).toBe(
+      new Date(startAt.getTime() - 15 * 60_000).toISOString()
+    );
+    expect(persisted?.reminderSentAt).toBeNull();
     expect(messageEdit).toHaveBeenCalledTimes(1);
     expect(channel.send).not.toHaveBeenCalled();
   });

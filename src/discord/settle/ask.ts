@@ -7,6 +7,7 @@ import { logger } from "../../logger.js";
 import { renderPostponeBody } from "../postpone/render.js";
 import { buildPostponeMessageViewModel, buildSettleNoticeViewModel } from "../viewModels.js";
 import { type CancelReason, getTextChannel, renderSettleNotice, updateAskMessage } from "./messages.js";
+import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "./reminder.js";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
@@ -86,30 +87,27 @@ export const settleAskingSession = async (
   }
 };
 
-const completeSaturdayAskingSession = async (ctx: AppContext, session: SessionRow): Promise<void> => {
-  const completed = await ctx.ports.sessions.transitionStatus({ id: session.id, from: "DECIDED", to: "COMPLETED" });
-  if (!completed) {return;}
-  logger.info(
-    { sessionId: session.id, weekKey: session.weekKey, from: "DECIDED", to: "COMPLETED", reason: "saturday session settled" },
-    "Saturday session completed."
-  );
-};
-
 /**
  * If all 4 members have responded with time choices (no ABSENT),
- * transition ASKING → DECIDED and record decided_start_at.
+ * transition ASKING → DECIDED and record decided_start_at along with reminderAt.
  * Returns true when the transition was performed.
+ *
+ * @remarks
+ * reminderAt = decidedStart + REMINDER_LEAD_MINUTES(-15 分)。この時点では reminderSentAt は更新しない。
+ * 実際のリマインド送信は scheduler の毎分 tick が DECIDED を拾って行う（§5.2, §9.1）。
  */
 export const tryDecideIfAllTimeSlots = async (
   ctx: AppContext,
   session: SessionRow,
   decidedStart: Date
 ): Promise<boolean> => {
+  const reminderAt = computeReminderAt(decidedStart);
   const result = await ctx.ports.sessions.transitionStatus({
     id: session.id,
     from: "ASKING",
     to: "DECIDED",
-    decidedStartAt: decidedStart
+    decidedStartAt: decidedStart,
+    reminderAt
   });
   if (result) {
     // state: ASKING で全員の時間回答が揃った場合のみ DECIDED へ遷移する
@@ -120,7 +118,8 @@ export const tryDecideIfAllTimeSlots = async (
         from: "ASKING",
         to: "DECIDED",
         reason: "all time-choice responses received",
-        decidedStartAt: decidedStart.toISOString()
+        decidedStartAt: decidedStart.toISOString(),
+        reminderAt: reminderAt.toISOString()
       },
       "Session decided."
     );
@@ -145,10 +144,15 @@ const toCancelReason = (reason: Extract<DecisionResult, { kind: "cancelled" }>["
 const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
   decided: async ({ client, ctx, session }, decision) => {
     const decided = await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
-    if (!decided || session.postponeCount !== 1) {return;}
-    // source-of-truth: DECIDED 時点の DB 状態で ask メッセージを再描画してから終端化する。
-    await updateAskMessage(client, ctx, session);
-    await completeSaturdayAskingSession(ctx, session);
+    if (!decided) {return;}
+    // source-of-truth: DECIDED 遷移後の最新 DB 状態 (reminderAt を含む) を元に再描画する
+    const fresh = await ctx.ports.sessions.findSessionById(session.id);
+    if (!fresh) {return;}
+    await updateAskMessage(client, ctx, fresh);
+    // state: reminderAt まで 10 分未満で DECIDED へ遷移した場合 (遅延 recovery 等) はリマインド省略して COMPLETED へ
+    if (fresh.reminderAt && shouldSkipReminder(ctx.clock.now(), fresh.reminderAt)) {
+      await skipReminderAndComplete(ctx, fresh, ctx.clock.now());
+    }
   },
   cancelled: async ({ client, ctx, session }, decision) => {
     await settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));

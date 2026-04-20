@@ -67,3 +67,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0021](./0021-neverthrow-scope-reaffirmed.md) | neverthrow 全面採用の却下とスコープ再確認 | accepted | 2026-04-24 | runtime, ops |
 | [0022](./0022-ssot-taxonomy.md) | SSoT taxonomy（ADR / コード / コメント の役割分担と drift 防止） | accepted | 2026-04-24 | docs, runtime, ops |
 | [0023](./0023-cancel-week-command-flow.md) | `/cancel_week` の確認ダイアログと週単位 SKIPPED 収束フロー | accepted | 2026-04-24 | discord, runtime, db, ops |
+| [0024](./0024-reminder-dispatch.md) | 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング | accepted | 2026-04-25 | runtime, discord, db, time |

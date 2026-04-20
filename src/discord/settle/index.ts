@@ -7,3 +7,4 @@ export {
   tryDecideIfAllTimeSlots
 } from "./ask.js";
 export { settlePostponeVotingSession } from "./postpone.js";
+export { sendReminderForSession } from "./reminder.js";

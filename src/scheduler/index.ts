@@ -6,6 +6,7 @@ import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
   CRON_POSTPONE_DEADLINE_SCHEDULE,
+  CRON_REMINDER_SCHEDULE,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/types.js";
@@ -14,7 +15,11 @@ import {
   type SendAskMessageContext,
   type SendAskMessageResult
 } from "../discord/ask/send.js";
-import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../discord/settle/index.js";
+import {
+  evaluateAndApplyDeadlineDecision,
+  sendReminderForSession,
+  settlePostponeVotingSession
+} from "../discord/settle/index.js";
 import { logger } from "../logger.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
@@ -115,6 +120,38 @@ export const runPostponeDeadlineTick = async (
 };
 
 /**
+ * Runs one reminder tick: sends the 15-minute-before reminder for every DECIDED session
+ * whose `reminderAt` has passed and has not yet been sent (requirements/base.md §5.2, §9.1).
+ *
+ * @remarks
+ * 毎分 cron tick から呼ばれる。送信後は DECIDED→COMPLETED へ遷移する。
+ * 送信失敗時は DECIDED のまま据え置き、次 tick で再試行する (DB-as-SoT)。
+ * @see docs/adr/0024-reminder-dispatch.md
+ */
+export const runReminderTick = async (
+  client: Client,
+  ctx: AppContext
+): Promise<void> => {
+  try {
+    const now = ctx.clock.now();
+    const due = await ctx.ports.sessions.findDueReminderSessions(now);
+    for (const session of due) {
+      try {
+        // idempotent: sendReminderForSession は内部で status/reminderSentAt を再検証する
+        await sendReminderForSession(client, ctx, session.id, now);
+      } catch (error: unknown) {
+        logger.error(
+          { error, sessionId: session.id, weekKey: session.weekKey },
+          "Failed to dispatch reminder in reminder tick."
+        );
+      }
+    }
+  } catch (error: unknown) {
+    logger.error({ error }, "Reminder tick failed.");
+  }
+};
+
+/**
  * Re-settles overdue ASKING and POSTPONE_VOTING sessions found in the DB at startup.
  *
  * @remarks
@@ -155,6 +192,22 @@ export const runStartupRecovery = async (
           "Startup recovery: settling overdue POSTPONE_VOTING session."
         );
         await settlePostponeVotingSession(client, ctx, session, now);
+      } else if (
+        session.status === "DECIDED" &&
+        session.reminderAt !== null &&
+        session.reminderAt.getTime() <= now.getTime() &&
+        session.reminderSentAt === null
+      ) {
+        // state: DECIDED かつ reminderAt 超過で未送信なら起動時に即リマインド送信を試みる
+        logger.info(
+          {
+            sessionId: session.id,
+            weekKey: session.weekKey,
+            reminderAt: session.reminderAt.toISOString()
+          },
+          "Startup recovery: dispatching overdue reminder."
+        );
+        await sendReminderForSession(client, ctx, session.id, now);
       }
     }
   } catch (error: unknown) {
@@ -166,6 +219,7 @@ export interface SchedulerHandles {
   askTask: ScheduledTask;
   deadlineTask: ScheduledTask;
   postponeDeadlineTask: ScheduledTask;
+  reminderTask: ScheduledTask;
 }
 
 /**
@@ -207,5 +261,13 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 
-  return { askTask, deadlineTask, postponeDeadlineTask };
+  // jst: 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
+  // source-of-truth: 毎 tick DB を再計算する (findDueReminderSessions)。
+  const reminderTask = cronModule.schedule(
+    CRON_REMINDER_SCHEDULE,
+    () => void runReminderTick(client, context),
+    { timezone: "Asia/Tokyo", noOverlap: true }
+  );
+
+  return { askTask, deadlineTask, postponeDeadlineTask, reminderTask };
 };

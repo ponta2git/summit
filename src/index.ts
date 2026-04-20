@@ -23,6 +23,7 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       scheduler.askTask.stop();
       scheduler.deadlineTask.stop();
       scheduler.postponeDeadlineTask.stop();
+      scheduler.reminderTask.stop();
     },
     waitForInFlightSend,
     closeDb,

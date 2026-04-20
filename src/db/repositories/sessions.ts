@@ -1,5 +1,5 @@
 // source-of-truth: session 集約ルート。状態遷移・週キー・締切を扱う。
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import {
   SESSION_STATUSES,
@@ -150,6 +150,7 @@ export interface TransitionInput {
   cancelReason?: string;
   decidedStartAt?: Date;
   reminderAt?: Date;
+  reminderSentAt?: Date;
   updatedDeadlineAt?: Date;
 }
 
@@ -178,6 +179,7 @@ export const transitionStatus = async (
   if (input.cancelReason !== undefined) {patch.cancelReason = input.cancelReason;}
   if (input.decidedStartAt !== undefined) {patch.decidedStartAt = input.decidedStartAt;}
   if (input.reminderAt !== undefined) {patch.reminderAt = input.reminderAt;}
+  if (input.reminderSentAt !== undefined) {patch.reminderSentAt = input.reminderSentAt;}
   if (input.updatedDeadlineAt !== undefined) {patch.deadlineAt = input.updatedDeadlineAt;}
 
   // race: CAS primitive。WHERE status = input.from で現在状態を条件にし、勝者だけが UPDATE 成功する。
@@ -213,6 +215,31 @@ export const findDuePostponeVotingSessions = async (
     .select()
     .from(sessions)
     .where(and(eq(sessions.status, "POSTPONE_VOTING"), lte(sessions.deadlineAt, now)));
+  return rows.map(mapSession);
+};
+
+/**
+ * Finds DECIDED sessions whose 15-minute-before reminder is due and not yet sent.
+ *
+ * @remarks
+ * cron (毎分) と起動時リカバリの双方から呼ばれる。`reminder_sent_at IS NULL` を条件に入れることで
+ * 再送を防ぐ。スキップ判定で `reminder_sent_at=now` を埋めた Session は自動的に除外される。
+ * @see requirements/base.md §5.2, docs/adr/0024-reminder-dispatch.md
+ */
+export const findDueReminderSessions = async (
+  db: DbLike,
+  now: Date
+): Promise<SessionRow[]> => {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.status, "DECIDED"),
+        isNull(sessions.reminderSentAt),
+        lte(sessions.reminderAt, now)
+      )
+    );
   return rows.map(mapSession);
 };
 
