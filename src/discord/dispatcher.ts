@@ -1,6 +1,5 @@
 import {
   type ButtonInteraction,
-  type ChatInputCommandInteraction,
   type Client,
   type Interaction,
   MessageFlags
@@ -15,7 +14,9 @@ import {
 } from "./ask/send.js";
 import { handlePostponeButton } from "./buttons/postponeButton.js";
 import { handleAskButton } from "./buttons/askButton.js";
+import { handleCancelWeekButton } from "./buttons/cancelWeekButton.js";
 import { handleAskCommand } from "./commands/ask.js";
+import { handleCancelWeekCommand } from "./commands/cancelWeek.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 
 export type SendAsk = (args: {
@@ -28,22 +29,6 @@ export interface InteractionHandlerDeps {
   readonly client: Client;
   readonly context: AppContext;
 }
-
-const handleCancelWeekCommand = async (
-  interaction: ChatInputCommandInteraction
-): Promise<void> => {
-  // why: UX 判断 — 拒否理由を具体的メッセージで返す
-  const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
-  if (reason) {
-    await interaction.reply(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
-    return;
-  }
-
-  await interaction.reply({
-    content: messages.interaction.cancelWeek.unimplemented,
-    flags: MessageFlags.Ephemeral
-  });
-};
 
 const handleButton = async (
   interaction: ButtonInteraction,
@@ -65,6 +50,11 @@ const handleButton = async (
 
   if (interaction.customId.startsWith("postpone:")) {
     await handlePostponeButton(interaction, deps);
+    return;
+  }
+
+  if (interaction.customId.startsWith("cancel_week:")) {
+    await handleCancelWeekButton(interaction, deps);
     return;
   }
 

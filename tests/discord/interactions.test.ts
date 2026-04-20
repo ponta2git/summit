@@ -74,16 +74,19 @@ describe("interaction router", () => {
     expect(interaction.editReply).toHaveBeenCalledWith("送信に失敗しました");
   });
 
-  it("keeps /cancel_week as cheap-first stub", async () => {
+  it("opens /cancel_week confirmation dialog", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = buildCancelInteraction();
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: "未実装です（将来 PR で実装予定）",
-      flags: MessageFlags.Ephemeral
-    });
+    expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: messages.interaction.cancelWeek.confirmPrompt,
+        components: expect.any(Array)
+      })
+    );
   });
 
   it("rejects invalid ask button custom ids", async () => {
@@ -287,10 +290,8 @@ describe("interaction router", () => {
 
       await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
-      expect(interaction.reply).toHaveBeenCalledWith({
-        content: messages.interaction.reject.notMember,
-        flags: MessageFlags.Ephemeral
-      });
+      expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+      expect(interaction.editReply).toHaveBeenCalledWith(messages.interaction.reject.notMember);
     });
   });
 

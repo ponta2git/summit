@@ -88,6 +88,9 @@ const computeAskFooter = (
   if (session.status === "CANCELLED") {
     return messages.ask.footerCancelled;
   }
+  if (session.status === "SKIPPED") {
+    return messages.ask.footerSkipped;
+  }
   return undefined;
 };
 

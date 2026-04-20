@@ -160,6 +160,28 @@ export const createFakeSessionsPort = (
         .filter((s) => NON_TERMINAL_STATUSES.includes(s.status))
         .map(clone);
     },
+    findNonTerminalSessionsByWeekKey: async (weekKey) => {
+      recordCall(calls, "findNonTerminalSessionsByWeekKey", { weekKey });
+      return Array.from(byId.values())
+        .filter((s) => s.weekKey === weekKey && NON_TERMINAL_STATUSES.includes(s.status))
+        .map(clone);
+    },
+    skipSession: async (input) => {
+      recordCall(calls, "skipSession", { input });
+      const found = byId.get(input.id);
+      // race: from を複数許容する CAS。既に terminal ならば undefined を返し、冪等に扱う。
+      if (!found || !NON_TERMINAL_STATUSES.includes(found.status)) {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: "SKIPPED",
+        cancelReason: input.cancelReason,
+        updatedAt: new Date()
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
     isNonTerminal: (status) => NON_TERMINAL_STATUSES.includes(status)
   };
 };

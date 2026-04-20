@@ -46,6 +46,8 @@ export interface SessionsPort {
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findNonTerminalSessions(): Promise<readonly SessionRow[]>;
+  findNonTerminalSessionsByWeekKey(weekKey: string): Promise<readonly SessionRow[]>;
+  skipSession(input: { id: string; cancelReason: string }): Promise<SessionRow | undefined>;
   isNonTerminal(status: SessionStatus): boolean;
 }
 

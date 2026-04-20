@@ -8,9 +8,11 @@ import {
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findNonTerminalSessions,
+  findNonTerminalSessionsByWeekKey,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   isNonTerminal,
+  skipSession,
   transitionStatus,
   updateAskMessageId,
   updatePostponeMessageId
@@ -36,6 +38,9 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
   findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findNonTerminalSessions: () => findNonTerminalSessions(db),
+  findNonTerminalSessionsByWeekKey: (weekKey) =>
+    findNonTerminalSessionsByWeekKey(db, weekKey),
+  skipSession: (input) => skipSession(db, input),
   isNonTerminal
 });
 

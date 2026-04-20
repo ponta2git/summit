@@ -54,6 +54,7 @@ export const messages = {
     footerDecided: ({ startTimeLabel }: AskDecidedFooterParams): string =>
       `✅ 全員回答により ${startTimeLabel} 開始で確定（開催決定メッセージは追って送信）`,
     footerCancelled: "🛑 中止。この週の募集は締め切りました",
+    footerSkipped: "🛑 今週は運用都合により見送りです",
     body: ({ dateIso, statusLines, extraFooter }: AskBodyParams): string => {
       const lines = [
         messages.ask.headerLine({ dateIso }),
@@ -126,7 +127,18 @@ export const messages = {
       failed: "送信に失敗しました"
     },
     cancelWeek: {
-      unimplemented: "未実装です（将来 PR で実装予定）"
+      confirmPrompt: "本当に今週の運用をスキップしますか？（実行すると今週は運営せず、来週に持ち越します）",
+      confirmButtonLabel: "はい、スキップする",
+      abortButtonLabel: "キャンセル",
+      aborted: "キャンセルしました。今週の運用は継続します。",
+      done: (params: { count: number }) =>
+        params.count === 0
+          ? "今週のスキップ対象はありませんでした。"
+          : `今週の運用をスキップしました（対象: ${params.count} 件）。`,
+      channelNotice: ({ invokerUserId }: { invokerUserId: string }): string =>
+        `🛑 今週は運用都合により見送りです（実行: <@${invokerUserId}>）`,
+      suppressedChannelNotice: ({ invokerUserId }: { invokerUserId: string }): string =>
+        `🛑 今週は運用都合により見送りです（実行: ${invokerUserId}）`
     },
     postpone: {
       pending: "順延投票は受付準備中です。近日公開予定です。"
@@ -160,6 +172,7 @@ export const messages = {
     unanswered: string;
     footerDecided: (params: AskDecidedFooterParams) => string;
     footerCancelled: string;
+    footerSkipped: string;
     body: (params: AskBodyParams) => string;
   };
   settle: {
@@ -190,7 +203,13 @@ export const messages = {
       failed: string;
     };
     cancelWeek: {
-      unimplemented: string;
+      confirmPrompt: string;
+      confirmButtonLabel: string;
+      abortButtonLabel: string;
+      aborted: string;
+      done: (params: { count: number }) => string;
+      channelNotice: (params: { invokerUserId: string }) => string;
+      suppressedChannelNotice: (params: { invokerUserId: string }) => string;
     };
     postpone: {
       pending: string;

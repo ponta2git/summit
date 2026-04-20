@@ -226,5 +226,57 @@ export const findNonTerminalSessions = async (
   return rows.map(mapSession);
 };
 
+export const findNonTerminalSessionsByWeekKey = async (
+  db: DbLike,
+  weekKey: string
+): Promise<SessionRow[]> => {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.weekKey, weekKey),
+        inArray(sessions.status, NON_TERMINAL_STATUSES as SessionStatus[])
+      )
+    );
+  return rows.map(mapSession);
+};
+
+/**
+ * Atomically transitions a non-terminal session to `SKIPPED`.
+ *
+ * @returns The updated row on success, or `undefined` if the session is already terminal
+ *   (COMPLETED / SKIPPED) or does not exist (race lost).
+ *
+ * @remarks
+ * `/cancel_week` 用の CAS プリミティブ。`transitionStatus` と違い from を複数許容するため、
+ * `WHERE status IN (non-terminal set)` を一段で評価する。冪等: 既に SKIPPED / COMPLETED の場合は
+ * 何もせず undefined。
+ * @see docs/adr/0023-cancel-week-command-flow.md
+ */
+export const skipSession = async (
+  db: DbLike,
+  input: { id: string; cancelReason: string }
+): Promise<SessionRow | undefined> => {
+  // race: 任意の非終端状態から SKIPPED への CAS。IN 条件で原子的に狭める。
+  //   COMPLETED / SKIPPED に既に遷移していれば undefined を返し、呼び出し側は冪等に扱う。
+  const rows = await db
+    .update(sessions)
+    .set({
+      status: "SKIPPED",
+      cancelReason: input.cancelReason,
+      updatedAt: sql`now()` as unknown as Date
+    })
+    .where(
+      and(
+        eq(sessions.id, input.id),
+        inArray(sessions.status, NON_TERMINAL_STATUSES as SessionStatus[])
+      )
+    )
+    .returning();
+  const row = rows[0];
+  return row ? mapSession(row) : undefined;
+};
+
 export const isNonTerminal = (status: SessionStatus): boolean =>
   (NON_TERMINAL_STATUSES as readonly string[]).includes(status);
