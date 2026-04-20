@@ -5,13 +5,15 @@ import {
   pgTable,
   text,
   timestamp,
-  uniqueIndex
+  uniqueIndex,
+  varchar
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().unique(),
+  displayName: varchar("display_name", { length: 32 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow()
@@ -47,7 +49,8 @@ export const sessions = pgTable(
     id: text("id").primaryKey(),
     weekKey: text("week_key").notNull(),
     postponeCount: integer("postpone_count").notNull().default(0),
-    candidateDate: date("candidate_date", { mode: "string" }).notNull(),
+    // why: 型形式を名前で明示 Iso suffix (ADR-0014)
+    candidateDateIso: date("candidate_date_iso", { mode: "string" }).notNull(),
     status: text("status").notNull(),
     channelId: text("channel_id").notNull(),
     askMessageId: text("ask_message_id"),

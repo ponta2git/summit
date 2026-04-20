@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" RENAME COLUMN "candidate_date" TO "candidate_date_iso";

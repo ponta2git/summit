@@ -1,43 +1,16 @@
+// source-of-truth: session 集約ルート。状態遷移・週キー・締切を扱う。
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 
-import type { db as defaultDb } from "../client.js";
 import {
-  RESPONSE_CHOICES,
   SESSION_STATUSES,
-  type ResponseChoice,
-  type SessionStatus,
-  members,
-  responses,
   sessions
 } from "../schema.js";
-
-export type DbLike = typeof defaultDb;
-
-export interface SessionRow {
-  id: string;
-  weekKey: string;
-  postponeCount: number;
-  candidateDate: string;
-  status: SessionStatus;
-  channelId: string;
-  askMessageId: string | null;
-  postponeMessageId: string | null;
-  deadlineAt: Date;
-  decidedStartAt: Date | null;
-  cancelReason: string | null;
-  reminderAt: Date | null;
-  reminderSentAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ResponseRow {
-  id: string;
-  sessionId: string;
-  memberId: string;
-  choice: ResponseChoice;
-  answeredAt: Date;
-}
+import type {
+  DbLike,
+  SessionRow,
+  SessionStatus
+} from "../types.js";
+import type { SessionsPort } from "../../ports/index.js";
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
@@ -54,18 +27,11 @@ const assertStatus = (value: string): SessionStatus => {
   throw new Error(`Invalid session status: ${value}`);
 };
 
-const assertChoice = (value: string): ResponseChoice => {
-  if ((RESPONSE_CHOICES as readonly string[]).includes(value)) {
-    return value as ResponseChoice;
-  }
-  throw new Error(`Invalid response choice: ${value}`);
-};
-
 const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   id: row.id,
   weekKey: row.weekKey,
   postponeCount: row.postponeCount,
-  candidateDate: row.candidateDate,
+  candidateDateIso: row.candidateDateIso,
   status: assertStatus(row.status),
   channelId: row.channelId,
   askMessageId: row.askMessageId,
@@ -79,19 +45,11 @@ const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   updatedAt: row.updatedAt
 });
 
-const mapResponse = (row: typeof responses.$inferSelect): ResponseRow => ({
-  id: row.id,
-  sessionId: row.sessionId,
-  memberId: row.memberId,
-  choice: assertChoice(row.choice),
-  answeredAt: row.answeredAt
-});
-
 export interface CreateAskSessionInput {
   id: string;
   weekKey: string;
   postponeCount: number;
-  candidateDate: string;
+  candidateDateIso: string;
   channelId: string;
   deadlineAt: Date;
 }
@@ -118,7 +76,7 @@ export const createAskSession = async (
       id: input.id,
       weekKey: input.weekKey,
       postponeCount: input.postponeCount,
-      candidateDate: input.candidateDate,
+      candidateDateIso: input.candidateDateIso,
       status: "ASKING",
       channelId: input.channelId,
       deadlineAt: input.deadlineAt
@@ -163,7 +121,7 @@ export const findSessionById = async (
   return row ? mapSession(row) : undefined;
 };
 
-export const setAskMessageId = async (
+export const updateAskMessageId = async (
   db: DbLike,
   id: string,
   messageId: string
@@ -174,7 +132,7 @@ export const setAskMessageId = async (
     .where(eq(sessions.id, id));
 };
 
-export const setPostponeMessageId = async (
+export const updatePostponeMessageId = async (
   db: DbLike,
   id: string,
   messageId: string
@@ -254,81 +212,21 @@ export const findNonTerminalSessions = async (
   return rows.map(mapSession);
 };
 
-export const listResponses = async (
-  db: DbLike,
-  sessionId: string
-): Promise<ResponseRow[]> => {
-  const rows = await db
-    .select()
-    .from(responses)
-    .where(eq(responses.sessionId, sessionId));
-  return rows.map(mapResponse);
-};
-
-export interface UpsertResponseInput {
-  id: string;
-  sessionId: string;
-  memberId: string;
-  choice: ResponseChoice;
-  answeredAt: Date;
-}
-
-/**
- * Inserts or updates a member's response to a session (押し直し可).
- *
- * @returns The resulting response row after upsert.
- * @throws Error if the upsert returns no row (should never happen under the current schema).
- *
- * @remarks
- * `(sessionId, memberId)` unique 制約で二重投入を防ぎつつ、同一メンバーの回答変更は
- * `onConflictDoUpdate` で最新値に上書きする。
- */
-export const upsertResponse = async (
-  db: DbLike,
-  input: UpsertResponseInput
-): Promise<ResponseRow> => {
-  // unique: (sessionId, memberId) unique 制約で二重投入を防ぐ。
-  //   同一メンバーの回答変更 (押し直し) は onConflictDoUpdate で最新値に上書きする。
-  const rows = await db
-    .insert(responses)
-    .values({
-      id: input.id,
-      sessionId: input.sessionId,
-      memberId: input.memberId,
-      choice: input.choice,
-      answeredAt: input.answeredAt
-    })
-    .onConflictDoUpdate({
-      target: [responses.sessionId, responses.memberId],
-      set: {
-        choice: input.choice,
-        answeredAt: input.answeredAt
-      }
-    })
-    .returning();
-  const row = rows[0];
-  if (!row) {
-    throw new Error("upsertResponse returned no row");
-  }
-  return mapResponse(row);
-};
-
-export const findMemberIdByUserId = async (
-  db: DbLike,
-  userId: string
-): Promise<string | undefined> => {
-  const rows = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(eq(members.userId, userId))
-    .limit(1);
-  return rows[0]?.id;
-};
-
-export const listMembers = async (
-  db: DbLike
-): Promise<{ id: string; userId: string }[]> =>
-  db.select({ id: members.id, userId: members.userId }).from(members);
-
 export const isNonTerminal = (status: SessionStatus): boolean =>
   (NON_TERMINAL_STATUSES as readonly string[]).includes(status);
+
+
+// why: repository 実装が port 契約を満たすことをコンパイル時に固定する。
+// invariant: DI 未導入段階でも公開 API の破壊的変更を型検査で即検知する。
+const _typecheckSessionsPort = {
+  createAskSession,
+  findSessionByWeekKeyAndPostponeCount,
+  findSessionById,
+  updateAskMessageId,
+  updatePostponeMessageId,
+  transitionStatus,
+  findDueAskingSessions,
+  findNonTerminalSessions,
+  isNonTerminal
+} satisfies SessionsPort<DbLike, SessionRow>;
+void _typecheckSessionsPort;

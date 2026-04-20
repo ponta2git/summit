@@ -15,6 +15,20 @@
       "when": 1776612885472,
       "tag": "0001_mysterious_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776656926608,
+      "tag": "0002_omniscient_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776657823788,
+      "tag": "0003_whole_dark_phoenix",
+      "breakpoints": true
     }
   ]
 }

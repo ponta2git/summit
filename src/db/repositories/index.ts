@@ -8,8 +8,8 @@ export {
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   isNonTerminal,
-  setAskMessageId,
-  setPostponeMessageId,
+  updateAskMessageId,
+  updatePostponeMessageId,
   transitionStatus,
   type TransitionInput
 } from "./sessions.js";
