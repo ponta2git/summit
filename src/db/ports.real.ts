@@ -26,7 +26,18 @@ import {
   findMemberIdByUserId,
   listMembers
 } from "./repositories/members.js";
-import type { AppPorts, MembersPort, ResponsesPort, SessionsPort } from "./ports.js";
+import {
+  completeDecidedSessionAsHeld,
+  findHeldEventBySessionId,
+  listHeldEventParticipants
+} from "./repositories/heldEvents.js";
+import type {
+  AppPorts,
+  HeldEventsPort,
+  MembersPort,
+  ResponsesPort,
+  SessionsPort
+} from "./ports.js";
 
 const makeSessionsPort = (db: DbLike): SessionsPort => ({
   createAskSession: (input) => createAskSession(db, input),
@@ -56,8 +67,15 @@ const makeMembersPort = (db: DbLike): MembersPort => ({
   listMembers: () => listMembers(db)
 });
 
+const makeHeldEventsPort = (db: DbLike): HeldEventsPort => ({
+  completeDecidedSessionAsHeld: (input) => completeDecidedSessionAsHeld(db, input),
+  findBySessionId: (sessionId) => findHeldEventBySessionId(db, sessionId),
+  listParticipants: (heldEventId) => listHeldEventParticipants(db, heldEventId)
+});
+
 export const makeRealPorts = (db: DbLike): AppPorts => ({
   sessions: makeSessionsPort(db),
   responses: makeResponsesPort(db),
-  members: makeMembersPort(db)
+  members: makeMembersPort(db),
+  heldEvents: makeHeldEventsPort(db)
 });

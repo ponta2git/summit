@@ -2,7 +2,7 @@ import type { Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.js";
 import { REMINDER_SKIP_THRESHOLD_MINUTES } from "../../config.js";
-import type { SessionRow } from "../../db/rows.js";
+import type { ResponseChoice, ResponseRow, SessionRow } from "../../db/rows.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import { reminderMessages } from "./messages.js";
@@ -17,6 +17,23 @@ const formatJstHhmm = (instant: Date): string => {
   const mm = String(instant.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 };
+
+const TIME_CHOICES: ReadonlySet<ResponseChoice> = new Set([
+  "T2200",
+  "T2230",
+  "T2300",
+  "T2330"
+]);
+
+// why: §8.3 「参加メンバー一覧」を responses の時刻選択から派生させる。
+//   env.MEMBER_USER_IDS は「今の設定値」であり「その開催の実参加スナップショット」ではない。
+//   DECIDED 到達時点で ABSENT は存在しない (decide.ts) ため、TIME_CHOICES のみで十分。
+const extractHeldParticipantMemberIds = (
+  responses: readonly ResponseRow[]
+): readonly string[] =>
+  responses
+    .filter((r) => TIME_CHOICES.has(r.choice))
+    .map((r) => r.memberId);
 
 const buildReminderContent = (startAt: Date): string => {
   const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
@@ -52,11 +69,26 @@ const completeAfterReminder = async (
   now: Date,
   reason: "reminder_sent" | "reminder_skipped"
 ): Promise<void> => {
-  const completed = await ctx.ports.sessions.transitionStatus({
-    id: session.id,
-    from: "DECIDED",
-    to: "COMPLETED",
-    reminderSentAt: now
+  if (!session.decidedStartAt) {
+    // invariant: DECIDED session は decidedStartAt を必ず持つ。防御的に早期 return。
+    logger.warn(
+      { sessionId: session.id, weekKey: session.weekKey, reason },
+      "completeAfterReminder invoked without decidedStartAt; skipping."
+    );
+    return;
+  }
+  // source-of-truth: HeldEvent の参加者は responses の時刻選択 (§8.3) から派生する。
+  const responses = await ctx.ports.responses.listResponses(session.id);
+  const memberIds = extractHeldParticipantMemberIds(responses);
+
+  // tx: DECIDED→COMPLETED CAS と HeldEvent/participants 挿入を単一 tx でまとめ、
+  //   「COMPLETED なのに HeldEvent 無し」の永続不整合を避ける。COMPLETED は終端で
+  //   起動時リカバリが拾わないため、別 tx に分けると失敗時に自然回復しない。
+  // @see docs/adr/0031-held-event-persistence.md
+  const completed = await ctx.ports.heldEvents.completeDecidedSessionAsHeld({
+    sessionId: session.id,
+    reminderSentAt: now,
+    memberIds
   });
   if (!completed) {
     // race: 別ハンドラが先に COMPLETED へ遷移させた race lost。DB を巻き戻さない。
@@ -67,7 +99,15 @@ const completeAfterReminder = async (
     return;
   }
   logger.info(
-    { sessionId: session.id, weekKey: session.weekKey, from: "DECIDED", to: "COMPLETED", reason },
+    {
+      sessionId: session.id,
+      weekKey: session.weekKey,
+      from: "DECIDED",
+      to: "COMPLETED",
+      reason,
+      heldEventId: completed.heldEvent.id,
+      participantCount: completed.participants.length
+    },
     "Session completed after reminder phase."
   );
 };

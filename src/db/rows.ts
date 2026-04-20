@@ -3,6 +3,8 @@ import type { db as defaultDb } from "./client.js";
 import {
   RESPONSE_CHOICES,
   SESSION_STATUSES,
+  type heldEvents,
+  type heldEventParticipants,
   type responses,
   type sessions,
   type ResponseChoice,
@@ -18,6 +20,9 @@ export type SessionRow = Omit<typeof sessions.$inferSelect, "status"> & {
 export type ResponseRow = Omit<typeof responses.$inferSelect, "choice"> & {
   choice: ResponseChoice;
 };
+
+export type HeldEventRow = typeof heldEvents.$inferSelect;
+export type HeldEventParticipantRow = typeof heldEventParticipants.$inferSelect;
 
 // why: listMembers は 3 列のみ select しているため、port / fixtures が見る MemberRow は
 //   schema 全列ではなく実運用で surface される shape に合わせる。

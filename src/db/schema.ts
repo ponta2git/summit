@@ -3,6 +3,7 @@ import {
   date,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -119,5 +120,46 @@ export const responses = pgTable(
       "responses_choice_check",
       sql`${table.choice} IN ('T2200','T2230','T2300','T2330','ABSENT','POSTPONE_OK','POSTPONE_NG')`
     )
+  ]
+);
+
+// source-of-truth: 実開催履歴。将来の戦績集計システム統合前提 (§8.3)。
+//   中止回 (CANCELLED / SKIPPED) では作成しない (§8.4)。DECIDED→COMPLETED 遷移と
+//   同一トランザクションで挿入することで「COMPLETED なのに HeldEvent 無し」の
+//   永続不整合を回避する (COMPLETED は終端のため起動時リカバリが拾わない)。
+export const heldEvents = pgTable("held_events", {
+  id: text("id").primaryKey(),
+  // unique: 1 Session につき 1 HeldEvent。CAS 勝者のみ挿入するため本来競合しないが
+  //   再実行時の冪等性 (onConflictDoNothing) を担保する anchor として機能する。
+  sessionId: text("session_id")
+    .notNull()
+    .unique()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  // why: 型形式を名前で明示 Iso suffix (ADR-0014)。実開催日 = session.candidate_date_iso。
+  heldDateIso: date("held_date_iso", { mode: "string" }).notNull(),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+});
+
+// source-of-truth: 開催ごとの参加メンバースナップショット (§8.3 "参加メンバー一覧")。
+//   env.MEMBER_USER_IDS は「今の設定」であり「その開催の実参加」ではないため、
+//   開催時点の responses (時刻選択) から派生させた snapshot を保持する。
+export const heldEventParticipants = pgTable(
+  "held_event_participants",
+  {
+    heldEventId: text("held_event_id")
+      .notNull()
+      .references(() => heldEvents.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    primaryKey({ columns: [table.heldEventId, table.memberId] })
   ]
 );

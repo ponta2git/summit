@@ -24,3 +24,11 @@ export {
   findMemberIdByUserId,
   listMembers
 } from "./members.js";
+
+export {
+  completeDecidedSessionAsHeld,
+  findHeldEventBySessionId,
+  listHeldEventParticipants,
+  type CompleteDecidedSessionAsHeldInput,
+  type CompleteDecidedSessionAsHeldResult
+} from "./heldEvents.js";

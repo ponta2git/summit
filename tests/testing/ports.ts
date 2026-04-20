@@ -5,7 +5,12 @@
 
 import type {
   AppPorts,
+  CompleteDecidedSessionAsHeldInput,
+  CompleteDecidedSessionAsHeldResult,
   CreateAskSessionInput,
+  HeldEventParticipantRow,
+  HeldEventRow,
+  HeldEventsPort,
   MemberRow,
   MembersPort,
   ResponseRow,
@@ -47,10 +52,17 @@ export interface FakeMembersPort extends MembersPort {
   readonly calls: ReadonlyArray<AnyCall>;
 }
 
+export interface FakeHeldEventsPort extends HeldEventsPort {
+  readonly calls: ReadonlyArray<AnyCall>;
+  listHeldEvents(): ReadonlyArray<HeldEventRow>;
+  listAllParticipants(): ReadonlyArray<HeldEventParticipantRow>;
+}
+
 export interface FakePorts extends AppPorts {
   readonly sessions: FakeSessionsPort;
   readonly responses: FakeResponsesPort;
   readonly members: FakeMembersPort;
+  readonly heldEvents: FakeHeldEventsPort;
 }
 
 /**
@@ -263,21 +275,130 @@ export const createFakeMembersPort = (
   };
 };
 
+/**
+ * Create an in-memory fake for {@link HeldEventsPort}.
+ *
+ * @remarks
+ * `completeDecidedSessionAsHeld` は対象 sessions fake に委譲して DECIDED→COMPLETED CAS を
+ * 模倣し、同期的に held_events / participants を内部配列に挿入する。本物と同じく CAS 敗北時は
+ * held_events を書かずに undefined を返す（ロールバック相当）。
+ */
+export const createFakeHeldEventsPort = (
+  sessionsPort: FakeSessionsPort,
+  seed: {
+    readonly heldEvents?: ReadonlyArray<HeldEventRow>;
+    readonly participants?: ReadonlyArray<HeldEventParticipantRow>;
+  } = {}
+): FakeHeldEventsPort => {
+  const calls: AnyCall[] = [];
+  const heldEvents: HeldEventRow[] = (seed.heldEvents ?? []).map((h) => ({ ...h }));
+  const participants: HeldEventParticipantRow[] = (seed.participants ?? []).map(
+    (p) => ({ ...p })
+  );
+  let autoId = 0;
+  const cloneHeld = (h: HeldEventRow): HeldEventRow => ({ ...h });
+  const cloneParticipant = (
+    p: HeldEventParticipantRow
+  ): HeldEventParticipantRow => ({ ...p });
+
+  return {
+    calls,
+    listHeldEvents: () => heldEvents.map(cloneHeld),
+    listAllParticipants: () => participants.map(cloneParticipant),
+    completeDecidedSessionAsHeld: async (
+      input: CompleteDecidedSessionAsHeldInput
+    ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
+      recordCall(calls, "completeDecidedSessionAsHeld", { input });
+      // race: session の DECIDED→COMPLETED CAS を fake sessions 側で遂行する。
+      //   敗北時は held_events を書かず undefined を返し、tx ロールバック相当を再現する。
+      const transitioned = await sessionsPort.transitionStatus({
+        id: input.sessionId,
+        from: "DECIDED",
+        to: "COMPLETED",
+        reminderSentAt: input.reminderSentAt
+      });
+      if (!transitioned) {
+        return undefined;
+      }
+      if (!transitioned.decidedStartAt) {
+        // invariant: 本物の repository と同じく、DECIDED を抜けたら decidedStartAt を必ず持つ。
+        throw new Error(
+          `FakeHeldEventsPort: session ${transitioned.id} has no decidedStartAt despite DECIDED status`
+        );
+      }
+      // idempotent: session_id unique 相当。既存 HeldEvent があれば使い回す。
+      const existing = heldEvents.find((h) => h.sessionId === input.sessionId);
+      const heldEvent: HeldEventRow =
+        existing ??
+        {
+          id: `fake-held-${++autoId}`,
+          sessionId: input.sessionId,
+          heldDateIso: transitioned.candidateDateIso,
+          startAt: new Date(transitioned.decidedStartAt),
+          createdAt: new Date()
+        };
+      if (!existing) {
+        heldEvents.push(heldEvent);
+      }
+      const insertedParticipants: HeldEventParticipantRow[] = [];
+      const now = new Date();
+      for (const memberId of input.memberIds) {
+        const dup = participants.find(
+          (p) => p.heldEventId === heldEvent.id && p.memberId === memberId
+        );
+        if (dup) {
+          continue;
+        }
+        const row: HeldEventParticipantRow = {
+          heldEventId: heldEvent.id,
+          memberId,
+          createdAt: now
+        };
+        participants.push(row);
+        insertedParticipants.push(row);
+      }
+      return {
+        session: transitioned,
+        heldEvent: cloneHeld(heldEvent),
+        participants: insertedParticipants.map(cloneParticipant)
+      };
+    },
+    findBySessionId: async (sessionId) => {
+      recordCall(calls, "findBySessionId", { sessionId });
+      const found = heldEvents.find((h) => h.sessionId === sessionId);
+      return found ? cloneHeld(found) : undefined;
+    },
+    listParticipants: async (heldEventId) => {
+      recordCall(calls, "listParticipants", { heldEventId });
+      return participants
+        .filter((p) => p.heldEventId === heldEventId)
+        .map(cloneParticipant);
+    }
+  };
+};
+
 export interface FakePortsSeed {
   readonly sessions?: ReadonlyArray<SessionRow>;
   readonly responses?: ReadonlyArray<ResponseRow>;
   readonly members?: ReadonlyArray<MemberRow>;
+  readonly heldEvents?: ReadonlyArray<HeldEventRow>;
+  readonly heldEventParticipants?: ReadonlyArray<HeldEventParticipantRow>;
 }
 
 /**
  * Build a complete {@link FakePorts} bundle. Tests should prefer this over partial construction,
  * so that AppContext wiring parallels production.
  */
-export const createFakePorts = (seed: FakePortsSeed = {}): FakePorts => ({
-  sessions: createFakeSessionsPort(seed.sessions ?? []),
-  responses: createFakeResponsesPort(seed.responses ?? []),
-  members: createFakeMembersPort(seed.members ?? [])
-});
+export const createFakePorts = (seed: FakePortsSeed = {}): FakePorts => {
+  const sessions = createFakeSessionsPort(seed.sessions ?? []);
+  const responses = createFakeResponsesPort(seed.responses ?? []);
+  const members = createFakeMembersPort(seed.members ?? []);
+  const heldEvents = createFakeHeldEventsPort(sessions, {
+    heldEvents: seed.heldEvents ?? [],
+    participants: seed.heldEventParticipants ?? []
+  });
+  return { sessions, responses, members, heldEvents };
+};
 
 export interface TestAppContext {
   readonly ports: FakePorts;

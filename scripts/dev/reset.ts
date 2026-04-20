@@ -40,24 +40,27 @@ const run = async (): Promise<void> => {
 
   const { includeMembers } = parseFlags(process.argv.slice(2));
 
-  // why: responses → sessions の順で消す (FK 順序)。RESTART IDENTITY は連番列が無いので無害。
+  // why: responses / held_event_participants / held_events / sessions を消す。
+  //   FK 順序は CASCADE で吸収される (sessions→held_events→participants は cascade delete)。
   //   members は env.MEMBER_USER_IDS で seed 済み前提のため既定では残す。
   // idempotent: TRUNCATE は冪等。複数回実行しても結果は同じ。
-  await db.execute(sql`TRUNCATE TABLE responses, sessions RESTART IDENTITY CASCADE`);
+  // @see ADR-0031 HeldEvent 永続化
+  await db.execute(
+    sql`TRUNCATE TABLE responses, held_event_participants, held_events, sessions RESTART IDENTITY CASCADE`
+  );
 
   if (includeMembers) {
     await db.execute(sql`TRUNCATE TABLE members RESTART IDENTITY CASCADE`);
   }
 
+  const baseTables = ["responses", "held_event_participants", "held_events", "sessions"];
   logger.warn(
     {
       host: new URL(env.DATABASE_URL).hostname,
-      tablesTruncated: includeMembers
-        ? ["responses", "sessions", "members"]
-        : ["responses", "sessions"],
+      tablesTruncated: includeMembers ? [...baseTables, "members"] : baseTables,
       includeMembers
     },
-    "Dev database reset: sessions / responses truncated."
+    "Dev database reset: session-related tables truncated."
   );
 };
 

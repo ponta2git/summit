@@ -6,6 +6,8 @@
 // @see docs/adr/0026-boundary-rationalization.md
 
 import type {
+  HeldEventParticipantRow,
+  HeldEventRow,
   MemberRow,
   ResponseRow,
   SessionRow,
@@ -16,15 +18,23 @@ import type {
   TransitionInput
 } from "./repositories/sessions.js";
 import type { UpsertResponseInput } from "./repositories/responses.js";
+import type {
+  CompleteDecidedSessionAsHeldInput,
+  CompleteDecidedSessionAsHeldResult
+} from "./repositories/heldEvents.js";
 
 export type {
+  HeldEventParticipantRow,
+  HeldEventRow,
   MemberRow,
   ResponseRow,
   SessionRow,
   SessionStatus,
   CreateAskSessionInput,
   TransitionInput,
-  UpsertResponseInput
+  UpsertResponseInput,
+  CompleteDecidedSessionAsHeldInput,
+  CompleteDecidedSessionAsHeldResult
 };
 export type { ResponseChoice } from "./rows.js";
 
@@ -65,6 +75,22 @@ export interface MembersPort {
 }
 
 /**
+ * HeldEvent persistence port.
+ *
+ * @remarks
+ * §8.3 の HeldEvent (実開催履歴) を扱う。中止回 (§8.4) では作成しないため、
+ * 唯一の作成経路は `completeDecidedSessionAsHeld` (DECIDED→COMPLETED CAS と同一 tx)。
+ * @see docs/adr/0031-held-event-persistence.md
+ */
+export interface HeldEventsPort {
+  completeDecidedSessionAsHeld(
+    input: CompleteDecidedSessionAsHeldInput
+  ): Promise<CompleteDecidedSessionAsHeldResult | undefined>;
+  findBySessionId(sessionId: string): Promise<HeldEventRow | undefined>;
+  listParticipants(heldEventId: string): Promise<readonly HeldEventParticipantRow[]>;
+}
+
+/**
  * Aggregate port bundle supplied to handlers / scheduler / workflow via AppContext.
  *
  * @remarks
@@ -75,4 +101,5 @@ export interface AppPorts {
   readonly sessions: SessionsPort;
   readonly responses: ResponsesPort;
   readonly members: MembersPort;
+  readonly heldEvents: HeldEventsPort;
 }
