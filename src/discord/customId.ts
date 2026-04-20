@@ -41,6 +41,7 @@ const customIdCodecSchema = z
 
 export type CustomIdSpec = z.infer<typeof customIdSpecSchema>;
 export type AskCustomIdChoice = z.infer<typeof askCustomIdSpecSchema>["choice"];
+export type PostponeCustomIdChoice = z.infer<typeof postponeCustomIdSpecSchema>["choice"];
 
 // why: customId codec 統一 (ADR-0016)
 export const parseCustomId = (raw: string): z.ZodSafeParseResult<CustomIdSpec> =>

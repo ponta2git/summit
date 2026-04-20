@@ -99,18 +99,62 @@ describe("interaction router", () => {
     });
   });
 
-  it("rejects postpone button presses with placeholder message (not-yet-implemented)", async () => {
+  it("records postpone vote and returns ephemeral confirmation", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const sessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
+    const session = buildSessionRow({
+      id: sessionId,
+      status: "POSTPONE_VOTING",
+      postponeMessageId: "postpone-msg-1",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const members = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `member-${i}`,
+      userId,
+      displayName: `Member ${i}`
+    }));
+    const ctx = createTestAppContext({
+      now: new Date("2026-04-25T12:00:00.000Z"),
+      seed: { sessions: [session], members }
+    });
     const interaction = buildButtonInteraction(
-      "postpone:4f7d54aa-3898-4a13-9f7c-5872a8220e0f:ok"
+      `postpone:${sessionId}:ok`
+    );
+    const postponeMessageEdit = vi.fn(async () => undefined);
+    const channelSend = vi.fn(async () => ({ id: "sent-id" }));
+    const client = {
+      channels: {
+        fetch: vi.fn(async () => ({
+          type: 0,
+          isSendable: () => true,
+          send: channelSend,
+          messages: {
+            fetch: vi.fn(async () => ({ edit: postponeMessageEdit }))
+          }
+        }))
+      }
+    } as unknown as Client;
+    const messageEdit = vi.fn(async () => undefined);
+    const interactionWithMessage = {
+      ...interaction,
+      message: { edit: messageEdit }
+    };
+
+    await handleInteraction(
+      interactionWithMessage as unknown as Interaction,
+      {
+        sendAsk: sendAsk as unknown as Parameters<typeof handleInteraction>[1]["sendAsk"],
+        client,
+        context: ctx
+      }
     );
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
-
-    expect(interaction.followUp).toHaveBeenCalledWith({
-      content: "順延投票は受付準備中です。近日公開予定です。",
+    expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
+    expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
+      content: messages.interaction.voteConfirmed.postpone("ok"),
       flags: MessageFlags.Ephemeral
     });
+    expect(messageEdit).toHaveBeenCalledOnce();
   });
 
   it("sends ephemeral feedback for unknown/stale button custom_id", async () => {

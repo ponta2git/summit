@@ -5,12 +5,14 @@ import { ChannelType, type Client } from "discord.js";
 import type { AppContext } from "../../composition.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
+import type { SessionRow } from "../../ports/index.js";
 import { isShuttingDown } from "../../shutdown.js";
 import {
   candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
-  isoWeekKey
+  isoWeekKey,
+  parseCandidateDateIso
 } from "../../time/index.js";
 import { renderAskBody } from "./render.js";
 import { buildInitialAskMessageViewModel } from "../viewModels.js";
@@ -30,11 +32,12 @@ export interface SendAskMessageResult {
 
 // single-instance: プロセス内 in-flight マップ。Fly app を 2 インスタンス以上にスケールすると
 //   このロックは効かず、DB の sessions_week_key_postpone_count_unique 制約が最終防衛線になる。
-// race: 同一 weekKey に対する cron tick と /ask 手動実行の並走を 1 本化する (重複 Discord 投稿の抑制)。
+// race: キーは `${weekKey}:${postponeCount}` 形式。Friday (postponeCount=0) と Saturday (postponeCount=1) は
+//   別キーになるため、同一 weekKey 内でも互いをブロックせず独立して並走できる。
 // idempotent: ロック外側でも findSessionByWeekKeyAndPostponeCount による既存検出と unique 制約で重複は防がれる。
 //   このマップは「Discord API 呼び出し前の無駄な往復」を省く最適化の役割。
 // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
-const inFlightSends = new Map<string, Promise<SendAskMessageResult>>();
+const inFlightSends = new Map<string, Promise<unknown>>();
 
 const doSendAskMessage = async (
   client: Client,
@@ -146,9 +149,13 @@ export const sendAskMessage = async (
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
   const weekKey = isoWeekKey(context.context.clock.now());
-  const ongoing = inFlightSends.get(weekKey);
+  // race: mapKey は ${weekKey}:0。土曜送信の ${weekKey}:1 とは別キーなので並走可能。
+  const mapKey = `${weekKey}:0`;
+  const ongoing = inFlightSends.get(mapKey);
   if (ongoing) {
-    const settled = await ongoing;
+    // why: `:0` サフィックスにより mapKey は Friday 専用。
+    //   このエントリは必ず doSendAskMessage が返す Promise<SendAskMessageResult>。
+    const settled = await (ongoing as Promise<SendAskMessageResult>);
     return {
       status: "skipped",
       weekKey: settled.weekKey,
@@ -158,12 +165,102 @@ export const sendAskMessage = async (
   }
 
   const current = doSendAskMessage(client, context);
-  inFlightSends.set(weekKey, current);
+  inFlightSends.set(mapKey, current);
   try {
     return await current;
   } finally {
-    if (inFlightSends.get(weekKey) === current) {
-      inFlightSends.delete(weekKey);
+    if (inFlightSends.get(mapKey) === current) {
+      inFlightSends.delete(mapKey);
+    }
+  }
+};
+
+const doSendPostponedAskMessage = async (
+  client: Client,
+  ctx: AppContext,
+  saturdaySession: SessionRow
+): Promise<void> => {
+  if (isShuttingDown()) {
+    throw new Error("Shutdown in progress.");
+  }
+
+  // idempotent: askMessageId が既に設定済みなら再送しない (再起動後 / 重複 tick での再入を吸収)。
+  if (saturdaySession.askMessageId) {
+    logger.info(
+      {
+        sessionId: saturdaySession.id,
+        weekKey: saturdaySession.weekKey,
+        messageId: saturdaySession.askMessageId,
+        postponeCount: saturdaySession.postponeCount
+      },
+      "Postponed ask message already sent; skipping."
+    );
+    return;
+  }
+
+  const channel = await client.channels.fetch(env.DISCORD_CHANNEL_ID);
+  if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
+    throw new Error("Configured channel is not sendable.");
+  }
+
+  const memberRows = await ctx.ports.members.listMembers();
+  const candidateDate = parseCandidateDateIso(saturdaySession.candidateDateIso);
+  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
+  const vm = buildInitialAskMessageViewModel(saturdaySession.id, candidateDate, memberRows);
+  const sentMessage = await channel.send(renderAskBody(vm));
+  await ctx.ports.sessions.updateAskMessageId(saturdaySession.id, sentMessage.id);
+
+  logger.info(
+    {
+      sessionId: saturdaySession.id,
+      weekKey: saturdaySession.weekKey,
+      messageId: sentMessage.id,
+      channelId: env.DISCORD_CHANNEL_ID,
+      postponeCount: saturdaySession.postponeCount
+    },
+    "Postponed ask message sent."
+  );
+};
+
+/**
+ * Sends the Saturday ASKING message for a postponed session (`postponeCount=1`).
+ *
+ * @remarks
+ * 土曜 Session は Phase D の `settlePostponeVotingSession` が既に DB に作成済み。
+ * 本関数はその行を受け取り Discord メッセージを投稿し `askMessageId` を保存する。
+ * `askMessageId` が既に設定済みなら何もしない (冪等)。
+ *
+ * in-flight マップのキーは `${weekKey}:1`。金曜送信の `${weekKey}:0` とは別キーなので、
+ * 同一 weekKey 内で並走可能 (互いをブロックしない)。
+ */
+export const sendPostponedAskMessage = async (
+  client: Client,
+  ctx: AppContext,
+  saturdaySession: SessionRow
+): Promise<void> => {
+  // invariant: settlePostponeVotingSession (Phase D) が作成した postponeCount=1 の行のみを受け取る。
+  if (saturdaySession.postponeCount !== 1) {
+    throw new Error(
+      `sendPostponedAskMessage: expected postponeCount=1, got ${saturdaySession.postponeCount}`
+    );
+  }
+
+  const { weekKey, postponeCount } = saturdaySession;
+  // race: mapKey は ${weekKey}:1。金曜送信の ${weekKey}:0 とは別キーなので並走可能。
+  const mapKey = `${weekKey}:${postponeCount}`;
+  const ongoing = inFlightSends.get(mapKey);
+  if (ongoing) {
+    await ongoing;
+    return;
+  }
+
+  const current = doSendPostponedAskMessage(client, ctx, saturdaySession);
+  inFlightSends.set(mapKey, current);
+  try {
+    await current;
+  } finally {
+    if (inFlightSends.get(mapKey) === current) {
+      inFlightSends.delete(mapKey);
     }
   }
 };

@@ -6,6 +6,7 @@ import type { DbLike } from "../db/types.js";
 import {
   createAskSession,
   findDueAskingSessions,
+  findDuePostponeVotingSessions,
   findNonTerminalSessions,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
@@ -33,6 +34,7 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
   transitionStatus: (input) => transitionStatus(db, input),
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
+  findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findNonTerminalSessions: () => findNonTerminalSessions(db),
   isNonTerminal
 });

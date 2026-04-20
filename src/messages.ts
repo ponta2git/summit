@@ -1,7 +1,7 @@
 import { formatCandidateJa, parseCandidateDateIso } from "./time/index.js";
 import type { SlotKey } from "./domain/slot.js";
 
-export type SettleCancelReason = "absent" | "deadline_unanswered";
+export type SettleCancelReason = "absent" | "deadline_unanswered" | "saturday_cancelled";
 
 interface AskBodyParams {
   dateIso: string;
@@ -28,6 +28,8 @@ interface SettleCompletedParams {
 
 interface PostponeBodyParams {
   candidateDateIso: string;
+  // source-of-truth: statusLines が空文字列のときは【順延投票】セクション全体を省略（初期投稿時の互換）
+  statusLines?: string;
 }
 
 interface PostponeDecidedParams {
@@ -76,21 +78,28 @@ export const messages = {
     cancelled: (reason: SettleCancelReason): string =>
       reason === "absent"
         ? "🛑 欠席が出たため、今週の開催は中止です。"
-        : "🛑 21:30 までに未回答者がいたため、今週の開催は中止です。",
+        : reason === "deadline_unanswered"
+          ? "🛑 21:30 までに未回答者がいたため、今週の開催は中止です。"
+          : "🛑 土曜回も成立しなかったため、今週はお流れです。",
     completed: ({ count }: SettleCompletedParams): string =>
       `✅ ${count}名の回答を反映して完了しました。`
   },
   postpone: {
-    body: ({ candidateDateIso }: PostponeBodyParams): string =>
-      [
+    body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
+      const lines = [
         "🔁 今週は中止になりました。翌日に順延しますか？",
         "",
         `元の候補日: ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))}`,
         "順延先: 翌日 22:00 以降",
         "回答締切: 候補日翌日 00:00 JST（押さなければ NG 扱い）",
-        "",
-        "全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。"
-      ].join("\n"),
+        ""
+      ];
+      if (statusLines) {
+        lines.push("【順延投票】", statusLines, "");
+      }
+      lines.push("全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。");
+      return lines.join("\n");
+    },
     decided: ({ candidateDateIso, count }: PostponeDecidedParams): string =>
       `✅ ${count}名全員 OK により ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))} へ順延します。`,
     cancelled: ({ reason }: PostponeCancelledParams): string =>
@@ -106,6 +115,7 @@ export const messages = {
       wrongGuild: "このサーバー以外からは操作できません",
       invalidCustomId: "ボタンの形式が不正です",
       staleSession: "この募集は既に締切されています",
+      postponeVotingClosed: "順延投票はすでに締め切られています",
       sessionNotFound: "このセッションは存在しません",
       memberNotRegistered: "メンバー登録がありません",
       outOfScopeButton: "このボタンは対象外です"
@@ -167,9 +177,10 @@ export const messages = {
       notMember: string;
       wrongChannel: string;
       wrongGuild: string;
-      invalidCustomId: string;
-      staleSession: string;
-      sessionNotFound: string;
+        invalidCustomId: string;
+        staleSession: string;
+        postponeVotingClosed: string;
+        sessionNotFound: string;
       memberNotRegistered: string;
       outOfScopeButton: string;
     };

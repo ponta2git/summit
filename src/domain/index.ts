@@ -19,3 +19,9 @@ export {
   type DecisionResult,
   type EvaluateDeadlineOptions
 } from "./deadline.js";
+
+export {
+  evaluatePostponeVote,
+  type EvaluatePostponeVoteOptions,
+  type PostponeDecisionResult
+} from "./postpone.js";

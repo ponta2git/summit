@@ -136,7 +136,8 @@ export const createFakeSessionsPort = (
         updatedAt: new Date(),
         cancelReason: input.cancelReason ?? found.cancelReason,
         decidedStartAt: input.decidedStartAt ?? found.decidedStartAt,
-        reminderAt: input.reminderAt ?? found.reminderAt
+        reminderAt: input.reminderAt ?? found.reminderAt,
+        deadlineAt: input.updatedDeadlineAt ?? found.deadlineAt
       });
       byId.set(next.id, next);
       return clone(next);
@@ -145,6 +146,12 @@ export const createFakeSessionsPort = (
       recordCall(calls, "findDueAskingSessions", { now });
       return Array.from(byId.values())
         .filter((s) => s.status === "ASKING" && s.deadlineAt <= now)
+        .map(clone);
+    },
+    findDuePostponeVotingSessions: async (now) => {
+      recordCall(calls, "findDuePostponeVotingSessions", { now });
+      return Array.from(byId.values())
+        .filter((s) => s.status === "POSTPONE_VOTING" && s.deadlineAt <= now)
         .map(clone);
     },
     findNonTerminalSessions: async () => {

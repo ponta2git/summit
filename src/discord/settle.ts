@@ -1,16 +1,27 @@
+import { randomUUID } from "node:crypto";
 import { ChannelType, type Client } from "discord.js";
 
 import type { AppContext } from "../composition.js";
+import { MEMBER_COUNT_EXPECTED } from "../config.js";
 import type {
   ResponseRow,
   SessionRow
 } from "../db/types.js";
 import {
+  evaluatePostponeVote,
   evaluateDeadline,
   type DecisionResult,
-  type EvaluateDeadlineOptions
+  type EvaluateDeadlineOptions,
+  type PostponeDecisionResult
 } from "../domain/index.js";
+import * as askSendModule from "./ask/send.js";
 import { logger } from "../logger.js";
+import {
+  deadlineFor,
+  formatCandidateDateIso,
+  parseCandidateDateIso,
+  saturdayCandidateFrom
+} from "../time/index.js";
 import { renderAskBody } from "./ask/render.js";
 import { renderPostponeBody } from "./postponeMessage.js";
 import {
@@ -20,7 +31,31 @@ import {
   type SettleNoticeViewModel
 } from "./viewModels.js";
 
-export type CancelReason = "absent" | "deadline_unanswered";
+export type CancelReason =
+  | "absent"
+  | "deadline_unanswered"
+  | "postpone_ng"
+  | "postpone_unanswered"
+  | "saturday_cancelled";
+
+type SendPostponedAskMessage = (
+  client: Client,
+  ctx: AppContext,
+  saturdaySession: SessionRow
+) => Promise<void>;
+
+type AskingCancelReason = Extract<
+  CancelReason,
+  "absent" | "deadline_unanswered" | "saturday_cancelled"
+>;
+
+// todo(ai): Phase E で sendPostponedAskMessage が ask/send.ts に追加されるまで暫定で optional 参照する。
+const resolveSendPostponedAskMessage = (): SendPostponedAskMessage | undefined =>
+  (
+    askSendModule as unknown as {
+      sendPostponedAskMessage?: SendPostponedAskMessage;
+    }
+  ).sendPostponedAskMessage;
 
 const getTextChannel = async (client: Client, channelId: string) => {
   const channel = await client.channels.fetch(channelId);
@@ -67,10 +102,42 @@ export const updateAskMessage = async (
   }
 };
 
+const updatePostponeMessage = async (
+  client: Client,
+  ctx: AppContext,
+  session: SessionRow,
+  responses: readonly ResponseRow[],
+  footerText: string
+): Promise<void> => {
+  if (!session.postponeMessageId) {return;}
+  const channel = await getTextChannel(client, session.channelId);
+  const memberRows = await ctx.ports.members.listMembers();
+  const vm = buildPostponeMessageViewModel(session, responses, memberRows, {
+    disabled: true,
+    footerText
+  });
+  const rendered = renderPostponeBody(vm);
+  const editPayload = {
+    content: rendered.content ?? "",
+    ...(rendered.components ? { components: rendered.components } : {})
+  };
+  try {
+    const msg = await channel.messages.fetch(session.postponeMessageId);
+    await msg.edit(editPayload);
+  } catch (error: unknown) {
+    logger.warn(
+      { error, sessionId: session.id, messageId: session.postponeMessageId },
+      "Failed to update postpone message."
+    );
+  }
+};
+
 /**
- * Transition an ASKING session to CANCELLED, refresh ask message,
- * post the cancel message, post the postpone confirmation message,
- * and transition CANCELLED → POSTPONE_VOTING. Fully idempotent.
+ * Settles an ASKING session into a cancelled path.
+ *
+ * @remarks
+ * 金曜回 (postponeCount=0) は CANCELLED → POSTPONE_VOTING へ進み、順延投票を送る。
+ * 土曜回 (postponeCount=1) は `saturday_cancelled` で CANCELLED 終端にする。
  */
 export const settleAskingSession = async (
   client: Client,
@@ -89,11 +156,18 @@ export const settleAskingSession = async (
     return;
   }
 
+  const resolvedReason: AskingCancelReason =
+    current.postponeCount === 1
+      ? "saturday_cancelled"
+      : reason === "absent"
+        ? "absent"
+        : "deadline_unanswered";
+
   const cancelled = await ctx.ports.sessions.transitionStatus({
     id: sessionId,
     from: "ASKING",
     to: "CANCELLED",
-    cancelReason: reason
+    cancelReason: resolvedReason
   });
   if (!cancelled) {
     // state: ASKING→CANCELLED の CAS 競合敗北は無害な race lost として扱う
@@ -105,7 +179,7 @@ export const settleAskingSession = async (
   }
 
   logger.info(
-    { sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason },
+    { sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason: resolvedReason },
     "Session cancelled."
   );
 
@@ -114,8 +188,13 @@ export const settleAskingSession = async (
   const channel = await getTextChannel(client, cancelled.channelId);
 
   // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-  const settleVm = buildSettleNoticeViewModel(reason);
+  const settleVm = buildSettleNoticeViewModel(resolvedReason);
   await channel.send(renderSettleNotice(settleVm));
+
+  if (cancelled.postponeCount === 1) {
+    // state: 土曜回 (postponeCount=1) は順延確認へ進めず、CANCELLED を終端として週を終了する。
+    return;
+  }
 
   const postponeVm = buildPostponeMessageViewModel(cancelled);
   const postponeSent = await channel.send(renderPostponeBody(postponeVm));
@@ -140,6 +219,28 @@ export const settleAskingSession = async (
       "Postpone voting started."
     );
   }
+};
+
+const completeSaturdayAskingSession = async (
+  ctx: AppContext,
+  session: SessionRow
+): Promise<void> => {
+  const completed = await ctx.ports.sessions.transitionStatus({
+    id: session.id,
+    from: "DECIDED",
+    to: "COMPLETED"
+  });
+  if (!completed) {return;}
+  logger.info(
+    {
+      sessionId: session.id,
+      weekKey: session.weekKey,
+      from: "DECIDED",
+      to: "COMPLETED",
+      reason: "saturday session settled"
+    },
+    "Saturday session completed."
+  );
 };
 
 /**
@@ -199,8 +300,14 @@ const toCancelReason = (
 // invariant: DecisionResult.kind の全ケースを map key として要求し、未実装を型エラーで検知する
 // source-of-truth: 分岐の起点は DecisionResult.kind（domain/deadline.ts の判定結果）
 const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
-  decided: async ({ ctx, session }, decision) => {
-    await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
+  decided: async ({ client, ctx, session }, decision) => {
+    const decided = await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
+    if (!decided || session.postponeCount !== 1) {
+      return;
+    }
+    // source-of-truth: DECIDED 時点の DB 状態で ask メッセージを再描画してから終端化する。
+    await updateAskMessage(client, ctx, session);
+    await completeSaturdayAskingSession(ctx, session);
   },
   cancelled: async ({ client, ctx, session }, decision) => {
     await settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));
@@ -233,3 +340,80 @@ export const evaluateAndApplyDeadlineDecision = async (
   const decision = evaluateDeadline(session, responses, options);
   await applyDeadlineDecision(client, ctx, session, decision);
 };
+
+const postponeDecisionFooter = (
+  decision: Exclude<PostponeDecisionResult, { kind: "pending" }>
+): string => {
+  if (decision.kind === "all_ok") {
+    return "順延されました";
+  }
+  return "この回はお流れになりました";
+};
+
+export async function settlePostponeVotingSession(
+  client: Client,
+  ctx: AppContext,
+  session: SessionRow,
+  now: Date,
+): Promise<void> {
+  const current = await ctx.ports.sessions.findSessionById(session.id);
+  if (!current || current.status !== "POSTPONE_VOTING") {
+    return;
+  }
+
+  const responses = await ctx.ports.responses.listResponses(current.id);
+  const decision = evaluatePostponeVote(current, responses, {
+    memberCountExpected: MEMBER_COUNT_EXPECTED,
+    now
+  });
+  if (decision.kind === "pending") {
+    return;
+  }
+
+  if (decision.kind === "all_ok") {
+    const postponed = await ctx.ports.sessions.transitionStatus({
+      id: current.id,
+      from: "POSTPONE_VOTING",
+      to: "POSTPONED"
+    });
+    if (!postponed) {return;}
+    await updatePostponeMessage(client, ctx, postponed, responses, postponeDecisionFooter(decision));
+
+    const saturdayCandidate = saturdayCandidateFrom(parseCandidateDateIso(postponed.candidateDateIso));
+    const saturdaySession = await ctx.ports.sessions.createAskSession({
+      id: randomUUID(),
+      weekKey: postponed.weekKey,
+      postponeCount: 1,
+      candidateDateIso: formatCandidateDateIso(saturdayCandidate),
+      channelId: postponed.channelId,
+      deadlineAt: deadlineFor(saturdayCandidate)
+    });
+    if (!saturdaySession) {
+      logger.info(
+        { sessionId: postponed.id, weekKey: postponed.weekKey, reason: "saturday session already exists" },
+        "Skipped creating postponed Saturday session."
+      );
+      return;
+    }
+
+    const sendPostponedAskMessage = resolveSendPostponedAskMessage();
+    if (!sendPostponedAskMessage) {
+      logger.warn(
+        { sessionId: postponed.id, weekKey: postponed.weekKey, saturdaySessionId: saturdaySession.id },
+        "sendPostponedAskMessage is not available yet."
+      );
+      return;
+    }
+    await sendPostponedAskMessage(client, ctx, saturdaySession);
+    return;
+  }
+
+  const cancelled = await ctx.ports.sessions.transitionStatus({
+    id: current.id,
+    from: "POSTPONE_VOTING",
+    to: "CANCELLED",
+    cancelReason: decision.reason
+  });
+  if (!cancelled) {return;}
+  await updatePostponeMessage(client, ctx, cancelled, responses, postponeDecisionFooter(decision));
+}

@@ -5,6 +5,7 @@ import type { AppContext } from "../composition.js";
 import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
+  CRON_POSTPONE_DEADLINE_SCHEDULE,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/types.js";
@@ -13,7 +14,7 @@ import {
   type SendAskMessageContext,
   type SendAskMessageResult
 } from "../discord/ask/send.js";
-import { evaluateAndApplyDeadlineDecision } from "../discord/settle.js";
+import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../discord/settle.js";
 import { logger } from "../logger.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
@@ -82,7 +83,39 @@ export const runDeadlineTick = async (
 };
 
 /**
- * Re-settles overdue ASKING sessions found in the DB at startup.
+ * Runs one postpone-deadline tick: settles every POSTPONE_VOTING session whose deadline has passed.
+ *
+ * @remarks
+ * 土 00:00 JST (POSTPONE_DEADLINE="24:00") の cron tick と起動時リカバリの双方から呼ばれる。
+ * セッション単位で try/catch し、1 件の失敗が残りの処理を止めないよう冪等に続行する。
+ * @see ADR-0001 single-instance-db-as-source-of-truth
+ */
+export const runPostponeDeadlineTick = async (
+  client: Client,
+  ctx: AppContext
+): Promise<void> => {
+  try {
+    const now = ctx.clock.now();
+    // source-of-truth: DB から期限切れ POSTPONE_VOTING セッションを再計算する。
+    const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
+    for (const session of due) {
+      try {
+        // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
+        await settlePostponeVotingSession(client, ctx, session, now);
+      } catch (error: unknown) {
+        logger.error(
+          { error, sessionId: session.id, weekKey: session.weekKey },
+          "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
+        );
+      }
+    }
+  } catch (error: unknown) {
+    logger.error({ error }, "Postpone deadline tick failed.");
+  }
+};
+
+/**
+ * Re-settles overdue ASKING and POSTPONE_VOTING sessions found in the DB at startup.
  *
  * @remarks
  * プロセス再起動で cron tick を取りこぼしても整合を回復させる入口。CAS 済みのため
@@ -92,8 +125,8 @@ export const runStartupRecovery = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば settleDueAskingSession を呼ぶ。
-  // idempotent: settleAskingSession / tryDecideIfAllTimeSlots は CAS 済みのため二重呼び出し安全。
+  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば各 settle を呼ぶ。
+  // idempotent: settle 関数はいずれも CAS 済みのため二重呼び出し安全。
   try {
     const sessions = await ctx.ports.sessions.findNonTerminalSessions();
     const now = ctx.clock.now();
@@ -108,6 +141,20 @@ export const runStartupRecovery = async (
           "Startup recovery: settling overdue ASKING session."
         );
         await settleDueAskingSession(client, ctx, session, now);
+      } else if (
+        session.status === "POSTPONE_VOTING" &&
+        session.deadlineAt.getTime() <= now.getTime()
+      ) {
+        // state: POSTPONE_VOTING かつ deadlineAt 超過のセッションを順延期限切れとして決着させる。
+        logger.info(
+          {
+            sessionId: session.id,
+            weekKey: session.weekKey,
+            deadlineAt: session.deadlineAt.toISOString()
+          },
+          "Startup recovery: settling overdue POSTPONE_VOTING session."
+        );
+        await settlePostponeVotingSession(client, ctx, session, now);
       }
     }
   } catch (error: unknown) {
@@ -118,10 +165,11 @@ export const runStartupRecovery = async (
 export interface SchedulerHandles {
   askTask: ScheduledTask;
   deadlineTask: ScheduledTask;
+  postponeDeadlineTask: ScheduledTask;
 }
 
 /**
- * Registers the /ask send and deadline cron tasks.
+ * Registers the /ask send, deadline, and postpone-deadline cron tasks.
  *
  * @remarks
  * プロセス内で 1 度だけ呼ぶこと。複数インスタンスで同時駆動すると Discord への
@@ -152,5 +200,12 @@ export const createAskScheduler = (deps: AskSchedulerDeps): SchedulerHandles => 
     { timezone: "Asia/Tokyo", noOverlap: true }
   );
 
-  return { askTask, deadlineTask };
+  // jst: 土曜 00:00 JST = POSTPONE_DEADLINE="24:00"（候補日翌日 00:00 JST）。
+  const postponeDeadlineTask = cronModule.schedule(
+    CRON_POSTPONE_DEADLINE_SCHEDULE,
+    () => void runPostponeDeadlineTick(client, context),
+    { timezone: "Asia/Tokyo", noOverlap: true }
+  );
+
+  return { askTask, deadlineTask, postponeDeadlineTask };
 };

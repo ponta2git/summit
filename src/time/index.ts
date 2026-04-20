@@ -1,4 +1,5 @@
 import {
+  addDays,
   addMinutes,
   format,
   getISOWeek,
@@ -102,6 +103,25 @@ export const deadlineFor = (candidateDate: Date): Date =>
     seconds: 0,
     milliseconds: 0
   });
+
+/**
+ * Computes the postpone-vote deadline for a given candidate date.
+ * @returns The instant at 00:00 JST of the day **after** `candidateDate`.
+ * @remarks
+ * 候補日翌日 00:00 JST の意。`POSTPONE_DEADLINE="24:00"` 表記のアプリ解釈に一致する。
+ * @see requirements/base.md §6 / POSTPONE_DEADLINE
+ */
+export const postponeDeadlineFor = (candidateDate: Date): Date =>
+  // jst: `24:00` は候補日の翌日 00:00 JST として扱う（将来 tunable 化する場合も time 層で正規化する）。
+  startOfDay(addDays(candidateDate, 1));
+
+/**
+ * Given the Friday candidate date, compute the Saturday postponed-session candidate date.
+ * @returns `candidateDate + 1 day` at 00:00 JST.
+ */
+export const saturdayCandidateFrom = (fridayCandidate: Date): Date =>
+  // jst: 順延先は常に翌日の土曜 00:00 JST（年跨ぎでも +1 day で扱う）。
+  startOfDay(addDays(fridayCandidate, 1));
 
 const CHOICE_RANK: Record<AskTimeChoice, number> = {
   T2200: 0,

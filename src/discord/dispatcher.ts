@@ -49,27 +49,28 @@ const handleButton = async (
   interaction: ButtonInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
-  await interaction.deferUpdate();
-
   // why: UX 判断 — guild/channel/member 各ガードの拒否理由を個別メッセージで伝える
   const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
   if (reason) {
+    await interaction.deferUpdate();
     await interaction.followUp(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
     return;
   }
 
   if (interaction.customId.startsWith("ask:")) {
+    await interaction.deferUpdate();
     await handleAskButton(interaction, deps);
     return;
   }
 
   if (interaction.customId.startsWith("postpone:")) {
-    await handlePostponeButton(interaction);
+    await handlePostponeButton(interaction, deps);
     return;
   }
 
   // why: 古いメッセージの stale ボタンを押したユーザーが「何も起きない」と困惑するのを防ぐ
   // ack: deferUpdate() は既に済んでいるため followUp で ephemeral 通知する
+  await interaction.deferUpdate();
   logger.warn(
     {
       interactionId: interaction.id,

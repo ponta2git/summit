@@ -32,6 +32,32 @@ describe("ask scheduler", () => {
     });
   });
 
+  it("registers saturday 00:00 JST postpone-deadline cron with noOverlap", () => {
+    const stop = vi.fn();
+    const schedule = vi.fn(
+      () =>
+        ({
+          stop
+        }) as unknown as ScheduledTask
+    );
+    const client = {} as Client;
+    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const context = createTestAppContext();
+
+    const handles = createAskScheduler({
+      client,
+      context,
+      sendAsk,
+      cronAdapter: { schedule }
+    });
+
+    expect(handles.postponeDeadlineTask.stop).toBe(stop);
+    expect(schedule).toHaveBeenCalledWith("0 0 * * 6", expect.any(Function), {
+      timezone: "Asia/Tokyo",
+      noOverlap: true
+    });
+  });
+
   it("swallows cron tick errors and keeps the tick promise resolved", async () => {
     const sendAsk = vi.fn(async () => {
       throw new Error("network failure");

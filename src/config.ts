@@ -6,6 +6,8 @@ type Hhmm = Readonly<{ hour: number; minute: number }>;
 // invariant: cron 送信時刻は ADR-0007 に基づき金曜 08:00 JST を維持する。
 export const CRON_ASK_SCHEDULE = "0 8 * * 5" as const;
 export const CRON_DEADLINE_SCHEDULE = "30 21 * * 5" as const;
+// jst: 土 00:00 JST = POSTPONE_DEADLINE="24:00" の「候補日翌日 00:00 JST」に対応する。
+export const CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6" as const;
 export const ASK_DEADLINE_HHMM = { hour: 21, minute: 30 } as const satisfies Hhmm;
 export const REMINDER_LEAD_MINUTES = -15 as const;
 // why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)

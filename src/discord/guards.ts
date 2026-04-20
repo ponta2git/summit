@@ -12,7 +12,11 @@ import {
   type AppResult
 } from "../errors/index.js";
 import { messages } from "../messages.js";
-import { parseCustomId, type AskCustomIdChoice } from "./customId.js";
+import {
+  parseCustomId,
+  type AskCustomIdChoice,
+  type PostponeCustomIdChoice
+} from "./customId.js";
 
 // why: cheap-first validation を統一
 export const assertGuildAndChannel = (
@@ -37,6 +41,8 @@ export const GUARD_FAILURE_REASONS = [
   "invalid_custom_id",
   "session_not_found",
   "session_not_asking",
+  "session_not_postpone_voting",
+  "session_postpone_closed",
   "member_not_registered"
 ] as const;
 
@@ -92,6 +98,25 @@ export const guardAskCustomId = (customId: string): AppResult<AskCustomIdGuardRe
   });
 };
 
+export interface PostponeCustomIdGuardResult {
+  readonly sessionId: string;
+  readonly choice: PostponeCustomIdChoice;
+}
+
+export const guardPostponeCustomId = (
+  customId: string
+): AppResult<PostponeCustomIdGuardResult, ValidationError> => {
+  const parsed = parseCustomId(customId);
+  if (!parsed.success || parsed.data.kind !== "postpone") {
+    return errResult(buildValidationError("invalid_custom_id", "Invalid postpone button custom_id."));
+  }
+
+  return okResult({
+    sessionId: parsed.data.sessionId,
+    choice: parsed.data.choice
+  });
+};
+
 export const guardSessionExists = (
   session: SessionRow | undefined
 ): AppResult<SessionRow, NotFoundError> => {
@@ -112,6 +137,34 @@ export const guardSessionAsking = (
   if (session.status !== "ASKING") {
     return errResult(
       buildValidationError("session_not_asking", "Session is not accepting ask responses.")
+    );
+  }
+
+  return okResult(session);
+};
+
+export const guardSessionPostponeVoting = (
+  session: SessionRow
+): AppResult<SessionRow, ValidationError> => {
+  if (session.status !== "POSTPONE_VOTING") {
+    return errResult(
+      buildValidationError(
+        "session_not_postpone_voting",
+        "Session is not accepting postpone responses."
+      )
+    );
+  }
+
+  return okResult(session);
+};
+
+export const guardSessionPostponeDeadlineOpen = (
+  session: SessionRow,
+  now: Date
+): AppResult<SessionRow, ValidationError> => {
+  if (now.getTime() >= session.deadlineAt.getTime()) {
+    return errResult(
+      buildValidationError("session_postpone_closed", "Postpone voting deadline has passed.")
     );
   }
 
@@ -150,6 +203,8 @@ export const GUARD_REASON_TO_MESSAGE: Record<GuardFailureReason, string> = {
   invalid_custom_id: messages.interaction.reject.invalidCustomId,
   session_not_found: messages.interaction.reject.sessionNotFound,
   session_not_asking: messages.interaction.reject.staleSession,
+  session_not_postpone_voting: messages.interaction.reject.postponeVotingClosed,
+  session_postpone_closed: messages.interaction.reject.postponeVotingClosed,
   member_not_registered: messages.interaction.reject.memberNotRegistered
 };
 

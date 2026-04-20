@@ -150,6 +150,7 @@ export interface TransitionInput {
   cancelReason?: string;
   decidedStartAt?: Date;
   reminderAt?: Date;
+  updatedDeadlineAt?: Date;
 }
 
 /**
@@ -177,6 +178,7 @@ export const transitionStatus = async (
   if (input.cancelReason !== undefined) {patch.cancelReason = input.cancelReason;}
   if (input.decidedStartAt !== undefined) {patch.decidedStartAt = input.decidedStartAt;}
   if (input.reminderAt !== undefined) {patch.reminderAt = input.reminderAt;}
+  if (input.updatedDeadlineAt !== undefined) {patch.deadlineAt = input.updatedDeadlineAt;}
 
   // race: CAS primitive。WHERE status = input.from で現在状態を条件にし、勝者だけが UPDATE 成功する。
   //   undefined が返ったら「別ハンドラが先に遷移させた (race lost)」を意味する。呼び出し側は
@@ -202,6 +204,18 @@ export const findDueAskingSessions = async (
   return rows.map(mapSession);
 };
 
+export const findDuePostponeVotingSessions = async (
+  db: DbLike,
+  now: Date
+): Promise<SessionRow[]> => {
+  // state: 順延投票の締切判定は `POSTPONE_VOTING` のみ対象。ASKING など他状態は除外する。
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.status, "POSTPONE_VOTING"), lte(sessions.deadlineAt, now)));
+  return rows.map(mapSession);
+};
+
 export const findNonTerminalSessions = async (
   db: DbLike
 ): Promise<SessionRow[]> => {
@@ -214,4 +228,3 @@ export const findNonTerminalSessions = async (
 
 export const isNonTerminal = (status: SessionStatus): boolean =>
   (NON_TERMINAL_STATUSES as readonly string[]).includes(status);
-

@@ -6,7 +6,9 @@ import {
   deadlineFor,
   formatCandidateJa,
   isoWeekKey,
-  parseCandidateDateIso
+  parseCandidateDateIso,
+  postponeDeadlineFor,
+  saturdayCandidateFrom
 } from "../../src/time/index.js";
 
 describe("time utilities", () => {
@@ -89,5 +91,25 @@ describe("time utilities", () => {
   it("returns undefined from decidedStartAt when no choices are given", () => {
     const candidate = parseCandidateDateIso("2026-04-24");
     expect(decidedStartAt(candidate, [])).toBeUndefined();
+  });
+
+  describe("postponeDeadlineFor", () => {
+    it("computes 00:00 JST on Saturday from a Friday candidate date", () => {
+      const friday = parseCandidateDateIso("2026-04-24");
+      expect(postponeDeadlineFor(friday).toISOString()).toBe("2026-04-24T15:00:00.000Z");
+    });
+
+    it("keeps year-boundary handling (2022-12-30 -> 2022-12-31 00:00 JST)", () => {
+      // iso-week: 年跨ぎ直前の金曜候補日でも翌日 00:00 JST を正しく返す。
+      const friday = parseCandidateDateIso("2022-12-30");
+      expect(postponeDeadlineFor(friday).toISOString()).toBe("2022-12-30T15:00:00.000Z");
+    });
+  });
+
+  describe("saturdayCandidateFrom", () => {
+    it("computes Saturday 00:00 JST from Friday 00:00 JST", () => {
+      const friday = parseCandidateDateIso("2026-04-24");
+      expect(saturdayCandidateFrom(friday).toISOString()).toBe("2026-04-24T15:00:00.000Z");
+    });
   });
 });

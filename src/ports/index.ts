@@ -44,6 +44,7 @@ export interface SessionsPort {
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
   transitionStatus(input: TransitionInput): Promise<SessionRow | undefined>;
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
+  findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findNonTerminalSessions(): Promise<readonly SessionRow[]>;
   isNonTerminal(status: SessionStatus): boolean;
 }

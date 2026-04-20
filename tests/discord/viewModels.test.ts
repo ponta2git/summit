@@ -146,6 +146,45 @@ describe("buildPostponeMessageViewModel", () => {
     const b = buildPostponeMessageViewModel(input);
     expect(a).toEqual(b);
   });
+
+  it("returns memberStatuses=[] and disabled=false when called with session only (backward compat)", () => {
+    const vm = buildPostponeMessageViewModel({ id: "s1", candidateDateIso: "2026-04-24" });
+    expect(vm.memberStatuses).toEqual([]);
+    expect(vm.disabled).toBe(false);
+    expect(vm.footerText).toBeUndefined();
+  });
+
+  it("computes member statuses from responses and memberRows", () => {
+    const testMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `tm${i + 1}`,
+      userId,
+      displayName: `テスト${i + 1}`
+    }));
+    const testResponses: ViewModelResponseInput[] = [
+      { memberId: "tm1", choice: "POSTPONE_OK" },
+      { memberId: "tm2", choice: "POSTPONE_NG" }
+    ];
+    const vm = buildPostponeMessageViewModel(
+      { id: "s2", candidateDateIso: "2026-04-24" },
+      testResponses,
+      testMembers
+    );
+    expect(vm.memberStatuses).toHaveLength(env.MEMBER_USER_IDS.length);
+    expect(vm.memberStatuses[0]?.state).toBe("ok");
+    expect(vm.memberStatuses[1]?.state).toBe("ng");
+    expect(vm.memberStatuses[2]?.state).toBe("unanswered");
+  });
+
+  it("respects disabled and footerText from options", () => {
+    const vm = buildPostponeMessageViewModel(
+      { id: "s3", candidateDateIso: "2026-04-24" },
+      undefined,
+      undefined,
+      { disabled: true, footerText: "🛑 見送り" }
+    );
+    expect(vm.disabled).toBe(true);
+    expect(vm.footerText).toBe("🛑 見送り");
+  });
 });
 
 describe("buildSettleNoticeViewModel", () => {

@@ -7,11 +7,14 @@ import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "./factories/session.js";
 
 vi.mock("../../src/discord/settle.js", () => ({
-  evaluateAndApplyDeadlineDecision: vi.fn(async () => {})
+  evaluateAndApplyDeadlineDecision: vi.fn(async () => {}),
+  settlePostponeVotingSession: vi.fn(async () => {})
 }));
 
 const settle = await import("../../src/discord/settle.js");
-const { runDeadlineTick, runStartupRecovery } = await import("../../src/scheduler/index.js");
+const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
+  "../../src/scheduler/index.js"
+);
 
 const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
   id: "r1",
@@ -145,5 +148,139 @@ describe("runStartupRecovery", () => {
       [],
       { memberCountExpected: 4, now }
     );
+  });
+
+  it("settles overdue POSTPONE_VOTING sessions on startup", async () => {
+    const overduePostpone = sessionRow({
+      id: "pv-overdue",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const now = new Date("2026-04-25T15:01:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [overduePostpone] } });
+
+    await runStartupRecovery(client, ctx);
+
+    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(1);
+    expect(settle.settlePostponeVotingSession).toHaveBeenCalledWith(
+      client,
+      ctx,
+      expect.objectContaining({ id: "pv-overdue" }),
+      now
+    );
+  });
+
+  it("leaves POSTPONE_VOTING sessions with future deadlines untouched on startup", async () => {
+    const futureDeadline = sessionRow({
+      id: "pv-future",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-26T15:00:00.000Z")
+    });
+    const now = new Date("2026-04-25T15:00:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [futureDeadline] } });
+
+    await runStartupRecovery(client, ctx);
+
+    expect(settle.settlePostponeVotingSession).not.toHaveBeenCalled();
+    expect(settle.evaluateAndApplyDeadlineDecision).not.toHaveBeenCalled();
+  });
+});
+
+describe("runPostponeDeadlineTick", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls settlePostponeVotingSession for each due POSTPONE_VOTING session", async () => {
+    const s1 = sessionRow({
+      id: "pv-a",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const s2 = sessionRow({
+      id: "pv-b",
+      weekKey: "2026-W18",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const now = new Date("2026-04-25T15:01:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
+
+    await runPostponeDeadlineTick(client, ctx);
+
+    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
+    expect(settle.settlePostponeVotingSession).toHaveBeenNthCalledWith(
+      1,
+      client,
+      ctx,
+      expect.objectContaining({ id: "pv-a" }),
+      now
+    );
+    expect(settle.settlePostponeVotingSession).toHaveBeenNthCalledWith(
+      2,
+      client,
+      ctx,
+      expect.objectContaining({ id: "pv-b" }),
+      now
+    );
+  });
+
+  it("error in one session does not prevent others from being settled", async () => {
+    const s1 = sessionRow({
+      id: "pv-fail",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const s2 = sessionRow({
+      id: "pv-ok",
+      weekKey: "2026-W18",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const now = new Date("2026-04-25T15:01:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
+
+    vi.mocked(settle.settlePostponeVotingSession)
+      .mockRejectedValueOnce(new Error("network failure"))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(runPostponeDeadlineTick(client, ctx)).resolves.toBeUndefined();
+    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("swallows port errors so cron keeps running", async () => {
+    const ctx = createTestAppContext();
+    vi.spyOn(ctx.ports.sessions, "findDuePostponeVotingSessions").mockRejectedValue(
+      new Error("db down")
+    );
+
+    await expect(runPostponeDeadlineTick(client, ctx)).resolves.toBeUndefined();
+  });
+
+  it("is idempotent: re-running the tick does not cause errors", async () => {
+    const s = sessionRow({
+      id: "pv-idem",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      status: "POSTPONE_VOTING",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const now = new Date("2026-04-25T15:01:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [s] } });
+
+    await runPostponeDeadlineTick(client, ctx);
+    await runPostponeDeadlineTick(client, ctx);
+
+    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
   });
 });

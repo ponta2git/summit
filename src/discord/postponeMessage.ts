@@ -35,6 +35,17 @@ export const buildPostponeRow = (
 export const renderPostponeBody = (
   vm: PostponeMessageViewModel
 ): MessageCreateOptions => {
+  const statusLines =
+    vm.memberStatuses.length > 0
+      ? vm.memberStatuses
+          .map((ms) => {
+            const label =
+              ms.state === "ok" ? "OK" : ms.state === "ng" ? "NG" : "未回答";
+            return `- ${ms.displayLabel}: ${label}`;
+          })
+          .join("\n")
+      : "";
+
   // why: DEV_SUPPRESS_MENTIONS=true なら mention 行自体を省く。filter(Boolean) は意図した空行まで
   //   消すため条件付き push で組み立てる。
   // @see docs/adr/0011-dev-mention-suppression.md
@@ -42,10 +53,13 @@ export const renderPostponeBody = (
   if (!vm.suppressMentions) {
     lines.push(vm.memberUserIds.map((id) => `<@${id}>`).join(" "));
   }
-  lines.push(messages.postpone.body({ candidateDateIso: vm.candidateDateIso }));
+  lines.push(messages.postpone.body({ candidateDateIso: vm.candidateDateIso, statusLines }));
+  if (vm.footerText) {
+    lines.push("", vm.footerText);
+  }
 
   return {
     content: lines.join("\n"),
-    components: [buildPostponeRow(vm.sessionId)]
+    components: [buildPostponeRow(vm.sessionId, { disabled: vm.disabled })]
   };
 };
