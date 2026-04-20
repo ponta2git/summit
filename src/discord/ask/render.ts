@@ -76,11 +76,17 @@ const buildAskContent = (
   responsesByUserId: ReadonlyMap<string, string>,
   extraFooter: string | undefined
 ): string => {
-  const mentions = memberUserIds.map((userId) => `<@${userId}>`).join(" ");
   const statusLines = memberLinesFromState(memberUserIds, responsesByUserId);
 
-  const lines = [
-    mentions,
+  // why: DEV_SUPPRESS_MENTIONS=true のとき mention 行自体を除去（行ごと push しない）。
+  //   filter(Boolean) だと以降の意図した空行まで潰れるため、条件付き push で組み立てる。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  const lines: string[] = [];
+  if (!env.DEV_SUPPRESS_MENTIONS) {
+    const mentions = memberUserIds.map((userId) => `<@${userId}>`).join(" ");
+    lines.push(mentions);
+  }
+  lines.push(
     "🎲 今週の桃鉄1年勝負の出欠確認です",
     "",
     `開催候補日: ${formatCandidateJa(candidateDate)}`,
@@ -90,7 +96,7 @@ const buildAskContent = (
     "",
     "【回答状況】",
     statusLines
-  ];
+  );
   if (extraFooter) {
     lines.push("", extraFooter);
   }

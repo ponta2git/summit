@@ -94,6 +94,7 @@ pnpm db:generate    # Drizzle migration SQL 生成
 pnpm db:migrate     # migration 適用
 pnpm db:check       # Drizzle の履歴整合検証
 pnpm db:seed        # 開発用 seed 投入
+pnpm db:reset       # 開発用: sessions / responses を TRUNCATE（localhost 限定。`--all` で members も削除）
 pnpm commands:sync  # Discord slash commands を guild-scoped で同期
 ```
 
@@ -140,6 +141,7 @@ schema を変えたら `pnpm db:generate` → 生成 SQL をレビュー → `pn
 | `DIRECT_URL` | `postgres://.../neondb?sslmode=require` | Neon 接続文字列（**migration 用・direct**。`drizzle.config.ts` のみで参照し、アプリコードから参照しない） |
 | `TZ` | `Asia/Tokyo` | タイムゾーン固定 |
 | `HEALTHCHECK_PING_URL` | `https://hc-ping.com/...` | 死活監視用 ping URL（healthchecks.io 等）。未設定なら ping は no-op |
+| `DEV_SUPPRESS_MENTIONS` | `false` | 開発用 mention 抑止スイッチ。`true` で本文から `<@id>` を除去し Client に `allowedMentions: { parse: [] }` を付与。本番は未設定（= false）維持。詳細は [ADR-0011](./docs/adr/0011-dev-mention-suppression.md) |
 
 ### env 検証（zod v4 / 起動時 Fail Fast）
 
@@ -181,6 +183,18 @@ Bot は Gateway 経由で interaction を受信するため、HTTP Interactions 
 - ローカルでは `DATABASE_URL` と `DIRECT_URL` は同一値でよい（pooler は不要）。
 - **Neon branch** はリリース前の動作確認用の補助（オフライン要件のため主系には使わない）。
 - 時刻依存ロジックの手動検証には「疑似現在時刻を注入できる仕組み」を用意する（fake timers / 関数 DI / Clock オブジェクトなど）。
+
+### 開発中の DB リセット
+
+Bot の動作確認で週の流れ（ask → cancel → postpone 等）を何度もやり直したいとき、既存の Session が残っていると `Duplicate ask message skipped.` で新規投稿が止まります。やり直したいときは:
+
+```bash
+pnpm db:reset          # sessions / responses を TRUNCATE（members は残す）
+pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:seed が必要）
+```
+
+- **安全装置**: `DATABASE_URL` のホストが `localhost` / `127.0.0.1` / `::1` / `postgres` のいずれでもないときは即エラーで停止します（本番 Neon / Fly の URL では動作しません）。
+- 実体は `src/db/devReset.ts`（`pnpm db:seed` と同じ流儀）。本番フローに混入しない実行経路のため `pnpm setup` / `pnpm ci` には含めていません。
 
 ### pnpm v10 の注意点
 

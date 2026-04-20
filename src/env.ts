@@ -34,6 +34,14 @@ export const envSchema = z.object({
   HEALTHCHECK_PING_URL: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().url().optional()
+  ),
+  // why: 開発中に本番チャンネルへ投稿しても `<@id>` の push 通知を固定 4 名へ飛ばさないためのスイッチ。
+  //   本番 invariant: 常時 OFF（未設定 = false）。true にすると本文から mention 行を除去し、
+  //   加えて Client-level `allowedMentions: { parse: [] }` で保険をかける。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  DEV_SUPPRESS_MENTIONS: z.preprocess(
+    (value) => (value === "" || value === undefined ? undefined : value),
+    z.stringbool().default(false)
   )
 });
 

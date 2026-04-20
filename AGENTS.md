@@ -78,6 +78,14 @@ pnpm db:check
 - `mise` が管理する Node / pnpm の版をローカルでずらす。
 - `requirements/base.md` の用語変更や勝手な新語追加。
 
+## 開発中の DB 操作（ローカル限定）
+Bot の挙動確認で週の流れをやり直したいとき、**`docker exec` や `psql` で手 TRUNCATE / 手 UPDATE しない**。`pnpm db:reset` を使う。
+
+- `pnpm db:reset` — `sessions` / `responses` を TRUNCATE（`members` は保持）。
+- `pnpm db:reset --all` — 併せて `members` も TRUNCATE（この後 `pnpm db:seed` 必須）。
+
+実体は `src/db/devReset.ts`。`DATABASE_URL` の host が `localhost` / `127.0.0.1` / `::1` / `postgres` のいずれでもないときは即 throw で停止するため、本番 URL では動作しない。ユーザから「データを消してやり直して」「Duplicate ask skipped を解消して」等の依頼があったときは、手動 SQL ではなく本コマンドを使うこと。
+
 ## PR テンプレート（本文に含める）
 - **変更点**: 何を変えたか（機能・ファイル単位で簡潔に）
 - **仮定**: 実装時に置いた仮定（無ければ「なし」）

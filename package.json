@@ -25,6 +25,7 @@
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:drift": "bash scripts/verify/migration-drift.sh",
     "db:seed": "dotenv -e .env.local -- tsx src/db/seed.ts",
+    "db:reset": "dotenv -e .env.local -- tsx src/db/devReset.ts",
     "commands:sync": "dotenv -e .env.local -- tsx src/commands/sync.ts",
     "setup": "pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed"
   },

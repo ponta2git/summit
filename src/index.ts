@@ -45,6 +45,16 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 const run = async (): Promise<void> => {
   await client.login(env.DISCORD_TOKEN);
 
+  // why: 本番 invariant (DEV_SUPPRESS_MENTIONS 未設定=false) を覆して通知挙動を変えている状態を
+  //   見逃さないよう起動時に 1 回だけ warn で明示する。毎送信ログに混ぜるとノイズになるため起動時限定。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  if (env.DEV_SUPPRESS_MENTIONS) {
+    logger.warn(
+      { devMentionSuppression: true, mentionSuppression: "client-default" },
+      "Dev mention suppression is ON. Push mentions are suppressed and `<@id>` lines are omitted from message bodies."
+    );
+  }
+
   logger.info(
     {
       guildId: env.DISCORD_GUILD_ID,

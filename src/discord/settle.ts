@@ -92,8 +92,14 @@ export const settleAskingSession = async (
       ? "🛑 欠席が出たため、今週の開催は中止です。"
       : "🛑 21:30 までに未回答者がいたため、今週の開催は中止です。";
 
-  const mentions = env.MEMBER_USER_IDS.map((id) => `<@${id}>`).join(" ");
-  await channel.send({ content: `${mentions}\n${cancelContent}` });
+  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く。単純な `${mentions}\n${cancel}` 連結だと
+  //   mentions="" のとき先頭改行が残るため、filter で空文字を除外してから join する。
+  // @see docs/adr/0011-dev-mention-suppression.md
+  const cancelLines = [
+    env.DEV_SUPPRESS_MENTIONS ? "" : env.MEMBER_USER_IDS.map((id) => `<@${id}>`).join(" "),
+    cancelContent
+  ].filter((line) => line.length > 0);
+  await channel.send({ content: cancelLines.join("\n") });
 
   const postponeSent = await channel.send(renderPostponeBody(cancelled));
   await setPostponeMessageId(db, cancelled.id, postponeSent.id);

@@ -54,3 +54,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0008](./0008-transitional-send-only-implementation-without-db.md) | 送信専用フェーズにおける DB 未使用実装と in-memory 重複防止（過渡期） | superseded | 2026-04-20 | runtime, db, ops |
 | [0009](./0009-persist-sessions-and-responses.md) | Session / Response を DB に永続化し順延確認メッセージ投稿までを実装 | accepted | 2026-04-21 | runtime, db, discord, ops |
 | [0010](./0010-code-comment-and-naming-conventions.md) | コメント / ネーミング規約（AI フレンドリーな最小十分コメント） | accepted | 2026-04-22 | docs, runtime, ops |
+| [0011](./0011-dev-mention-suppression.md) | 開発用 mention 抑止スイッチ（DEV_SUPPRESS_MENTIONS） | accepted | 2026-04-20 | discord, ops, runtime |

@@ -149,4 +149,36 @@ describe("envSchema", () => {
 
     expect(hasDirectUrl).toBe(false);
   });
+
+  describe("DEV_SUPPRESS_MENTIONS", () => {
+    it("defaults to false when missing", () => {
+      const parsed = envSchema.parse(validEnvInput);
+      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(false);
+    });
+
+    it("defaults to false when empty string", () => {
+      const parsed = envSchema.parse({ ...validEnvInput, DEV_SUPPRESS_MENTIONS: "" });
+      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(false);
+    });
+
+    it.each([
+      ["true", true],
+      ["false", false],
+      ["1", true],
+      ["0", false],
+      ["yes", true],
+      ["no", false]
+    ])("parses %s as %s", (input, expected) => {
+      const parsed = envSchema.parse({ ...validEnvInput, DEV_SUPPRESS_MENTIONS: input });
+      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(expected);
+    });
+
+    it("rejects invalid boolean-like strings", () => {
+      const result = envSchema.safeParse({
+        ...validEnvInput,
+        DEV_SUPPRESS_MENTIONS: "maybe"
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });

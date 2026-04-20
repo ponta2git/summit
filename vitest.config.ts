@@ -12,6 +12,10 @@ process.env.MEMBER_USER_IDS ??=
 process.env.DATABASE_URL ??= "postgres://summit:summit@localhost:5433/summit";
 process.env.POSTPONE_DEADLINE ??= "24:00";
 process.env.HEALTHCHECK_PING_URL ??= "";
+// why: vitest 4 / pnpm が .env.local を自動 inject するため、開発機の DEV_SUPPRESS_MENTIONS=true が
+//   render テスト等の既定挙動 (mention 行あり) を破壊する。テストでは常に false を強制し、
+//   フラグ ON 経路は dev-mention-suppression.test.ts が vi.stubEnv で個別に検証する。
+process.env.DEV_SUPPRESS_MENTIONS = "false";
 
 export default defineConfig({
   test: {
