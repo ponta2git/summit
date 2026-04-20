@@ -6,7 +6,7 @@ import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatc
 import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
 import { env } from "../../../src/env.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
-import { rejectMessages } from "../../../src/discord/shared/rejectMessages.js";
+import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { buildButtonInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";

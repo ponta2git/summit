@@ -6,7 +6,7 @@ import { askMessages } from "./messages.js";
 import { assertNever } from "../../util/assertNever.js";
 import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { rejectMessages } from "../../discord/shared/rejectMessages.js";
+import { rejectMessages } from "../interaction-reject/messages.js";
 
 const rejectMessage = rejectMessages.reject.notMember;
 

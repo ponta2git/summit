@@ -26,7 +26,7 @@ feature をオーナーシップ単位として実装するなら UI 文言・UI
 
 1. **UI cosmetic 定数を feature 同梱**: `src/constants.ts` を廃止し `src/features/ask-session/constants.ts` / `src/features/postpone-voting/constants.ts` に分割。
 2. **ユーザー可視メッセージを feature 同梱**: `src/messages.ts` を廃止し、feature ごとに `src/features/<feat>/messages.ts` を置く（`askMessages` / `postponeMessages` / `reminderMessages` / `decidedMessages` / `cancelWeekMessages`）。
-3. **拒否系 / システムメッセージを shared**: interaction.reject / unknownCommand / staleButton / internalError は cross-cutting なので `src/discord/shared/rejectMessages.ts` に集約。
+3. **拒否系 / システムメッセージも feature 化**: interaction.reject / unknownCommand / staleButton / internalError は `src/features/interaction-reject/messages.ts` に集約。dispatcher / guards / feature command から参照する。
 4. **feature 固有の message editor を feature 内に移設**: `updateAskMessage` → `src/features/ask-session/messageEditor.ts`、`updatePostponeMessage` → `src/features/postpone-voting/messageEditor.ts`。
 5. **`discord/shared` は cross-cutting に限定**: `src/discord/shared/messages.ts` を `channels.ts` にリネームし `getTextChannel` / `CancelReason` / `renderSettleNotice` のみ残す。
 6. **members を dir に統合**: `src/members.ts` → `src/members/inputs.ts`（`git mv` で履歴保持）。
@@ -49,9 +49,9 @@ feature をオーナーシップ単位として実装するなら UI 文言・UI
 
 ## References
 
-- `src/features/<feat>/messages.ts`（ask-session / postpone-voting / reminder / decided-announcement / cancel-week）
+- `src/features/<feat>/messages.ts`（ask-session / postpone-voting / reminder / decided-announcement / cancel-week / interaction-reject）
 - `src/features/<feat>/constants.ts`（ask-session / postpone-voting）
 - `src/features/ask-session/messageEditor.ts`, `src/features/postpone-voting/messageEditor.ts`
-- `src/discord/shared/channels.ts`, `src/discord/shared/rejectMessages.ts`
+- `src/discord/shared/channels.ts`, `src/features/interaction-reject/messages.ts`
 - `src/members/inputs.ts`, `src/members/reconcile.ts`
 - ADR-0013, ADR-0014, ADR-0022, ADR-0025, ADR-0026

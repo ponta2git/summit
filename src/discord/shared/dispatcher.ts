@@ -7,7 +7,7 @@ import {
 
 import type { AppContext } from "../../composition.js";
 import { logger } from "../../logger.js";
-import { rejectMessages } from "./rejectMessages.js";
+import { rejectMessages } from "../../features/interaction-reject/messages.js";
 import {
   sendAskMessage,
   type SendAskMessageResult

@@ -11,7 +11,7 @@ import {
   type AppError,
   type AppResult
 } from "../../errors/index.js";
-import { rejectMessages } from "./rejectMessages.js";
+import { rejectMessages } from "../../features/interaction-reject/messages.js";
 import {
   parseCustomId,
   type AskCustomIdChoice,

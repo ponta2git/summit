@@ -12,6 +12,7 @@ summit（Discord Bot）の実装トポロジ。詳細根拠は `docs/adr/`、業
 | reminder | `features/reminder/` | 開始 15 分前の DM 相当リマインド送信（§5.2, ADR-0024）|
 | decided-announcement | `features/decided-announcement/` | 開催決定時の別投稿（§5.1）|
 | cancel-week | `features/cancel-week/` | `/cancel_week` 確認ダイアログと週単位 SKIPPED（§8, ADR-0023）|
+| interaction-reject | `features/interaction-reject/` | interaction 拒否時のユーザー可視文言（reject / unknownCommand / staleButton / internalError）|
 
 各 feature は原則 `messages.ts`（user-visible 文言）を持ち、ask-session / postpone-voting は `constants.ts`（UI cosmetic）と `messageEditor.ts`（既存メッセージ再描画）を追加で持つ。
 
@@ -22,7 +23,6 @@ cross-cutting のみ。feature 固有のものは置かない（ADR-0027）。
 - `customId.ts`: `custom_id` の zod codec
 - `viewModels.ts`: pure な view model builder
 - `channels.ts`: `getTextChannel` / `CancelReason` / `renderSettleNotice`
-- `rejectMessages.ts`: interaction.reject / unknownCommand / staleButton / internalError
 
 ## feature 外（変更少）
 - `src/time/`: JST / ISO week / 締切計算（ADR-0002）

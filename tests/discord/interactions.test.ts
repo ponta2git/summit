@@ -8,7 +8,7 @@ import { logger } from "../../src/logger.js";
 import { askMessages } from "../../src/features/ask-session/messages.js";
 import { cancelWeekMessages } from "../../src/features/cancel-week/messages.js";
 import { postponeMessages } from "../../src/features/postpone-voting/messages.js";
-import { rejectMessages } from "../../src/discord/shared/rejectMessages.js";
+import { rejectMessages } from "../../src/features/interaction-reject/messages.js";
 import { memberUserId } from "../helpers/env.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";

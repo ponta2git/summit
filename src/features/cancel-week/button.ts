@@ -2,7 +2,7 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 
 import { logger } from "../../logger.js";
 import { cancelWeekMessages } from "./messages.js";
-import { rejectMessages } from "../../discord/shared/rejectMessages.js";
+import { rejectMessages } from "../interaction-reject/messages.js";
 import { applyManualSkip } from "./settle.js";
 import { parseCancelWeekCustomId } from "../../discord/shared/customId.js";
 import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
