@@ -14,9 +14,10 @@ import {
 } from "./constants.js";
 import { askMessages } from "./messages.js";
 import {
-  slotKeyFromCustomIdChoice
-} from "../../slot.js";
-import { buildCustomId, type AskCustomIdChoice } from "../../discord/shared/customId.js";
+  buildCustomId,
+  slotKeyFromCustomIdChoice,
+  type AskCustomIdChoice
+} from "../../discord/shared/customId.js";
 import type { AskMessageViewModel } from "./viewModel.js";
 
 // invariant: Discord button の custom_id 末尾は ASK_CHOICES の小文字値と一致しなければならない。

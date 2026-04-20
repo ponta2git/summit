@@ -27,7 +27,7 @@ interaction 入口 / 出口 / DB decouple 契約のみ。feature 固有のもの
 ## feature 外（変更少）
 - `src/time/`: JST / ISO week / 締切計算（ADR-0002）
 - `src/db/`: Drizzle schema / repositories / client / **ports** / `rows.ts`（Row 型集約）（ADR-0003, ADR-0018, ADR-0026, ADR-0029）
-- `src/slot.ts`: スロット値の domain + wire-format SSoT（domain / customId wire / DB wire の 3 section に整理, ADR-0013, ADR-0026, ADR-0029）
+- `src/slot.ts`: スロット値（SlotKey / SLOT_KEYS / slotKeySchema / SLOT_TO_MINUTES）のみを持つ pure domain SSoT。customId の lowercase wire 表現は `src/discord/shared/customId.ts` が所有し、DB は SlotKey を verbatim で保存するため独立 wire を持たない（ADR-0013, ADR-0026, ADR-0030）
 - `src/appContext.ts`: `AppContext` 定義 + composition root factory（ADR-0018, ADR-0029）
 - `src/scheduler/`: cron 登録（registry 方式）
 - `src/members/`: 起動時 env→DB 同期（`inputs.ts` / `reconcile.ts`）

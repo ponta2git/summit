@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildCancelWeekCustomId,
   buildCustomId,
+  CUSTOM_ID_SLOT_CHOICES,
+  customIdChoiceFromSlotKey,
   parseCancelWeekCustomId,
-  parseCustomId
+  parseCustomId,
+  slotKeyFromCustomIdChoice
 } from "../../src/discord/shared/customId.js";
+import { SLOT_KEYS } from "../../src/slot.js";
 
 describe("customId codec", () => {
   const sessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
@@ -62,6 +66,16 @@ describe("customId codec", () => {
       return;
     }
     expect(buildCustomId(parsed.data)).toBe(raw);
+  });
+});
+
+describe("slot wire in custom_id", () => {
+  it("round-trips SlotKey through customId choice", () => {
+    for (const slotKey of SLOT_KEYS) {
+      const choice = customIdChoiceFromSlotKey(slotKey);
+      expect(CUSTOM_ID_SLOT_CHOICES).toContain(choice);
+      expect(slotKeyFromCustomIdChoice(choice)).toBe(slotKey);
+    }
   });
 });
 

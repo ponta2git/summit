@@ -73,3 +73,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0027](./0027-ui-colocation-and-shared-boundary.md) | UI 資産の feature 同梱と discord/shared の境界明確化 | accepted | 2026-04-25 | runtime, discord, docs |
 | [0028](./0028-viewmodels-as-feature-assets.md) | viewModel の feature 所有と discord/shared の真 cross-cutting 化 | accepted | 2026-04-25 | runtime, discord, docs |
 | [0029](./0029-src-layout-tidy-up.md) | src ディレクトリの整理（dev ツール退避 / ファイル名の意図整合） | accepted | 2026-04-25 | runtime, docs, dev-tools |
+| [0030](./0030-slot-pure-domain.md) | slot.ts を pure domain に縮小し slot wire を customId.ts に集約 | accepted | 2026-04-27 | runtime, discord, docs |
