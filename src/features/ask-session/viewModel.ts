@@ -35,7 +35,8 @@ export interface SettleNoticeViewModel {
 
 const computeAskFooter = (
   session: ViewModelSessionInput,
-  responses: ReadonlyArray<ViewModelResponseInput>
+  responses: ReadonlyArray<ViewModelResponseInput>,
+  members: ReadonlyArray<ViewModelMemberInput>
 ): string | undefined => {
   if (session.status === "DECIDED" && session.decidedStartAt) {
     const timeChoices = responses
@@ -54,6 +55,31 @@ const computeAskFooter = (
   }
   if (session.status === "SKIPPED") {
     return askMessages.ask.footerSkipped;
+  }
+  // why: requirements/base.md §4.3 暫定状態の表示。
+  //   ASKING 中に env.MEMBER_USER_IDS 全員が時刻スロットで回答済み (absent 0 名) の場合のみ
+  //   暫定開始時刻を末尾に出す。確定は締切 (21:30) まで行わない (§4.2)。
+  if (session.status === "ASKING") {
+    const userIdByMemberId = new Map(members.map((m) => [m.id, m.userId]));
+    const choiceByUserId = new Map<string, string>();
+    for (const r of responses) {
+      const userId = userIdByMemberId.get(r.memberId);
+      if (userId) { choiceByUserId.set(userId, r.choice); }
+    }
+    const timeChoices: AskTimeChoice[] = [];
+    for (const userId of env.MEMBER_USER_IDS) {
+      const choice = choiceByUserId.get(userId);
+      const parsed = choice ? slotKeySchema.safeParse(choice) : undefined;
+      if (!parsed?.success) { return undefined; }
+      timeChoices.push(parsed.data);
+    }
+    const start = decidedStartAt(parseCandidateDateIso(session.candidateDateIso), timeChoices);
+    if (start) {
+      const hh = String(start.getHours()).padStart(2, "0");
+      const mm = String(start.getMinutes()).padStart(2, "0");
+      return askMessages.ask.footerTentative({ startTimeLabel: `${hh}:${mm}` });
+    }
+    return undefined;
   }
   return undefined;
 };
@@ -90,7 +116,7 @@ export const buildAskMessageViewModel = (
     responsesByUserId,
     displayNameByUserId,
     suppressMentions: env.DEV_SUPPRESS_MENTIONS,
-    footer: computeAskFooter(session, responses)
+    footer: computeAskFooter(session, responses, members)
   };
 };
 

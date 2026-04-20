@@ -35,6 +35,8 @@ export const askMessages = {
     unanswered: "未回答",
     footerDecided: ({ startTimeLabel }: AskDecidedFooterParams): string =>
       `✅ 全員回答により ${startTimeLabel} 開始で確定（開催決定メッセージは追って送信）`,
+    footerTentative: ({ startTimeLabel }: AskDecidedFooterParams): string =>
+      `暫定開始時刻: ${startTimeLabel}（21:30 の締切で確定）`,
     footerCancelled: "🛑 中止。この週の募集は締め切りました",
     footerSkipped: "🛑 今週は運用都合により見送りです",
     body: ({ dateIso, statusLines, extraFooter }: AskBodyParams): string => {

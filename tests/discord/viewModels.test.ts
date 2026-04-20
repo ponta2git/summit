@@ -90,6 +90,50 @@ describe("buildAskMessageViewModel", () => {
     expect(vm.footer).toBeUndefined();
   });
 
+  it("shows tentative footer when ASKING and all 4 members answered with time choices", () => {
+    // regression: requirements/base.md §4.3 暫定状態の表示
+    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `m${i + 1}`,
+      userId,
+      displayName: `User${i + 1}`
+    }));
+    const allResponses: ViewModelResponseInput[] = allMembers.map((m, i) => ({
+      memberId: m.id,
+      // invariant: latest (= 最遅) = T2300 → 暫定開始時刻 23:00
+      choice: ["T2200", "T2230", "T2300", "T2200"][i] ?? "T2200"
+    }));
+    const vm = buildAskMessageViewModel(session, allResponses, allMembers);
+    expect(vm.footer).toBe("暫定開始時刻: 23:00（21:30 の締切で確定）");
+  });
+
+  it("does not show tentative footer when any member answered ABSENT", () => {
+    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `m${i + 1}`,
+      userId,
+      displayName: `User${i + 1}`
+    }));
+    const allResponses: ViewModelResponseInput[] = allMembers.map((m, i) => ({
+      memberId: m.id,
+      choice: i === 0 ? "ABSENT" : "T2200"
+    }));
+    const vm = buildAskMessageViewModel(session, allResponses, allMembers);
+    expect(vm.footer).toBeUndefined();
+  });
+
+  it("does not show tentative footer when a member has not answered yet", () => {
+    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+      id: `m${i + 1}`,
+      userId,
+      displayName: `User${i + 1}`
+    }));
+    // 3 / 4 のみ回答
+    const partial: ViewModelResponseInput[] = allMembers
+      .slice(0, 3)
+      .map((m) => ({ memberId: m.id, choice: "T2200" }));
+    const vm = buildAskMessageViewModel(session, partial, allMembers);
+    expect(vm.footer).toBeUndefined();
+  });
+
   it("uses env.MEMBER_USER_IDS", () => {
     const vm = buildAskMessageViewModel(session, responses, members);
     expect(vm.memberUserIds).toEqual(env.MEMBER_USER_IDS);
