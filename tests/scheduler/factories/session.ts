@@ -1,4 +1,4 @@
-import type { SessionRow } from "../../../src/db/types.js";
+import type { SessionRow } from "../../../src/db/rows.js";
 import { env } from "../../../src/env.js";
 
 // why: scheduler テストは channelId を実挙動で使わない (settle* を mock するため) が、

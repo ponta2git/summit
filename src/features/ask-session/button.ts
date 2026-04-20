@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../composition.js";
-import type { SessionRow } from "../../db/types.js";
+import type { AppContext } from "../../appContext.js";
+import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
   type AppResult,

@@ -1,7 +1,7 @@
 import { ChannelType } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SessionRow } from "../../../src/db/types.js";
+import type { SessionRow } from "../../../src/db/rows.js";
 import {
   computeReminderAt,
   sendReminderForSession,

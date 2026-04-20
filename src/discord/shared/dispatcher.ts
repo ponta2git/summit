@@ -5,7 +5,7 @@ import {
   MessageFlags
 } from "discord.js";
 
-import type { AppContext } from "../../composition.js";
+import type { AppContext } from "../../appContext.js";
 import { logger } from "../../logger.js";
 import { rejectMessages } from "../../features/interaction-reject/messages.js";
 import {

@@ -9,7 +9,7 @@ import type {
   DbLike,
   SessionRow,
   SessionStatus
-} from "../types.js";
+} from "../rows.js";
 
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [

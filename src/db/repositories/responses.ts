@@ -9,7 +9,7 @@ import type {
   DbLike,
   ResponseChoice,
   ResponseRow
-} from "../types.js";
+} from "../rows.js";
 
 
 const assertChoice = (value: string): ResponseChoice => {

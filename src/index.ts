@@ -1,4 +1,4 @@
-import { createAppContext } from "./composition.js";
+import { createAppContext } from "./appContext.js";
 import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./features/ask-session/send.js";
 import { createDiscordClient } from "./discord/client.js";

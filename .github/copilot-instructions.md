@@ -15,7 +15,7 @@
 7. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST は deploy / restart / schema 変更を提案・実行しない。
 8. **ログに秘匿値を出さない**。`pino` の `redact` で token/接続文字列/`Authorization` を除去。interaction payload 全量を出さない。`sessionId` / `weekKey` / `interactionId` / `messageId` / `userId` を構造化フィールドで付与。状態遷移は `from`/`to`/`reason`。`console.log/error` 残さない。
 9. **型・エラー処理**。`any` 導入禁止、外部入力は `unknown` → zod narrow。`as` キャスト最小。業務エラー（中止・順延 NG 等）は状態で表現し throw しない。cron tick は最外周 `try/catch`。裸 Promise 禁止。
-10. **依存は AppContext 経由で注入**。handler/scheduler/workflow は `src/db/repositories/*` や `src/db/client` を直接 import せず、`AppContext = { ports, clock }`（`src/composition.ts`）を受け取り `ctx.ports.*`/`ctx.clock` を使う。production は `src/index.ts` の `createAppContext()`、テストは `tests/testing/ports.ts` の `createTestAppContext({ seed, now })` で Fake ports を注入（`vi.mock` を repositories に新規追加しない）。純粋関数は対象外。根拠 ADR-0018。
+10. **依存は AppContext 経由で注入**。handler/scheduler/workflow は `src/db/repositories/*` や `src/db/client` を直接 import せず、`AppContext = { ports, clock }`（`src/appContext.ts`）を受け取り `ctx.ports.*`/`ctx.clock` を使う。production は `src/index.ts` の `createAppContext()`、テストは `tests/testing/ports.ts` の `createTestAppContext({ seed, now })` で Fake ports を注入（`vi.mock` を repositories に新規追加しない）。純粋関数は対象外。根拠 ADR-0018。
 
 ## 技術スタック
 TypeScript / Node 24 / pnpm v10 / mise / discord.js v14 / node-cron / pino / zod v4 / Drizzle 0.45 + postgres.js / drizzle-kit / drizzle-zod / Neon PostgreSQL 16 / Fly.io（単一インスタンス）/ healthchecks.io

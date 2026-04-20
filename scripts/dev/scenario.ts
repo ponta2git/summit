@@ -1,9 +1,9 @@
 // why: 開発中の実 Discord + ローカル Postgres 手動テスト用 CLI。本番 DB では一切動作しない。
 //   業務仕様の週次 cron (金 21:30 / 土 00:00) を待たず、DB を直接操作して締切を巻き戻し、
 //   bot 再起動時の startup recovery 経由で settle を発火させる。
-// invariant: localhost 限定ガードを devReset.ts と同じロジックで適用する。
+// invariant: localhost 限定ガードを reset.ts と同じロジックで適用する。
 // @see AGENTS.md "開発中の DB 操作 (ローカル限定)"
-// @see src/db/devReset.ts
+// @see scripts/dev/reset.ts
 process.env.TZ = "Asia/Tokyo";
 
 import { and, desc, eq, inArray } from "drizzle-orm";

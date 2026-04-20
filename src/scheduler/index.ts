@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../composition.js";
+import type { AppContext } from "../appContext.js";
 import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
@@ -9,7 +9,7 @@ import {
   CRON_REMINDER_SCHEDULE,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
-import type { SessionRow } from "../db/types.js";
+import type { SessionRow } from "../db/rows.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,

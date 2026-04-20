@@ -195,7 +195,7 @@ pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:se
 ```
 
 - **安全装置**: `DATABASE_URL` のホストが `localhost` / `127.0.0.1` / `::1` / `postgres` のいずれでもないときは即エラーで停止します（本番 Neon / Fly の URL では動作しません）。
-- 実体は `src/db/devReset.ts`（`pnpm db:seed` と同じ流儀）。本番フローに混入しない実行経路のため `pnpm setup` / `pnpm ci` には含めていません。
+- 実体は `scripts/dev/reset.ts`（`pnpm db:seed` と同じ流儀）。本番フローに混入しない実行経路のため `pnpm setup` / `pnpm ci` には含めていません。
 
 ### pnpm v10 の注意点
 

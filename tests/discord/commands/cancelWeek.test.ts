@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
-import type { SessionRow } from "../../../src/db/types.js";
+import type { SessionRow } from "../../../src/db/rows.js";
 import { env } from "../../../src/env.js";
 import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.js";
 import { buildCancelInteraction } from "../../helpers/interaction.js";

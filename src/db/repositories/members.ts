@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { members } from "../schema.js";
-import type { DbLike } from "../types.js";
+import type { DbLike } from "../rows.js";
 
 export const findMemberIdByUserId = async (
   db: DbLike,

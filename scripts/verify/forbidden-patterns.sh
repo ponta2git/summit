@@ -45,8 +45,8 @@ run_rule "no-process-env-direct" "process\\.env[\\.\\[]" -g "src/**" \
   -g "!src/env.ts" \
   -g "!src/index.ts" \
   -g "!src/commands/sync.ts" \
-  -g "!src/db/seed.ts" \
-  -g "!src/db/devReset.ts" \
+  -g "!scripts/dev/seed.ts" \
+  -g "!scripts/dev/reset.ts" \
   -g "!src/time/**"
 
 run_rule "no-sql-raw" "\\bsql\\.raw\\(" -g "src/**"

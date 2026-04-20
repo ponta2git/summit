@@ -1,4 +1,4 @@
-import type { ResponseRow, SessionRow } from "../../db/types.js";
+import type { ResponseRow, SessionRow } from "../../db/rows.js";
 import {
   decidedStartAt,
   latestChoice,

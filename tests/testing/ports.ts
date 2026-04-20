@@ -289,7 +289,7 @@ export interface TestAppContext {
  *
  * @remarks
  * Keeps the fake ports bundle typed as {@link FakePorts} so tests can inspect `calls` and seed
- * data while still passing structurally where an {@link import("../../src/composition.js").AppContext}
+ * data while still passing structurally where an {@link import("../../src/appContext.js").AppContext}
  * is expected.
  */
 export const createTestAppContext = (options: {

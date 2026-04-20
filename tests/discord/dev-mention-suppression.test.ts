@@ -1,7 +1,7 @@
 import { ChannelType, type Client } from "discord.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { SessionRow } from "../../src/db/types.js";
+import type { SessionRow } from "../../src/db/rows.js";
 import type * as AskRenderModule from "../../src/features/ask-session/render.js";
 import type * as PostponeModule from "../../src/features/postpone-voting/render.js";
 import type * as SettleModule from "../../src/features/ask-session/settle.js";

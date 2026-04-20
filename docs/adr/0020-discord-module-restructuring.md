@@ -40,7 +40,7 @@ tags: [runtime, discord, docs]
 - **死んだ抽象の削除**: phased rollout の痕跡を清算し、新規読者が誤解する余地を減らした。
 
 ### 失うもの / 運用上の含意
-- **import path の層数増加**: `settle/ask.ts` は `../../composition.js` のように 2 階層 `../` が必要。外部からの import は `./settle/index.js` と明示する必要がある（NodeNext 解決はフォルダ名単独の auto-resolve を行わない）。
+- **import path の層数増加**: `settle/ask.ts` は `../../appContext.js` のように 2 階層 `../` が必要。外部からの import は `./settle/index.js` と明示する必要がある（NodeNext 解決はフォルダ名単独の auto-resolve を行わない）。
 - **barrel を経由する名前衝突リスク**: `settle/index.ts` が `export *` で再 export するため、将来 settle/ 内の新規 symbol が外部と衝突した場合、意図しない export になる可能性がある。新規 symbol 追加時は named re-export を検討する（現時点は export される symbol が少数で衝突リスク低）。
 
 ## Alternatives considered

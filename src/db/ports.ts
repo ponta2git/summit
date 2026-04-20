@@ -10,7 +10,7 @@ import type {
   ResponseRow,
   SessionRow,
   SessionStatus
-} from "./types.js";
+} from "./rows.js";
 import type {
   CreateAskSessionInput,
   TransitionInput
@@ -26,7 +26,7 @@ export type {
   TransitionInput,
   UpsertResponseInput
 };
-export type { ResponseChoice } from "./types.js";
+export type { ResponseChoice } from "./rows.js";
 
 /**
  * Session repository operations exposed as a DI port.

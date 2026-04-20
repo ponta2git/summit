@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../composition.js";
-import type { SessionRow } from "../../db/types.js";
+import type { AppContext } from "../../appContext.js";
+import type { SessionRow } from "../../db/rows.js";
 import { logger } from "../../logger.js";
 import { decidedMessages } from "./messages.js";
 import {

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import type { DbLike } from "../db/types.js";
+import type { DbLike } from "../db/rows.js";
 import { members } from "../db/schema.js";
 import { logger } from "../logger.js";
 import type { MemberReconcileInput } from "./inputs.js";

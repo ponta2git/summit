@@ -1,8 +1,8 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../composition.js";
+import type { AppContext } from "../../appContext.js";
 import { REMINDER_SKIP_THRESHOLD_MINUTES } from "../../config.js";
-import type { SessionRow } from "../../db/types.js";
+import type { SessionRow } from "../../db/rows.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import { reminderMessages } from "./messages.js";

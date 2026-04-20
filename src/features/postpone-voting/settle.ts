@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../composition.js";
+import type { AppContext } from "../../appContext.js";
 import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { ResponseRow, SessionRow } from "../../db/types.js";
+import type { ResponseRow, SessionRow } from "../../db/rows.js";
 import {
   evaluatePostponeVote,
   type PostponeDecisionResult

@@ -1,4 +1,4 @@
-import type { SessionRow } from "../../../src/db/types.js";
+import type { SessionRow } from "../../../src/db/rows.js";
 import { env } from "../../../src/env.js";
 
 // why: discord 系テスト (render / settle / dev-mention-suppression) で SessionRow を組み立てる重複を解消する。

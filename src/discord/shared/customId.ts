@@ -1,3 +1,8 @@
+// why: Discord interaction の custom_id 3-segment codec を集約する。
+//   ask / postpone / cancel_week の 3 種類の "custom_id 文字列全体" の parse/build を担う。
+// boundary: slot 値（T2200 等）の domain / wire 変換は src/slot.ts。
+//   ここでは ask の choice に CUSTOM_ID_SLOT_CHOICES を受け付けるだけで、slot 値の意味は知らない。
+// @see docs/adr/0016-customid-codec-hmac-rejected.md
 import { z } from "zod";
 import { CUSTOM_ID_SLOT_CHOICES } from "../../slot.js";
 
@@ -43,7 +48,6 @@ export type CustomIdSpec = z.infer<typeof customIdSpecSchema>;
 export type AskCustomIdChoice = z.infer<typeof askCustomIdSpecSchema>["choice"];
 export type PostponeCustomIdChoice = z.infer<typeof postponeCustomIdSpecSchema>["choice"];
 
-// why: customId codec 統一 (ADR-0016)
 export const parseCustomId = (raw: string): z.ZodSafeParseResult<CustomIdSpec> =>
   customIdCodecSchema.safeParse(raw);
 

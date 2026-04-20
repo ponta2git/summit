@@ -1,7 +1,7 @@
 import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
+import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import {
   sendDecidedAnnouncement,
   renderDecidedAnnouncement

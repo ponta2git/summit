@@ -4,11 +4,11 @@ process.env.TZ = "Asia/Tokyo";
 
 import { sql } from "drizzle-orm";
 
-import { db, closeDb } from "./client.js";
-import { env } from "../env.js";
-import { logger } from "../logger.js";
-import { buildMemberReconcileInputs } from "../members/inputs.js";
-import { members } from "./schema.js";
+import { db, closeDb } from "../../src/db/client.js";
+import { env } from "../../src/env.js";
+import { logger } from "../../src/logger.js";
+import { buildMemberReconcileInputs } from "../../src/members/inputs.js";
+import { members } from "../../src/db/schema.js";
 
 const run = async (): Promise<void> => {
   // invariant: member.id = "member-{index+1}" は固定順序。userId 側は env.MEMBER_USER_IDS の順に追従。

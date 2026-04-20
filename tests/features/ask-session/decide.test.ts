@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
+import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { evaluateDeadline } from "../../../src/features/ask-session/decide.js";
 import { buildSessionRow } from "../../scheduler/factories/session.js";
 

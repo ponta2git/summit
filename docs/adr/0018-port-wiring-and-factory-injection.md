@@ -75,10 +75,10 @@ export function makeRealPorts(db: Database): AppPorts {
 ```
 
 ### 合成点（AppContext）
-`src/composition.ts` で唯一の合成ポイント：
+`src/appContext.ts` で唯一の合成ポイント：
 
 ```ts
-// src/composition.ts
+// src/appContext.ts
 export interface AppContext {
   readonly ports: AppPorts;
   readonly clock: Clock;
@@ -141,7 +141,7 @@ const ctx = createTestAppContext({ seed: { sessions: [mockSession] } });
 
 ### 得られるもの
 - **Interface drift 検出**: `FakeSessionsPort implements SessionsPort` の型制約により、signature 変更が compile 時に検出される。vi.mock の silent 失敗がない。
-- **依存グラフの可視化**: `composition.ts` の 1 ファイルから全依存関係が読める。新人エージェントが責務フローを理解しやすい。
+- **依存グラフの可視化**: `appContext.ts` の 1 ファイルから全依存関係が読める。新人エージェントが責務フローを理解しやすい。
 - **テスト環境と本番の同一化**: production と test が同じ `AppContext` shape を共有するため、差分が「ports と clock の実装だけ」に局所化する。環境による動作差分が最小化される。
 - **Fake ports の再利用性**: `FakeSessionsPort` を複数テストで再利用できる。seed data の組み合わせで複雑な状態をセットアップ可能。
 

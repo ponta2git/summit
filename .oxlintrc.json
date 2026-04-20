@@ -113,8 +113,8 @@
         "src/env.ts",
         "src/index.ts",
         "src/commands/sync.ts",
-        "src/db/seed.ts",
-        "src/db/devReset.ts",
+        "scripts/dev/seed.ts",
+        "scripts/dev/reset.ts",
         "tests/integration/**/*.ts"
       ],
       "rules": {

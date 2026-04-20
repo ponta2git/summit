@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DbLike } from "../../src/db/types.js";
+import type { DbLike } from "../../src/db/rows.js";
 import { reconcileMembers } from "../../src/members/reconcile.js";
 import type { MemberReconcileInput } from "../../src/members/inputs.js";
 

@@ -1,6 +1,6 @@
 import { MessageFlags } from "discord.js";
 
-import type { SessionRow } from "../../db/types.js";
+import type { SessionRow } from "../../db/rows.js";
 import { env } from "../../env.js";
 import {
   InvariantViolationError,

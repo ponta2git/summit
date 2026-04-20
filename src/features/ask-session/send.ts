@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ChannelType, type Client } from "discord.js";
 
-import type { AppContext } from "../../composition.js";
+import type { AppContext } from "../../appContext.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import type { SessionRow } from "../../db/ports.js";

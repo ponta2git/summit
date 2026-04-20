@@ -2,7 +2,7 @@
 // invariant: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue に徹する。
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
 
-import type { DbLike } from "./types.js";
+import type { DbLike } from "./rows.js";
 import {
   createAskSession,
   findDueAskingSessions,

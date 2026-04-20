@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handlePostponeButton } from "../../../src/features/postpone-voting/button.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
-import type { ResponseRow, SessionRow } from "../../../src/db/types.js";
+import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { env } from "../../../src/env.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";

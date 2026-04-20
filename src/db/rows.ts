@@ -1,4 +1,4 @@
-// why: DB 層の型エクスポートを集約 (ADR-0014)
+// why: DB の Row 型と drizzle 派生型を集約 (ADR-0014)
 import type { db as defaultDb } from "./client.js";
 import {
   RESPONSE_CHOICES,
