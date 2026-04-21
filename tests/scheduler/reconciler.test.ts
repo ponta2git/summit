@@ -6,6 +6,7 @@ import { REMINDER_CLAIM_STALENESS_MS } from "../../src/config.js";
 import {
   DISCORD_UNKNOWN_MESSAGE_CODE,
   isUnknownMessageError,
+  probeDeletedMessagesAtStartup,
   reconcileMissingAsk,
   reconcileMissingAskMessage,
   reconcileStaleReminderClaims,
@@ -415,5 +416,178 @@ describe("updateAskMessage 10008 recovery", () => {
     expect(sentMessages).toHaveLength(0);
     const after = await ctx.ports.sessions.findSessionById("s-ok");
     expect(after?.askMessageId).toBe("keep-id");
+  });
+});
+
+const extractContent = (payload: unknown): string | undefined => {
+  if (payload && typeof payload === "object" && "content" in payload) {
+    const content = (payload as { content?: unknown }).content;
+    return typeof content === "string" ? content : undefined;
+  }
+  return undefined;
+};
+
+describe("promoteStranded cancelled UI cleanup", () => {
+  it("Friday before postpone deadline: disables ASK buttons and sends settle notice before postpone vote message", async () => {
+    // jst: 金曜 21:45 JST = 2026-04-24T12:45:00Z。順延期限前。
+    const session: SessionRow = buildSessionRow({
+      id: "c-fri-ui",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      candidateDateIso: "2026-04-24",
+      status: "CANCELLED",
+      askMessageId: "ask-fri",
+      cancelReason: "deadline_unanswered"
+    });
+    const now = new Date("2026-04-24T12:45:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
+    // state: updateAskMessage は ask-fri を fetch → edit で disabled 再描画する happy path を模擬。
+    fetchImpl = async (id) => makeMessage(id);
+
+    const promoted = await reconcileStrandedCancelled(client, ctx);
+
+    expect(promoted).toBe(1);
+    // invariant: 通常経路 settleAskingSession と同じく、ASK メッセージを先に無効化する。
+    expect(editCalls).toHaveLength(1);
+    expect(editCalls[0]?.messageId).toBe("ask-fri");
+    // invariant: settle 通知を送ってから順延投票メッセージを送る。
+    expect(sentMessages.length).toBeGreaterThanOrEqual(2);
+    const settleContent = extractContent(sentMessages[0]?.payload);
+    expect(settleContent).toContain("21:30 までに未回答者");
+    const after = await ctx.ports.sessions.findSessionById("c-fri-ui");
+    expect(after?.status).toBe("POSTPONE_VOTING");
+    expect(after?.postponeMessageId).toBeTruthy();
+  });
+
+  it("Saturday path: disables ASK buttons and sends settle notice before COMPLETED", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "c-sat-ui",
+      weekKey: "2026-W17",
+      postponeCount: 1,
+      candidateDateIso: "2026-04-25",
+      status: "CANCELLED",
+      askMessageId: "ask-sat",
+      cancelReason: "saturday_cancelled"
+    });
+    const now = new Date("2026-04-25T12:30:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
+    fetchImpl = async (id) => makeMessage(id);
+
+    const promoted = await reconcileStrandedCancelled(client, ctx);
+
+    expect(promoted).toBe(1);
+    expect(editCalls).toHaveLength(1);
+    expect(editCalls[0]?.messageId).toBe("ask-sat");
+    expect(sentMessages).toHaveLength(1);
+    const settleContent = extractContent(sentMessages[0]?.payload);
+    expect(settleContent).toContain("土曜回も成立しなかった");
+    const after = await ctx.ports.sessions.findSessionById("c-sat-ui");
+    expect(after?.status).toBe("COMPLETED");
+  });
+
+  it("Friday past postpone deadline: sends settle notice before COMPLETED", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "c-late-ui",
+      weekKey: "2026-W17",
+      postponeCount: 0,
+      candidateDateIso: "2026-04-24",
+      status: "CANCELLED",
+      askMessageId: "ask-late",
+      cancelReason: "absent"
+    });
+    // jst: 土曜 02:00 JST = 順延期限 (土 00:00 JST) 後。
+    const now = new Date("2026-04-25T17:00:00.000Z");
+    const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
+    fetchImpl = async (id) => makeMessage(id);
+
+    const promoted = await reconcileStrandedCancelled(client, ctx);
+
+    expect(promoted).toBe(1);
+    expect(sentMessages).toHaveLength(1);
+    const settleContent = extractContent(sentMessages[0]?.payload);
+    expect(settleContent).toContain("欠席が出たため");
+    const after = await ctx.ports.sessions.findSessionById("c-late-ui");
+    expect(after?.status).toBe("COMPLETED");
+  });
+});
+
+describe("probeDeletedMessagesAtStartup", () => {
+  it("recreates an ASKING ask message when fetch throws Unknown Message (10008)", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "probe-ask-gone",
+      status: "ASKING",
+      askMessageId: "gone-ask-id"
+    });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    fetchImpl = async () => {
+      throw Object.assign(new Error("Unknown Message"), { code: 10008 });
+    };
+
+    const recreated = await probeDeletedMessagesAtStartup(client, ctx);
+
+    expect(recreated).toBe(1);
+    expect(fetchedMessageIds).toContain("gone-ask-id");
+    expect(sentMessages).toHaveLength(1);
+    const after = await ctx.ports.sessions.findSessionById("probe-ask-gone");
+    expect(after?.askMessageId).toBe("sent-1");
+  });
+
+  it("recreates a POSTPONE_VOTING postpone message on 10008 and updates postponeMessageId", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "probe-postpone-gone",
+      status: "POSTPONE_VOTING",
+      askMessageId: "ask-ok",
+      postponeMessageId: "gone-postpone-id",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    fetchImpl = async (id) => {
+      if (id === "gone-postpone-id") {
+        throw Object.assign(new Error("Unknown Message"), { code: 10008 });
+      }
+      return makeMessage(id);
+    };
+
+    const recreated = await probeDeletedMessagesAtStartup(client, ctx);
+
+    expect(recreated).toBe(1);
+    expect(fetchedMessageIds).toEqual(
+      expect.arrayContaining(["ask-ok", "gone-postpone-id"])
+    );
+    const after = await ctx.ports.sessions.findSessionById("probe-postpone-gone");
+    expect(after?.postponeMessageId).toBe("sent-1");
+    // invariant: ASK 側は fetch 成功したため ID は差し替わらない。
+    expect(after?.askMessageId).toBe("ask-ok");
+  });
+
+  it("is a no-op when fetched messages exist", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "probe-fresh",
+      status: "ASKING",
+      askMessageId: "fresh-ask-id"
+    });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    fetchImpl = async (id) => makeMessage(id);
+
+    const recreated = await probeDeletedMessagesAtStartup(client, ctx);
+
+    expect(recreated).toBe(0);
+    expect(sentMessages).toHaveLength(0);
+    const after = await ctx.ports.sessions.findSessionById("probe-fresh");
+    expect(after?.askMessageId).toBe("fresh-ask-id");
+  });
+
+  it("skips sessions with null askMessageId (no probe)", async () => {
+    const session: SessionRow = buildSessionRow({
+      id: "probe-null",
+      status: "ASKING",
+      askMessageId: null
+    });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+
+    const recreated = await probeDeletedMessagesAtStartup(client, ctx);
+
+    expect(recreated).toBe(0);
+    expect(fetchedMessageIds).toHaveLength(0);
   });
 });

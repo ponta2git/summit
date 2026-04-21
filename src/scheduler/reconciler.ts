@@ -9,35 +9,37 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../appContext.js";
 import {
   ASK_DEADLINE_HHMM,
+  ASK_START_HHMM,
   REMINDER_CLAIM_STALENESS_MS
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
 import { sendAskMessage, sendPostponedAskMessage } from "../features/ask-session/send.js";
 import { renderAskBody } from "../features/ask-session/render.js";
-import { buildAskMessageViewModel } from "../features/ask-session/viewModel.js";
+import {
+  buildAskMessageViewModel,
+  buildSettleNoticeViewModel,
+  renderSettleNotice
+} from "../features/ask-session/viewModel.js";
+import { updateAskMessage } from "../features/ask-session/messageEditor.js";
+import type { SettleCancelReason } from "../features/ask-session/messages.js";
 import { renderPostponeBody } from "../features/postpone-voting/render.js";
 import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.js";
 import { logger } from "../logger.js";
 import {
   isoWeekKey,
   parseCandidateDateIso,
-  postponeDeadlineFor
+  postponeDeadlineFor,
+  subMs
 } from "../time/index.js";
 import { getTextChannel } from "../discord/shared/channels.js";
+import {
+  DISCORD_UNKNOWN_MESSAGE_CODE,
+  isUnknownMessageError
+} from "../discord/shared/discordErrors.js";
 
-// why: discord.js が投げる DiscordAPIError の code で "Unknown Message" を判別する。
-//   定数値は discord-api-types RESTJSONErrorCodes.UnknownMessage (10008) に一致。
-//   直接 import すると transitive dep に依存するため数値で固定する。
-// @see https://discord.com/developers/docs/topics/opcodes-and-status-codes#json
-export const DISCORD_UNKNOWN_MESSAGE_CODE = 10008;
-
-export const isUnknownMessageError = (error: unknown): boolean => {
-  if (error === null || typeof error !== "object") {
-    return false;
-  }
-  const code = (error as { code?: unknown }).code;
-  return code === DISCORD_UNKNOWN_MESSAGE_CODE;
-};
+// why: messageEditor / tests が reconciler 経由で参照しているため再 export する。
+//   実体は src/discord/shared/discordErrors.ts (循環依存を避ける中立モジュール)。
+export { DISCORD_UNKNOWN_MESSAGE_CODE, isUnknownMessageError };
 
 export interface ReconcileReport {
   readonly cancelledPromoted: number;
@@ -56,12 +58,16 @@ const EMPTY_REPORT: ReconcileReport = {
 const FRIDAY_JS_DAY = 5;
 
 // jst: process.env.TZ=Asia/Tokyo 前提で Date#getDay()/getHours() は JST を返す。
+// source-of-truth: 窓の開始/終了は src/config.ts の ASK_START_HHMM / ASK_DEADLINE_HHMM を参照する
+//   (ADR-0022: ADR/コメントに HH:MM を書き写さない)。
 // @see docs/adr/0002-jst-fixed-time-handling.md
 const isFridayAskWindow = (now: Date): boolean => {
   if (now.getDay() !== FRIDAY_JS_DAY) {return false;}
   const hour = now.getHours();
   const minute = now.getMinutes();
-  const afterAsk = hour > 8 || (hour === 8 && minute >= 0);
+  const afterAsk =
+    hour > ASK_START_HHMM.hour ||
+    (hour === ASK_START_HHMM.hour && minute >= ASK_START_HHMM.minute);
   const beforeDeadline =
     hour < ASK_DEADLINE_HHMM.hour ||
     (hour === ASK_DEADLINE_HHMM.hour && minute < ASK_DEADLINE_HHMM.minute);
@@ -122,6 +128,37 @@ export const reconcileStrandedCancelled = async (
   return promoted;
 };
 
+const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
+  const reason = session.cancelReason;
+  if (
+    reason === "absent" ||
+    reason === "deadline_unanswered" ||
+    reason === "saturday_cancelled"
+  ) {
+    return reason;
+  }
+  // state: cancelReason が未記録 / 想定外値の場合は postponeCount から妥当なデフォルトへ。
+  return session.postponeCount === 1 ? "saturday_cancelled" : "deadline_unanswered";
+};
+
+// race: reconciler の cleanup は通常経路 (settleAskingSession) の 2 ステップ
+//   (updateAskMessage → settle 通知送信) をミラーする。crash タイミングが
+//   「cancelAsking 後 / settle 通知送信前後」のいずれでも、DB-as-SoT (ADR-0001) 方針として
+//   最悪 settle 通知 1 通の重複投稿を許容する (冪等ロックは張らない)。
+//   これは「通知が全く出ない」状態を避けるためのベストエフォート。
+const emitCancelledUiCleanup = async (
+  client: Client,
+  ctx: AppContext,
+  session: SessionRow
+): Promise<void> => {
+  // source-of-truth: updateAskMessage 内部で DB から fresh を再取得し disabled=true / footerCancelled
+  //   の viewModel で再描画する。10008 時は新規投稿にフォールバックする (ADR-0033 invariant D)。
+  await updateAskMessage(client, ctx, session);
+  const channel = await getTextChannel(client, session.channelId);
+  const settleVm = buildSettleNoticeViewModel(resolveSettleCancelReason(session));
+  await channel.send(renderSettleNotice(settleVm));
+};
+
 const promoteStranded = async (
   client: Client,
   ctx: AppContext,
@@ -130,6 +167,8 @@ const promoteStranded = async (
 ): Promise<{ readonly to: "POSTPONE_VOTING" | "COMPLETED"; readonly reason: string } | undefined> => {
   if (session.postponeCount === 1) {
     // state: 土曜回の CANCELLED は順延経路を持たないため COMPLETED へ収束。
+    //   先に ASK ボタン無効化 + settle 通知を流してから COMPLETED へ遷移する。
+    await emitCancelledUiCleanup(client, ctx, session);
     const completed = await ctx.ports.sessions.completeCancelledSession({
       id: session.id,
       now
@@ -143,6 +182,7 @@ const promoteStranded = async (
   const postponeDeadline = postponeDeadlineFor(candidateDate);
   if (now.getTime() >= postponeDeadline.getTime()) {
     // state: 順延期限 (候補日翌日 00:00 JST) を過ぎた場合は投票経路が無いので COMPLETED へ。
+    await emitCancelledUiCleanup(client, ctx, session);
     const completed = await ctx.ports.sessions.completeCancelledSession({
       id: session.id,
       now
@@ -152,6 +192,9 @@ const promoteStranded = async (
   }
 
   // state: 順延期限前 (金曜 cancelAsking 直後の crash など) なら POSTPONE_VOTING へ進める。
+  //   通常経路 (settleAskingSession) と同じく、先に ASK ボタン無効化 + settle 通知を流してから
+  //   順延投票メッセージを送る。
+  await emitCancelledUiCleanup(client, ctx, session);
   const channel = await getTextChannel(client, session.channelId);
   const postponeVm = buildPostponeMessageViewModel(session);
   const sent = await channel.send(renderPostponeBody(postponeVm));
@@ -307,7 +350,7 @@ export const reconcileStaleReminderClaims = async (
   ctx: AppContext
 ): Promise<number> => {
   const now = ctx.clock.now();
-  const cutoff = new Date(now.getTime() - REMINDER_CLAIM_STALENESS_MS);
+  const cutoff = subMs(now, REMINDER_CLAIM_STALENESS_MS);
   const stale = await ctx.ports.sessions.findStaleReminderClaims(cutoff);
   let reclaimed = 0;
   for (const session of stale) {
@@ -348,10 +391,165 @@ export const reconcileStaleReminderClaims = async (
 export type ReconcileScope = "startup" | "tick";
 
 /**
+ * Invariant D (startup active probe): Detect deleted Discord messages at boot.
+ *
+ * @remarks
+ * `updateAskMessage` は opportunistic に 10008 を拾って再投稿するが、起動中に bot が停止しており
+ * 誰も interaction を起こさない場合は ask / postpone メッセージが削除されたまま放置される。
+ * startup 時だけ `channel.messages.fetch(messageId)` で能動的に probe し、`Unknown Message`
+ * (10008) を検知したら新規投稿して ID を差し替える。tick scope では毎分 Discord fetch を叩く
+ * コストに見合わないため実施しない。
+ * @see docs/reviews/2026-04-21/mid-review-second-opinion.md #2
+ */
+export const probeDeletedMessagesAtStartup = async (
+  client: Client,
+  ctx: AppContext
+): Promise<number> => {
+  const nonTerminal = await ctx.ports.sessions.findNonTerminalSessions();
+  let recreated = 0;
+  for (const session of nonTerminal) {
+    try {
+      if (await probeAndRecreateAskMessage(client, ctx, session)) {
+        recreated += 1;
+      }
+      if (await probeAndRecreatePostponeMessage(client, ctx, session)) {
+        recreated += 1;
+      }
+    } catch (error: unknown) {
+      logger.error(
+        {
+          error,
+          event: "reconciler.message_probe_failed",
+          sessionId: session.id,
+          weekKey: session.weekKey
+        },
+        "Reconciler: failed to probe session messages at startup."
+      );
+    }
+  }
+  return recreated;
+};
+
+const probeAndRecreateAskMessage = async (
+  client: Client,
+  ctx: AppContext,
+  session: SessionRow
+): Promise<boolean> => {
+  if (!session.askMessageId) {return false;}
+  const channel = await getTextChannel(client, session.channelId);
+  logger.debug(
+    {
+      event: "reconciler.message_probed",
+      sessionId: session.id,
+      weekKey: session.weekKey,
+      kind: "ask",
+      messageId: session.askMessageId
+    },
+    "Reconciler: probing ask message."
+  );
+  try {
+    await channel.messages.fetch(session.askMessageId);
+    return false;
+  } catch (error: unknown) {
+    if (!isUnknownMessageError(error)) {
+      logger.warn(
+        {
+          error,
+          event: "reconciler.message_probe_error",
+          sessionId: session.id,
+          weekKey: session.weekKey,
+          kind: "ask",
+          messageId: session.askMessageId
+        },
+        "Reconciler: ask message probe failed with non-10008 error."
+      );
+      return false;
+    }
+    // state: messageEditor.ts の 10008 フォールバックと同じ viewModel で新規投稿し ID を差し替える。
+    const memberRows = await ctx.ports.members.listMembers();
+    const fresh = await ctx.ports.sessions.findSessionById(session.id);
+    if (!fresh) {return false;}
+    const responses = await ctx.ports.responses.listResponses(fresh.id);
+    const vm = buildAskMessageViewModel(fresh, responses, memberRows);
+    const sent = await channel.send(renderAskBody(vm));
+    await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);
+    logger.warn(
+      {
+        event: "reconciler.message_recreated_at_startup",
+        sessionId: session.id,
+        weekKey: session.weekKey,
+        kind: "ask",
+        previousMessageId: session.askMessageId,
+        messageId: sent.id
+      },
+      "Reconciler: recreated deleted ask message detected at startup."
+    );
+    return true;
+  }
+};
+
+const probeAndRecreatePostponeMessage = async (
+  client: Client,
+  ctx: AppContext,
+  session: SessionRow
+): Promise<boolean> => {
+  if (session.status !== "POSTPONE_VOTING" && session.status !== "POSTPONED") {
+    return false;
+  }
+  if (!session.postponeMessageId) {return false;}
+  const channel = await getTextChannel(client, session.channelId);
+  logger.debug(
+    {
+      event: "reconciler.message_probed",
+      sessionId: session.id,
+      weekKey: session.weekKey,
+      kind: "postpone",
+      messageId: session.postponeMessageId
+    },
+    "Reconciler: probing postpone message."
+  );
+  try {
+    await channel.messages.fetch(session.postponeMessageId);
+    return false;
+  } catch (error: unknown) {
+    if (!isUnknownMessageError(error)) {
+      logger.warn(
+        {
+          error,
+          event: "reconciler.message_probe_error",
+          sessionId: session.id,
+          weekKey: session.weekKey,
+          kind: "postpone",
+          messageId: session.postponeMessageId
+        },
+        "Reconciler: postpone message probe failed with non-10008 error."
+      );
+      return false;
+    }
+    const postponeVm = buildPostponeMessageViewModel(session);
+    const sent = await channel.send(renderPostponeBody(postponeVm));
+    await ctx.ports.sessions.updatePostponeMessageId(session.id, sent.id);
+    logger.warn(
+      {
+        event: "reconciler.message_recreated_at_startup",
+        sessionId: session.id,
+        weekKey: session.weekKey,
+        kind: "postpone",
+        previousMessageId: session.postponeMessageId,
+        messageId: sent.id
+      },
+      "Reconciler: recreated deleted postpone message detected at startup."
+    );
+    return true;
+  }
+};
+
+/**
  * Run all reconciliation invariants.
  *
  * @remarks
- * `scope="startup"`: A〜C + E を全て実行 (invariant D は scheduler tick 側の再描画経路で扱う)。
+ * `scope="startup"`: A〜C + E + startup-only active probe (D') を実行。
+ *   (通常運転中の invariant D は scheduler tick 側の再描画経路で扱う)。
  * `scope="tick"`: E のみ (stale reminder claim 回収)。起動時より軽量で毎 tick に載せられる。
  * いずれも冪等で DB を正本とする (ADR-0001)。
  * @see docs/adr/0033-startup-invariant-reconciler.md
@@ -370,6 +568,10 @@ export const runReconciler = async (
   const cancelledPromoted = await reconcileStrandedCancelled(client, ctx);
   const askCreated = await reconcileMissingAsk(client, ctx);
   const messageResent = await reconcileMissingAskMessage(client, ctx);
+  // why: probe は createAskSession / reconcileMissingAskMessage の結果 (新規 askMessageId) も
+  //   含めて検証したいので最後に回す。ただし直前に投稿された message は fetch で見つかるため
+  //   二重投稿にはならない。
+  await probeDeletedMessagesAtStartup(client, ctx);
   const staleClaimReclaimed = await reconcileStaleReminderClaims(ctx);
 
   return {

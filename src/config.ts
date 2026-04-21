@@ -1,10 +1,13 @@
 import { env } from "./env.js";
 
-type Hhmm = Readonly<{ hour: number; minute: number }>;
+export type Hhmm = Readonly<{ hour: number; minute: number }>;
 
 // why: runtime tunables を config.ts に集約 (ADR-0013)
 // why: cron 送信スケジュールは暫定 → ADR-0007
 export const CRON_ASK_SCHEDULE = "0 8 * * 5" as const;
+// why: CRON_ASK_SCHEDULE ("0 8 * * 5") と同じ値を HH:MM 形式で表現する。reconciler の
+//   「金曜 ask 窓内か」判定で参照するための SSoT。ADR/コメントに "08:00" を書き写さない (ADR-0022)。
+export const ASK_START_HHMM = { hour: 8, minute: 0 } as const satisfies Hhmm;
 export const CRON_DEADLINE_SCHEDULE = "30 21 * * 5" as const;
 // jst: 土 00:00 JST = POSTPONE_DEADLINE="24:00" の「候補日翌日 00:00 JST」に対応する。
 export const CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6" as const;

@@ -164,3 +164,14 @@ export const decidedStartAt = (
 
 export const reminderAtFor = (startAt: Date): Date =>
   addMinutes(startAt, REMINDER_LEAD_MINUTES);
+
+/**
+ * Returns a new Date that is `ms` milliseconds earlier than `now`.
+ *
+ * @remarks
+ * `new Date()` を `src/time/` 外で直接生成しない方針 (AGENTS.md §1) に従い、
+ * 「現在時刻から相対的なオフセットを引く」操作も time 層に集約する。
+ * デルタ計算であり壁時計依存ではないが、ルール遵守のため helper 経由とする。
+ */
+export const subMs = (now: Date, ms: number): Date =>
+  new Date(now.getTime() - ms);

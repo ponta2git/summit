@@ -3,7 +3,7 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../../appContext.js";
 import type { SessionRow } from "../../db/rows.js";
 import { logger } from "../../logger.js";
-import { isUnknownMessageError } from "../../scheduler/reconciler.js";
+import { isUnknownMessageError } from "../../discord/shared/discordErrors.js";
 import { renderAskBody } from "./render.js";
 import { buildAskMessageViewModel } from "./viewModel.js";
 import { getTextChannel } from "../../discord/shared/channels.js";
