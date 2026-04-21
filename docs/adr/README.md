@@ -75,3 +75,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0029](./0029-src-layout-tidy-up.md) | src ディレクトリの整理（dev ツール退避 / ファイル名の意図整合） | accepted | 2026-04-25 | runtime, docs, dev-tools |
 | [0030](./0030-slot-pure-domain.md) | slot.ts を pure domain に縮小し slot wire を customId.ts に集約 | accepted | 2026-04-27 | runtime, discord, docs |
 | [0031](./0031-held-event-persistence.md) | HeldEvent 永続化（実開催回の履歴化と DECIDED→COMPLETED の atomic 化） | accepted | 2026-04-27 | runtime, db, ops |
+| [0032](./0032-status-command.md) | /status コマンドによる運用観測性の追加 | accepted | 2026-04-27 | discord, runtime, ops |

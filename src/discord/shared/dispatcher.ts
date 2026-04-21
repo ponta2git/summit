@@ -17,6 +17,7 @@ import { handleAskButton } from "../../features/ask-session/button.js";
 import { handleCancelWeekButton } from "../../features/cancel-week/button.js";
 import { handleAskCommand } from "../../features/ask-session/command.js";
 import { handleCancelWeekCommand } from "../../features/cancel-week/command.js";
+import { handleStatusCommand } from "../../features/status-command/index.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 
 export type SendAsk = (args: {
@@ -89,6 +90,11 @@ export const handleInteraction = async (
 
     if (interaction.commandName === "cancel_week") {
       await handleCancelWeekCommand(interaction);
+      return;
+    }
+
+    if (interaction.commandName === "status") {
+      await handleStatusCommand(interaction, deps.context);
       return;
     }
 
