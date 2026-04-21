@@ -84,6 +84,25 @@ export const checkPostponeVotingWithPastDeadline = (
 };
 
 /**
+ * 宙づり CANCELLED セッションが存在する場合の aggregate 警告。
+ *
+ * @remarks
+ * `CANCELLED` は短命中間状態 (ADR-0001)。通常は瞬時に次状態へ遷移するため、
+ * この関数が警告を返す場合は reconciler が未稼働か crash で止まっていることを示す。
+ * @see docs/adr/0033-startup-invariant-reconciler.md
+ */
+export const checkStrandedCancelledSessions = (
+  strandedSessions: readonly SessionRow[]
+): InvariantWarning | undefined => {
+  if (strandedSessions.length === 0) { return undefined; }
+  const ids = strandedSessions.map((s) => s.id.slice(0, 8)).join(", ");
+  return {
+    kind: "stranded_cancelled",
+    message: `${strandedSessions.length} session(s) stuck in CANCELLED (reconciler may not have run): [${ids}]`
+  };
+};
+
+/**
  * セッション行に対してすべての invariant チェックを実施し、警告リストを返す。
  */
 export const collectInvariantWarnings = (

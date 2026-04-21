@@ -7,9 +7,12 @@ import {
   CRON_DEADLINE_SCHEDULE,
   CRON_POSTPONE_DEADLINE_SCHEDULE,
   CRON_REMINDER_SCHEDULE,
+  HEALTHCHECK_PING_INTERVAL_CRON,
+  HEALTHCHECK_PING_TIMEOUT_MS,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
+import { sendHealthcheckPing, type FetchFn } from "../healthcheck/ping.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -36,6 +39,10 @@ export interface AskSchedulerDeps {
   readonly context: AppContext;
   readonly sendAsk?: SendAsk;
   readonly cronAdapter?: CronAdapter;
+  /** Optional: `env.HEALTHCHECK_PING_URL`. No-op when undefined. */
+  readonly healthcheckUrl?: string;
+  /** Optional: injected fetch implementation for testing. */
+  readonly fetchFn?: FetchFn;
 }
 
 export const runScheduledAskTick = async (
@@ -154,6 +161,43 @@ export const runReminderTick = async (
 };
 
 /**
+ * Fires a best-effort healthcheck ping on each minute cron tick.
+ *
+ * @remarks
+ * No-op when `url` is `undefined` (i.e., `HEALTHCHECK_PING_URL` is not set).
+ * Logs `event=healthcheck.tick_ping` with `ok`, `elapsedMs`, `status`/`errorKind`.
+ * URL is never logged.
+ * @see docs/adr/0034-healthcheck-ping.md
+ */
+export const runHealthcheckTickPing = async (
+  url: string | undefined,
+  fetchFn?: FetchFn
+): Promise<void> => {
+  if (!url) { return; }
+  try {
+    const result = await sendHealthcheckPing(url, {
+      timeoutMs: HEALTHCHECK_PING_TIMEOUT_MS,
+      ...(fetchFn !== undefined ? { fetchFn } : {})
+    });
+    if (result.ok) {
+      logger.info(
+        { event: "healthcheck.tick_ping", ok: true, elapsedMs: result.elapsedMs, status: result.status },
+        "Healthcheck tick ping."
+      );
+    } else {
+      const failFields =
+        result.status !== undefined
+          ? { event: "healthcheck.tick_ping", ok: false, elapsedMs: result.elapsedMs, status: result.status }
+          : { event: "healthcheck.tick_ping", ok: false, elapsedMs: result.elapsedMs, errorKind: result.errorKind };
+      logger.warn(failFields, "Healthcheck tick ping failed.");
+    }
+  } catch (error: unknown) {
+    // sendHealthcheckPing should never throw; belt-and-suspenders guard.
+    logger.warn({ event: "healthcheck.tick_ping", ok: false, error }, "Healthcheck tick ping threw unexpectedly.");
+  }
+};
+
+/**
  * Re-settles overdue ASKING and POSTPONE_VOTING sessions found in the DB at startup.
  *
  * @remarks
@@ -249,7 +293,12 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
       tick: () => void runPostponeDeadlineTick(client, context)
     },
     // 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
-    { schedule: CRON_REMINDER_SCHEDULE, tick: () => void runReminderTick(client, context) }
+    { schedule: CRON_REMINDER_SCHEDULE, tick: () => void runReminderTick(client, context) },
+    // 毎分 tick。healthchecks.io に死活監視 ping を送る (ADR-0034)。URL 未設定時は no-op。
+    {
+      schedule: HEALTHCHECK_PING_INTERVAL_CRON,
+      tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
+    }
   ];
 
   return taskDefs.map((def) =>

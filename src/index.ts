@@ -10,12 +10,14 @@ import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/index.js";
 import type { AppReadyState } from "./discord/shared/dispatcher.js";
 import { env } from "./env.js";
+import { sendHealthcheckPing } from "./healthcheck/ping.js";
 import { logger } from "./logger.js";
 import { buildMemberReconcileInputs } from "./members/inputs.js";
 import { reconcileMembers } from "./members/reconcile.js";
 import { runReconciler } from "./scheduler/reconciler.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
+import { HEALTHCHECK_PING_TIMEOUT_MS } from "./config.js";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
@@ -179,7 +181,11 @@ const run = async (): Promise<void> => {
   markAppReady();
 
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
-  scheduler = createAskScheduler({ client, context: appContext });
+  scheduler = createAskScheduler({
+    client,
+    context: appContext,
+    ...(env.HEALTHCHECK_PING_URL !== undefined ? { healthcheckUrl: env.HEALTHCHECK_PING_URL } : {})
+  });
 
   // why: FLY_IMAGE_REF (Fly が自動挿入するイメージ参照) → GIT_SHA (CI inject) → 'unknown' の優先順で取得する。
   const commitSha = env.FLY_IMAGE_REF ?? env.GIT_SHA ?? "unknown";
@@ -193,13 +199,25 @@ const run = async (): Promise<void> => {
     nodeVersion: process.version
   });
 
-  // M5: 起動完了後に best-effort で healthchecks.io に ping する。
+  // M5: 起動完了後に best-effort で healthchecks.io に ping する（boot ping）。
   //   未設定 (undefined) は no-op。失敗しても起動は継続する。
+  //   タイムアウトと成否ログは sendHealthcheckPing が担う (ADR-0034)。
   if (env.HEALTHCHECK_PING_URL !== undefined) {
     const pingUrl = env.HEALTHCHECK_PING_URL;
-    void fetch(pingUrl).catch((err: unknown) =>
-      logger.warn({ err }, "healthcheck boot ping failed")
-    );
+    void sendHealthcheckPing(pingUrl, { timeoutMs: HEALTHCHECK_PING_TIMEOUT_MS }).then((result) => {
+      if (result.ok) {
+        logger.info(
+          { event: "healthcheck.boot_ping", ok: true, elapsedMs: result.elapsedMs, status: result.status },
+          "Healthcheck boot ping."
+        );
+      } else {
+        const failFields =
+          result.status !== undefined
+            ? { event: "healthcheck.boot_ping", ok: false, elapsedMs: result.elapsedMs, status: result.status }
+            : { event: "healthcheck.boot_ping", ok: false, elapsedMs: result.elapsedMs, errorKind: result.errorKind };
+        logger.warn(failFields, "Healthcheck boot ping failed.");
+      }
+    });
   }
 
   logger.info(

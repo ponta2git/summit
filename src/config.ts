@@ -28,6 +28,11 @@ export const TICK_DURATION_WARN_MS = 10_000;
 // why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
 //   定義は env.ts（循環参照回避のため）。消費側は config.ts 経由で import する。
 export { MEMBER_COUNT_EXPECTED } from "./env.js";
+// why: healthcheck ping を毎分 tick で送り、プロセス死亡を検知する (ADR-0034)。
+//   CRON_REMINDER_SCHEDULE ("* * * * *") と同じ頻度だが独立した観測シグナルとして分ける。
+export const HEALTHCHECK_PING_INTERVAL_CRON = "*/1 * * * *" as const;
+// why: healthcheck ping の HTTP タイムアウト。healthchecks.io が応答しない場合でも起動/tick を止めない (ADR-0034)。
+export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 
 const parseHhmm = (value: string): Hhmm => {
   const match = /^(\d{2}):(\d{2})$/.exec(value);

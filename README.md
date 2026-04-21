@@ -286,7 +286,8 @@ pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:se
 
 ## 死活監視
 
-- node-cron の毎分 tick 内で `HEALTHCHECK_PING_URL`（healthchecks.io 等の無料枠）に短タイムアウトで HTTP GET を投げる。
+- 起動完了時に `HEALTHCHECK_PING_URL` へ best-effort GET を投げる（boot ping）。タイムアウト値は `src/config.ts` の `HEALTHCHECK_PING_TIMEOUT_MS` を参照。
+- node-cron の毎分 tick 内でも同 URL へ short-timeout GET を投げる（tick ping）。cron 式は `src/config.ts` の `HEALTHCHECK_PING_INTERVAL_CRON` を参照。
 - 監視サービス側で「数分間 ping が来なければ通知」を設定し、Bot プロセス死亡・Fly.io 障害・Neon 断絶のいずれでも通知が飛ぶ状態にする。
 - 通知チャネルはメール / Discord Webhook のいずれか。未設定（`HEALTHCHECK_PING_URL` なし）時は ping 自体を no-op にする。
 

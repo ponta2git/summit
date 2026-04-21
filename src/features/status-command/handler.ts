@@ -34,7 +34,10 @@ export const handleStatusCommand = async (
   }
 
   const now = ctx.clock.now();
-  const sessions = await ctx.ports.sessions.findNonTerminalSessions();
+  const [sessions, strandedCancelled] = await Promise.all([
+    ctx.ports.sessions.findNonTerminalSessions(),
+    ctx.ports.sessions.findStrandedCancelledSessions()
+  ]);
 
   // 並列で responses と decided sessions の heldEvent を取得する。
   const [responsesNested, heldEventsNested] = await Promise.all([
@@ -62,7 +65,8 @@ export const handleStatusCommand = async (
     now,
     sessions,
     responsesBySessionId,
-    heldEventBySessionId
+    heldEventBySessionId,
+    strandedCancelledSessions: strandedCancelled
   });
 
   const text = renderStatusText(vm);
@@ -74,6 +78,7 @@ export const handleStatusCommand = async (
       interactionId: interaction.id,
       userId: interaction.user.id,
       sessionCount: sessions.length,
+      strandedCancelledCount: strandedCancelled.length,
       weekKey: vm.currentWeekKey,
       totalWarnings: vm.totalWarnings
     },

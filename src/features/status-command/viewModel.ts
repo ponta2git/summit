@@ -9,11 +9,21 @@ import {
   parseCandidateDateIso
 } from "../../time/index.js";
 import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import { collectInvariantWarnings, type InvariantWarning } from "./invariantChecks.js";
+import {
+  checkStrandedCancelledSessions,
+  collectInvariantWarnings,
+  type InvariantWarning
+} from "./invariantChecks.js";
 
 // jst: TZ=Asia/Tokyo 前提。date-fns format は内部で getHours() 等を使うため TZ 設定が反映される。
 const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");
 const fmtJstFull = (d: Date): string => format(d, "yyyy-MM-dd HH:mm");
+
+export interface StrandedCancelledEntry {
+  readonly sessionId: string;
+  readonly weekKey: string;
+  readonly candidateDateIso: string;
+}
 
 export interface SessionStatusViewModel {
   readonly sessionId: string;
@@ -40,6 +50,8 @@ export interface StatusViewModel {
   /** ISO string of next upcoming deadline or reminder across all sessions, or null */
   readonly nextEventAt: string | null;
   readonly totalWarnings: number;
+  readonly strandedCancelled: readonly StrandedCancelledEntry[];
+  readonly strandedCancelledWarning: InvariantWarning | null;
 }
 
 const buildSessionStatusViewModel = (
@@ -104,8 +116,10 @@ export const buildStatusViewModel = (input: {
   readonly sessions: readonly SessionRow[];
   readonly responsesBySessionId: ReadonlyMap<string, readonly ResponseRow[]>;
   readonly heldEventBySessionId: ReadonlyMap<string, HeldEventRow>;
+  readonly strandedCancelledSessions?: readonly SessionRow[];
 }): StatusViewModel => {
   const { now, sessions, responsesBySessionId, heldEventBySessionId } = input;
+  const strandedCancelledSessions = input.strandedCancelledSessions ?? [];
 
   const sessionVMs = sessions.map((session) => {
     const responses = responsesBySessionId.get(session.id) ?? [];
@@ -114,14 +128,24 @@ export const buildStatusViewModel = (input: {
   });
 
   const nextEventAt = buildNextEventAt(sessions, now);
-  const totalWarnings = sessionVMs.reduce((sum, s) => sum + s.warnings.length, 0);
+  const strandedCancelledWarning = checkStrandedCancelledSessions(strandedCancelledSessions) ?? null;
+  const perSessionWarnings = sessionVMs.reduce((sum, s) => sum + s.warnings.length, 0);
+  const totalWarnings = perSessionWarnings + (strandedCancelledWarning !== null ? 1 : 0);
+
+  const strandedCancelled: StrandedCancelledEntry[] = strandedCancelledSessions.map((s) => ({
+    sessionId: s.id.slice(0, 8),
+    weekKey: s.weekKey,
+    candidateDateIso: s.candidateDateIso
+  }));
 
   return {
     nowJst: fmtJstFull(now),
     currentWeekKey: isoWeekKey(now),
     sessions: sessionVMs,
     nextEventAt,
-    totalWarnings
+    totalWarnings,
+    strandedCancelled,
+    strandedCancelledWarning
   };
 };
 
@@ -157,6 +181,14 @@ export const renderStatusText = (vm: StatusViewModel): string => {
       for (const w of s.warnings) {
         lines.push(`  ⚠ ${w.message}`);
       }
+    }
+  }
+
+  if (vm.strandedCancelled.length > 0) {
+    lines.push("");
+    lines.push(`⚠ 宙づり CANCELLED (reconciler 未達): ${vm.strandedCancelled.length} 件`);
+    for (const sc of vm.strandedCancelled) {
+      lines.push(`  [CANCELLED] ${sc.sessionId}  week: ${sc.weekKey}  候補日: ${sc.candidateDateIso}`);
     }
   }
 
