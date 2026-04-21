@@ -14,6 +14,11 @@ export const ASK_DEADLINE_HHMM = { hour: 21, minute: 30 } as const satisfies Hhm
 export const REMINDER_LEAD_MINUTES = -15 as const;
 // why: 開催確定からリマインド予定時刻まで10分未満の場合は送らない（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
+// why: リマインド claim (reminder_sent_at を送信前に立てる) が長時間戻されない場合、
+//   claim 保持プロセスが crash したとみなして startup/tick reconciler が reclaim する閾値。
+//   claim → Discord 送信は通常ミリ秒オーダーのため、分単位の保持は異常と判断する。
+// @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+export const REMINDER_CLAIM_STALENESS_MS = 5 * 60 * 1000;
 // why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
 //   定義は env.ts（循環参照回避のため）。消費側は config.ts 経由で import する。
 export { MEMBER_COUNT_EXPECTED } from "./env.js";

@@ -18,6 +18,8 @@ import {
   findNonTerminalSessionsByWeekKey,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
+  findStaleReminderClaims,
+  findStrandedCancelledSessions,
   isNonTerminal,
   revertReminderClaim,
   skipSession,
@@ -67,6 +69,8 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findNonTerminalSessions: () => findNonTerminalSessions(db),
   findNonTerminalSessionsByWeekKey: (weekKey) =>
     findNonTerminalSessionsByWeekKey(db, weekKey),
+  findStrandedCancelledSessions: () => findStrandedCancelledSessions(db),
+  findStaleReminderClaims: (olderThan) => findStaleReminderClaims(db, olderThan),
   skipSession: (input) => skipSession(db, input),
   isNonTerminal
 });

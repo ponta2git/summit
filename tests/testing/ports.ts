@@ -297,6 +297,23 @@ export const createFakeSessionsPort = (
         .filter((s) => NON_TERMINAL_STATUSES.includes(s.status))
         .map(clone);
     },
+    findStrandedCancelledSessions: async () => {
+      recordCall(calls, "findStrandedCancelledSessions", {});
+      return Array.from(byId.values())
+        .filter((s) => s.status === "CANCELLED")
+        .map(clone);
+    },
+    findStaleReminderClaims: async (olderThan) => {
+      recordCall(calls, "findStaleReminderClaims", { olderThan });
+      return Array.from(byId.values())
+        .filter(
+          (s) =>
+            s.status === "DECIDED" &&
+            s.reminderSentAt !== null &&
+            s.reminderSentAt.getTime() <= olderThan.getTime()
+        )
+        .map(clone);
+    },
     findNonTerminalSessionsByWeekKey: async (weekKey) => {
       recordCall(calls, "findNonTerminalSessionsByWeekKey", { weekKey });
       return Array.from(byId.values())

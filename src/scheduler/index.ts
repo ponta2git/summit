@@ -19,6 +19,7 @@ import { evaluateAndApplyDeadlineDecision } from "../features/ask-session/settle
 import { sendReminderForSession } from "../features/reminder/send.js"
 import { settlePostponeVotingSession } from "../features/postpone-voting/settle.js";
 import { logger } from "../logger.js";
+import { runReconciler } from "./reconciler.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -131,6 +132,9 @@ export const runReminderTick = async (
   ctx: AppContext
 ): Promise<void> => {
   try {
+    // invariant: 毎分 tick 境界で stale reminder claim を回収する (H1)。他の invariant は軽量に保つため起動時のみ。
+    // @see docs/adr/0033-startup-invariant-reconciler.md
+    await runReconciler(client, ctx, { scope: "tick" });
     const now = ctx.clock.now();
     const due = await ctx.ports.sessions.findDueReminderSessions(now);
     for (const session of due) {

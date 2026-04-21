@@ -436,6 +436,48 @@ export const findNonTerminalSessions = async (
   return rows.map(mapSession);
 };
 
+/**
+ * Returns sessions currently in `CANCELLED` status.
+ *
+ * @remarks
+ * `CANCELLED` は短命中間状態 (ADR-0001)。本メソッドの結果が空でない場合、crash で遷移が止まっている
+ * 宙づり状態と解釈する。Startup reconciler から呼ばれる。
+ * @see docs/adr/0033-startup-invariant-reconciler.md
+ */
+export const findStrandedCancelledSessions = async (
+  db: DbLike
+): Promise<SessionRow[]> => {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.status, "CANCELLED"));
+  return rows.map(mapSession);
+};
+
+/**
+ * Returns DECIDED sessions whose `reminder_sent_at <= olderThan`.
+ *
+ * @remarks
+ * claim-first が立てた `reminder_sent_at` が staleness 閾値を超えて残っている場合、送信プロセスが
+ * revert 前に crash した可能性が高い。Reconciler はこの集合に対し `revertReminderClaim` で戻す。
+ * @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+ */
+export const findStaleReminderClaims = async (
+  db: DbLike,
+  olderThan: Date
+): Promise<SessionRow[]> => {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.status, "DECIDED"),
+        lte(sessions.reminderSentAt, olderThan)
+      )
+    );
+  return rows.map(mapSession);
+};
+
 export const findNonTerminalSessionsByWeekKey = async (
   db: DbLike,
   weekKey: string

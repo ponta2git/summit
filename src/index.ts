@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { ScheduledTask } from "node-cron";
 import { RESTEvents } from "discord.js";
 
@@ -10,6 +12,7 @@ import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { buildMemberReconcileInputs } from "./members/inputs.js";
 import { reconcileMembers } from "./members/reconcile.js";
+import { runReconciler } from "./scheduler/reconciler.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
 
@@ -55,15 +58,41 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
+// why: 起動フェーズごとの構造化ログで「どこで止まったか」を診断可能にする。
+//   bootId は 1 プロセス 1 つで、全フェーズログに同じ値が載る。
+// @see docs/adr/0033-startup-invariant-reconciler.md
+const bootId = randomUUID();
+const bootStartedAt = Date.now();
+
+const logBootPhase = (
+  phase: "boot_start" | "db_connect" | "reconcile" | "login" | "ready",
+  extra: Record<string, unknown> = {}
+): void => {
+  logger.info(
+    {
+      event: "boot.phase",
+      phase,
+      bootId,
+      elapsedMs: Date.now() - bootStartedAt,
+      ...extra
+    },
+    `Boot phase: ${phase}.`
+  );
+};
+
 const run = async (): Promise<void> => {
+  logBootPhase("boot_start");
+
   // why: env を SSoT とし起動時に DB へ反映 (ADR-0012)
   //   cron 登録・bot login より前に完了させ、失敗時は起動を中止する。
   await reconcileMembers(
     buildMemberReconcileInputs(env.MEMBER_USER_IDS, env.MEMBER_DISPLAY_NAMES),
     db
   );
+  logBootPhase("db_connect");
 
   await client.login(env.DISCORD_TOKEN);
+  logBootPhase("login");
 
   // why: 429 の route/retryAfter を観測性のために購読する (ADR-0019, M11)。
   client.rest.on(RESTEvents.RateLimited, (info) => {
@@ -93,13 +122,18 @@ const run = async (): Promise<void> => {
     );
   }
 
-  logger.info(
-    {
-      guildId: env.DISCORD_GUILD_ID,
-      channelId: env.DISCORD_CHANNEL_ID
-    },
-    "Discord bot started."
-  );
+  // source-of-truth: DB と Discord の invariant を収束させる (C1/N1/H1)。
+  //   login 済みで Discord 送信・編集が可能な状態で実行し、CAS 冪等なため scheduler tick との競合は race lost として扱う。
+  // race: scheduler (cron) 生成はこの呼び出しの完了**後**。reconciler が reminder claim を revert している間に
+  //   reminder tick が走ると同じ claim を見て no-op する設計 (idempotent) のため安全側に倒す。
+  // @see docs/adr/0033-startup-invariant-reconciler.md
+  const report = await runReconciler(client, appContext, { scope: "startup" });
+  logBootPhase("reconcile", {
+    cancelledPromoted: report.cancelledPromoted,
+    askCreated: report.askCreated,
+    messageResent: report.messageResent,
+    staleClaimReclaimed: report.staleClaimReclaimed
+  });
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   //   login 後に実行することで Discord message の edit もできる状態で呼び出す。
@@ -109,9 +143,22 @@ const run = async (): Promise<void> => {
 
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({ client, context: appContext });
+
+  logBootPhase("ready", {
+    guildId: env.DISCORD_GUILD_ID,
+    channelId: env.DISCORD_CHANNEL_ID
+  });
+
+  logger.info(
+    {
+      guildId: env.DISCORD_GUILD_ID,
+      channelId: env.DISCORD_CHANNEL_ID
+    },
+    "Discord bot started."
+  );
 };
 
 void run().catch((error: unknown) => {
-  logger.error({ error }, "Failed to start Discord bot.");
+  logger.error({ error, bootId }, "Failed to start Discord bot.");
   process.exit(1);
 });

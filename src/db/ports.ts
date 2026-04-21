@@ -95,6 +95,22 @@ export interface SessionsPort {
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;
+  /**
+   * Returns sessions currently in `CANCELLED` status.
+   * @remarks
+   * `CANCELLED` は短命中間状態 (ADR-0001)。通常時は瞬時に次状態へ遷移するため本メソッドは空集合を返す。
+   * Startup reconciler が crash 由来の「宙づり CANCELLED」を回収するために使う。
+   * @see docs/adr/0033-startup-invariant-reconciler.md
+   */
+  findStrandedCancelledSessions(): Promise<readonly SessionRow[]>;
+  /**
+   * Returns DECIDED sessions whose `reminder_sent_at` is older than `olderThan` (claim staleness boundary).
+   * @remarks
+   * claim-first で `reminder_sent_at=now` を立てたまま Discord 送信 → revert の経路で crash した場合、
+   * 行が永久に stuck する。reconciler がこのメソッドで候補を検出し `revertReminderClaim` で戻す。
+   * @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+   */
+  findStaleReminderClaims(olderThan: Date): Promise<readonly SessionRow[]>;
   findNonTerminalSessions(): Promise<readonly SessionRow[]>;
   findNonTerminalSessionsByWeekKey(weekKey: string): Promise<readonly SessionRow[]>;
   skipSession(input: { id: string; cancelReason: string }): Promise<SessionRow | undefined>;
