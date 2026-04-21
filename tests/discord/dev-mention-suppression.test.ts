@@ -104,14 +104,16 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
 
     await settle.settleAskingSession(client, ctx, session.id, "absent");
 
-    const firstPayload = sendMock.mock.calls[0]?.[0] as unknown as {
-      content: string;
-      allowedMentions?: unknown;
-    };
-    expect(firstPayload.content).not.toContain("<@");
-    expect(firstPayload.content.startsWith("\n")).toBe(false);
-    expect(firstPayload.content).toMatch(/^🛑/);
-    // invariant: per-message allowedMentions を指定しない。Client-default (parse:[]) に委ねる。
-    expect(firstPayload.allowedMentions).toBeUndefined();
+    // regression: settle 通知は outbox 経由で配送される (ADR-0035) ため、
+    //   renderSettleNotice の出力 (no <@ / no leading newline / starts with 🛑) を outbox payload で検証する。
+    const entry = ctx.ports.outbox
+      .listEntries()
+      .find((e) => e.dedupeKey === `settle-notice-${session.id}-absent`);
+    expect(entry).toBeDefined();
+    const payload = entry?.payload as { extra?: { content?: string } };
+    const content = payload.extra?.content ?? "";
+    expect(content).not.toContain("<@");
+    expect(content.startsWith("\n")).toBe(false);
+    expect(content).toMatch(/^🛑/);
   });
 });

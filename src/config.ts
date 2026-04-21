@@ -34,6 +34,31 @@ export const HEALTHCHECK_PING_INTERVAL_CRON = "*/1 * * * *" as const;
 // why: healthcheck ping の HTTP タイムアウト。healthchecks.io が応答しない場合でも起動/tick を止めない (ADR-0034)。
 export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 
+// why: Discord send outbox worker (ADR-0035)。10 秒周期で PENDING 行を配送する。
+//   state transitions が同 tx で enqueue し、worker が非同期に Discord API へ委譲する。
+export const CRON_OUTBOX_WORKER_SCHEDULE = "*/10 * * * * *" as const;
+// why: 1 tick で処理する最大行数。単一インスタンス前提で rate limit を踏みにくい値。
+export const OUTBOX_WORKER_BATCH_LIMIT = 10 as const;
+// race: claim を保持できる最大時間。worker が crash しても claimExpiresAt 経過で reclaim される。
+//   1 tick (10s) の 3 倍を目安に。
+export const OUTBOX_CLAIM_DURATION_MS = 30_000 as const;
+// why: 失敗時の指数バックオフ列 (ms)。attempt_count-1 を index に使う。
+//   超過分は末尾値で頭打ち。配列内の値を書き換えてもコード変更は不要 (ADR-0022)。
+export const OUTBOX_BACKOFF_MS_SEQUENCE = [
+  1_000,
+  2_000,
+  5_000,
+  15_000,
+  60_000,
+  300_000,
+  900_000
+] as const satisfies readonly number[];
+// why: attempt_count がこれを超えたら dead letter (status=FAILED) へ落とす。
+//   /status が警告し運用者が手動対応するまで再試行しない (将来 ADR で auto-replay を検討)。
+export const OUTBOX_MAX_ATTEMPTS = 10 as const;
+// why: /status の invariant 警告で「多重失敗の疑い」として拾う閾値。FAILED は常に警告対象。
+export const OUTBOX_STRANDED_ATTEMPTS_THRESHOLD = 5 as const;
+
 const parseHhmm = (value: string): Hhmm => {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
   if (!match) {

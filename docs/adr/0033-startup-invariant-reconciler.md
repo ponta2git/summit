@@ -43,6 +43,7 @@ tags: [runtime, db, discord, ops]
 - **可観測性の向上**: `boot.phase` ログで起動の停止地点 (DB 接続 / login / reconcile) が切り分け可能になり、`reconciler.*` ログで収束頻度を監視できる。運用異常 (頻発する `cancelled_promoted` など) の検知が可能。
 - **interaction 入口の安全化**: `src/index.ts` の ready signal が `runReconciler(scope="startup")` と `runStartupRecovery()` の完了まで `interactionCreate` dispatcher を gate し、起動直後の未収束期間で DB 変更を受け付けない（参照: `src/index.ts`）。
 - **tick scope の意図的な縮小**: A〜C を毎分走らせない代わりに、`askMessageId=NULL` など Discord-side の不整合はプロセス再起動まで放置される可能性がある。この範囲は運用上許容し、必要になったら Phase I3 (outbox pattern) で常時監視に昇格させる。
+- **outbox (ADR-0035) 連携**: Phase I3 で導入された Discord send outbox は crash window を送信経路側から閉じる。reconciler 起動時は `reconcileOutboxClaims` で stale IN_FLIGHT を PENDING に戻し、既存 active probe と併せて `messageId` NULL / delivery 未完の両方をカバーする。
 - **`CANCELLED → COMPLETED` を選択した影響**: 「路が無いなら SKIPPED」と書いた初期案に対し、`SESSION_ALLOWED_TRANSITIONS` との整合性から `COMPLETED` を採用した。`SKIPPED` は `/cancel_week` の意味論 (意図的なキャンセル) を保持する。
 - **新規ポートメソッド追加**: `findStrandedCancelledSessions` / `findStaleReminderClaims` は real / fake の双方に実装が必要。`AppContext` 経由 (ADR-0018) で注入するためテスト経路は壊さない。
 - **設定値の SSoT**: `REMINDER_CLAIM_STALENESS_MS` は `src/config.ts` のみを正本とする (ADR-0022)。本 ADR 本文には具体値を書かない。

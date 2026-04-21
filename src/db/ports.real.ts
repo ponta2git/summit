@@ -40,10 +40,19 @@ import {
   findHeldEventBySessionId,
   listHeldEventParticipants
 } from "./repositories/heldEvents.js";
+import {
+  claimNextOutboxBatch,
+  enqueueOutbox,
+  findStrandedOutboxEntries,
+  markOutboxDelivered,
+  markOutboxFailed,
+  releaseExpiredOutboxClaims
+} from "./repositories/outbox.js";
 import type {
   AppPorts,
   HeldEventsPort,
   MembersPort,
+  OutboxPort,
   ResponsesPort,
   SessionsPort
 } from "./ports.js";
@@ -91,9 +100,19 @@ const makeHeldEventsPort = (db: DbLike): HeldEventsPort => ({
   listParticipants: (heldEventId) => listHeldEventParticipants(db, heldEventId)
 });
 
+const makeOutboxPort = (db: DbLike): OutboxPort => ({
+  enqueue: (input) => enqueueOutbox(db, input),
+  claimNextBatch: (options) => claimNextOutboxBatch(db, options),
+  markDelivered: (id, options) => markOutboxDelivered(db, id, options),
+  markFailed: (id, options) => markOutboxFailed(db, id, options),
+  releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
+  findStranded: (threshold) => findStrandedOutboxEntries(db, threshold)
+});
+
 export const makeRealPorts = (db: DbLike): AppPorts => ({
   sessions: makeSessionsPort(db),
   responses: makeResponsesPort(db),
   members: makeMembersPort(db),
-  heldEvents: makeHeldEventsPort(db)
+  heldEvents: makeHeldEventsPort(db),
+  outbox: makeOutboxPort(db)
 });

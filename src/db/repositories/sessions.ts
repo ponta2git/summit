@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import {
   SESSION_STATUSES,
+  discordOutbox,
   sessions
 } from "../schema.js";
 import type {
@@ -10,6 +11,7 @@ import type {
   SessionRow,
   SessionStatus
 } from "../rows.js";
+import type { EnqueueOutboxInput } from "./outbox.js";
 
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
@@ -150,6 +152,8 @@ export interface CancelAskingInput {
   readonly id: string;
   readonly now: Date;
   readonly reason: "absent" | "deadline_unanswered" | "saturday_cancelled";
+  /** Outbox rows to insert atomically with the CAS. */
+  readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
 export interface StartPostponeVotingInput {
@@ -157,6 +161,7 @@ export interface StartPostponeVotingInput {
   readonly now: Date;
   readonly postponeDeadlineAt: Date;
   readonly messageIdPlaceholder?: string;
+  readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
 export type CompletePostponeVotingInput =
@@ -164,12 +169,14 @@ export type CompletePostponeVotingInput =
       readonly id: string;
       readonly now: Date;
       readonly outcome: "decided";
+      readonly outbox?: readonly EnqueueOutboxInput[];
     }
   | {
       readonly id: string;
       readonly now: Date;
       readonly outcome: "cancelled_full";
       readonly cancelReason: "postpone_ng" | "postpone_unanswered";
+      readonly outbox?: readonly EnqueueOutboxInput[];
     };
 
 export interface DecideAskingInput {
@@ -177,17 +184,20 @@ export interface DecideAskingInput {
   readonly now: Date;
   readonly decidedStartAt: Date;
   readonly reminderAt: Date;
+  readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
 export interface CompleteCancelledSessionInput {
   readonly id: string;
   readonly now: Date;
+  readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
 export interface CompleteSessionInput {
   readonly id: string;
   readonly now: Date;
   readonly reminderSentAt: Date;
+  readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
 const runEdgeUpdate = async (
@@ -196,6 +206,7 @@ const runEdgeUpdate = async (
     readonly id: string;
     readonly from: SessionStatus;
     readonly patch: Partial<typeof sessions.$inferInsert>;
+    readonly outbox?: readonly EnqueueOutboxInput[];
   }
 ): Promise<SessionRow | undefined> =>
   db.transaction(async (tx) => {
@@ -205,7 +216,25 @@ const runEdgeUpdate = async (
       .where(and(eq(sessions.id, input.id), eq(sessions.status, input.from)))
       .returning();
     const row = rows[0];
-    return row ? mapSession(row) : undefined;
+    if (!row) {return undefined;}
+    // tx: CAS 成功時のみ outbox を enqueue し、状態遷移と送信 intent を atomic にする。
+    //   `onConflictDoNothing(dedupeKey)` で同一 intent の再 enqueue は no-op。
+    // @see docs/adr/0035-discord-send-outbox.md
+    if (input.outbox && input.outbox.length > 0) {
+      for (const entry of input.outbox) {
+        await tx
+          .insert(discordOutbox)
+          .values({
+            id: crypto.randomUUID(),
+            kind: entry.kind,
+            sessionId: entry.sessionId,
+            payload: entry.payload,
+            dedupeKey: entry.dedupeKey
+          })
+          .onConflictDoNothing({ target: discordOutbox.dedupeKey });
+      }
+    }
+    return mapSession(row);
   });
 
 export const cancelAsking = async (
@@ -219,7 +248,8 @@ export const cancelAsking = async (
       status: "CANCELLED",
       cancelReason: input.reason,
       updatedAt: input.now
-    }
+    },
+    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
   });
 
 export const startPostponeVoting = async (
@@ -236,7 +266,8 @@ export const startPostponeVoting = async (
         ? { postponeMessageId: input.messageIdPlaceholder }
         : {}),
       updatedAt: input.now
-    }
+    },
+    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
   });
 
 export const completePostponeVoting = async (
@@ -250,7 +281,8 @@ export const completePostponeVoting = async (
       patch: {
         status: "POSTPONED",
         updatedAt: input.now
-      }
+      },
+      ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
     });
   }
   return runEdgeUpdate(db, {
@@ -260,7 +292,8 @@ export const completePostponeVoting = async (
       status: "COMPLETED",
       cancelReason: input.cancelReason,
       updatedAt: input.now
-    }
+    },
+    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
   });
 };
 
@@ -276,7 +309,8 @@ export const decideAsking = async (
       decidedStartAt: input.decidedStartAt,
       reminderAt: input.reminderAt,
       updatedAt: input.now
-    }
+    },
+    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
   });
 
 export const completeCancelledSession = async (
@@ -289,7 +323,8 @@ export const completeCancelledSession = async (
     patch: {
       status: "COMPLETED",
       updatedAt: input.now
-    }
+    },
+    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
   });
 
 export const completeSession = async (

@@ -5,6 +5,7 @@ import type { AppContext } from "../appContext.js";
 import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
+  CRON_OUTBOX_WORKER_SCHEDULE,
   CRON_POSTPONE_DEADLINE_SCHEDULE,
   CRON_REMINDER_SCHEDULE,
   HEALTHCHECK_PING_INTERVAL_CRON,
@@ -23,6 +24,8 @@ import { sendReminderForSession } from "../features/reminder/send.js"
 import { settlePostponeVotingSession } from "../features/postpone-voting/settle.js";
 import { logger } from "../logger.js";
 import { runReconciler } from "./reconciler.js";
+import { runOutboxWorkerTick } from "./outboxWorker.js";
+import { runTickSafely } from "./tickRunner.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -298,6 +301,16 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
     {
       schedule: HEALTHCHECK_PING_INTERVAL_CRON,
       tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
+    },
+    // 10 秒周期。Discord send outbox の PENDING 行を配送する (ADR-0035)。
+    //   runTickSafely の最初の consumer として例外を閉じ込める。
+    {
+      schedule: CRON_OUTBOX_WORKER_SCHEDULE,
+      tick: () =>
+        void runTickSafely(
+          { name: "outbox_worker", logger },
+          () => runOutboxWorkerTick(client, context)
+        )
     }
   ];
 

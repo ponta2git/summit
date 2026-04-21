@@ -27,6 +27,13 @@ import type {
   CompleteDecidedSessionAsHeldInput,
   CompleteDecidedSessionAsHeldResult
 } from "./repositories/heldEvents.js";
+import type {
+  EnqueueOutboxInput,
+  EnqueueResult,
+  OutboxEntry,
+  OutboxPayload,
+  OutboxPayloadTarget
+} from "./repositories/outbox.js";
 
 export type {
   HeldEventParticipantRow,
@@ -44,7 +51,12 @@ export type {
   StartPostponeVotingInput,
   UpsertResponseInput,
   CompleteDecidedSessionAsHeldInput,
-  CompleteDecidedSessionAsHeldResult
+  CompleteDecidedSessionAsHeldResult,
+  EnqueueOutboxInput,
+  EnqueueResult,
+  OutboxEntry,
+  OutboxPayload,
+  OutboxPayloadTarget
 };
 export type { ResponseChoice } from "./rows.js";
 
@@ -144,6 +156,39 @@ export interface HeldEventsPort {
 }
 
 /**
+ * Discord send outbox port.
+ *
+ * @remarks
+ * 状態遷移と Discord 送信を非同期に切り離す at-least-once 配送キュー。
+ * `enqueue` は純粋な outbox 単独挿入 (純粋な edit など tx 非依存経路で使う)。
+ * 状態遷移 tx 内で atomic に enqueue したい場合は、Session 系 CAS API の `outbox` フィールドに
+ * `EnqueueOutboxInput[]` を渡す (同 tx で insert される)。
+ * @see docs/adr/0035-discord-send-outbox.md
+ */
+export interface OutboxPort {
+  enqueue(input: EnqueueOutboxInput): Promise<EnqueueResult>;
+  claimNextBatch(options: {
+    readonly limit: number;
+    readonly now: Date;
+    readonly claimDurationMs: number;
+  }): Promise<readonly OutboxEntry[]>;
+  markDelivered(
+    id: string,
+    options: { readonly deliveredMessageId: string | null; readonly now: Date }
+  ): Promise<boolean>;
+  markFailed(
+    id: string,
+    options: {
+      readonly error: string;
+      readonly now: Date;
+      readonly nextAttemptAt: Date | null;
+    }
+  ): Promise<boolean>;
+  releaseExpiredClaims(now: Date): Promise<number>;
+  findStranded(attemptsThreshold: number): Promise<readonly OutboxEntry[]>;
+}
+
+/**
  * Aggregate port bundle supplied to handlers / scheduler / workflow via AppContext.
  *
  * @remarks
@@ -155,4 +200,5 @@ export interface AppPorts {
   readonly responses: ResponsesPort;
   readonly members: MembersPort;
   readonly heldEvents: HeldEventsPort;
+  readonly outbox: OutboxPort;
 }

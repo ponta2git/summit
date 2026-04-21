@@ -43,6 +43,13 @@
       "when": 1776770149943,
       "tag": "0005_light_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776774132150,
+      "tag": "0006_living_hedge_knight",
+      "breakpoints": true
     }
   ]
 }

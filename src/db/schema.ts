@@ -3,6 +3,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -176,5 +177,84 @@ export const heldEventParticipants = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.heldEventId, table.memberId] })
+  ]
+);
+
+// ------------------------------------------------------------
+// Discord send outbox (ADR-0035)
+// ------------------------------------------------------------
+
+// source-of-truth: Discord 送信の at-least-once 配送キュー。
+//   state transitions が同 tx 内で enqueue し、worker が非同期に配送する。
+//   crash 中でも DB 正本のままメッセージ配送が再試行される。
+// @see docs/adr/0035-discord-send-outbox.md
+export const OUTBOX_KINDS = ["send_message", "edit_message"] as const;
+export type OutboxKind = (typeof OUTBOX_KINDS)[number];
+
+export const OUTBOX_STATUSES = [
+  "PENDING",
+  "IN_FLIGHT",
+  "DELIVERED",
+  "FAILED"
+] as const;
+export type OutboxStatus = (typeof OUTBOX_STATUSES)[number];
+
+export const discordOutbox = pgTable(
+  "discord_outbox",
+  {
+    id: text("id").primaryKey(),
+    // source-of-truth: renderer 種別と副作用種別。OUTBOX_KINDS と DB CHECK で二重ガード。
+    kind: text("kind").notNull(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    // why: 送信時に必要な全情報を埋め込む (channelId, content/renderer hint, target 列など)。
+    //   rehydration は worker 側で担当する。
+    payload: jsonb("payload").notNull(),
+    // unique: 同じ intent の二重 enqueue を防ぐ per-session の決定論キー。
+    //   状態遷移 tx 内で `onConflictDoNothing` に渡し、重複は skipped=true として上位に通知する。
+    dedupeKey: text("dedupe_key").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    // race: worker が claim すると `status=IN_FLIGHT, claim_expires_at=now+ttl` を立てる。
+    //   reconciler は claim_expires_at を過ぎた IN_FLIGHT を PENDING に戻して reclaim する。
+    claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    // source-of-truth: 配送成功時の Discord message id。
+    //   payload.target が指す sessions 列 (askMessageId / postponeMessageId) に worker が書き戻す。
+    deliveredMessageId: text("delivered_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    // invariant: kind は OUTBOX_KINDS と DB CHECK で二重ガード。
+    check(
+      "discord_outbox_kind_check",
+      sql`${table.kind} IN ('send_message','edit_message')`
+    ),
+    check(
+      "discord_outbox_status_check",
+      sql`${table.status} IN ('PENDING','IN_FLIGHT','DELIVERED','FAILED')`
+    ),
+    // unique: 非 FAILED な同 dedupe_key は 1 件のみ。PENDING / IN_FLIGHT / DELIVERED の三状態で
+    //   「同じ intent を最大 1 つ」を強制する。FAILED は dead letter としてスコープ外 (再試行 ADR 別)。
+    //   Drizzle partial unique index は raw where 付きで表現する。
+    uniqueIndex("uq_discord_outbox_dedupe_active")
+      .on(table.dedupeKey)
+      .where(sql`status IN ('PENDING','IN_FLIGHT','DELIVERED')`),
+    // why: worker の `claimNextBatch` は `status IN ('PENDING','IN_FLIGHT') AND next_attempt_at <= now`
+    //   を leading prefix に叩くため composite index で支援。
+    index("idx_discord_outbox_status_next").on(
+      table.status,
+      table.nextAttemptAt
+    )
   ]
 );

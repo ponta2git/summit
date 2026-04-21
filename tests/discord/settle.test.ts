@@ -73,11 +73,25 @@ describe("settleAskingSession", () => {
 
     expect(cancelAskingSpy).toHaveBeenCalledTimes(1);
     expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
-      reason: "absent"
+      reason: "absent",
+      outbox: [
+        expect.objectContaining({
+          kind: "send_message",
+          dedupeKey: `settle-notice-${session.id}-absent`
+        })
+      ]
     });
     expect(startPostponeVotingSpy).toHaveBeenCalledTimes(1);
-    expect(channel.send).toHaveBeenCalledTimes(2);
-    expect(sentMessages).toHaveLength(2);
+    // regression: settle 通知は outbox 経由に切り替わったので、直接 channel.send は 1 回 (順延投票メッセージ) のみ。
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(sentMessages).toHaveLength(1);
+    // invariant: settle-notice outbox 行が enqueue 済み。
+    expect(ctx.ports.outbox.listEntries()).toContainEqual(
+      expect.objectContaining({
+        dedupeKey: `settle-notice-${session.id}-absent`,
+        status: "PENDING"
+      })
+    );
   });
 
   it("cancels Saturday ASKING as saturday_cancelled and completes the week", async () => {
@@ -96,7 +110,14 @@ describe("settleAskingSession", () => {
     });
     expect(completeCancelledSpy).toHaveBeenCalledTimes(1);
     expect(startPostponeVotingSpy).not.toHaveBeenCalled();
-    expect(channel.send).toHaveBeenCalledTimes(1);
+    // regression: 土曜 ASKING は settle 通知のみ outbox 化済みで直接送信なし。
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries()).toContainEqual(
+      expect.objectContaining({
+        dedupeKey: `settle-notice-${session.id}-saturday_cancelled`,
+        status: "PENDING"
+      })
+    );
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
     // regression: 土曜中止は CANCELLED 滞留させず COMPLETED へ収束。

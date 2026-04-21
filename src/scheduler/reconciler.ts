@@ -46,13 +46,15 @@ export interface ReconcileReport {
   readonly askCreated: number;
   readonly messageResent: number;
   readonly staleClaimReclaimed: number;
+  readonly outboxClaimReleased: number;
 }
 
 const EMPTY_REPORT: ReconcileReport = {
   cancelledPromoted: 0,
   askCreated: 0,
   messageResent: 0,
-  staleClaimReclaimed: 0
+  staleClaimReclaimed: 0,
+  outboxClaimReleased: 0
 };
 
 const FRIDAY_JS_DAY = 5;
@@ -388,6 +390,35 @@ export const reconcileStaleReminderClaims = async (
   return reclaimed;
 };
 
+/**
+ * Invariant F (outbox claim reclaim): release IN_FLIGHT outbox rows past their claim deadline.
+ *
+ * @remarks
+ * worker が claim 中に crash すると `discord_outbox.claimExpiresAt` を過ぎたまま IN_FLIGHT で stuck する。
+ * startup で一括 PENDING に戻し、次 worker tick で再配送させる。
+ * @see docs/adr/0035-discord-send-outbox.md
+ */
+export const reconcileOutboxClaims = async (
+  ctx: AppContext
+): Promise<number> => {
+  try {
+    const released = await ctx.ports.outbox.releaseExpiredClaims(ctx.clock.now());
+    if (released > 0) {
+      logger.warn(
+        { event: "reconciler.outbox_claim_reclaimed", released },
+        "Reconciler: released expired outbox claims."
+      );
+    }
+    return released;
+  } catch (error: unknown) {
+    logger.error(
+      { error, event: "reconciler.outbox_claim_reclaim_failed" },
+      "Reconciler: failed to release expired outbox claims."
+    );
+    return 0;
+  }
+};
+
 export type ReconcileScope = "startup" | "tick";
 
 /**
@@ -573,11 +604,14 @@ export const runReconciler = async (
   //   二重投稿にはならない。
   await probeDeletedMessagesAtStartup(client, ctx);
   const staleClaimReclaimed = await reconcileStaleReminderClaims(ctx);
+  // invariant: outbox worker が claim 中に crash した行を startup で reclaim する (ADR-0035)。
+  const outboxClaimReleased = await reconcileOutboxClaims(ctx);
 
   return {
     cancelledPromoted,
     askCreated,
     messageResent,
-    staleClaimReclaimed
+    staleClaimReclaimed,
+    outboxClaimReleased
   };
 };

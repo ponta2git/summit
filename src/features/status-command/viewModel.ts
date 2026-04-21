@@ -2,7 +2,7 @@
 // why: DB 型を表示層から分離し、テストで容易に検証できるようにする。
 
 import { format } from "date-fns";
-import type { HeldEventRow, ResponseRow, SessionRow } from "../../db/ports.js";
+import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.js";
 import {
   isoWeekKey,
   postponeDeadlineFor,
@@ -11,6 +11,7 @@ import {
 import { MEMBER_COUNT_EXPECTED } from "../../config.js";
 import {
   checkStrandedCancelledSessions,
+  checkStrandedOutboxEntries,
   collectInvariantWarnings,
   type InvariantWarning
 } from "./invariantChecks.js";
@@ -52,6 +53,8 @@ export interface StatusViewModel {
   readonly totalWarnings: number;
   readonly strandedCancelled: readonly StrandedCancelledEntry[];
   readonly strandedCancelledWarning: InvariantWarning | null;
+  readonly strandedOutboxCount: number;
+  readonly strandedOutboxWarning: InvariantWarning | null;
 }
 
 const buildSessionStatusViewModel = (
@@ -117,9 +120,11 @@ export const buildStatusViewModel = (input: {
   readonly responsesBySessionId: ReadonlyMap<string, readonly ResponseRow[]>;
   readonly heldEventBySessionId: ReadonlyMap<string, HeldEventRow>;
   readonly strandedCancelledSessions?: readonly SessionRow[];
+  readonly strandedOutboxEntries?: readonly OutboxEntry[];
 }): StatusViewModel => {
   const { now, sessions, responsesBySessionId, heldEventBySessionId } = input;
   const strandedCancelledSessions = input.strandedCancelledSessions ?? [];
+  const strandedOutboxEntries = input.strandedOutboxEntries ?? [];
 
   const sessionVMs = sessions.map((session) => {
     const responses = responsesBySessionId.get(session.id) ?? [];
@@ -129,8 +134,12 @@ export const buildStatusViewModel = (input: {
 
   const nextEventAt = buildNextEventAt(sessions, now);
   const strandedCancelledWarning = checkStrandedCancelledSessions(strandedCancelledSessions) ?? null;
+  const strandedOutboxWarning = checkStrandedOutboxEntries(strandedOutboxEntries) ?? null;
   const perSessionWarnings = sessionVMs.reduce((sum, s) => sum + s.warnings.length, 0);
-  const totalWarnings = perSessionWarnings + (strandedCancelledWarning !== null ? 1 : 0);
+  const totalWarnings =
+    perSessionWarnings +
+    (strandedCancelledWarning !== null ? 1 : 0) +
+    (strandedOutboxWarning !== null ? 1 : 0);
 
   const strandedCancelled: StrandedCancelledEntry[] = strandedCancelledSessions.map((s) => ({
     sessionId: s.id.slice(0, 8),
@@ -145,7 +154,9 @@ export const buildStatusViewModel = (input: {
     nextEventAt,
     totalWarnings,
     strandedCancelled,
-    strandedCancelledWarning
+    strandedCancelledWarning,
+    strandedOutboxCount: strandedOutboxEntries.length,
+    strandedOutboxWarning
   };
 };
 
@@ -190,6 +201,11 @@ export const renderStatusText = (vm: StatusViewModel): string => {
     for (const sc of vm.strandedCancelled) {
       lines.push(`  [CANCELLED] ${sc.sessionId}  week: ${sc.weekKey}  候補日: ${sc.candidateDateIso}`);
     }
+  }
+
+  if (vm.strandedOutboxWarning !== null) {
+    lines.push("");
+    lines.push(`⚠ ${vm.strandedOutboxWarning.message}`);
   }
 
   lines.push("");

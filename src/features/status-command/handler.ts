@@ -1,6 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
 import type { AppContext } from "../../appContext.js";
+import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.js";
 import { logger } from "../../logger.js";
 import {
   assertGuildAndChannel,
@@ -34,9 +35,10 @@ export const handleStatusCommand = async (
   }
 
   const now = ctx.clock.now();
-  const [sessions, strandedCancelled] = await Promise.all([
+  const [sessions, strandedCancelled, strandedOutbox] = await Promise.all([
     ctx.ports.sessions.findNonTerminalSessions(),
-    ctx.ports.sessions.findStrandedCancelledSessions()
+    ctx.ports.sessions.findStrandedCancelledSessions(),
+    ctx.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
   ]);
 
   // 並列で responses と decided sessions の heldEvent を取得する。
@@ -66,7 +68,8 @@ export const handleStatusCommand = async (
     sessions,
     responsesBySessionId,
     heldEventBySessionId,
-    strandedCancelledSessions: strandedCancelled
+    strandedCancelledSessions: strandedCancelled,
+    strandedOutboxEntries: strandedOutbox
   });
 
   const text = renderStatusText(vm);
@@ -79,6 +82,7 @@ export const handleStatusCommand = async (
       userId: interaction.user.id,
       sessionCount: sessions.length,
       strandedCancelledCount: strandedCancelled.length,
+      strandedOutboxCount: strandedOutbox.length,
       weekKey: vm.currentWeekKey,
       totalWarnings: vm.totalWarnings
     },

@@ -5,6 +5,8 @@
 //   使い、`new Date()` 直呼びを排除する。これによりテスト時刻が決定論的になる (M9)。
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
 
+import { randomUUID } from "node:crypto";
+
 import type {
   AppPorts,
   CompleteDecidedSessionAsHeldInput,
@@ -13,11 +15,15 @@ import type {
   CompleteSessionInput,
   CreateAskSessionInput,
   DecideAskingInput,
+  EnqueueOutboxInput,
+  EnqueueResult,
   HeldEventParticipantRow,
   HeldEventRow,
   HeldEventsPort,
   MemberRow,
   MembersPort,
+  OutboxEntry,
+  OutboxPort,
   ResponseRow,
   ResponsesPort,
   SessionRow,
@@ -67,11 +73,19 @@ export interface FakeHeldEventsPort extends HeldEventsPort {
   listAllParticipants(): ReadonlyArray<HeldEventParticipantRow>;
 }
 
+export interface FakeOutboxPort extends OutboxPort {
+  readonly calls: ReadonlyArray<AnyCall>;
+  listEntries(): ReadonlyArray<OutboxEntry>;
+  /** Directly insert a test fixture (bypass CAS / dedupe checks). */
+  seedEntry(entry: OutboxEntry): void;
+}
+
 export interface FakePorts extends AppPorts {
   readonly sessions: FakeSessionsPort;
   readonly responses: FakeResponsesPort;
   readonly members: FakeMembersPort;
   readonly heldEvents: FakeHeldEventsPort;
+  readonly outbox: FakeOutboxPort;
 }
 
 /**
@@ -80,10 +94,13 @@ export interface FakePorts extends AppPorts {
  * @remarks
  * CAS semantics (`undefined` on race loss) and the
  * `(weekKey, postponeCount)` uniqueness are modelled faithfully.
+ * `outboxEnqueue` が渡された場合、CAS 成功時に入力の `outbox` 配列を逐次 enqueue する
+ * (production の `runEdgeUpdate` が tx 内で行う動作を模倣)。
  */
 export const createFakeSessionsPort = (
   seed: ReadonlyArray<SessionRow> = [],
-  clock: FakeClock = DEFAULT_CLOCK
+  clock: FakeClock = DEFAULT_CLOCK,
+  outboxEnqueue?: (entry: EnqueueOutboxInput) => void
 ): FakeSessionsPort => {
   const calls: AnyCall[] = [];
   const byId = new Map<string, SessionRow>(
@@ -91,6 +108,14 @@ export const createFakeSessionsPort = (
   );
 
   const clone = (session: SessionRow): SessionRow => makeSession(session);
+
+  // tx: CAS 成功時に outbox を enqueue する。production の runEdgeUpdate と同じ意味論。
+  const enqueueOutbox = (entries: readonly EnqueueOutboxInput[] | undefined): void => {
+    if (!entries || entries.length === 0 || !outboxEnqueue) {return;}
+    for (const entry of entries) {
+      outboxEnqueue(entry);
+    }
+  };
 
   return {
     calls,
@@ -158,6 +183,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     startPostponeVoting: async (input: StartPostponeVotingInput) => {
@@ -174,6 +200,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     completePostponeVoting: async (input: CompletePostponeVotingInput) => {
@@ -190,6 +217,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     decideAsking: async (input: DecideAskingInput) => {
@@ -206,6 +234,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     completeCancelledSession: async (input: CompleteCancelledSessionInput) => {
@@ -220,6 +249,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     completeSession: async (input: CompleteSessionInput) => {
@@ -235,6 +265,7 @@ export const createFakeSessionsPort = (
         updatedAt: input.now
       });
       byId.set(next.id, next);
+      enqueueOutbox(input.outbox);
       return clone(next);
     },
     claimReminderDispatch: async (id, now) => {
@@ -518,7 +549,163 @@ export interface FakePortsSeed {
   readonly members?: ReadonlyArray<MemberRow>;
   readonly heldEvents?: ReadonlyArray<HeldEventRow>;
   readonly heldEventParticipants?: ReadonlyArray<HeldEventParticipantRow>;
+  readonly outbox?: ReadonlyArray<OutboxEntry>;
 }
+
+/**
+ * Create an in-memory fake for {@link OutboxPort}.
+ *
+ * @remarks
+ * - `enqueue`: `uq_discord_outbox_dedupe_active` の partial unique (非 FAILED) を模倣する。
+ *   同じ dedupeKey が PENDING / IN_FLIGHT / DELIVERED で既に存在すれば skipped=true を返し、
+ *   FAILED のみが残っていれば再 enqueue を許可 (real DB と同じ semantics)。
+ * - `claimNextBatch`: `status='PENDING' AND nextAttemptAt<=now` および expired IN_FLIGHT を候補に
+ *   `IN_FLIGHT` へ遷移、`attemptCount` を +1、`claimExpiresAt=now+ttl` を立てる。
+ * - `markDelivered`/`markFailed`: CAS (status=IN_FLIGHT) を要求する real repository と揃える。
+ * - `releaseExpiredClaims`: claim_expires_at を過ぎた IN_FLIGHT を PENDING に戻す。
+ */
+export const createFakeOutboxPort = (
+  seed: ReadonlyArray<OutboxEntry> = [],
+  clock: FakeClock = DEFAULT_CLOCK
+): FakeOutboxPort => {
+  const calls: AnyCall[] = [];
+  const byId = new Map<string, OutboxEntry>(seed.map((e) => [e.id, { ...e }]));
+  const cloneEntry = (e: OutboxEntry): OutboxEntry => ({ ...e });
+
+  const activeDedupeIds = (key: string): OutboxEntry | undefined =>
+    Array.from(byId.values()).find(
+      (e) => e.dedupeKey === key && e.status !== "FAILED"
+    );
+
+  const port: FakeOutboxPort = {
+    calls,
+    listEntries: () => Array.from(byId.values()).map(cloneEntry),
+    seedEntry: (entry) => {
+      byId.set(entry.id, { ...entry });
+    },
+    enqueue: async (input: EnqueueOutboxInput): Promise<EnqueueResult> => {
+      recordCall(calls, "enqueue", { input });
+      // unique: 非 FAILED な同 dedupe_key は 1 件のみ (partial unique index 模倣)。
+      const existing = activeDedupeIds(input.dedupeKey);
+      if (existing) {
+        return { id: existing.id, skipped: true };
+      }
+      const id = randomUUID();
+      const now = clock.now();
+      const entry: OutboxEntry = {
+        id,
+        kind: input.kind,
+        sessionId: input.sessionId,
+        payload: input.payload,
+        dedupeKey: input.dedupeKey,
+        status: "PENDING",
+        attemptCount: 0,
+        lastError: null,
+        claimExpiresAt: null,
+        nextAttemptAt: now,
+        deliveredAt: null,
+        deliveredMessageId: null,
+        createdAt: now,
+        updatedAt: now
+      };
+      byId.set(id, entry);
+      return { id, skipped: false };
+    },
+    claimNextBatch: async ({ limit, now, claimDurationMs }) => {
+      recordCall(calls, "claimNextBatch", { limit, now, claimDurationMs });
+      // race: PENDING で next_attempt_at<=now もしくは expired IN_FLIGHT を候補にし、limit 件まで claim。
+      const candidates = Array.from(byId.values())
+        .filter((e) => {
+          if (e.status === "PENDING" && e.nextAttemptAt <= now) {return true;}
+          if (
+            e.status === "IN_FLIGHT" &&
+            e.claimExpiresAt !== null &&
+            e.claimExpiresAt <= now
+          ) {
+            return true;
+          }
+          return false;
+        })
+        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime())
+        .slice(0, limit);
+      const claimed: OutboxEntry[] = [];
+      for (const c of candidates) {
+        const next: OutboxEntry = {
+          ...c,
+          status: "IN_FLIGHT",
+          attemptCount: c.attemptCount + 1,
+          claimExpiresAt: new Date(now.getTime() + claimDurationMs),
+          updatedAt: now
+        };
+        byId.set(c.id, next);
+        claimed.push(cloneEntry(next));
+      }
+      return claimed;
+    },
+    markDelivered: async (id, { deliveredMessageId, now }) => {
+      recordCall(calls, "markDelivered", { id, deliveredMessageId, now });
+      const found = byId.get(id);
+      // race: CAS (IN_FLIGHT→DELIVERED) のみ成立する。他状態は no-op。
+      if (!found || found.status !== "IN_FLIGHT") {return false;}
+      byId.set(id, {
+        ...found,
+        status: "DELIVERED",
+        deliveredAt: now,
+        deliveredMessageId,
+        claimExpiresAt: null,
+        updatedAt: now
+      });
+      return true;
+    },
+    markFailed: async (id, { error, now, nextAttemptAt }) => {
+      recordCall(calls, "markFailed", { id, error, now, nextAttemptAt });
+      const found = byId.get(id);
+      if (!found || found.status !== "IN_FLIGHT") {return false;}
+      byId.set(id, {
+        ...found,
+        status: nextAttemptAt === null ? "FAILED" : "PENDING",
+        lastError: error.slice(0, 4000),
+        claimExpiresAt: null,
+        nextAttemptAt: nextAttemptAt ?? now,
+        updatedAt: now
+      });
+      return true;
+    },
+    releaseExpiredClaims: async (now) => {
+      recordCall(calls, "releaseExpiredClaims", { now });
+      let released = 0;
+      for (const e of Array.from(byId.values())) {
+        if (
+          e.status === "IN_FLIGHT" &&
+          e.claimExpiresAt !== null &&
+          e.claimExpiresAt <= now
+        ) {
+          byId.set(e.id, {
+            ...e,
+            status: "PENDING",
+            claimExpiresAt: null,
+            nextAttemptAt: now,
+            updatedAt: now
+          });
+          released += 1;
+        }
+      }
+      return released;
+    },
+    findStranded: async (threshold) => {
+      recordCall(calls, "findStranded", { threshold });
+      return Array.from(byId.values())
+        .filter(
+          (e) =>
+            e.status === "FAILED" ||
+            ((e.status === "PENDING" || e.status === "IN_FLIGHT") &&
+              e.attemptCount >= threshold)
+        )
+        .map(cloneEntry);
+    }
+  };
+  return port;
+};
 
 /**
  * Build a complete {@link FakePorts} bundle. Tests should prefer this over partial construction,
@@ -528,14 +715,25 @@ export const createFakePorts = (
   seed: FakePortsSeed = {},
   clock: FakeClock = DEFAULT_CLOCK
 ): FakePorts => {
-  const sessions = createFakeSessionsPort(seed.sessions ?? [], clock);
+  const outbox = createFakeOutboxPort(seed.outbox ?? [], clock);
+  // tx: outbox enqueue callback を sessions fake に渡すことで、
+  //   production の runEdgeUpdate (CAS と同 tx insert) を fake でも再現する。
+  const sessions = createFakeSessionsPort(
+    seed.sessions ?? [],
+    clock,
+    (entry: EnqueueOutboxInput) => {
+      // why: fake 側は partial unique を onConflictDoNothing 相当に模倣する。
+      //   非同期 API だが CAS 内部呼び出しなので sync に expose しておき await は不要。
+      void outbox.enqueue(entry);
+    }
+  );
   const responses = createFakeResponsesPort(seed.responses ?? []);
   const members = createFakeMembersPort(seed.members ?? []);
   const heldEvents = createFakeHeldEventsPort(sessions, {
     heldEvents: seed.heldEvents ?? [],
     participants: seed.heldEventParticipants ?? []
   }, clock);
-  return { sessions, responses, members, heldEvents };
+  return { sessions, responses, members, heldEvents, outbox };
 };
 
 export interface TestAppContext {

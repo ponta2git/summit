@@ -6,11 +6,13 @@ export {
 export {
   createFakeHeldEventsPort,
   createFakeMembersPort,
+  createFakeOutboxPort,
   createFakePorts,
   createFakeResponsesPort,
   createFakeSessionsPort,
   createTestAppContext,
   type FakeHeldEventsPort,
+  type FakeOutboxPort,
   type FakePorts,
   type FakePortsSeed,
   type TestAppContext

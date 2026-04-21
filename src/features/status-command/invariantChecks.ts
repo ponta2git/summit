@@ -1,7 +1,7 @@
 // why: /status が表示する stranded invariant の純粋判定関数群。
 //   I/O なし。handler が収集済みのデータを受け取り警告文字列を返す。
 
-import type { HeldEventRow, SessionRow } from "../../db/ports.js";
+import type { HeldEventRow, OutboxEntry, SessionRow } from "../../db/ports.js";
 
 export interface InvariantWarning {
   readonly kind: string;
@@ -99,6 +99,28 @@ export const checkStrandedCancelledSessions = (
   return {
     kind: "stranded_cancelled",
     message: `${strandedSessions.length} session(s) stuck in CANCELLED (reconciler may not have run): [${ids}]`
+  };
+};
+
+/**
+ * Stranded outbox 行 (FAILED / 連続失敗 PENDING) を aggregate 警告化する。
+ *
+ * @remarks
+ * ADR-0035: worker が dead letter (FAILED) に落とした行、もしくは attempt_count が
+ * `OUTBOX_STRANDED_ATTEMPTS_THRESHOLD` を超えた PENDING / IN_FLIGHT は運用者の介入が必要。
+ * 最古 entry の dedupeKey を含めることで一次切り分けを容易にする。
+ * @see docs/adr/0035-discord-send-outbox.md
+ */
+export const checkStrandedOutboxEntries = (
+  entries: readonly OutboxEntry[]
+): InvariantWarning | undefined => {
+  if (entries.length === 0) { return undefined; }
+  const oldest = entries.reduce((a, b) =>
+    a.createdAt.getTime() <= b.createdAt.getTime() ? a : b
+  );
+  return {
+    kind: "outbox_stranded",
+    message: `${entries.length} outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="${oldest.dedupeKey}"`
   };
 };
 

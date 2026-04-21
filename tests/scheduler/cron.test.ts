@@ -27,7 +27,7 @@ describe("ask scheduler", () => {
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(5);
+    expect(tasks).toHaveLength(6);
     expect(tasks[0]?.stop).toBe(stop);
     expect(schedule).toHaveBeenNthCalledWith(1, "0 8 * * 5", expect.any(Function), {
       timezone: "Asia/Tokyo",
@@ -54,7 +54,7 @@ describe("ask scheduler", () => {
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(5);
+    expect(tasks).toHaveLength(6);
     expect(schedule).toHaveBeenCalledWith("0 0 * * 6", expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true
@@ -79,7 +79,7 @@ describe("ask scheduler", () => {
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(5);
+    expect(tasks).toHaveLength(6);
     expect(schedule).toHaveBeenCalledWith(CRON_REMINDER_SCHEDULE, expect.any(Function), {
       timezone: "Asia/Tokyo",
       noOverlap: true

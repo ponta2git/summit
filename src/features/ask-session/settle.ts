@@ -44,10 +44,28 @@ export const settleAskingSession = async (
     current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
 
   const now = ctx.clock.now();
+  // tx: ASKING→CANCELLED の CAS と同じ tx で settle 通知を outbox に enqueue する (ADR-0035)。
+  //   crash で settle message が落ちても worker が次 tick で配送する。
+  //   dedupe key: settle-notice-{sessionId}-{reason} — 同 session で reason が変わらない限り 1 件に収束。
+  const settleVm = buildSettleNoticeViewModel(resolvedReason);
+  const settleBody = renderSettleNotice(settleVm);
   const cancelled = await ctx.ports.sessions.cancelAsking({
     id: sessionId,
     now,
-    reason: resolvedReason
+    reason: resolvedReason,
+    outbox: [
+      {
+        kind: "send_message",
+        sessionId,
+        dedupeKey: `settle-notice-${sessionId}-${resolvedReason}`,
+        payload: {
+          kind: "send_message",
+          channelId: current.channelId,
+          renderer: "settle_notice",
+          extra: { content: settleBody.content }
+        }
+      }
+    ]
   });
   if (!cancelled) {
     // state: ASKING→CANCELLED の CAS 競合敗北は無害な race lost として扱う
@@ -60,11 +78,9 @@ export const settleAskingSession = async (
 
   logger.info({ sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason: resolvedReason }, "Session cancelled.");
   await updateAskMessage(client, ctx, cancelled);
+  // why: settle 通知はここでは直接送らない (上の outbox enqueue に移行済み)。
+  //   順延投票メッセージは未だ outbox 化していない (後続 ADR 対象)。
   const channel = await getTextChannel(client, cancelled.channelId);
-
-  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-  const settleVm = buildSettleNoticeViewModel(resolvedReason);
-  await channel.send(renderSettleNotice(settleVm));
 
   if (cancelled.postponeCount === 1) {
     // regression: 土曜回中止は CANCELLED に滞留させず、短命中間を経由して COMPLETED へ収束させる。
