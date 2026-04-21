@@ -1,0 +1,43 @@
+# fly.toml — summit (Discord Bot, single-instance)
+# @see docs/adr/0005-operations-policy.md
+# deploy-window: 金 17:30〜土 01:00 JST はデプロイ禁止 (ADR-0005)
+
+app = "summit"
+primary_region = "nrt"
+
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  builder = "heroku/buildpacks:24"
+
+[deploy]
+  # single-instance: immediate は旧インスタンスを先に落としてから新しいインスタンスを起動する。
+  # rolling は複数インスタンス前提の戦略で、単一インスタンス Bot には不要。
+  strategy = "immediate"
+  # why: release_command で migration を適用してから新プロセスを起動する。
+  release_command = "pnpm drizzle-kit migrate"
+
+[processes]
+  app = "node dist/index.js"
+
+[env]
+  # secret: DISCORD_TOKEN / DATABASE_URL / DIRECT_URL / HEALTHCHECK_PING_URL /
+  #   MEMBER_USER_IDS / DISCORD_GUILD_ID / DISCORD_CHANNEL_ID は
+  #   Fly secrets に登録し、ここには載せない (`fly secrets set KEY=...`)。
+  NODE_ENV = "production"
+  TZ = "Asia/Tokyo"
+  POSTPONE_DEADLINE = "24:00"
+
+# No [http_service] or [[services]]:
+#   この Bot は HTTP エンドポイントを持たない。Fly の TCP/HTTP ヘルスチェックは
+#   適用外。稼働監視は HEALTHCHECK_PING_URL (Fly secret) で healthchecks.io へ
+#   ボット内部から ping する設計 (ADR-0005)。
+#
+# auto_rollback:
+#   Fly v2 machines の TOML スキーマにトップレベル auto_rollback フィールドは存在しない。
+#   ロールバックは `fly deploy` 実行時の --auto-rollback フラグで制御する。
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

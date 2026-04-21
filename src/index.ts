@@ -144,10 +144,26 @@ const run = async (): Promise<void> => {
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({ client, context: appContext });
 
+  // why: FLY_IMAGE_REF (Fly が自動挿入するイメージ参照) → GIT_SHA (CI inject) → 'unknown' の優先順で取得する。
+  const commitSha = env.FLY_IMAGE_REF ?? env.GIT_SHA ?? "unknown";
   logBootPhase("ready", {
-    guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID
+    // event を 'startup.ready' で上書きし、他フェーズの 'boot.phase' と区別する。
+    event: "startup.ready",
+    commitSha,
+    discordGuildId: env.DISCORD_GUILD_ID,
+    channelId: env.DISCORD_CHANNEL_ID,
+    memberCount: env.MEMBER_USER_IDS.length,
+    nodeVersion: process.version
   });
+
+  // M5: 起動完了後に best-effort で healthchecks.io に ping する。
+  //   未設定 (undefined) は no-op。失敗しても起動は継続する。
+  if (env.HEALTHCHECK_PING_URL !== undefined) {
+    const pingUrl = env.HEALTHCHECK_PING_URL;
+    void fetch(pingUrl).catch((err: unknown) =>
+      logger.warn({ err }, "healthcheck boot ping failed")
+    );
+  }
 
   logger.info(
     {

@@ -55,6 +55,11 @@ export const envSchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.string().url().optional()
   ),
+  // why: デプロイごとのコミット追跡用。Fly が自動挿入する FLY_IMAGE_REF を優先し、
+  //   CI で GIT_SHA を別途 inject する場合はフォールバックとして使う。
+  //   いずれも未設定なら 'unknown' として startup.ready ログに出力する。
+  FLY_IMAGE_REF: z.string().optional(),
+  GIT_SHA: z.string().optional(),
   // why: 開発中に本番チャンネルへ投稿しても `<@id>` の push 通知を固定 4 名へ飛ばさないためのスイッチ。
   //   本番 invariant: 常時 OFF（未設定 = false）。true にすると本文から mention 行を除去し、
   //   加えて Client-level `allowedMentions: { parse: [] }` で保険をかける。
