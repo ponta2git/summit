@@ -41,7 +41,7 @@ tags: [runtime, db, discord, ops]
 - **回復の自動化**: プロセス落ち・rolling restart 後に operator 介入なしで DB と Discord を invariant に戻せる。`fly ssh` での手動 `UPDATE` を必要としない (AGENTS.md 禁止領域を守る)。
 - **冪等性の維持**: 各 invariant は edge-specific state API (ADR-0001, Phase I1) の CAS 契約に依存するため、scheduler tick と reconciler が同時走行しても race lost になるだけで副作用は起きない。
 - **可観測性の向上**: `boot.phase` ログで起動の停止地点 (DB 接続 / login / reconcile) が切り分け可能になり、`reconciler.*` ログで収束頻度を監視できる。運用異常 (頻発する `cancelled_promoted` など) の検知が可能。
-- **interaction 入口の安全化**: `src/index.ts` の ready signal が `runReconciler(scope="startup")` と `runStartupRecovery()` の完了まで `interactionCreate` dispatcher を gate し、起動直後の未収束期間で DB 変更を受け付けない。
+- **interaction 入口の安全化**: `src/index.ts` の ready signal が `runReconciler(scope="startup")` と `runStartupRecovery()` の完了まで `interactionCreate` dispatcher を gate し、起動直後の未収束期間で DB 変更を受け付けない（参照: `src/index.ts`）。
 - **tick scope の意図的な縮小**: A〜C を毎分走らせない代わりに、`askMessageId=NULL` など Discord-side の不整合はプロセス再起動まで放置される可能性がある。この範囲は運用上許容し、必要になったら Phase I3 (outbox pattern) で常時監視に昇格させる。
 - **`CANCELLED → COMPLETED` を選択した影響**: 「路が無いなら SKIPPED」と書いた初期案に対し、`SESSION_ALLOWED_TRANSITIONS` との整合性から `COMPLETED` を採用した。`SKIPPED` は `/cancel_week` の意味論 (意図的なキャンセル) を保持する。
 - **新規ポートメソッド追加**: `findStrandedCancelledSessions` / `findStaleReminderClaims` は real / fake の双方に実装が必要。`AppContext` 経由 (ADR-0018) で注入するためテスト経路は壊さない。

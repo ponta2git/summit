@@ -41,6 +41,7 @@ export const GUARD_FAILURE_REASONS = [
   "invalid_custom_id",
   "session_not_found",
   "session_not_asking",
+  "session_asking_closed",
   "session_not_postpone_voting",
   "session_postpone_closed",
   "member_not_registered"
@@ -158,6 +159,19 @@ export const guardSessionPostponeVoting = (
   return okResult(session);
 };
 
+export const guardSessionAskingDeadlineOpen = (
+  session: SessionRow,
+  now: Date
+): AppResult<SessionRow, ValidationError> => {
+  if (now.getTime() >= session.deadlineAt.getTime()) {
+    return errResult(
+      buildValidationError("session_asking_closed", "Ask response deadline has passed.")
+    );
+  }
+
+  return okResult(session);
+};
+
 export const guardSessionPostponeDeadlineOpen = (
   session: SessionRow,
   now: Date
@@ -203,6 +217,7 @@ export const GUARD_REASON_TO_MESSAGE: Record<GuardFailureReason, string> = {
   invalid_custom_id: rejectMessages.reject.invalidCustomId,
   session_not_found: rejectMessages.reject.sessionNotFound,
   session_not_asking: rejectMessages.reject.staleSession,
+  session_asking_closed: rejectMessages.reject.askingClosed,
   session_not_postpone_voting: rejectMessages.reject.postponeVotingClosed,
   session_postpone_closed: rejectMessages.reject.postponeVotingClosed,
   member_not_registered: rejectMessages.reject.memberNotRegistered

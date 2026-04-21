@@ -19,10 +19,15 @@ import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js"
  */
 export const handleCancelWeekButton = async (
   interaction: ButtonInteraction,
-  deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps,
+  options: {
+    readonly acknowledged?: boolean;
+  } = {}
 ): Promise<void> => {
-  // ack: ephemeral confirmation の更新は update() で原子的に行う（deferUpdate はこの関数の中で行う）。
-  await interaction.deferUpdate();
+  if (!options.acknowledged) {
+    // ack: ephemeral confirmation の更新は update() で原子的に行う（deferUpdate はこの関数の中で行う）。
+    await interaction.deferUpdate();
+  }
 
   // invariant: cheap-first. guild/channel/member は dispatcher 側でも検証済みだが、
   //   confirmation dialog でも念のため再評価（防御的多重化）。

@@ -2,6 +2,7 @@ import {
   type ButtonInteraction,
   type Client,
   type Interaction,
+  type InteractionReplyOptions,
   MessageFlags
 } from "discord.js";
 
@@ -29,7 +30,54 @@ export interface InteractionHandlerDeps {
   readonly sendAsk: SendAsk;
   readonly client: Client;
   readonly context: AppContext;
+  readonly getReadyState?: () => AppReadyState;
 }
+
+export interface AppReadyState {
+  ready: boolean;
+  reason: string | undefined;
+}
+
+const STARTUP_NOT_READY_MESSAGE = "起動処理中です。数秒待って再度お試しください。";
+
+const buildNotReadyPayload = (): InteractionReplyOptions => ({
+  content: STARTUP_NOT_READY_MESSAGE,
+  flags: MessageFlags.Ephemeral
+});
+
+const logNotReadyRejection = (interaction: Interaction, reason?: string): void => {
+  logger.info(
+    {
+      event: "interaction.rejected_not_ready",
+      interactionId: interaction.id,
+      userId: interaction.user?.id,
+      customId: interaction.isButton() ? interaction.customId : undefined,
+      commandName: interaction.isChatInputCommand() ? interaction.commandName : undefined,
+      reason
+    },
+    "Rejected interaction because startup/reconnect is not ready."
+  );
+};
+
+const handleNotReadyInteraction = async (
+  interaction: Interaction,
+  reason?: string
+): Promise<boolean> => {
+  if (interaction.isButton()) {
+    await interaction.deferUpdate();
+    await interaction.followUp(buildNotReadyPayload());
+    logNotReadyRejection(interaction, reason);
+    return true;
+  }
+
+  if (interaction.isChatInputCommand()) {
+    await interaction.reply(buildNotReadyPayload());
+    logNotReadyRejection(interaction, reason);
+    return true;
+  }
+
+  return false;
+};
 
 const handleButton = async (
   interaction: ButtonInteraction,
@@ -38,30 +86,27 @@ const handleButton = async (
   // why: UX 判断 — guild/channel/member 各ガードの拒否理由を個別メッセージで伝える
   const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
   if (reason) {
-    await interaction.deferUpdate();
     await interaction.followUp(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
     return;
   }
 
   if (interaction.customId.startsWith("ask:")) {
-    await interaction.deferUpdate();
     await handleAskButton(interaction, deps);
     return;
   }
 
   if (interaction.customId.startsWith("postpone:")) {
-    await handlePostponeButton(interaction, deps);
+    await handlePostponeButton(interaction, deps, { acknowledged: true });
     return;
   }
 
   if (interaction.customId.startsWith("cancel_week:")) {
-    await handleCancelWeekButton(interaction, deps);
+    await handleCancelWeekButton(interaction, deps, { acknowledged: true });
     return;
   }
 
   // why: 古いメッセージの stale ボタンを押したユーザーが「何も起きない」と困惑するのを防ぐ
-  // ack: deferUpdate() は既に済んでいるため followUp で ephemeral 通知する
-  await interaction.deferUpdate();
+  // ack: deferUpdate() は interaction 入口で実行済み。ここでは followUp で ephemeral 通知する。
   logger.warn(
     {
       interactionId: interaction.id,
@@ -82,6 +127,14 @@ export const handleInteraction = async (
   interaction: Interaction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
+  const readyState = deps.getReadyState?.() ?? { ready: true, reason: undefined };
+  if (!readyState.ready) {
+    const handled = await handleNotReadyInteraction(interaction, readyState.reason);
+    if (handled) {
+      return;
+    }
+  }
+
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === "ask") {
       await handleAskCommand(interaction, deps);
@@ -106,6 +159,7 @@ export const handleInteraction = async (
   }
 
   if (interaction.isButton()) {
+    await interaction.deferUpdate();
     await handleButton(interaction, deps);
     return;
   }
@@ -115,14 +169,25 @@ export const handleInteraction = async (
   }
 };
 
-export const registerInteractionHandlers = (client: Client, context: AppContext): void => {
+export const registerInteractionHandlers = (
+  client: Client,
+  context: AppContext,
+  options: {
+    readonly getReadyState?: () => AppReadyState;
+  } = {}
+): void => {
   client.on("interactionCreate", (interaction) => {
     // ack: 3 秒制約・入口 try/catch を集約
     void (async () => {
       try {
+        const readyDeps =
+          options.getReadyState === undefined
+            ? {}
+            : { getReadyState: options.getReadyState };
         await handleInteraction(interaction, {
           client,
           context,
+          ...readyDeps,
           sendAsk: (args) => sendAskMessage(client, { ...args, context })
         });
       } catch (err: unknown) {

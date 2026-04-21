@@ -8,6 +8,7 @@ import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./features/ask-session/send.js";
 import { createDiscordClient } from "./discord/client.js";
 import { registerInteractionHandlers } from "./discord/index.js";
+import type { AppReadyState } from "./discord/shared/dispatcher.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { buildMemberReconcileInputs } from "./members/inputs.js";
@@ -18,7 +19,41 @@ import { shutdownGracefully } from "./shutdown.js";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
-registerInteractionHandlers(client, appContext);
+const appReadyState: AppReadyState = {
+  ready: false,
+  reason: "startup"
+};
+let startupCompleted = false;
+
+const markAppReady = (): void => {
+  appReadyState.ready = true;
+  appReadyState.reason = undefined;
+};
+
+const markAppNotReady = (reason: string): void => {
+  appReadyState.ready = false;
+  appReadyState.reason = reason;
+};
+
+client.on("shardDisconnect", () => {
+  if (!startupCompleted) {
+    return;
+  }
+
+  markAppNotReady("reconnecting");
+});
+
+client.on("shardReady", () => {
+  if (!startupCompleted) {
+    return;
+  }
+
+  markAppReady();
+});
+
+registerInteractionHandlers(client, appContext, {
+  getReadyState: () => appReadyState
+});
 
 // why: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
 //   auto-start するため、モジュール top で生成すると startup recovery と reminder cron tick が
@@ -140,6 +175,8 @@ const run = async (): Promise<void> => {
   // race: scheduler は本呼び出しの完了**後に**生成する。先に生成すると reminder tick と
   //   recovery が並行し、同じ DECIDED セッションへ二重送信の race を開く (ADR-0024)。
   await runStartupRecovery(client, appContext);
+  startupCompleted = true;
+  markAppReady();
 
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({ client, context: appContext });
@@ -175,6 +212,7 @@ const run = async (): Promise<void> => {
 };
 
 void run().catch((error: unknown) => {
+  markAppNotReady("startup_failed");
   logger.error({ error, bootId }, "Failed to start Discord bot.");
   process.exit(1);
 });

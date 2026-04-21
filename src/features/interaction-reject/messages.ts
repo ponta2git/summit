@@ -5,6 +5,7 @@ export const rejectMessages = {
     wrongGuild: "このサーバー以外からは操作できません",
     invalidCustomId: "ボタンの形式が不正です",
     staleSession: "この募集は既に締切されています",
+    askingClosed: "受付は締め切られました",
     postponeVotingClosed: "順延投票はすでに締め切られています",
     sessionNotFound: "このセッションは存在しません",
     memberNotRegistered: "メンバー登録がありません",

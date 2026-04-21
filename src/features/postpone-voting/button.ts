@@ -220,10 +220,15 @@ const handlePostponePipelineError = async (
  */
 export const handlePostponeButton = async (
   interaction: ButtonInteraction,
-  deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps,
+  options: {
+    readonly acknowledged?: boolean;
+  } = {}
 ): Promise<void> => {
-  // ack: component interaction は 3 秒制約があるため handler 入口で deferUpdate() する。
-  await interaction.deferUpdate();
+  if (!options.acknowledged) {
+    // ack: component interaction は 3 秒制約があるため handler 入口で deferUpdate() する。
+    await interaction.deferUpdate();
+  }
 
   const pipelineStart: PostponePipelineStart = {
     interaction,

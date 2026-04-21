@@ -25,6 +25,7 @@ import {
   guardMemberUserId,
   guardRegisteredMemberId,
   guardSessionAsking,
+  guardSessionAskingDeadlineOpen,
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.js";
@@ -72,6 +73,9 @@ const loadSessionStep = (context: AskPipelineParsed): ResultAsync<AskPipelineWit
   )
     .andThen((session) => toResultAsync(guardSessionExists(session)))
     .andThen((session) => toResultAsync(guardSessionAsking(session)))
+    .andThen((session) =>
+      toResultAsync(guardSessionAskingDeadlineOpen(session, context.context.clock.now()))
+    )
     .map((session) => ({
       ...context,
       session
