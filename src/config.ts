@@ -22,6 +22,9 @@ export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 //   claim → Discord 送信は通常ミリ秒オーダーのため、分単位の保持は異常と判断する。
 // @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
 export const REMINDER_CLAIM_STALENESS_MS = 5 * 60 * 1000;
+// why: cron tick が 1 分 = 60 秒周期のため、これを超えると次 tick と競合するリスクがある。
+//   10 秒を warn 閾値とし、長時間 tick を早期検知して noOverlap の有効性を評価できるようにする。
+export const TICK_DURATION_WARN_MS = 10_000;
 // why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
 //   定義は env.ts（循環参照回避のため）。消費側は config.ts 経由で import する。
 export { MEMBER_COUNT_EXPECTED } from "./env.js";
