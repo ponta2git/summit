@@ -1,6 +1,7 @@
 import {
   check,
   date,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -88,6 +89,20 @@ export const sessions = pgTable(
     check(
       "sessions_postpone_count_check",
       sql`${table.postponeCount} IN (0, 1)`
+    ),
+    // why: composite index (status, deadline_at) で findDueAskingSessions / findDuePostponeVotingSessions を加速。
+    //   status が leading column のため、WHERE status IN (...) AND deadline_at <= now の prefix/range scan 可能。
+    //   partial index は Drizzle 0.45 で WHERE 条件記述が複雑になるため、composite で十分。
+    //   @see docs/reviews/2026-04-21/final-report.md M1
+    index("idx_sessions_status_deadline").on(table.status, table.deadlineAt),
+    // why: composite index (status, reminder_sent_at, reminder_at) で findDueReminderSessions を加速。
+    //   status='DECIDED' AND reminder_sent_at IS NULL AND reminder_at <= now の検索を prefix scan で支援。
+    //   leading column status によってインデックス活用率を最大化。
+    //   @see docs/reviews/2026-04-21/final-report.md M1
+    index("idx_sessions_status_reminder").on(
+      table.status,
+      table.reminderSentAt,
+      table.reminderAt
     )
   ]
 );

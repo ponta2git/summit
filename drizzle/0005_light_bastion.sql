@@ -1,0 +1,2 @@
+CREATE INDEX "idx_sessions_status_deadline" ON "sessions" USING btree ("status","deadline_at");--> statement-breakpoint
+CREATE INDEX "idx_sessions_status_reminder" ON "sessions" USING btree ("status","reminder_sent_at","reminder_at");

@@ -36,6 +36,13 @@
       "when": 1776688030975,
       "tag": "0004_organic_magdalene",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776770149943,
+      "tag": "0005_light_bastion",
+      "breakpoints": true
     }
   ]
 }
