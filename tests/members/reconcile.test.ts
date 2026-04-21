@@ -4,16 +4,6 @@ import type { DbLike } from "../../src/db/rows.js";
 import { reconcileMembers } from "../../src/members/reconcile.js";
 import type { MemberReconcileInput } from "../../src/members/inputs.js";
 
-// why: DB 操作を stub し、reconcileMembers のロジック（upsert 判定・ログ出力）を検証する。
-vi.mock("../../src/db/schema.js", () => ({
-  members: {
-    id: "id",
-    userId: "user_id",
-    displayName: "display_name",
-    createdAt: "created_at"
-  }
-}));
-
 vi.mock("../../src/logger.js", () => ({
   logger: {
     info: vi.fn(),

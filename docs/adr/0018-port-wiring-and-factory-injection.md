@@ -144,6 +144,7 @@ const ctx = createTestAppContext({ seed: { sessions: [mockSession] } });
 - **依存グラフの可視化**: `appContext.ts` の 1 ファイルから全依存関係が読める。新人エージェントが責務フローを理解しやすい。
 - **テスト環境と本番の同一化**: production と test が同じ `AppContext` shape を共有するため、差分が「ports と clock の実装だけ」に局所化する。環境による動作差分が最小化される。
 - **Fake ports の再利用性**: `FakeSessionsPort` を複数テストで再利用できる。seed data の組み合わせで複雑な状態をセットアップ可能。
+- **決定論的タイムスタンプ**: `createFakeSessionsPort` / `createFakeHeldEventsPort` は `createTestAppContext` から clock を受け取り、`updatedAt` / `createdAt` 等に `new Date()` 直呼びを使わない。`now` を固定した ctx を渡せばポート内部の時刻が完全に再現可能になる。
 
 ### 失うもの / 制約
 - **間接層の追加**: 小さな read one-off クエリでも `ctx.ports.sessions.findSessionById` と書く。ただし naming は自然であり、AI の読みやすさに優る。
@@ -151,8 +152,9 @@ const ctx = createTestAppContext({ seed: { sessions: [mockSession] } });
 
 ### 運用上の含意
 - 新 handler / scheduler 関数は `AppContext` 受領を前提に設計し、module-level import で db / repos を呼ばない。
-- 既存の `vi.mock("../../src/db/repositories/...")` パターンを新規テストに**使わない**。Fake ports + seed を使う。
-- renderer / message builder（DB 依存がない pure 関数）など、port 境界外のコンポーネントには既存の vi.mock を継続可能。
+- **`vi.mock` on repositories / db / client は禁止**。Fake ports + `createTestAppContext` の seed を使う。
+- renderer / message builder（DB 依存がない pure 関数）など、port 境界外のコンポーネントには vi.mock を継続可能。
+- **Test fakes は `tests/testing/` に集約**。`createFakeSessionsPort` / `createFakeResponsesPort` / `createFakeMembersPort` / `createFakeHeldEventsPort` を追加・拡張する際はここに置き、個々のテストファイルに inline fake を書かない。
 
 ## Alternatives considered
 
@@ -181,8 +183,9 @@ const ctx = createTestAppContext({ seed: { sessions: [mockSession] } });
 4. caller は `ctx.ports.*` 経由で使用。
 
 ### 既存 vi.mock の扱い
-- `vi.mock("../../src/db/repositories/...")` を**新規テストに書かない**。
-- 既存テストで残る vi.mock は renderer（`render*.ts`）など、port 境界外のものに限定。段階的に Fake ports へ移行。
+- `vi.mock` on `src/db/repositories/...` / `src/db/client` は**新規テストに書かない**。
+- 既存テストで残る vi.mock は renderer（`render*.ts`）・feature settle 関数など、port 境界外のものに限定。段階的に Fake ports へ移行。
+- `src/db/schema.ts` のような純粋定数モジュールは vi.mock を使わず実 import を使う（副作用がなく DB 接続不要のため）。
 
 ### Test seed 設計
 Fake ports が DB 相当の重要な property（unique 制約 / CAS semantics / 状態遷移ルール）を再現できるレベルまで実装し、test seed を通じて任意の前提状態をセットアップ可能にする。

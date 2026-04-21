@@ -1,6 +1,8 @@
 // why: AppPorts の in-memory 実装。production と同じ AppContext を組み立ててテストに注入する。
 // invariant: 呼び出し順と引数を call log で記録し、assertion 可能にする。CAS / unique 制約などの
 //   業務 invariant は real port と同じ semantics で模倣する。
+// invariant: createTestAppContext から渡された clock を fake ports 内部の updatedAt/createdAt に
+//   使い、`new Date()` 直呼びを排除する。これによりテスト時刻が決定論的になる (M9)。
 // @see docs/adr/0018-port-wiring-and-factory-injection.md
 
 import type {
@@ -28,6 +30,9 @@ import type {
 } from "../../src/db/ports.js";
 
 import { makeMember, makeResponse, makeSession } from "./fixtures.js";
+
+type FakeClock = { readonly now: () => Date };
+const DEFAULT_CLOCK: FakeClock = { now: () => new Date() };
 
 const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
@@ -77,7 +82,8 @@ export interface FakePorts extends AppPorts {
  * `(weekKey, postponeCount)` uniqueness are modelled faithfully.
  */
 export const createFakeSessionsPort = (
-  seed: ReadonlyArray<SessionRow> = []
+  seed: ReadonlyArray<SessionRow> = [],
+  clock: FakeClock = DEFAULT_CLOCK
 ): FakeSessionsPort => {
   const calls: AnyCall[] = [];
   const byId = new Map<string, SessionRow>(
@@ -129,7 +135,7 @@ export const createFakeSessionsPort = (
       if (!found) {
         return;
       }
-      byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: new Date() }));
+      byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: clock.now() }));
     },
     updatePostponeMessageId: async (id, messageId) => {
       recordCall(calls, "updatePostponeMessageId", { id, messageId });
@@ -137,7 +143,7 @@ export const createFakeSessionsPort = (
       if (!found) {
         return;
       }
-      byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: new Date() }));
+      byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: clock.now() }));
     },
     cancelAsking: async (input: CancelAskingInput) => {
       recordCall(calls, "cancelAsking", { input });
@@ -242,7 +248,7 @@ export const createFakeSessionsPort = (
       const next = makeSession({
         ...found,
         reminderSentAt: now,
-        updatedAt: new Date()
+        updatedAt: clock.now()
       });
       byId.set(next.id, next);
       return clone(next);
@@ -262,7 +268,7 @@ export const createFakeSessionsPort = (
       const next = makeSession({
         ...found,
         reminderSentAt: null,
-        updatedAt: new Date()
+        updatedAt: clock.now()
       });
       byId.set(next.id, next);
       return true;
@@ -331,7 +337,7 @@ export const createFakeSessionsPort = (
         ...found,
         status: "SKIPPED",
         cancelReason: input.cancelReason,
-        updatedAt: new Date()
+        updatedAt: clock.now()
       });
       byId.set(next.id, next);
       return clone(next);
@@ -417,7 +423,8 @@ export const createFakeHeldEventsPort = (
   seed: {
     readonly heldEvents?: ReadonlyArray<HeldEventRow>;
     readonly participants?: ReadonlyArray<HeldEventParticipantRow>;
-  } = {}
+  } = {},
+  clock: FakeClock = DEFAULT_CLOCK
 ): FakeHeldEventsPort => {
   const calls: AnyCall[] = [];
   const heldEvents: HeldEventRow[] = (seed.heldEvents ?? []).map((h) => ({ ...h }));
@@ -463,13 +470,13 @@ export const createFakeHeldEventsPort = (
           sessionId: input.sessionId,
           heldDateIso: transitioned.candidateDateIso,
           startAt: new Date(transitioned.decidedStartAt),
-          createdAt: new Date()
+          createdAt: clock.now()
         };
       if (!existing) {
         heldEvents.push(heldEvent);
       }
       const insertedParticipants: HeldEventParticipantRow[] = [];
-      const now = new Date();
+      const now = clock.now();
       for (const memberId of input.memberIds) {
         const dup = participants.find(
           (p) => p.heldEventId === heldEvent.id && p.memberId === memberId
@@ -517,14 +524,17 @@ export interface FakePortsSeed {
  * Build a complete {@link FakePorts} bundle. Tests should prefer this over partial construction,
  * so that AppContext wiring parallels production.
  */
-export const createFakePorts = (seed: FakePortsSeed = {}): FakePorts => {
-  const sessions = createFakeSessionsPort(seed.sessions ?? []);
+export const createFakePorts = (
+  seed: FakePortsSeed = {},
+  clock: FakeClock = DEFAULT_CLOCK
+): FakePorts => {
+  const sessions = createFakeSessionsPort(seed.sessions ?? [], clock);
   const responses = createFakeResponsesPort(seed.responses ?? []);
   const members = createFakeMembersPort(seed.members ?? []);
   const heldEvents = createFakeHeldEventsPort(sessions, {
     heldEvents: seed.heldEvents ?? [],
     participants: seed.heldEventParticipants ?? []
-  });
+  }, clock);
   return { sessions, responses, members, heldEvents };
 };
 
@@ -551,7 +561,7 @@ export const createTestAppContext = (options: {
     now: typeof now === "function" ? now : () => now
   };
   return {
-    ports: options.ports ?? createFakePorts(options.seed ?? {}),
+    ports: options.ports ?? createFakePorts(options.seed ?? {}, clock),
     clock
   };
 };
