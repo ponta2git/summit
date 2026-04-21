@@ -1,4 +1,5 @@
 import type { ScheduledTask } from "node-cron";
+import { RESTEvents } from "discord.js";
 
 import { createAppContext } from "./appContext.js";
 import { closeDb, db } from "./db/client.js";
@@ -63,6 +64,24 @@ const run = async (): Promise<void> => {
   );
 
   await client.login(env.DISCORD_TOKEN);
+
+  // why: 429 の route/retryAfter を観測性のために購読する (ADR-0019, M11)。
+  client.rest.on(RESTEvents.RateLimited, (info) => {
+    try {
+      logger.warn({
+        event: 'discord.rate_limited',
+        route: info.route,
+        method: info.method,
+        majorParameter: info.majorParameter,
+        retryAfter: info.retryAfter,
+        limit: info.limit,
+        timeToReset: info.timeToReset,
+        globalLimit: info.global,
+      }, 'Discord REST rate limit hit');
+    } catch {
+      // never let listener throw
+    }
+  });
 
   // why: 本番 invariant (DEV_SUPPRESS_MENTIONS 未設定=false) を覆して通知挙動を変えている状態を
   //   見逃さないよう起動時に 1 回だけ warn で明示する。毎送信ログに混ぜるとノイズになるため起動時限定。

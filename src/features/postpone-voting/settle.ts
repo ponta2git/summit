@@ -52,6 +52,10 @@ const applyDecidedOutcome = async (
     outcome: "decided"
   });
   if (!postponed) {return;}
+  logger.info(
+    { sessionId: postponed.id, weekKey: postponed.weekKey, from: "POSTPONE_VOTING", to: "POSTPONED", reason: "all votes ok" },
+    "Postpone voting decided; Saturday session will be created."
+  );
   await updatePostponeMessage(client, ctx, postponed, responses, postponeDecisionFooter(decision));
 
   const saturdayCandidate = saturdayCandidateFrom(parseCandidateDateIso(postponed.candidateDateIso));
@@ -89,6 +93,10 @@ const applyCancelledOutcome = async (
     cancelReason: decision.reason
   });
   if (!cancelled) {return;}
+  logger.info(
+    { sessionId: cancelled.id, weekKey: cancelled.weekKey, from: "POSTPONE_VOTING", to: "COMPLETED", reason: decision.reason },
+    "Postpone voting cancelled."
+  );
   await updatePostponeMessage(client, ctx, cancelled, responses, postponeDecisionFooter(decision));
 };
 

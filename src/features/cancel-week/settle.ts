@@ -38,6 +38,10 @@ export const applyManualSkip = async (
       cancelReason: "manual_skip"
     });
     if (updated) {
+      logger.info(
+        { sessionId: updated.id, weekKey: updated.weekKey, from: session.status, to: "SKIPPED", reason: "manual_skip" },
+        "Session skipped via /cancel_week."
+      );
       skipped.push(updated);
     }
   }
