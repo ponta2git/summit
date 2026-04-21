@@ -12,6 +12,7 @@ import type { CancelReason } from "./cancelReason.js";
 import { updateAskMessage } from "./messageEditor.js";
 import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "../reminder/send.js";
 import { sendDecidedAnnouncement } from "../decided-announcement/send.js";
+import { parseCandidateDateIso, postponeDeadlineFor } from "../../time/index.js";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
@@ -20,7 +21,7 @@ type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered"
  *
  * @remarks
  * 金曜回 (postponeCount=0) は CANCELLED → POSTPONE_VOTING へ進み、順延投票を送る。
- * 土曜回 (postponeCount=1) は `saturday_cancelled` で CANCELLED 終端にする。
+ * 土曜回 (postponeCount=1) は `saturday_cancelled` を記録したうえで COMPLETED に収束させる。
  */
 export const settleAskingSession = async (
   client: Client,
@@ -42,11 +43,11 @@ export const settleAskingSession = async (
   const resolvedReason: AskingCancelReason =
     current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
 
-  const cancelled = await ctx.ports.sessions.transitionStatus({
+  const now = ctx.clock.now();
+  const cancelled = await ctx.ports.sessions.cancelAsking({
     id: sessionId,
-    from: "ASKING",
-    to: "CANCELLED",
-    cancelReason: resolvedReason
+    now,
+    reason: resolvedReason
   });
   if (!cancelled) {
     // state: ASKING→CANCELLED の CAS 競合敗北は無害な race lost として扱う
@@ -66,7 +67,23 @@ export const settleAskingSession = async (
   await channel.send(renderSettleNotice(settleVm));
 
   if (cancelled.postponeCount === 1) {
-    // state: 土曜回 (postponeCount=1) は順延確認へ進めず、CANCELLED を終端として週を終了する。
+    // regression: 土曜回中止は CANCELLED に滞留させず、短命中間を経由して COMPLETED へ収束させる。
+    const completed = await ctx.ports.sessions.completeCancelledSession({
+      id: cancelled.id,
+      now: ctx.clock.now()
+    });
+    if (completed) {
+      logger.info(
+        {
+          sessionId: completed.id,
+          weekKey: completed.weekKey,
+          from: "CANCELLED",
+          to: "COMPLETED",
+          reason: resolvedReason
+        },
+        "Cancelled Saturday session completed."
+      );
+    }
     return;
   }
 
@@ -74,7 +91,11 @@ export const settleAskingSession = async (
   const postponeSent = await channel.send(renderPostponeBody(postponeVm));
   await ctx.ports.sessions.updatePostponeMessageId(cancelled.id, postponeSent.id);
 
-  const transitioned = await ctx.ports.sessions.transitionStatus({ id: sessionId, from: "CANCELLED", to: "POSTPONE_VOTING" });
+  const transitioned = await ctx.ports.sessions.startPostponeVoting({
+    id: sessionId,
+    now: ctx.clock.now(),
+    postponeDeadlineAt: postponeDeadlineFor(parseCandidateDateIso(cancelled.candidateDateIso))
+  });
   if (transitioned) {
     // state: CANCELLED→POSTPONE_VOTING は順延投票メッセージ送信を契機に 1 回だけ遷移する
     logger.info(
@@ -106,10 +127,9 @@ export const tryDecideIfAllTimeSlots = async (
   decidedStart: Date
 ): Promise<boolean> => {
   const reminderAt = computeReminderAt(decidedStart);
-  const result = await ctx.ports.sessions.transitionStatus({
+  const result = await ctx.ports.sessions.decideAsking({
     id: session.id,
-    from: "ASKING",
-    to: "DECIDED",
+    now: ctx.clock.now(),
     decidedStartAt: decidedStart,
     reminderAt
   });

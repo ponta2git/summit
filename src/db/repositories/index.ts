@@ -1,17 +1,27 @@
 // source-of-truth: 本ディレクトリの公開 API を集約。外部モジュールはここから import する。
 
 export {
+  cancelAsking,
+  completeCancelledSession,
+  completePostponeVoting,
+  completeSession,
   createAskSession,
+  decideAsking,
+  type CancelAskingInput,
+  type CompleteCancelledSessionInput,
+  type CompletePostponeVotingInput,
+  type CompleteSessionInput,
+  type DecideAskingInput,
   type CreateAskSessionInput,
   findDueAskingSessions,
   findNonTerminalSessions,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   isNonTerminal,
+  startPostponeVoting,
+  type StartPostponeVotingInput,
   updateAskMessageId,
-  updatePostponeMessageId,
-  transitionStatus,
-  type TransitionInput
+  updatePostponeMessageId
 } from "./sessions.js";
 
 export {

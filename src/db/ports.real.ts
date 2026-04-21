@@ -4,8 +4,13 @@
 
 import type { DbLike } from "./rows.js";
 import {
+  cancelAsking,
   claimReminderDispatch,
+  completeCancelledSession,
+  completePostponeVoting,
+  completeSession,
   createAskSession,
+  decideAsking,
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
@@ -16,7 +21,7 @@ import {
   isNonTerminal,
   revertReminderClaim,
   skipSession,
-  transitionStatus,
+  startPostponeVoting,
   updateAskMessageId,
   updatePostponeMessageId
 } from "./repositories/sessions.js";
@@ -48,7 +53,12 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findSessionById: (id) => findSessionById(db, id),
   updateAskMessageId: (id, messageId) => updateAskMessageId(db, id, messageId),
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
-  transitionStatus: (input) => transitionStatus(db, input),
+  cancelAsking: (input) => cancelAsking(db, input),
+  startPostponeVoting: (input) => startPostponeVoting(db, input),
+  completePostponeVoting: (input) => completePostponeVoting(db, input),
+  decideAsking: (input) => decideAsking(db, input),
+  completeCancelledSession: (input) => completeCancelledSession(db, input),
+  completeSession: (input) => completeSession(db, input),
   claimReminderDispatch: (id, now) => claimReminderDispatch(db, id, now),
   revertReminderClaim: (id, claimedAt) => revertReminderClaim(db, id, claimedAt),
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),

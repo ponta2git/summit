@@ -5,9 +5,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "../../src/db/schema.js";
 import {
+  cancelAsking,
+  completePostponeVoting,
   createAskSession,
+  startPostponeVoting,
   findSessionByWeekKeyAndPostponeCount,
-  transitionStatus
+  decideAsking
 } from "../../src/db/repositories/sessions.js";
 import {
   listResponses,
@@ -87,38 +90,86 @@ describeDb("sessions repository contract (integration)", () => {
     expect(found?.id).toBe("s1");
   });
 
-  // race: CAS が成功するケース。WHERE status=from に一致すれば UPDATE 成功し、新状態を返す。
-  it("transitionStatus(ASKING→CANCELLED): succeeds when current status matches `from`", async () => {
+  // race: CAS が成功するケース。WHERE status='ASKING' に一致すれば UPDATE 成功し、新状態を返す。
+  it("cancelAsking(ASKING→CANCELLED): succeeds when current status matches", async () => {
     await createAskSession(db, { id: "s1", ...baseSession });
-    const updated = await transitionStatus(db, {
+    const updated = await cancelAsking(db, {
       id: "s1",
-      from: "ASKING",
-      to: "CANCELLED",
-      cancelReason: "deadline_unanswered"
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
     });
     expect(updated?.status).toBe("CANCELLED");
     expect(updated?.cancelReason).toBe("deadline_unanswered");
   });
 
-  // race: CAS が失敗するケース。既に CANCELLED の session に再度 from=ASKING で CAS をかけると undefined。
+  // race: CAS が失敗するケース。既に CANCELLED の session に再度 ASKING→CANCELLED をかけると undefined。
   // invariant: 呼び出し側はこれを観測しても state を巻き戻さず、DB 再取得して続行する。
-  it("transitionStatus: returns undefined when WHERE status=from does not match (race lost)", async () => {
+  it("cancelAsking: returns undefined when current status mismatches (race lost)", async () => {
     await createAskSession(db, { id: "s1", ...baseSession });
-    const first = await transitionStatus(db, {
+    const first = await cancelAsking(db, {
       id: "s1",
-      from: "ASKING",
-      to: "CANCELLED",
-      cancelReason: "deadline_unanswered"
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
     });
     expect(first?.status).toBe("CANCELLED");
 
-    const second = await transitionStatus(db, {
+    const second = await cancelAsking(db, {
       id: "s1",
-      from: "ASKING",
-      to: "CANCELLED",
-      cancelReason: "deadline_unanswered"
+      now: new Date("2026-04-24T12:32:00.000Z"),
+      reason: "deadline_unanswered"
     });
     expect(second).toBeUndefined();
+  });
+
+  it("startPostponeVoting(CANCELLED→POSTPONE_VOTING): updates deadlineAt on CAS win", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await cancelAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
+    });
+    const updated = await startPostponeVoting(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:32:00.000Z"),
+      postponeDeadlineAt: new Date("2026-04-24T15:00:00.000Z")
+    });
+    expect(updated?.status).toBe("POSTPONE_VOTING");
+    expect(updated?.deadlineAt.toISOString()).toBe("2026-04-24T15:00:00.000Z");
+  });
+
+  it("completePostponeVoting(POSTPONE_VOTING→COMPLETED): stores cancel reason", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await cancelAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
+    });
+    await startPostponeVoting(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:32:00.000Z"),
+      postponeDeadlineAt: new Date("2026-04-24T15:00:00.000Z")
+    });
+    const completed = await completePostponeVoting(db, {
+      id: "s1",
+      now: new Date("2026-04-24T15:00:01.000Z"),
+      outcome: "cancelled_full",
+      cancelReason: "postpone_unanswered"
+    });
+    expect(completed?.status).toBe("COMPLETED");
+    expect(completed?.cancelReason).toBe("postpone_unanswered");
+  });
+
+  it("decideAsking(ASKING→DECIDED): sets decidedStartAt and reminderAt", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    const decided = await decideAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
+    expect(decided?.status).toBe("DECIDED");
+    expect(decided?.decidedStartAt?.toISOString()).toBe("2026-04-24T14:00:00.000Z");
+    expect(decided?.reminderAt?.toISOString()).toBe("2026-04-24T13:45:00.000Z");
   });
 
   // unique: (sessionId, memberId) unique + onConflictDoUpdate。

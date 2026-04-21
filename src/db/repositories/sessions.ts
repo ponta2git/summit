@@ -16,9 +16,12 @@ const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
   "POSTPONE_VOTING",
   "POSTPONED",
-  "DECIDED",
-  "CANCELLED"
+  "DECIDED"
 ];
+
+const assertNever = (value: never): never => {
+  throw new Error(`Unexpected value: ${String(value)}`);
+};
 
 const assertStatus = (value: string): SessionStatus => {
   if ((SESSION_STATUSES as readonly string[]).includes(value)) {
@@ -143,57 +146,165 @@ export const updatePostponeMessageId = async (
     .where(eq(sessions.id, id));
 };
 
-export interface TransitionInput {
-  id: string;
-  from: SessionStatus;
-  to: SessionStatus;
-  cancelReason?: string;
-  decidedStartAt?: Date;
-  reminderAt?: Date;
-  reminderSentAt?: Date;
-  updatedDeadlineAt?: Date;
+export interface CancelAskingInput {
+  readonly id: string;
+  readonly now: Date;
+  readonly reason: "absent" | "deadline_unanswered" | "saturday_cancelled";
 }
 
-/**
- * Atomically transitions a session's status using a conditional UPDATE (CAS).
- *
- * @returns The updated session row if the CAS succeeded, or `undefined` if another handler
- *   already transitioned the session first (race lost).
- * @throws Never. Race losses are expressed as `undefined`, not exceptions.
- *
- * @remarks
- * `WHERE status = input.from` を付けた UPDATE 文で、競合時も片方だけが成功する。
- * 呼び出し側は `undefined` を観測したら DB から再取得して最新状態に合わせて処理を続ける。
- * 状態を巻き戻してはならない。
- *
- * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
- */
-export const transitionStatus = async (
-  db: DbLike,
-  input: TransitionInput
-): Promise<SessionRow | undefined> => {
-  const patch: Partial<typeof sessions.$inferInsert> = {
-    status: input.to,
-    updatedAt: sql`now()` as unknown as Date
-  };
-  if (input.cancelReason !== undefined) {patch.cancelReason = input.cancelReason;}
-  if (input.decidedStartAt !== undefined) {patch.decidedStartAt = input.decidedStartAt;}
-  if (input.reminderAt !== undefined) {patch.reminderAt = input.reminderAt;}
-  if (input.reminderSentAt !== undefined) {patch.reminderSentAt = input.reminderSentAt;}
-  if (input.updatedDeadlineAt !== undefined) {patch.deadlineAt = input.updatedDeadlineAt;}
+export interface StartPostponeVotingInput {
+  readonly id: string;
+  readonly now: Date;
+  readonly postponeDeadlineAt: Date;
+  readonly messageIdPlaceholder?: string;
+}
 
-  // race: CAS primitive。WHERE status = input.from で現在状態を条件にし、勝者だけが UPDATE 成功する。
-  //   undefined が返ったら「別ハンドラが先に遷移させた (race lost)」を意味する。呼び出し側は
-  //   状態を巻き戻さず DB 再取得して処理を続ける。
-  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
-  const rows = await db
-    .update(sessions)
-    .set(patch)
-    .where(and(eq(sessions.id, input.id), eq(sessions.status, input.from)))
-    .returning();
-  const row = rows[0];
-  return row ? mapSession(row) : undefined;
+export type CompletePostponeVotingInput =
+  | {
+      readonly id: string;
+      readonly now: Date;
+      readonly outcome: "decided";
+    }
+  | {
+      readonly id: string;
+      readonly now: Date;
+      readonly outcome: "cancelled_full";
+      readonly cancelReason: "postpone_ng" | "postpone_unanswered";
+    };
+
+export interface DecideAskingInput {
+  readonly id: string;
+  readonly now: Date;
+  readonly decidedStartAt: Date;
+  readonly reminderAt: Date;
+}
+
+export interface CompleteCancelledSessionInput {
+  readonly id: string;
+  readonly now: Date;
+}
+
+export interface CompleteSessionInput {
+  readonly id: string;
+  readonly now: Date;
+  readonly reminderSentAt: Date;
+}
+
+const runEdgeUpdate = async (
+  db: DbLike,
+  input: {
+    readonly id: string;
+    readonly from: SessionStatus;
+    readonly patch: Partial<typeof sessions.$inferInsert>;
+  }
+): Promise<SessionRow | undefined> =>
+  db.transaction(async (tx) => {
+    const rows = await tx
+      .update(sessions)
+      .set(input.patch)
+      .where(and(eq(sessions.id, input.id), eq(sessions.status, input.from)))
+      .returning();
+    const row = rows[0];
+    return row ? mapSession(row) : undefined;
+  });
+
+export const cancelAsking = async (
+  db: DbLike,
+  input: CancelAskingInput
+): Promise<SessionRow | undefined> =>
+  runEdgeUpdate(db, {
+    id: input.id,
+    from: "ASKING",
+    patch: {
+      status: "CANCELLED",
+      cancelReason: input.reason,
+      updatedAt: input.now
+    }
+  });
+
+export const startPostponeVoting = async (
+  db: DbLike,
+  input: StartPostponeVotingInput
+): Promise<SessionRow | undefined> =>
+  runEdgeUpdate(db, {
+    id: input.id,
+    from: "CANCELLED",
+    patch: {
+      status: "POSTPONE_VOTING",
+      deadlineAt: input.postponeDeadlineAt,
+      ...(input.messageIdPlaceholder !== undefined
+        ? { postponeMessageId: input.messageIdPlaceholder }
+        : {}),
+      updatedAt: input.now
+    }
+  });
+
+export const completePostponeVoting = async (
+  db: DbLike,
+  input: CompletePostponeVotingInput
+): Promise<SessionRow | undefined> => {
+  if (input.outcome === "decided") {
+    return runEdgeUpdate(db, {
+      id: input.id,
+      from: "POSTPONE_VOTING",
+      patch: {
+        status: "POSTPONED",
+        updatedAt: input.now
+      }
+    });
+  }
+  return runEdgeUpdate(db, {
+    id: input.id,
+    from: "POSTPONE_VOTING",
+    patch: {
+      status: "COMPLETED",
+      cancelReason: input.cancelReason,
+      updatedAt: input.now
+    }
+  });
 };
+
+export const decideAsking = async (
+  db: DbLike,
+  input: DecideAskingInput
+): Promise<SessionRow | undefined> =>
+  runEdgeUpdate(db, {
+    id: input.id,
+    from: "ASKING",
+    patch: {
+      status: "DECIDED",
+      decidedStartAt: input.decidedStartAt,
+      reminderAt: input.reminderAt,
+      updatedAt: input.now
+    }
+  });
+
+export const completeCancelledSession = async (
+  db: DbLike,
+  input: CompleteCancelledSessionInput
+): Promise<SessionRow | undefined> =>
+  runEdgeUpdate(db, {
+    id: input.id,
+    from: "CANCELLED",
+    patch: {
+      status: "COMPLETED",
+      updatedAt: input.now
+    }
+  });
+
+export const completeSession = async (
+  db: DbLike,
+  input: CompleteSessionInput
+): Promise<SessionRow | undefined> =>
+  runEdgeUpdate(db, {
+    id: input.id,
+    from: "DECIDED",
+    patch: {
+      status: "COMPLETED",
+      reminderSentAt: input.reminderSentAt,
+      updatedAt: input.now
+    }
+  });
 
 /**
  * Atomically claim the reminder dispatch slot for a DECIDED session.
@@ -377,5 +488,20 @@ export const skipSession = async (
   return row ? mapSession(row) : undefined;
 };
 
-export const isNonTerminal = (status: SessionStatus): boolean =>
-  (NON_TERMINAL_STATUSES as readonly string[]).includes(status);
+export const isNonTerminal = (status: SessionStatus): boolean => {
+  // state: 非終端は startup recovery と /cancel_week 対象。CANCELLED は短命中間状態のため除外。
+  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+  switch (status) {
+    case "ASKING":
+    case "POSTPONE_VOTING":
+    case "POSTPONED":
+    case "DECIDED":
+      return true;
+    case "CANCELLED":
+    case "COMPLETED":
+    case "SKIPPED":
+      return false;
+    default:
+      return assertNever(status);
+  }
+};

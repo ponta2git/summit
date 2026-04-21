@@ -65,43 +65,42 @@ describe("settleAskingSession", () => {
   it("transitions ASKING → CANCELLED → POSTPONE_VOTING and posts both messages on Friday", async () => {
     const session = sessionRow({ postponeCount: 0, status: "ASKING", cancelReason: null });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const transitionSpy = vi.spyOn(ctx.ports.sessions, "transitionStatus");
+    const cancelAskingSpy = vi.spyOn(ctx.ports.sessions, "cancelAsking");
+    const startPostponeVotingSpy = vi.spyOn(ctx.ports.sessions, "startPostponeVoting");
 
     const { channel, sentMessages } = stubChannel();
     await settleAskingSession(stubClient(channel), ctx, session.id, "absent");
 
-    expect(transitionSpy).toHaveBeenCalledTimes(2);
-    expect(transitionSpy.mock.calls[0]?.[0]).toMatchObject({
-      from: "ASKING",
-      to: "CANCELLED",
-      cancelReason: "absent"
+    expect(cancelAskingSpy).toHaveBeenCalledTimes(1);
+    expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
+      reason: "absent"
     });
-    expect(transitionSpy.mock.calls[1]?.[0]).toMatchObject({
-      from: "CANCELLED",
-      to: "POSTPONE_VOTING"
-    });
+    expect(startPostponeVotingSpy).toHaveBeenCalledTimes(1);
     expect(channel.send).toHaveBeenCalledTimes(2);
     expect(sentMessages).toHaveLength(2);
   });
 
-  it("cancels Saturday ASKING as saturday_cancelled without spawning postpone voting", async () => {
+  it("cancels Saturday ASKING as saturday_cancelled and completes the week", async () => {
     const session = sessionRow({ postponeCount: 1, status: "ASKING", cancelReason: null });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const transitionSpy = vi.spyOn(ctx.ports.sessions, "transitionStatus");
+    const cancelAskingSpy = vi.spyOn(ctx.ports.sessions, "cancelAsking");
+    const completeCancelledSpy = vi.spyOn(ctx.ports.sessions, "completeCancelledSession");
+    const startPostponeVotingSpy = vi.spyOn(ctx.ports.sessions, "startPostponeVoting");
 
     const { channel } = stubChannel();
     await settleAskingSession(stubClient(channel), ctx, session.id, "deadline_unanswered");
 
-    expect(transitionSpy).toHaveBeenCalledTimes(1);
-    expect(transitionSpy.mock.calls[0]?.[0]).toMatchObject({
-      from: "ASKING",
-      to: "CANCELLED",
-      cancelReason: "saturday_cancelled"
+    expect(cancelAskingSpy).toHaveBeenCalledTimes(1);
+    expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
+      reason: "saturday_cancelled"
     });
+    expect(completeCancelledSpy).toHaveBeenCalledTimes(1);
+    expect(startPostponeVotingSpy).not.toHaveBeenCalled();
     expect(channel.send).toHaveBeenCalledTimes(1);
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.status).toBe("CANCELLED");
+    // regression: 土曜中止は CANCELLED 滞留させず COMPLETED へ収束。
+    expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("saturday_cancelled");
   });
 
@@ -197,7 +196,8 @@ describe("settlePostponeVotingSession", () => {
     );
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.status).toBe("CANCELLED");
+    // regression: 順延 NG は COMPLETE で週を閉じる。
+    expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("postpone_ng");
     expect(ctx.ports.sessions.listSessions().some((s) => s.postponeCount === 1)).toBe(false);
     expect(messageEdit).toHaveBeenCalledTimes(1);
@@ -227,7 +227,8 @@ describe("settlePostponeVotingSession", () => {
     );
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.status).toBe("CANCELLED");
+    // regression: 順延未完も COMPLETE で週を閉じる。
+    expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("postpone_unanswered");
   });
 

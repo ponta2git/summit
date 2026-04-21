@@ -15,7 +15,12 @@ import type {
 } from "./rows.js";
 import type {
   CreateAskSessionInput,
-  TransitionInput
+  CancelAskingInput,
+  CompleteCancelledSessionInput,
+  CompletePostponeVotingInput,
+  CompleteSessionInput,
+  DecideAskingInput,
+  StartPostponeVotingInput
 } from "./repositories/sessions.js";
 import type { UpsertResponseInput } from "./repositories/responses.js";
 import type {
@@ -31,12 +36,27 @@ export type {
   SessionRow,
   SessionStatus,
   CreateAskSessionInput,
-  TransitionInput,
+  CancelAskingInput,
+  CompleteCancelledSessionInput,
+  CompletePostponeVotingInput,
+  CompleteSessionInput,
+  DecideAskingInput,
+  StartPostponeVotingInput,
   UpsertResponseInput,
   CompleteDecidedSessionAsHeldInput,
   CompleteDecidedSessionAsHeldResult
 };
 export type { ResponseChoice } from "./rows.js";
+
+export const SESSION_ALLOWED_TRANSITIONS = {
+  ASKING: ["CANCELLED", "DECIDED"],
+  POSTPONE_VOTING: ["POSTPONED", "COMPLETED"],
+  POSTPONED: [],
+  DECIDED: ["COMPLETED"],
+  CANCELLED: ["POSTPONE_VOTING", "COMPLETED"],
+  COMPLETED: [],
+  SKIPPED: []
+} as const satisfies Readonly<Record<SessionStatus, readonly SessionStatus[]>>;
 
 /**
  * Session repository operations exposed as a DI port.
@@ -54,7 +74,12 @@ export interface SessionsPort {
   findSessionById(id: string): Promise<SessionRow | undefined>;
   updateAskMessageId(id: string, messageId: string): Promise<void>;
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
-  transitionStatus(input: TransitionInput): Promise<SessionRow | undefined>;
+  cancelAsking(input: CancelAskingInput): Promise<SessionRow | undefined>;
+  startPostponeVoting(input: StartPostponeVotingInput): Promise<SessionRow | undefined>;
+  completePostponeVoting(input: CompletePostponeVotingInput): Promise<SessionRow | undefined>;
+  decideAsking(input: DecideAskingInput): Promise<SessionRow | undefined>;
+  completeCancelledSession(input: CompleteCancelledSessionInput): Promise<SessionRow | undefined>;
+  completeSession(input: CompleteSessionInput): Promise<SessionRow | undefined>;
   /**
    * Claim the reminder dispatch slot atomically BEFORE sending to Discord.
    * Returns the row on CAS win (session was DECIDED and `reminder_sent_at` was NULL),

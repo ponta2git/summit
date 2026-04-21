@@ -102,7 +102,7 @@ describe("handlePostponeButton", () => {
     });
   });
 
-  it("persists NG vote and settles session to CANCELLED", async () => {
+  it("persists NG vote and settles session to COMPLETED", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
@@ -127,7 +127,8 @@ describe("handlePostponeButton", () => {
     );
 
     const persisted = context.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.status).toBe("CANCELLED");
+    // regression: 順延 NG は CANCELLED を経由せず最終的に COMPLETED へ収束する。
+    expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("postpone_ng");
     expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
       content: postponeMessages.interaction.voteConfirmed.postpone("ng"),

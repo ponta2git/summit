@@ -43,12 +43,13 @@ const applyDecidedOutcome = async (
   ctx: AppContext,
   current: SessionRow,
   responses: readonly ResponseRow[],
-  decision: Extract<PostponeDecisionResult, { kind: "all_ok" }>
+  decision: Extract<PostponeDecisionResult, { kind: "all_ok" }>,
+  now: Date
 ): Promise<void> => {
-  const postponed = await ctx.ports.sessions.transitionStatus({
+  const postponed = await ctx.ports.sessions.completePostponeVoting({
     id: current.id,
-    from: "POSTPONE_VOTING",
-    to: "POSTPONED"
+    now,
+    outcome: "decided"
   });
   if (!postponed) {return;}
   await updatePostponeMessage(client, ctx, postponed, responses, postponeDecisionFooter(decision));
@@ -78,12 +79,13 @@ const applyCancelledOutcome = async (
   ctx: AppContext,
   current: SessionRow,
   responses: readonly ResponseRow[],
-  decision: Exclude<PostponeDecisionResult, { kind: "pending" | "all_ok" }>
+  decision: Exclude<PostponeDecisionResult, { kind: "pending" | "all_ok" }>,
+  now: Date
 ): Promise<void> => {
-  const cancelled = await ctx.ports.sessions.transitionStatus({
+  const cancelled = await ctx.ports.sessions.completePostponeVoting({
     id: current.id,
-    from: "POSTPONE_VOTING",
-    to: "CANCELLED",
+    now,
+    outcome: "cancelled_full",
     cancelReason: decision.reason
   });
   if (!cancelled) {return;}
@@ -108,9 +110,9 @@ export async function settlePostponeVotingSession(
   }
 
   if (decision.kind === "all_ok") {
-    await applyDecidedOutcome(client, ctx, current, responses, decision);
+    await applyDecidedOutcome(client, ctx, current, responses, decision, now);
     return;
   }
 
-  await applyCancelledOutcome(client, ctx, current, responses, decision);
+  await applyCancelledOutcome(client, ctx, current, responses, decision, now);
 }

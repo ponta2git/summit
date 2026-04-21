@@ -12,19 +12,25 @@ describe("tests/testing helpers", () => {
   it("records sessions port calls and applies CAS transition", async () => {
     const sessions = createFakeSessionsPort([makeSession({ id: "s1", status: "ASKING" })]);
 
-    const transitioned = await sessions.transitionStatus({
+    const transitioned = await sessions.decideAsking({
       id: "s1",
-      from: "ASKING",
-      to: "DECIDED"
+      now: new Date("2026-04-24T12:30:00.000Z"),
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
     });
 
     expect(transitioned?.status).toBe("DECIDED");
-    expect(sessions.calls.map((call) => call.name)).toEqual(["transitionStatus"]);
+    expect(sessions.calls.map((call) => call.name)).toEqual(["decideAsking"]);
   });
 
-  it("refuses to transition when `from` status does not match (CAS)", async () => {
+  it("refuses to transition on CAS loss", async () => {
     const sessions = createFakeSessionsPort([makeSession({ id: "s1", status: "DECIDED" })]);
-    const result = await sessions.transitionStatus({ id: "s1", from: "ASKING", to: "DECIDED" });
+    const result = await sessions.decideAsking({
+      id: "s1",
+      now: new Date("2026-04-24T12:30:00.000Z"),
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
     expect(result).toBeUndefined();
   });
 

@@ -27,6 +27,7 @@ export const applyManualSkip = async (
   // jst: 現在時刻から ISO 週キーを算出。src/time/ に集約 (AGENTS.md rule #1)。
   const weekKey = isoWeekKey(ctx.clock.now());
 
+  // state: ADR-0001 で CANCELLED は短命中間に限定。/cancel_week 対象は実運用上の非終端のみ。
   const nonTerminalSessions = await ctx.ports.sessions.findNonTerminalSessionsByWeekKey(weekKey);
 
   // idempotent: skipSession は既終端ならば undefined を返す。ここで個別 session 単位で冪等。

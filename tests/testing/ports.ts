@@ -7,7 +7,10 @@ import type {
   AppPorts,
   CompleteDecidedSessionAsHeldInput,
   CompleteDecidedSessionAsHeldResult,
+  CompletePostponeVotingInput,
+  CompleteSessionInput,
   CreateAskSessionInput,
+  DecideAskingInput,
   HeldEventParticipantRow,
   HeldEventRow,
   HeldEventsPort,
@@ -18,7 +21,9 @@ import type {
   SessionRow,
   SessionStatus,
   SessionsPort,
-  TransitionInput,
+  StartPostponeVotingInput,
+  CancelAskingInput,
+  CompleteCancelledSessionInput,
   UpsertResponseInput
 } from "../../src/db/ports.js";
 
@@ -28,8 +33,7 @@ const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
   "POSTPONE_VOTING",
   "POSTPONED",
-  "DECIDED",
-  "CANCELLED"
+  "DECIDED"
 ];
 
 type AnyCall = { readonly name: string; readonly args: unknown };
@@ -69,7 +73,7 @@ export interface FakePorts extends AppPorts {
  * Create an in-memory fake for {@link SessionsPort}.
  *
  * @remarks
- * CAS semantics (`transitionStatus` returns `undefined` when `from` mismatches) and the
+ * CAS semantics (`undefined` on race loss) and the
  * `(weekKey, postponeCount)` uniqueness are modelled faithfully.
  */
 export const createFakeSessionsPort = (
@@ -135,22 +139,94 @@ export const createFakeSessionsPort = (
       }
       byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: new Date() }));
     },
-    transitionStatus: async (input: TransitionInput) => {
-      recordCall(calls, "transitionStatus", { input });
+    cancelAsking: async (input: CancelAskingInput) => {
+      recordCall(calls, "cancelAsking", { input });
       const found = byId.get(input.id);
-      // race: CAS. WHERE status = from 相当の条件一致のみ遷移成功。
-      if (!found || found.status !== input.from) {
+      if (!found || found.status !== "ASKING") {
         return undefined;
       }
       const next = makeSession({
         ...found,
-        status: input.to,
-        updatedAt: new Date(),
-        cancelReason: input.cancelReason ?? found.cancelReason,
-        decidedStartAt: input.decidedStartAt ?? found.decidedStartAt,
-        reminderAt: input.reminderAt ?? found.reminderAt,
-        reminderSentAt: input.reminderSentAt ?? found.reminderSentAt,
-        deadlineAt: input.updatedDeadlineAt ?? found.deadlineAt
+        status: "CANCELLED",
+        cancelReason: input.reason,
+        updatedAt: input.now
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    startPostponeVoting: async (input: StartPostponeVotingInput) => {
+      recordCall(calls, "startPostponeVoting", { input });
+      const found = byId.get(input.id);
+      if (!found || found.status !== "CANCELLED") {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: "POSTPONE_VOTING",
+        deadlineAt: input.postponeDeadlineAt,
+        postponeMessageId: input.messageIdPlaceholder ?? found.postponeMessageId,
+        updatedAt: input.now
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    completePostponeVoting: async (input: CompletePostponeVotingInput) => {
+      recordCall(calls, "completePostponeVoting", { input });
+      const found = byId.get(input.id);
+      if (!found || found.status !== "POSTPONE_VOTING") {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: input.outcome === "decided" ? "POSTPONED" : "COMPLETED",
+        cancelReason:
+          input.outcome === "cancelled_full" ? input.cancelReason : found.cancelReason,
+        updatedAt: input.now
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    decideAsking: async (input: DecideAskingInput) => {
+      recordCall(calls, "decideAsking", { input });
+      const found = byId.get(input.id);
+      if (!found || found.status !== "ASKING") {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: "DECIDED",
+        decidedStartAt: input.decidedStartAt,
+        reminderAt: input.reminderAt,
+        updatedAt: input.now
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    completeCancelledSession: async (input: CompleteCancelledSessionInput) => {
+      recordCall(calls, "completeCancelledSession", { input });
+      const found = byId.get(input.id);
+      if (!found || found.status !== "CANCELLED") {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: "COMPLETED",
+        updatedAt: input.now
+      });
+      byId.set(next.id, next);
+      return clone(next);
+    },
+    completeSession: async (input: CompleteSessionInput) => {
+      recordCall(calls, "completeSession", { input });
+      const found = byId.get(input.id);
+      if (!found || found.status !== "DECIDED") {
+        return undefined;
+      }
+      const next = makeSession({
+        ...found,
+        status: "COMPLETED",
+        reminderSentAt: input.reminderSentAt,
+        updatedAt: input.now
       });
       byId.set(next.id, next);
       return clone(next);
@@ -347,10 +423,9 @@ export const createFakeHeldEventsPort = (
       recordCall(calls, "completeDecidedSessionAsHeld", { input });
       // race: session の DECIDED→COMPLETED CAS を fake sessions 側で遂行する。
       //   敗北時は held_events を書かず undefined を返し、tx ロールバック相当を再現する。
-      const transitioned = await sessionsPort.transitionStatus({
+      const transitioned = await sessionsPort.completeSession({
         id: input.sessionId,
-        from: "DECIDED",
-        to: "COMPLETED",
+        now: input.reminderSentAt,
         reminderSentAt: input.reminderSentAt
       });
       if (!transitioned) {
