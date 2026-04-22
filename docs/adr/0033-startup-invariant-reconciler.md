@@ -12,7 +12,7 @@ tags: [runtime, db, discord, ops]
 
 ## Context
 
-- 2026-04-21 レビュー (`docs/reviews/2026-04-21/final-report.md`) で以下 3 件が収束経路のない invariant 違反として挙がった:
+- 内部レビューで以下 3 件が収束経路のない invariant 違反として挙がった:
   - **C1**: `CANCELLED` は ADR-0001 で「短命中間状態」と定義されているが、`cancelAsking` → 次状態 (`startPostponeVoting` / `completeCancelledSession`) の間でプロセスが落ちると宙づりの `CANCELLED` 行が残る。
   - **N1**: `createAskSession` 成功後に Discord `channel.send` が失敗した場合、`askMessageId=NULL` のまま `(weekKey, postponeCount)` unique 制約で再作成不能になる。同じく Discord 側で message が削除 (`Unknown Message` / code 10008) された場合、再編集経路でも回復できない。
   - **H1**: `claim-first` (ADR-0024) が `reminder_sent_at=now` を立てた直後の crash で claim が永久に stuck する。
@@ -57,7 +57,6 @@ tags: [runtime, db, discord, ops]
 
 ## 参照
 
-- `docs/reviews/2026-04-21/final-report.md` §1 C1 / N1, §2 H1, §5 Fix Sequencing (Phase I1)
 - `docs/adr/0001-single-instance-db-as-source-of-truth.md`
 - `docs/adr/0003-postgres-drizzle-operations.md`
 - `docs/adr/0018-port-wiring-and-factory-injection.md`

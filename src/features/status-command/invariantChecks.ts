@@ -31,7 +31,7 @@ export const checkAskingWithPastDeadline = (
  * ASKING セッションで askMessageId が null。
  * @remarks
  * createAskSession 後の Discord 送信失敗で発生する stranded 状態。
- * @see docs/reviews/2026-04-21/final-report.md N1
+ * @see docs/adr/0033-startup-invariant-reconciler.md
  */
 export const checkAskingWithNullMessageId = (
   session: SessionRow

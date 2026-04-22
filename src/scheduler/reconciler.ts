@@ -2,7 +2,6 @@
 //   C1 (CANCELLED 宙づり) / N1 (週次 ask 未作成・削除された Discord message) / H1 (stale reminder claim)
 //   を一箇所に集約し、DB を正本とした自動回復を冪等に提供する。
 // @see docs/adr/0033-startup-invariant-reconciler.md
-// @see docs/reviews/2026-04-21/final-report.md §1 C1 / N1, §2 H1
 
 import type { Client } from "discord.js";
 
@@ -217,7 +216,7 @@ const promoteStranded = async (
  * 金曜 08:00〜21:30 JST の窓で `(weekKey, postponeCount=0)` の Session が無い場合に限り、
  * 通常の `sendAskMessage` 経路で作成する。rolling restart や cron tick 取りこぼし経路の回復点。
  * 窓外では「その週がもう閉じた / まだ始まっていない」と解釈して何もしない。
- * @see docs/reviews/2026-04-21/final-report.md §1 N1
+ * @see docs/adr/0033-startup-invariant-reconciler.md
  */
 export const reconcileMissingAsk = async (
   client: Client,
@@ -265,7 +264,7 @@ export const reconcileMissingAsk = async (
  * `createAskSession` 成功後 `channel.send` が失敗すると `askMessageId=NULL` のまま放置され、
  * unique (`weekKey, postponeCount`) で再作成不能になる。ASKING/POSTPONE_VOTING/POSTPONED の
  * いずれの状態でも再投稿し ID を更新する。
- * @see docs/reviews/2026-04-21/final-report.md §1 N1
+ * @see docs/adr/0033-startup-invariant-reconciler.md
  */
 export const reconcileMissingAskMessage = async (
   client: Client,
@@ -430,7 +429,7 @@ export type ReconcileScope = "startup" | "tick" | "reconnect";
  * startup 時だけ `channel.messages.fetch(messageId)` で能動的に probe し、`Unknown Message`
  * (10008) を検知したら新規投稿して ID を差し替える。tick scope では毎分 Discord fetch を叩く
  * コストに見合わないため実施しない。
- * @see docs/reviews/2026-04-21/mid-review-second-opinion.md #2
+ * @see docs/adr/0033-startup-invariant-reconciler.md
  */
 export const probeDeletedMessagesAtStartup = async (
   client: Client,
