@@ -61,12 +61,57 @@ describe("ask scheduler", () => {
     });
   });
 
-  it("swallows cron tick errors and keeps the tick promise resolved", async () => {
+  it("propagates errors to runTickSafely wrapper", async () => {
+    // why: 従来は tick 内で握り潰していたが、FR-M3 で runTickSafely に隔離を移譲した。
+    //   tick 関数は業務ロジックのみを実行し、例外は上位 (runTickSafely) が構造化ログ化する。
     const sendAsk = vi.fn(async () => {
       throw new Error("network failure");
     });
 
-    await expect(runScheduledAskTick(sendAsk, createTestAppContext())).resolves.toBeUndefined();
+    await expect(runScheduledAskTick(sendAsk, createTestAppContext())).rejects.toThrow(
+      "network failure"
+    );
+  });
+
+  it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {
+    // invariant: ask/deadline/postpone/reminder/outbox の 5 tick は runTickSafely で隔離される。
+    //   healthcheck tick は内部で best-effort に握り潰すため runTickSafely 不要。
+    //   登録 tick 関数を実際に呼び、throw する業務ロジックを食わせて「callback が resolves する」ことで
+    //   runTickSafely が挟まっていることを間接的に検証する。
+    const stop = vi.fn();
+    const capturedTicks: (() => void)[] = [];
+    const schedule = vi.fn((_expr: string, tick: () => void) => {
+      capturedTicks.push(tick);
+      return { stop } as unknown as ScheduledTask;
+    });
+    const context = createTestAppContext();
+    // ports.sessions の全 find* を throw させ、各 tick の業務ロジックを失敗させる。
+    vi.spyOn(context.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("x"));
+    vi.spyOn(context.ports.sessions, "findDuePostponeVotingSessions").mockRejectedValue(
+      new Error("x")
+    );
+    vi.spyOn(context.ports.sessions, "findDueReminderSessions").mockRejectedValue(new Error("x"));
+    vi.spyOn(context.ports.sessions, "findNonTerminalSessions").mockRejectedValue(new Error("x"));
+    const sendAsk = vi.fn(async () => {
+      throw new Error("x");
+    });
+
+    createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
+
+    // tick 登録順: ask / deadline / postpone / reminder / healthcheck / outbox
+    // healthcheck (index=4) は runTickSafely で包まれていないので対象外。
+    const wrappedIndices = [0, 1, 2, 3, 5];
+    for (const i of wrappedIndices) {
+      const tick = capturedTicks[i];
+      if (!tick) {
+        throw new Error(`tick ${i} not registered`);
+      }
+      // runTickSafely は voided。tick 実行は即 return し、await 後も throw しない。
+      tick();
+    }
+    // microtask flush: runTickSafely 内の async 経路を完走させる (unhandled rejection を検出)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 到達: ここまで throw なしなら全 tick が runTickSafely で隔離されている。
   });
 
   it("registers reminder cron with noOverlap on Asia/Tokyo", () => {

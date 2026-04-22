@@ -135,6 +135,48 @@ describe("outbox worker: success path", () => {
     expect(persisted?.askMessageId).toBe("posted-1");
     expect(channel.send).toHaveBeenCalledTimes(1);
   });
+
+  // regression: FR-M2. reconciler 再投稿が先に askMessageId をセットした場合、
+  //   後続の outbox 配送は Discord への送信には成功するが DB 列は上書きしない (CAS-on-NULL)。
+  it("does NOT overwrite askMessageId when already non-null (CAS-on-NULL; FR-M2)", async () => {
+    const session = buildSessionRow({
+      id: "s3b",
+      status: "ASKING",
+      askMessageId: "reconciler-posted-99"
+    });
+    const ctx = createTestAppContext({
+      seed: { sessions: [session] },
+      now: new Date("2026-04-24T12:00:00Z")
+    });
+
+    await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: session.id,
+      dedupeKey: `ask-msg-${session.id}`,
+      payload: {
+        kind: "send_message",
+        channelId: session.channelId,
+        renderer: "ask_body",
+        target: "askMessageId",
+        extra: { content: "hello" }
+      }
+    });
+
+    const { channel } = stubChannel();
+    await runOutboxWorkerTick(stubClient(channel), ctx);
+
+    const entries = ctx.ports.outbox.listEntries();
+    expect(entries[0]?.status).toBe("DELIVERED");
+
+    const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
+    // invariant: reconciler-posted-99 は上書きされない。
+    expect(persisted?.askMessageId).toBe("reconciler-posted-99");
+
+    const skipCalls = ctx.ports.sessions.calls.filter(
+      (c) => c.name === "backfillAskMessageId"
+    );
+    expect(skipCalls).toHaveLength(1);
+  });
 });
 
 describe("outbox worker: failure path", () => {

@@ -52,11 +52,8 @@ export const runScheduledAskTick = async (
   sendAsk: SendAsk,
   context: AppContext
 ): Promise<void> => {
-  try {
-    await sendAsk({ trigger: "cron", context });
-  } catch (error: unknown) {
-    logger.error({ error }, "Scheduled /ask delivery failed.");
-  }
+  // why: 外側の try/catch は runTickSafely が担う (ADR-0035 期の基盤)。ここでは純粋に業務ロジックだけを実行する。
+  await sendAsk({ trigger: "cron", context });
 };
 
 /**
@@ -85,14 +82,19 @@ export const runDeadlineTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  try {
-    const now = ctx.clock.now();
-    const due = await ctx.ports.sessions.findDueAskingSessions(now);
-    for (const session of due) {
+  // why: 外側の try/catch は runTickSafely に委譲。セッション単位の失敗隔離は内側の try/catch で行う。
+  const now = ctx.clock.now();
+  const due = await ctx.ports.sessions.findDueAskingSessions(now);
+  for (const session of due) {
+    try {
+      // idempotent: settle は CAS 済みのため重複呼び出し安全。
       await settleDueAskingSession(client, ctx, session, now);
+    } catch (error: unknown) {
+      logger.error(
+        { error, sessionId: session.id, weekKey: session.weekKey },
+        "Failed to settle ASKING session in deadline tick."
+      );
     }
-  } catch (error: unknown) {
-    logger.error({ error }, "Deadline tick failed.");
   }
 };
 
@@ -108,23 +110,20 @@ export const runPostponeDeadlineTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  try {
-    const now = ctx.clock.now();
-    // source-of-truth: DB から期限切れ POSTPONE_VOTING セッションを再計算する。
-    const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
-    for (const session of due) {
-      try {
-        // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
-        await settlePostponeVotingSession(client, ctx, session, now);
-      } catch (error: unknown) {
-        logger.error(
-          { error, sessionId: session.id, weekKey: session.weekKey },
-          "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
-        );
-      }
+  // why: 外側の try/catch は runTickSafely に委譲。
+  const now = ctx.clock.now();
+  // source-of-truth: DB から期限切れ POSTPONE_VOTING セッションを再計算する。
+  const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
+  for (const session of due) {
+    try {
+      // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
+      await settlePostponeVotingSession(client, ctx, session, now);
+    } catch (error: unknown) {
+      logger.error(
+        { error, sessionId: session.id, weekKey: session.weekKey },
+        "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
+      );
     }
-  } catch (error: unknown) {
-    logger.error({ error }, "Postpone deadline tick failed.");
   }
 };
 
@@ -141,25 +140,22 @@ export const runReminderTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  try {
-    // invariant: 毎分 tick 境界で stale reminder claim を回収する (H1)。他の invariant は軽量に保つため起動時のみ。
-    // @see docs/adr/0033-startup-invariant-reconciler.md
-    await runReconciler(client, ctx, { scope: "tick" });
-    const now = ctx.clock.now();
-    const due = await ctx.ports.sessions.findDueReminderSessions(now);
-    for (const session of due) {
-      try {
-        // idempotent: sendReminderForSession は内部で status/reminderSentAt を再検証する
-        await sendReminderForSession(client, ctx, session.id, now);
-      } catch (error: unknown) {
-        logger.error(
-          { error, sessionId: session.id, weekKey: session.weekKey },
-          "Failed to dispatch reminder in reminder tick."
-        );
-      }
+  // why: 外側の try/catch は runTickSafely に委譲。
+  // invariant: 毎分 tick 境界で stale reminder claim を回収する (H1)。他の invariant は軽量に保つため起動時のみ。
+  // @see docs/adr/0033-startup-invariant-reconciler.md
+  await runReconciler(client, ctx, { scope: "tick" });
+  const now = ctx.clock.now();
+  const due = await ctx.ports.sessions.findDueReminderSessions(now);
+  for (const session of due) {
+    try {
+      // idempotent: sendReminderForSession は内部で status/reminderSentAt を再検証する
+      await sendReminderForSession(client, ctx, session.id, now);
+    } catch (error: unknown) {
+      logger.error(
+        { error, sessionId: session.id, weekKey: session.weekKey },
+        "Failed to dispatch reminder in reminder tick."
+      );
     }
-  } catch (error: unknown) {
-    logger.error({ error }, "Reminder tick failed.");
   }
 };
 
@@ -287,29 +283,45 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
   //   各 tick の意味論 (cron 式と JST 前提) は config.ts 側の CRON_* 定数に集約。
   const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
     // ADR-0007: /ask 送信スケジュール (金曜朝)。
-    { schedule: CRON_ASK_SCHEDULE, tick: () => void runScheduledAskTick(sendAsk, context) },
+    {
+      schedule: CRON_ASK_SCHEDULE,
+      tick: () =>
+        void runTickSafely({ name: "ask_dispatch", logger }, () =>
+          runScheduledAskTick(sendAsk, context)
+        )
+    },
     // 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
-    { schedule: CRON_DEADLINE_SCHEDULE, tick: () => void runDeadlineTick(client, context) },
+    {
+      schedule: CRON_DEADLINE_SCHEDULE,
+      tick: () =>
+        void runTickSafely({ name: "deadline", logger }, () => runDeadlineTick(client, context))
+    },
     // 土曜 00:00 JST = POSTPONE_DEADLINE="24:00"（候補日翌日 00:00 JST）。
     {
       schedule: CRON_POSTPONE_DEADLINE_SCHEDULE,
-      tick: () => void runPostponeDeadlineTick(client, context)
+      tick: () =>
+        void runTickSafely({ name: "postpone_deadline", logger }, () =>
+          runPostponeDeadlineTick(client, context)
+        )
     },
     // 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
-    { schedule: CRON_REMINDER_SCHEDULE, tick: () => void runReminderTick(client, context) },
+    {
+      schedule: CRON_REMINDER_SCHEDULE,
+      tick: () =>
+        void runTickSafely({ name: "reminder", logger }, () => runReminderTick(client, context))
+    },
     // 毎分 tick。healthchecks.io に死活監視 ping を送る (ADR-0034)。URL 未設定時は no-op。
+    //   runHealthcheckTickPing は既に内部で失敗を握り潰す best-effort 実装のため runTickSafely は挟まない。
     {
       schedule: HEALTHCHECK_PING_INTERVAL_CRON,
       tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
     },
     // 10 秒周期。Discord send outbox の PENDING 行を配送する (ADR-0035)。
-    //   runTickSafely の最初の consumer として例外を閉じ込める。
     {
       schedule: CRON_OUTBOX_WORKER_SCHEDULE,
       tick: () =>
-        void runTickSafely(
-          { name: "outbox_worker", logger },
-          () => runOutboxWorkerTick(client, context)
+        void runTickSafely({ name: "outbox_worker", logger }, () =>
+          runOutboxWorkerTick(client, context)
         )
     }
   ];

@@ -105,11 +105,11 @@ describe("runDeadlineTick", () => {
     );
   });
 
-  it("swallows errors so cron keeps running", async () => {
+  it("propagates port errors to runTickSafely wrapper", async () => {
     const ctx = createTestAppContext();
-    // race: ports の findDueAskingSessions を throw させて最外周の try/catch が握り潰すことを確認する。
+    // race: findDueAskingSessions の失敗は tick 関数が throw して返し、runTickSafely が握り潰す (FR-M3)。
     vi.spyOn(ctx.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("boom"));
-    await expect(runDeadlineTick(client, ctx)).resolves.toBeUndefined();
+    await expect(runDeadlineTick(client, ctx)).rejects.toThrow("boom");
   });
 });
 
@@ -263,13 +263,13 @@ describe("runPostponeDeadlineTick", () => {
     expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
   });
 
-  it("swallows port errors so cron keeps running", async () => {
+  it("propagates port errors to runTickSafely wrapper", async () => {
     const ctx = createTestAppContext();
     vi.spyOn(ctx.ports.sessions, "findDuePostponeVotingSessions").mockRejectedValue(
       new Error("db down")
     );
 
-    await expect(runPostponeDeadlineTick(client, ctx)).resolves.toBeUndefined();
+    await expect(runPostponeDeadlineTick(client, ctx)).rejects.toThrow("db down");
   });
 
   it("is idempotent: re-running the tick does not cause errors", async () => {

@@ -170,6 +170,25 @@ export const createFakeSessionsPort = (
       }
       byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: clock.now() }));
     },
+    backfillAskMessageId: async (id, messageId) => {
+      // idempotent: CAS-on-NULL; 既に askMessageId が設定されていれば何もせず false を返す。
+      recordCall(calls, "backfillAskMessageId", { id, messageId });
+      const found = byId.get(id);
+      if (!found || found.askMessageId !== null) {
+        return false;
+      }
+      byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: clock.now() }));
+      return true;
+    },
+    backfillPostponeMessageId: async (id, messageId) => {
+      recordCall(calls, "backfillPostponeMessageId", { id, messageId });
+      const found = byId.get(id);
+      if (!found || found.postponeMessageId !== null) {
+        return false;
+      }
+      byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: clock.now() }));
+      return true;
+    },
     cancelAsking: async (input: CancelAskingInput) => {
       recordCall(calls, "cancelAsking", { input });
       const found = byId.get(input.id);

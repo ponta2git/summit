@@ -21,7 +21,9 @@ export {
   startPostponeVoting,
   type StartPostponeVotingInput,
   updateAskMessageId,
-  updatePostponeMessageId
+  updatePostponeMessageId,
+  backfillAskMessageId,
+  backfillPostponeMessageId
 } from "./sessions.js";
 
 export {

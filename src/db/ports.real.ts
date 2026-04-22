@@ -25,7 +25,9 @@ import {
   skipSession,
   startPostponeVoting,
   updateAskMessageId,
-  updatePostponeMessageId
+  updatePostponeMessageId,
+  backfillAskMessageId,
+  backfillPostponeMessageId
 } from "./repositories/sessions.js";
 import {
   listResponses,
@@ -64,6 +66,8 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findSessionById: (id) => findSessionById(db, id),
   updateAskMessageId: (id, messageId) => updateAskMessageId(db, id, messageId),
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
+  backfillAskMessageId: (id, messageId) => backfillAskMessageId(db, id, messageId),
+  backfillPostponeMessageId: (id, messageId) => backfillPostponeMessageId(db, id, messageId),
   cancelAsking: (input) => cancelAsking(db, input),
   startPostponeVoting: (input) => startPostponeVoting(db, input),
   completePostponeVoting: (input) => completePostponeVoting(db, input),

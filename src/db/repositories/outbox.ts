@@ -128,7 +128,13 @@ export const enqueueOutbox = async (
       payload: input.payload,
       dedupeKey: input.dedupeKey
     })
-    .onConflictDoNothing({ target: discordOutbox.dedupeKey })
+    .onConflictDoNothing({
+      target: discordOutbox.dedupeKey,
+      // race: partial unique index の述語と一致させないと ON CONFLICT が index を解決できず
+      //   PostgreSQL が "no unique or exclusion constraint matching" でエラー化する。
+      //   @see docs/adr/0035-discord-send-outbox.md / FR second-opinion
+      where: sql`${discordOutbox.status} IN ('PENDING','IN_FLIGHT','DELIVERED')`
+    })
     .returning({ id: discordOutbox.id });
   const inserted = rows[0];
   if (inserted) {

@@ -86,6 +86,21 @@ export interface SessionsPort {
   findSessionById(id: string): Promise<SessionRow | undefined>;
   updateAskMessageId(id: string, messageId: string): Promise<void>;
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
+  /**
+   * Back-fill `ask_message_id` atomically only if it is currently NULL (CAS-on-NULL).
+   *
+   * @remarks
+   * Returns `true` on CAS win (NULL → messageId). Returns `false` if the column was already set
+   * (e.g., reconciler or retry path has already populated it). Used by the outbox worker to
+   * avoid racing with reconciler repost. Unconditional overwrite must use `updateAskMessageId`.
+   * @see docs/adr/0035-discord-send-outbox.md
+   */
+  backfillAskMessageId(id: string, messageId: string): Promise<boolean>;
+  /**
+   * Back-fill `postpone_message_id` atomically only if it is currently NULL (CAS-on-NULL).
+   * Returns `true` on CAS win. See `backfillAskMessageId` for rationale.
+   */
+  backfillPostponeMessageId(id: string, messageId: string): Promise<boolean>;
   cancelAsking(input: CancelAskingInput): Promise<SessionRow | undefined>;
   startPostponeVoting(input: StartPostponeVotingInput): Promise<SessionRow | undefined>;
   completePostponeVoting(input: CompletePostponeVotingInput): Promise<SessionRow | undefined>;

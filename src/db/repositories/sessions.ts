@@ -148,6 +148,45 @@ export const updatePostponeMessageId = async (
     .where(eq(sessions.id, id));
 };
 
+/**
+ * Back-fill `ask_message_id` only if currently NULL (CAS-on-NULL).
+ *
+ * @remarks
+ * idempotent: outbox 配送が成功した後に呼ばれる。reconciler 再投稿がすでに
+ * 別の ask_message_id をセットしている場合は上書きせず、config drift を防ぐ。
+ * returns: CAS 勝 (NULL → messageId) で true、既に非 NULL なら false。
+ * @see docs/adr/0035-discord-send-outbox.md
+ */
+export const backfillAskMessageId = async (
+  db: DbLike,
+  id: string,
+  messageId: string
+): Promise<boolean> => {
+  const rows = await db
+    .update(sessions)
+    .set({ askMessageId: messageId, updatedAt: sql`now()` })
+    .where(and(eq(sessions.id, id), isNull(sessions.askMessageId)))
+    .returning({ id: sessions.id });
+  return rows.length > 0;
+};
+
+/**
+ * Back-fill `postpone_message_id` only if currently NULL (CAS-on-NULL).
+ * @see backfillAskMessageId
+ */
+export const backfillPostponeMessageId = async (
+  db: DbLike,
+  id: string,
+  messageId: string
+): Promise<boolean> => {
+  const rows = await db
+    .update(sessions)
+    .set({ postponeMessageId: messageId, updatedAt: sql`now()` })
+    .where(and(eq(sessions.id, id), isNull(sessions.postponeMessageId)))
+    .returning({ id: sessions.id });
+  return rows.length > 0;
+};
+
 export interface CancelAskingInput {
   readonly id: string;
   readonly now: Date;
@@ -231,7 +270,11 @@ const runEdgeUpdate = async (
             payload: entry.payload,
             dedupeKey: entry.dedupeKey
           })
-          .onConflictDoNothing({ target: discordOutbox.dedupeKey });
+          .onConflictDoNothing({
+            target: discordOutbox.dedupeKey,
+            // race: partial unique index 述語と一致させる (FR second-opinion)。
+            where: sql`${discordOutbox.status} IN ('PENDING','IN_FLIGHT','DELIVERED')`
+          });
       }
     }
     return mapSession(row);

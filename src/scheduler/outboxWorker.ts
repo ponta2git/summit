@@ -56,10 +56,9 @@ const renderPayloadText = (payload: OutboxPayload): string | undefined => {
  * @remarks
  * source-of-truth: 送信成功時の Discord message id を `markDelivered` で永続化し、
  *   payload.target が指す Sessions 列 (askMessageId / postponeMessageId) を
- *   `updateAskMessageId` / `updatePostponeMessageId` で back-fill する。
- * race: back-fill は「既に NULL でない場合は上書きしない」semantic を Sessions repo 側に期待する現状の
- *   `updateAskMessageId` は無条件 UPDATE のため、outbox 配送と reconciler 再投稿が重なると最後勝ち。
- *   ADR-0035 では back-fill 先が NULL のときだけ更新する CAS 版への移行を Consequences に明記。
+ *   `backfillAskMessageId` / `backfillPostponeMessageId` (CAS-on-NULL) で back-fill する。
+ * race: CAS-on-NULL により reconciler 再投稿と重なっても「先勝ち」が保証される (FR-M2)。
+ *   既に非 NULL の場合は `outbox.backfill_skipped` を warn ログ化する。
  */
 const deliverOne = async (
   client: Client,
@@ -98,11 +97,32 @@ const deliverOne = async (
         deliveredMessageId: sent.id,
         now: ctx.clock.now()
       });
-      // source-of-truth: target が指定されていれば該当 Sessions 列に書き戻す。
+      // source-of-truth: target が指定されていれば該当 Sessions 列に back-fill する。
+      //   race: reconciler 再投稿がすでに別 messageId をセットしている場合は上書きしない (CAS-on-NULL)。
+      //   @see ADR-0035 Consequences / FR-M2.
+      let backfillResult: boolean | undefined;
       if (payload.target === "askMessageId") {
-        await ctx.ports.sessions.updateAskMessageId(entry.sessionId, sent.id);
+        backfillResult = await ctx.ports.sessions.backfillAskMessageId(entry.sessionId, sent.id);
       } else if (payload.target === "postponeMessageId") {
-        await ctx.ports.sessions.updatePostponeMessageId(entry.sessionId, sent.id);
+        backfillResult = await ctx.ports.sessions.backfillPostponeMessageId(
+          entry.sessionId,
+          sent.id
+        );
+      }
+      if (backfillResult === false) {
+        // state: 送信は成功したが DB 列はすでに非 NULL (reconciler/重複送信)。送った Discord message は
+        //   reconciler の active probe 経路で検出されうるが、ここでは情報ログのみ残す。
+        logger.warn(
+          {
+            event: "outbox.backfill_skipped",
+            outboxId: entry.id,
+            sessionId: entry.sessionId,
+            dedupeKey: entry.dedupeKey,
+            target: payload.target,
+            messageId: sent.id
+          },
+          "Outbox worker: target column already set; skipped back-fill."
+        );
       }
       logger.info(
         {
