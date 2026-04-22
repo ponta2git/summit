@@ -32,8 +32,7 @@ I1+I2 実装では起動完了後に best-effort でフェッチするのみ（b
    - 純粋 HTTP ユーティリティ。`PingResult` を返し、自身はログを書かない。
    - `fetchFn` を DI 可能にし、テストでモジュールモックなしに検証できるようにする。
 
-3. **`AbortSignal.timeout(5_000)` を使う。** タイムアウト値は `HEALTHCHECK_PING_TIMEOUT_MS` として
-   `src/config.ts` に集約する (ADR-0022)。
+3. **タイムアウト値と cron 式は `src/config.ts` の定数に集約。** 実値 (秒・cron 式等) は ADR/README/コメントに書き写さず、定数名への pointer のみ置く (ADR-0022)。タイムアウト定数名: `HEALTHCHECK_PING_TIMEOUT_MS`。
 
 4. **URL はログに出さない。** `event`, `ok`, `elapsedMs`, `status`/`errorKind` のみログに残す。
    (`.github/instructions/secrets-review.instructions.md` / `src/logger.ts` の `redact` パス)
