@@ -5,9 +5,7 @@ import type { SessionRow } from "../../db/rows.js";
 import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import { askMessages } from "../ask-session/messages.js";
-import { cancelWeekMessages } from "./messages.js";
 import { isoWeekKey } from "../../time/index.js";
-import { getTextChannel } from "../../discord/shared/channels.js";
 import { updateAskMessage } from "../ask-session/messageEditor.js";
 import { updatePostponeMessage } from "../postpone-voting/messageEditor.js";
 
@@ -76,21 +74,38 @@ export const applyManualSkip = async (
   }
 
   // why: チャンネル通知は 1 件のみ（週単位のスキップなので Friday/Saturday の両 session で通知を重ねない）。
-  try {
-    const channel = await getTextChannel(client, env.DISCORD_CHANNEL_ID);
-    const content = env.DEV_SUPPRESS_MENTIONS
-      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({
-          invokerUserId: params.invokerUserId
-        })
-      : cancelWeekMessages.cancelWeek.channelNotice({
-          invokerUserId: params.invokerUserId
-        });
-    await channel.send({ content });
-  } catch (error: unknown) {
-    // race: チャンネル通知の失敗は本処理（DB 更新・メッセージ disable）に影響させない。
-    logger.warn(
-      { error, weekKey, invokerUserId: params.invokerUserId },
-      "Failed to send cancel_week channel notice."
+  //   ADR-0035: outbox 経由にして disconnect 中の送信失敗を worker が retry で拾えるようにする。
+  //   dedupe: 同週・同 invoker の重複 enqueue は skipped (at-most-once)。別 invoker の再実行は別 key なので通知し直される。
+  //   anchor: sessionId は skipped の先頭 (reconciler の session/outbox 紐付けで利用)。
+  const anchorSessionId = skipped[0]?.id;
+  if (anchorSessionId) {
+    const enqueued = await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: anchorSessionId,
+      dedupeKey: `cancel-week-notice-${weekKey}-${params.invokerUserId}`,
+      payload: {
+        kind: "send_message",
+        channelId: env.DISCORD_CHANNEL_ID,
+        renderer: "cancel_week_notice",
+        extra: {
+          invokerUserId: params.invokerUserId,
+          suppressMentions: env.DEV_SUPPRESS_MENTIONS
+        }
+      }
+    });
+    logger.info(
+      {
+        event: enqueued.skipped
+          ? "cancel_week.notice_enqueue_skipped"
+          : "cancel_week.notice_enqueued",
+        weekKey,
+        invokerUserId: params.invokerUserId,
+        outboxId: enqueued.id,
+        skipped: enqueued.skipped
+      },
+      enqueued.skipped
+        ? "cancel_week notice enqueue skipped (duplicate)."
+        : "cancel_week notice enqueued to outbox."
     );
   }
 

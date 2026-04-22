@@ -419,7 +419,7 @@ export const reconcileOutboxClaims = async (
   }
 };
 
-export type ReconcileScope = "startup" | "tick";
+export type ReconcileScope = "startup" | "tick" | "reconnect";
 
 /**
  * Invariant D (startup active probe): Detect deleted Discord messages at boot.
@@ -579,11 +579,14 @@ const probeAndRecreatePostponeMessage = async (
  * Run all reconciliation invariants.
  *
  * @remarks
- * `scope="startup"`: A〜C + E + startup-only active probe (D') を実行。
+ * `scope="startup"`: A〜C + E + F + startup-only active probe (D') を実行。
  *   (通常運転中の invariant D は scheduler tick 側の再描画経路で扱う)。
+ * `scope="reconnect"`: shardReady 再接続時に A〜C + E + F を実行 (D' は毎再接続で fetch させないため除外)。
+ *   in-flight lock と debounce は呼び出し側 (src/index.ts) で保証する (ADR-0036)。
  * `scope="tick"`: E のみ (stale reminder claim 回収)。起動時より軽量で毎 tick に載せられる。
  * いずれも冪等で DB を正本とする (ADR-0001)。
  * @see docs/adr/0033-startup-invariant-reconciler.md
+ * @see docs/adr/0036-reconnect-replay.md
  */
 export const runReconciler = async (
   client: Client,
@@ -599,12 +602,13 @@ export const runReconciler = async (
   const cancelledPromoted = await reconcileStrandedCancelled(client, ctx);
   const askCreated = await reconcileMissingAsk(client, ctx);
   const messageResent = await reconcileMissingAskMessage(client, ctx);
-  // why: probe は createAskSession / reconcileMissingAskMessage の結果 (新規 askMessageId) も
-  //   含めて検証したいので最後に回す。ただし直前に投稿された message は fetch で見つかるため
-  //   二重投稿にはならない。
-  await probeDeletedMessagesAtStartup(client, ctx);
+  // why: probe は startup 限定 (毎再接続で Discord fetch N 件は高コスト)。
+  //   reconnect では抑制し、scheduler tick 側の opportunistic な再描画 (updateAskMessage) に任せる。
+  if (options.scope === "startup") {
+    await probeDeletedMessagesAtStartup(client, ctx);
+  }
   const staleClaimReclaimed = await reconcileStaleReminderClaims(ctx);
-  // invariant: outbox worker が claim 中に crash した行を startup で reclaim する (ADR-0035)。
+  // invariant: outbox worker が claim 中に crash した行を startup/reconnect で reclaim する (ADR-0035)。
   const outboxClaimReleased = await reconcileOutboxClaims(ctx);
 
   return {

@@ -59,6 +59,11 @@ export const OUTBOX_MAX_ATTEMPTS = 10 as const;
 // why: /status の invariant 警告で「多重失敗の疑い」として拾う閾値。FAILED は常に警告対象。
 export const OUTBOX_STRANDED_ATTEMPTS_THRESHOLD = 5 as const;
 
+// why: shardReady 再接続時に reconnect-replay (reconciler + startup recovery) をトリガする debounce 閾値。
+//   in-flight lock (Promise) + 時刻 debounce の併用で、flappy な再接続を安全側に倒す。
+// @see docs/adr/0036-reconnect-replay.md
+export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;
+
 const parseHhmm = (value: string): Hhmm => {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
   if (!match) {

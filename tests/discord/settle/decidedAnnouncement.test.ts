@@ -129,81 +129,59 @@ describe("sendDecidedAnnouncement", () => {
     vi.clearAllMocks();
   });
 
-  it("sends the announcement with mentions and member breakdown for DECIDED session", async () => {
+  it("enqueues a decided_announcement outbox entry with stable dedupeKey", async () => {
     const session = decidedSession();
     const responses = allTimeSlotResponses();
     const ctx = createTestAppContext({
       seed: { sessions: [session], responses, members: seededMembers }
     });
-    const { client, send } = stubChannel();
+    const { client } = stubChannel();
 
     await sendDecidedAnnouncement(client, ctx, session);
 
-    expect(send).toHaveBeenCalledTimes(1);
-    const payload = send.mock.calls[0]?.[0] as { content: string };
-    for (const userId of env.MEMBER_USER_IDS) {
-      expect(payload.content).toContain(`<@${userId}>`);
+    const entries = ctx.ports.outbox.listEntries();
+    expect(entries).toHaveLength(1);
+    const [entry] = entries;
+    expect(entry?.sessionId).toBe(session.id);
+    expect(entry?.dedupeKey).toBe(`decided-announcement-${session.id}`);
+    if (entry?.payload.kind === "send_message") {
+      expect(entry.payload.renderer).toBe("decided_announcement");
+    } else {
+      throw new Error("expected send_message payload");
     }
-    expect(payload.content).toContain("🎉 今週の桃鉄1年勝負は開催します！");
-    expect(payload.content).toContain("開始時刻: 23:00");
   });
 
-  it("does not send when session is not DECIDED", async () => {
+  it("does not enqueue when session is not DECIDED", async () => {
     const session = decidedSession({ status: "ASKING" });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const { client, send } = stubChannel();
+    const { client } = stubChannel();
 
     await sendDecidedAnnouncement(client, ctx, session);
 
-    expect(send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
   });
 
-  it("does not send when decidedStartAt is null", async () => {
+  it("does not enqueue when decidedStartAt is null", async () => {
     const session = decidedSession({ decidedStartAt: null });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const { client, send } = stubChannel();
+    const { client } = stubChannel();
 
     await sendDecidedAnnouncement(client, ctx, session);
 
-    expect(send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
   });
 
-  it("omits mention line when DEV_SUPPRESS_MENTIONS is true", async () => {
-    const originalFlag = env.DEV_SUPPRESS_MENTIONS;
-    (env as unknown as { DEV_SUPPRESS_MENTIONS: boolean }).DEV_SUPPRESS_MENTIONS = true;
-    try {
-      const session = decidedSession();
-      const responses = allTimeSlotResponses();
-      const ctx = createTestAppContext({
-        seed: { sessions: [session], responses, members: seededMembers }
-      });
-      const { client, send } = stubChannel();
-
-      await sendDecidedAnnouncement(client, ctx, session);
-
-      const payload = send.mock.calls[0]?.[0] as { content: string };
-      for (const userId of env.MEMBER_USER_IDS) {
-        expect(payload.content).not.toContain(`<@${userId}>`);
-      }
-    } finally {
-      (env as unknown as { DEV_SUPPRESS_MENTIONS: boolean }).DEV_SUPPRESS_MENTIONS = originalFlag;
-    }
-  });
-
-  it("swallows channel send failures without throwing (DB-as-SoT, retry not attempted)", async () => {
+  it("dedupes repeated enqueue for same session (idempotent)", async () => {
     const session = decidedSession();
     const responses = allTimeSlotResponses();
     const ctx = createTestAppContext({
       seed: { sessions: [session], responses, members: seededMembers }
     });
-    const client = {
-      channels: {
-        fetch: vi.fn(async () => {
-          throw new Error("fetch failed");
-        })
-      }
-    } as unknown as Client;
+    const { client } = stubChannel();
 
-    await expect(sendDecidedAnnouncement(client, ctx, session)).resolves.toBeUndefined();
+    await sendDecidedAnnouncement(client, ctx, session);
+    await sendDecidedAnnouncement(client, ctx, session);
+
+    expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
   });
 });

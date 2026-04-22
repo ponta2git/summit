@@ -17,7 +17,7 @@ import { reconcileMembers } from "./members/reconcile.js";
 import { runReconciler } from "./scheduler/reconciler.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
-import { HEALTHCHECK_PING_TIMEOUT_MS } from "./config.js";
+import { HEALTHCHECK_PING_TIMEOUT_MS, RECONNECT_REPLAY_DEBOUNCE_MS } from "./config.js";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
@@ -45,12 +45,86 @@ client.on("shardDisconnect", () => {
   markAppNotReady("reconnecting");
 });
 
+// why: reconnect 時に reconciler + startupRecovery を replay し、disconnect 中に発火した cron tick の
+//   Discord 副作用漏れ (ask 未投稿 / settle 中断 / outbox claim stuck) を収束させる (ADR-0036)。
+// race: 短時間の再接続フラップで replay を多重起動しないよう in-flight Promise lock で直列化する。
+//   また直近 RECONNECT_REPLAY_DEBOUNCE_MS 以内の成功後の再接続は debounce で skip する。
+// ack: replay 中は markAppNotReady で dispatcher に load-shed させ、interaction を ephemeral で rejection する。
+let replayInFlight: Promise<void> | undefined;
+let lastReplaySucceededAt = 0;
+
+const triggerReconnectReplay = (): void => {
+  if (!startupCompleted) {
+    return;
+  }
+  if (replayInFlight) {
+    // race: 既に replay 実行中。完了時に markAppReady されるので追加起動は不要。
+    return;
+  }
+  const now = Date.now();
+  if (now - lastReplaySucceededAt < RECONNECT_REPLAY_DEBOUNCE_MS) {
+    // debounce: 直近成功の範囲内ならば skip して ready に戻すのみ。
+    markAppReady();
+    logger.info(
+      {
+        event: "reconnect.replay_skipped",
+        bootId,
+        reason: "debounced",
+        sinceLastMs: now - lastReplaySucceededAt
+      },
+      "Reconnect replay skipped (debounced)."
+    );
+    return;
+  }
+
+  markAppNotReady("replaying");
+  const startedAt = Date.now();
+  logger.info(
+    { event: "reconnect.replay_start", bootId },
+    "Reconnect replay started."
+  );
+  replayInFlight = (async () => {
+    try {
+      const report = await runReconciler(client, appContext, { scope: "reconnect" });
+      await runStartupRecovery(client, appContext);
+      lastReplaySucceededAt = Date.now();
+      logger.info(
+        {
+          event: "reconnect.replay_done",
+          bootId,
+          elapsedMs: lastReplaySucceededAt - startedAt,
+          cancelledPromoted: report.cancelledPromoted,
+          askCreated: report.askCreated,
+          messageResent: report.messageResent,
+          staleClaimReclaimed: report.staleClaimReclaimed,
+          outboxClaimReleased: report.outboxClaimReleased
+        },
+        "Reconnect replay completed."
+      );
+    } catch (error: unknown) {
+      logger.error(
+        {
+          event: "reconnect.replay_failed",
+          bootId,
+          elapsedMs: Date.now() - startedAt,
+          error
+        },
+        "Reconnect replay failed."
+      );
+    } finally {
+      replayInFlight = undefined;
+      // state: 成否に関わらず ready に戻す。失敗時も次 scheduler tick で再収束する (冪等)。
+      markAppReady();
+    }
+  })();
+};
+
 client.on("shardReady", () => {
   if (!startupCompleted) {
     return;
   }
 
-  markAppReady();
+  triggerReconnectReplay();
 });
 
 registerInteractionHandlers(client, appContext, {

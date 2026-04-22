@@ -36,15 +36,17 @@ pnpm build     ✓
 | final-review FR-M2 | fr-m2-cas-msg-id | backfillAsk/PostponeMessageId (CAS-on-NULL) | eae067f |
 | second-opinion BLOCKER | fr-blocker-partial-unique | onConflictDoNothing に partial index 述語を付与 | eae067f |
 | second-opinion H1 | fr-h1-settle-ordering | settle 通知を直接送信に戻す (順序逆転回避) | eae067f |
-| second-opinion NOTABLE#3 | adr-literal-drift | ADR-0034 / 0035 の値リテラルを pointer に置換 | (this commit) |
+| second-opinion NOTABLE#3 | adr-literal-drift | ADR-0034 / 0035 の値リテラルを pointer に置換 | (prior commit) |
+| follow-up | reconnect-replay | shardReady で reconciler + startupRecovery を in-flight lock + debounce 付きで再走 (ADR-0036) | (this commit) |
+| follow-up | h3-outbox-rest (部分) | `decided_announcement` / `cancel_week_notice` renderer を追加し該当 2 経路を outbox 化 (ADR-0035 更新) | (this commit) |
 
 ### 意図的に deferral した項目
 
 | 由来 | ID | 内容 | 理由 / 次アクション |
 |---|---|---|---|
-| second-opinion H2 | reconnect-replay | disconnect/reconnect 時に reconciler / recovery が再走しない | scope: アーキ判断 (reconciler timing の再設計)。単一 tick 失敗は FR-M3 の runTickSafely + outbox 自動 retry で多くが吸収される。残る隙間 (reminder claim → Discord fail → 永続) は `findStaleReminderClaims` が起動時に拾う既存経路がある。次 PR で `shardReady` (再接続含む) フックに mini-reconciler を付ける改善提案を ADR 化する。 |
+| second-opinion H2 | reconnect-replay | disconnect/reconnect 時に reconciler / recovery が再走しない | ✅ **shipped (本 commit)**: `shardReady` ハンドラに in-flight Promise lock + 30s debounce + markAppNotReady/Ready gating を付け、`scope: "reconnect"` で reconciler (A/B/C/E/F invariant) と startupRecovery を再走。active probe D' は reconnect では抑制 (rate-limit 保護)。ADR-0036 参照。 |
 | second-opinion NOTABLE#2 | deploy-freeze-enforcement | fly.toml / README 記載のみで CI enforcement なし | scope: CI / deploy workflow の再設計。現状は operator convention として運用継続。 |
-| final-review follow-through | h3-outbox-rest | ask initial post / postpone / reminder / decided の outbox 移行 | **blocked**: worker renderer が `{content: string}` のみサポート。embed+component payload と state-aware re-render の設計が必要。H1 で学んだ通り、部分 rollout は順序逆転リスクを招くため全送信経路を一度に揃える設計を推奨。次 PR スコープ。 |
+| final-review follow-through | h3-outbox-rest (ask/postpone/reminder) | ask initial post / postpone / reminder の outbox 移行 | **blocked** (rubber-duck 指摘の 3 件): (1) ask-initial は reconciler invariant N1 が `askMessageId=NULL` を "欠落" と見なすため enqueue と競合、(2) settle + postpone の同一 tx enqueue で配送順序が FIFO 保証されず UX 逆転リスク、(3) reminder は claim (`reminderSentAt` set) と `completeAfterReminder` の tx 境界が generic outbox と合わず reminder 専用 outbox kind が必要。decided-announcement と cancel-week-notice は state-consistent かつ順序非依存のため本 PR で先行移行。 |
 | final-review FR-M1 | — | 該当項目なし (primary report で M1 を採番せず M2/M3 のみ特定) | — |
 
 ## 第二意見 (rubber-duck by GPT-5.4 via final-review-second-opinion.md) との対応マッピング
@@ -53,7 +55,7 @@ pnpm build     ✓
 |---|---|---|
 | partial unique index と ON CONFLICT target の不一致 | BLOCKING | ✅ 修正済 (eae067f) |
 | 部分 outbox rollout による順序逆転 | HIGH | ✅ settle 通知を直接送信に revert (eae067f) |
-| disconnect/reconnect で reconciler 再走なし | HIGH | 🕐 deferral (scope 別 PR / ADR 予定) |
+| disconnect/reconnect で reconciler 再走なし | HIGH | ✅ shipped (ADR-0036 — shardReady replay) |
 | runTickSafely 全 tick 契約化 | HIGH | ✅ FR-M3 対応 (eae067f) |
 | ADR-0035 が migration の進捗を過大表現 | NOTABLE | ✅ Consequences 節で rollout scope を明記 (eae067f) |
 | deploy freeze 非強制 | NOTABLE | 🕐 operator convention として維持 |

@@ -143,12 +143,17 @@ describe("cancel_week confirmation button", () => {
     expect(after2?.status).toBe("SKIPPED");
     expect(after2?.cancelReason).toBe("manual_skip");
 
-    expect(channelSend).toHaveBeenCalledTimes(1);
-    expect(channelSend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining("今週は運用都合により見送りです") as unknown as string
-      })
-    );
+    expect(channelSend).not.toHaveBeenCalled();
+    const outboxEntries = ctx.ports.outbox.listEntries();
+    expect(outboxEntries).toHaveLength(1);
+    const [notice] = outboxEntries;
+    expect(notice?.dedupeKey).toMatch(/^cancel-week-notice-/);
+    if (notice?.payload.kind === "send_message") {
+      expect(notice.payload.renderer).toBe("cancel_week_notice");
+      expect(notice.payload.extra?.["invokerUserId"]).toBe(env.MEMBER_USER_IDS[0]);
+    } else {
+      throw new Error("expected send_message payload");
+    }
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith(
@@ -173,6 +178,7 @@ describe("cancel_week confirmation button", () => {
     const after = await ctx.ports.sessions.findSessionById(session.id);
     expect(after?.status).toBe("ASKING");
     expect(channelSend).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: cancelWeekMessages.cancelWeek.aborted,
@@ -192,6 +198,7 @@ describe("cancel_week confirmation button", () => {
     await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: cancelWeekMessages.cancelWeek.done({ count: 0 }),

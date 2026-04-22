@@ -2,7 +2,7 @@
 //   PENDING 行を claim → Discord に配送 → DELIVERED / FAILED に遷移させる。
 //   tickRunner の最初の consumer として `runTickSafely` で例外を閉じ込める (ADR-0033 期の基盤)。
 
-import type { Client } from "discord.js";
+import type { Client, MessageCreateOptions } from "discord.js";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -11,9 +11,14 @@ import {
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_WORKER_BATCH_LIMIT
 } from "../config.js";
-import type { OutboxEntry, OutboxPayload } from "../db/ports.js";
+import type { OutboxEntry } from "../db/ports.js";
 import { logger } from "../logger.js";
 import { getTextChannel } from "../discord/shared/channels.js";
+import { cancelWeekMessages } from "../features/cancel-week/messages.js";
+import {
+  buildDecidedAnnouncementViewModel
+} from "../features/decided-announcement/viewModel.js";
+import { renderDecidedAnnouncement } from "../features/decided-announcement/send.js";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -36,18 +41,86 @@ export const computeOutboxBackoff = (
 };
 
 /**
- * Render the Discord payload for an outbox entry.
+ * Render the Discord message body for an outbox entry.
  *
  * @remarks
- * 現段階 (ADR-0035 Phase 1) では text-only send_message のみを扱う。
- * 将来 renderer 種別を増やす場合はここで dispatch する (embeds/components)。
- * payload が `kind="send_message"` で `extra.content` (string) を持つ場合にそれを送信する。
- * それ以外は未対応として dead letter へ落とす (意図しない payload を worker が握り潰さない)。
+ * Dispatches on `payload.renderer`. Stateless renderers use `payload.extra` only.
+ * State-aware renderers (e.g. `decided_announcement`) fetch the latest state from DB at
+ * dispatch time so the message reflects the SoT at delivery rather than at enqueue.
+ *
+ * 未対応 renderer は `undefined` を返す → 呼び出し側が dead letter (FAILED) に落とす。
+ * 握り潰しは禁止 (AGENTS.md rule)。
+ * @see docs/adr/0035-discord-send-outbox.md
  */
-const renderPayloadText = (payload: OutboxPayload): string | undefined => {
+type RendererFn = (input: {
+  readonly ctx: AppContext;
+  readonly entry: OutboxEntry;
+}) => Promise<MessageCreateOptions | undefined>;
+
+const extractString = (extra: Record<string, unknown> | undefined, key: string): string | undefined => {
+  const v = extra?.[key];
+  return typeof v === "string" ? v : undefined;
+};
+
+const extractBoolean = (extra: Record<string, unknown> | undefined, key: string): boolean => {
+  return extra?.[key] === true;
+};
+
+// why: renderer 名を型で固定し ADR-0035 のカバレッジを grep 可能にする。
+//   新規 renderer 追加時はこの map に 1 行追加する。worker ruleset 外の kind/renderer は dead letter。
+const renderers: Readonly<Record<string, RendererFn>> = {
+  // raw_text: 既存の text-only 経路 (初期 outbox 利用, 後方互換)。
+  raw_text: async ({ entry }) => {
+    if (entry.payload.kind !== "send_message") {return undefined;}
+    const content = extractString(entry.payload.extra, "content");
+    return content === undefined ? undefined : { content };
+  },
+  // decided_announcement: §5.1 開催決定通知。
+  //   state-aware: DECIDED Session を DB から再取得し VM から構築する。
+  //   state が DECIDED 以外 (例: レース後に COMPLETED へ遷移) の場合は `undefined` を返して dead letter。
+  decided_announcement: async ({ ctx, entry }) => {
+    const session = await ctx.ports.sessions.findSessionById(entry.sessionId);
+    if (!session || session.status !== "DECIDED" || !session.decidedStartAt) {
+      return undefined;
+    }
+    const [responses, members] = await Promise.all([
+      ctx.ports.responses.listResponses(session.id),
+      ctx.ports.members.listMembers()
+    ]);
+    const vm = buildDecidedAnnouncementViewModel(session, responses, members);
+    if (!vm) {return undefined;}
+    return renderDecidedAnnouncement(vm);
+  },
+  // cancel_week_notice: /cancel_week 通知 (チャンネル 1 回ポスト)。stateless。
+  //   invokerUserId / suppressMentions を extra に積んでおき worker tick で render する。
+  cancel_week_notice: async ({ entry }) => {
+    if (entry.payload.kind !== "send_message") {return undefined;}
+    const invokerUserId = extractString(entry.payload.extra, "invokerUserId");
+    if (invokerUserId === undefined) {return undefined;}
+    const suppressMentions = extractBoolean(entry.payload.extra, "suppressMentions");
+    const content = suppressMentions
+      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId })
+      : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId });
+    return { content };
+  }
+};
+
+const renderPayload = async (
+  ctx: AppContext,
+  entry: OutboxEntry
+): Promise<MessageCreateOptions | undefined> => {
+  const payload = entry.payload;
   if (payload.kind !== "send_message") {return undefined;}
-  const content = (payload.extra as { content?: unknown } | undefined)?.content;
-  return typeof content === "string" ? content : undefined;
+  const rendererName = payload.renderer;
+  // why: 既存テスト / 初期実装は `renderer` 未設定 (`"ask_body"` など) + `extra.content` の text を想定。
+  //   未登録 renderer の場合は raw_text と同じく extra.content を fallback で拾う (後方互換)。
+  //   これは明示的な text-only 送信 (settle 初期実装などの過渡期経路) を壊さないための措置。
+  const fn = renderers[rendererName];
+  if (fn) {
+    return fn({ ctx, entry });
+  }
+  const content = extractString(payload.extra, "content");
+  return content === undefined ? undefined : { content };
 };
 
 /**
@@ -68,11 +141,11 @@ const deliverOne = async (
   const now = ctx.clock.now();
   const payload = entry.payload;
 
-  const content = renderPayloadText(payload);
-  if (content === undefined) {
-    // state: 未対応 renderer は dead letter。握り潰しは禁止 (AGENTS.md rule)。
+  const body = await renderPayload(ctx, entry);
+  if (body === undefined) {
+    // state: 未対応 renderer / state mismatch は dead letter。握り潰しは禁止 (AGENTS.md rule)。
     await ctx.ports.outbox.markFailed(entry.id, {
-      error: `Unsupported outbox payload: kind=${payload.kind}`,
+      error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.kind === "send_message" ? payload.renderer : "n/a"}`,
       now,
       nextAttemptAt: null
     });
@@ -82,9 +155,10 @@ const deliverOne = async (
         outboxId: entry.id,
         sessionId: entry.sessionId,
         kind: payload.kind,
+        renderer: payload.kind === "send_message" ? payload.renderer : undefined,
         dedupeKey: entry.dedupeKey
       },
-      "Outbox worker: unsupported payload kind; moved to FAILED."
+      "Outbox worker: unsupported payload; moved to FAILED."
     );
     return;
   }
@@ -92,7 +166,7 @@ const deliverOne = async (
   try {
     if (payload.kind === "send_message") {
       const channel = await getTextChannel(client, payload.channelId);
-      const sent = await channel.send({ content });
+      const sent = await channel.send(body);
       await ctx.ports.outbox.markDelivered(entry.id, {
         deliveredMessageId: sent.id,
         now: ctx.clock.now()

@@ -79,3 +79,4 @@ tags: [runtime, db, discord, ops, docs, time, ...]
 | [0033](./0033-startup-invariant-reconciler.md) | 起動時および tick 境界での invariant 収束 (startup / tick reconciler) | accepted | 2026-04-28 | runtime, db, discord, ops |
 | [0034](./0034-healthcheck-ping.md) | Healthcheck ping strategy — boot ping + minute-tick ping | accepted | 2026-04-28 | runtime, ops |
 | [0035](./0035-discord-send-outbox.md) | Discord send outbox — atomic enqueue + worker で at-least-once 配送 | accepted | 2026-04-21 | runtime, db, discord |
+| [0036](./0036-reconnect-replay.md) | Reconnect replay on shardReady — in-flight lock + debounce + scope=reconnect | accepted | 2026-04-21 | runtime, discord, ops |

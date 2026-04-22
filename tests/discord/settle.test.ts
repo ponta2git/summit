@@ -137,11 +137,15 @@ describe("settleAskingSession", () => {
     );
     expect(persisted?.reminderSentAt).toBeNull();
     expect(messageEdit).toHaveBeenCalledTimes(1);
-    // why: DECIDED 遷移時に §5.1 開催決定メッセージ (別投稿) が送られる。ask footer 更新 + announcement 1 通。
-    expect(channel.send).toHaveBeenCalledTimes(1);
-    const announcePayload = channel.send.mock.calls[0]?.[0] as { content: string };
-    expect(announcePayload.content).toContain("🎉 今週の桃鉄1年勝負は開催します！");
-    expect(announcePayload.content).toContain("開始時刻: 23:00");
+    // why: DECIDED 遷移時に §5.1 開催決定メッセージは outbox へ enqueue される (ADR-0035)。
+    //   直接の channel.send は ask footer 更新のみで、announcement は worker tick で配送される。
+    expect(channel.send).not.toHaveBeenCalled();
+    const outboxEntries = ctx.ports.outbox.listEntries();
+    const announce = outboxEntries.find((e) => e.dedupeKey === `decided-announcement-${session.id}`);
+    expect(announce).toBeDefined();
+    if (announce?.payload.kind === "send_message") {
+      expect(announce.payload.renderer).toBe("decided_announcement");
+    }
   });
 });
 
