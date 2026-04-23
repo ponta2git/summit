@@ -5,7 +5,9 @@ import type { SessionRow } from "../../src/db/rows.js";
 import { REMINDER_CLAIM_STALENESS_MS } from "../../src/config.js";
 import {
   DISCORD_UNKNOWN_MESSAGE_CODE,
-  isUnknownMessageError,
+  isUnknownMessageError
+} from "../../src/discord/shared/discordErrors.js";
+import {
   probeDeletedMessagesAtStartup,
   reconcileMissingAsk,
   reconcileMissingAskMessage,

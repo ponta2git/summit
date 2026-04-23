@@ -6,11 +6,15 @@ import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
+import { errAsync, okAsync } from "neverthrow";
+
+import { DiscordApiError } from "../../src/errors/index.js";
+
 vi.mock("../../src/features/ask-session/settle.js", () => ({
-  evaluateAndApplyDeadlineDecision: vi.fn(async () => {})
+  evaluateAndApplyDeadlineDecision: vi.fn(() => okAsync(undefined))
 }));
 vi.mock("../../src/features/postpone-voting/settle.js", () => ({
-  settlePostponeVotingSession: vi.fn(async () => {})
+  settlePostponeVotingSession: vi.fn(() => okAsync(undefined))
 }));
 
 const askSettle = await import("../../src/features/ask-session/settle.js");
@@ -256,8 +260,8 @@ describe("runPostponeDeadlineTick", () => {
     const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
 
     vi.mocked(settle.settlePostponeVotingSession)
-      .mockRejectedValueOnce(new Error("network failure"))
-      .mockResolvedValueOnce(undefined);
+      .mockReturnValueOnce(errAsync(new DiscordApiError("network failure")))
+      .mockReturnValueOnce(okAsync(undefined));
 
     await expect(runPostponeDeadlineTick(client, ctx)).resolves.toBeUndefined();
     expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);

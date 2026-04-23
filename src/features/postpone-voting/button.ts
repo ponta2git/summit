@@ -1,16 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { ResultAsync, okAsync } from "neverthrow";
+import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
 import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
   type AppResult,
-  okResult,
-  toAppError
+  okResult
 } from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
+import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { postponeMessages } from "./messages.js";
 import { renderPostponeBody } from "./render.js";
@@ -29,6 +28,7 @@ import {
 } from "../../discord/shared/guards.js";
 import { settlePostponeVotingSession } from "./settle.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",
@@ -156,9 +156,9 @@ const refreshPostponeMessageStep = (context: PostponePipelineReady): ResultAsync
         ...(rendered.components ? { components: rendered.components } : {})
       };
       // source-of-truth: 再描画は常に DB から再取得した session + responses を正本として構築する。
-      return ResultAsync.fromPromise(
+      return fromDiscordPromise(
         context.interaction.message.edit(editPayload),
-        (cause) => toAppError(cause, "Failed to edit postpone message after response.")
+        "Failed to edit postpone message after response."
       )
         .map(() => undefined)
         .orElse((error) => {
@@ -180,14 +180,11 @@ const refreshPostponeMessageStep = (context: PostponePipelineReady): ResultAsync
     });
 
 const settlePostponeStep = (context: PostponePipelineReady): ResultAsync<void, AppError> =>
-  ResultAsync.fromPromise(
-    settlePostponeVotingSession(
-      context.deps.client,
-      context.context,
-      context.session,
-      context.context.clock.now()
-    ),
-    (cause) => toAppError(cause, "Failed to settle postpone voting session.")
+  settlePostponeVotingSession(
+    context.deps.client,
+    context.context,
+    context.session,
+    context.context.clock.now()
   );
 
 const handlePostponePipelineError = async (
@@ -244,37 +241,21 @@ export const handlePostponeButton = async (
     .andThen((context) => settlePostponeStep(context).map(() => context));
 
   await result.match(
-    async (context) => {
-      try {
-        await interaction.followUp({
-          content: postponeMessages.interaction.voteConfirmed.postpone(context.choice),
-          flags: MessageFlags.Ephemeral
-        });
-        logger.info(
-          {
-            interactionId: interaction.id,
-            customId: interaction.customId,
-            sessionId: context.sessionId,
-            weekKey: context.session.weekKey,
-            userId: interaction.user.id,
-            choice: context.choice
-          },
-          "postponeVoteConfirmSent"
-        );
-      } catch (err: unknown) {
-        logger.warn(
-          {
-            err,
-            interactionId: interaction.id,
-            customId: interaction.customId,
-            sessionId: context.sessionId,
-            weekKey: context.session.weekKey,
-            userId: interaction.user.id
-          },
-          "Failed to send postpone vote confirmation followUp."
-        );
-      }
-    },
+    async (context) =>
+      sendEphemeralConfirmFollowUp(
+        interaction,
+        postponeMessages.interaction.voteConfirmed.postpone(context.choice),
+        {
+          interactionId: interaction.id,
+          customId: interaction.customId,
+          sessionId: context.sessionId,
+          weekKey: context.session.weekKey,
+          userId: interaction.user.id,
+          choice: context.choice
+        },
+        "postponeVoteConfirmSent",
+        "Failed to send postpone vote confirmation followUp."
+      ),
     async (error) => handlePostponePipelineError(interaction, error)
   );
 };

@@ -1,8 +1,11 @@
 import type { Client } from "discord.js";
+import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
 import type { ResponseRow, SessionRow } from "../../db/rows.js";
 import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "./decide.js";
+import type { AppError } from "../../errors/index.js";
+import { fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { renderPostponeBody } from "../postpone-voting/render.js";
 import { buildSettleNoticeViewModel, renderSettleNotice } from "./viewModel.js";
@@ -22,197 +25,214 @@ type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered"
  * @remarks
  * 金曜回 (postponeCount=0) は CANCELLED → POSTPONE_VOTING へ進み、順延投票を送る。
  * 土曜回 (postponeCount=1) は `saturday_cancelled` を記録したうえで COMPLETED に収束させる。
+ * race: race-lost (CAS が undefined) は無害なため `Ok(void)` として終了する。
  */
-export const settleAskingSession = async (
+export const settleAskingSession = (
   client: Client,
   ctx: AppContext,
   sessionId: string,
   reason: CancelReason
-): Promise<void> => {
-  const current = await ctx.ports.sessions.findSessionById(sessionId);
-  if (!current) {return;}
-  if (current.status !== "ASKING") {
-    // state: ASKING 以外は遷移せず skip 理由を明示して終了する
-    logger.info(
-      { sessionId, weekKey: current.weekKey, status: current.status, reason: "non-asking status, skip settle" },
-      "settleAskingSession called on non-ASKING session; skipping."
+): ResultAsync<void, AppError> =>
+  safeTry(async function* () {
+    const current = yield* fromDatabasePromise(
+      ctx.ports.sessions.findSessionById(sessionId),
+      "Failed to load session for ask settle."
     );
-    return;
-  }
+    if (!current) {return okAsync(undefined);}
+    if (current.status !== "ASKING") {
+      logger.info(
+        { sessionId, weekKey: current.weekKey, status: current.status, reason: "non-asking status, skip settle" },
+        "settleAskingSession called on non-ASKING session; skipping."
+      );
+      return okAsync(undefined);
+    }
 
-  const resolvedReason: AskingCancelReason =
-    current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
+    const resolvedReason: AskingCancelReason =
+      current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
 
-  const now = ctx.clock.now();
-  // state: ASKING→CANCELLED の CAS。
-  //   source-of-truth: settle notice と postpone message は同じ直接送信経路で順序保証する (FR second-opinion H1)。
-  //     outbox 経由にすると worker 周期 (≤10s) 分だけ settle 通知が遅延し、postpone vote との UX 順序が逆転する。
-  //     outbox 化は renderer coverage が ask/postpone 全体を覆ってから (ADR-0035 Consequences)。
-  const cancelled = await ctx.ports.sessions.cancelAsking({
-    id: sessionId,
-    now,
-    reason: resolvedReason
-  });
-  if (!cancelled) {
-    // state: ASKING→CANCELLED の CAS 競合敗北は無害な race lost として扱う
-    logger.info(
-      { sessionId, weekKey: current.weekKey, from: "ASKING", to: "CANCELLED", reason: "race lost at transition" },
-      "ASKING→CANCELLED race; another path settled first."
+    const now = ctx.clock.now();
+    // state: ASKING→CANCELLED の CAS。
+    //   source-of-truth: settle notice と postpone message は同じ直接送信経路で順序保証する (FR second-opinion H1)。
+    //     outbox 経由にすると worker 周期 (≤10s) 分だけ settle 通知が遅延し、postpone vote との UX 順序が逆転する。
+    //     outbox 化は renderer coverage が ask/postpone 全体を覆ってから (ADR-0035 Consequences)。
+    const cancelled = yield* fromDatabasePromise(
+      ctx.ports.sessions.cancelAsking({ id: sessionId, now, reason: resolvedReason }),
+      "Failed to cancel ASKING session."
     );
-    return;
-  }
+    if (!cancelled) {
+      logger.info(
+        { sessionId, weekKey: current.weekKey, from: "ASKING", to: "CANCELLED", reason: "race lost at transition" },
+        "ASKING→CANCELLED race; another path settled first."
+      );
+      return okAsync(undefined);
+    }
 
-  logger.info({ sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason: resolvedReason }, "Session cancelled.");
-  await updateAskMessage(client, ctx, cancelled);
-  const channel = await getTextChannel(client, cancelled.channelId);
-  // source-of-truth: settle 通知は CAS 成功直後に同期送信する (順序保証)。
-  const settleVm = buildSettleNoticeViewModel(resolvedReason);
-  const settleBody = renderSettleNotice(settleVm);
-  await channel.send(settleBody);
+    logger.info(
+      { sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason: resolvedReason },
+      "Session cancelled."
+    );
+    yield* fromDiscordPromise(
+      updateAskMessage(client, ctx, cancelled),
+      "Failed to update ask message after cancel."
+    );
+    const channel = yield* fromDiscordPromise(
+      getTextChannel(client, cancelled.channelId),
+      "Failed to resolve text channel for settle notice."
+    );
+    const settleVm = buildSettleNoticeViewModel(resolvedReason);
+    yield* fromDiscordPromise(
+      channel.send(renderSettleNotice(settleVm)),
+      "Failed to send settle notice."
+    );
 
-  if (cancelled.postponeCount === 1) {
-    // regression: 土曜回中止は CANCELLED に滞留させず、短命中間を経由して COMPLETED へ収束させる。
-    const completed = await ctx.ports.sessions.completeCancelledSession({
-      id: cancelled.id,
-      now: ctx.clock.now()
-    });
-    if (completed) {
+    if (cancelled.postponeCount === 1) {
+      // regression: 土曜回中止は CANCELLED に滞留させず、短命中間を経由して COMPLETED へ収束させる。
+      const completed = yield* fromDatabasePromise(
+        ctx.ports.sessions.completeCancelledSession({ id: cancelled.id, now: ctx.clock.now() }),
+        "Failed to complete cancelled Saturday session."
+      );
+      if (completed) {
+        logger.info(
+          {
+            sessionId: completed.id,
+            weekKey: completed.weekKey,
+            from: "CANCELLED",
+            to: "COMPLETED",
+            reason: resolvedReason
+          },
+          "Cancelled Saturday session completed."
+        );
+      }
+      return okAsync(undefined);
+    }
+
+    const postponeVm = buildPostponeMessageViewModel(cancelled);
+    const postponeSent = yield* fromDiscordPromise(
+      channel.send(renderPostponeBody(postponeVm)),
+      "Failed to send postpone vote message."
+    );
+    yield* fromDatabasePromise(
+      ctx.ports.sessions.updatePostponeMessageId(cancelled.id, postponeSent.id),
+      "Failed to record postpone message id."
+    );
+
+    const transitioned = yield* fromDatabasePromise(
+      ctx.ports.sessions.startPostponeVoting({
+        id: sessionId,
+        now: ctx.clock.now(),
+        postponeDeadlineAt: postponeDeadlineFor(parseCandidateDateIso(cancelled.candidateDateIso))
+      }),
+      "Failed to start postpone voting."
+    );
+    if (transitioned) {
       logger.info(
         {
-          sessionId: completed.id,
-          weekKey: completed.weekKey,
+          sessionId,
+          weekKey: cancelled.weekKey,
           from: "CANCELLED",
-          to: "COMPLETED",
-          reason: resolvedReason
+          to: "POSTPONE_VOTING",
+          reason: "postpone vote requested after cancel",
+          postponeMessageId: postponeSent.id
         },
-        "Cancelled Saturday session completed."
+        "Postpone voting started."
       );
     }
-    return;
-  }
-
-  const postponeVm = buildPostponeMessageViewModel(cancelled);
-  const postponeSent = await channel.send(renderPostponeBody(postponeVm));
-  await ctx.ports.sessions.updatePostponeMessageId(cancelled.id, postponeSent.id);
-
-  const transitioned = await ctx.ports.sessions.startPostponeVoting({
-    id: sessionId,
-    now: ctx.clock.now(),
-    postponeDeadlineAt: postponeDeadlineFor(parseCandidateDateIso(cancelled.candidateDateIso))
+    return okAsync(undefined);
   });
-  if (transitioned) {
-    // state: CANCELLED→POSTPONE_VOTING は順延投票メッセージ送信を契機に 1 回だけ遷移する
-    logger.info(
-      {
-        sessionId,
-        weekKey: cancelled.weekKey,
-        from: "CANCELLED",
-        to: "POSTPONE_VOTING",
-        reason: "postpone vote requested after cancel",
-        postponeMessageId: postponeSent.id
-      },
-      "Postpone voting started."
-    );
-  }
-};
 
 /**
  * If all 4 members have responded with time choices (no ABSENT),
  * transition ASKING → DECIDED and record decided_start_at along with reminderAt.
- * Returns true when the transition was performed.
+ * Resolves to true when the transition was performed.
  *
  * @remarks
  * reminderAt = decidedStart + REMINDER_LEAD_MINUTES(-15 分)。この時点では reminderSentAt は更新しない。
- * 実際のリマインド送信は scheduler の毎分 tick が DECIDED を拾って行う（§5.2, §9.1）。
  */
-export const tryDecideIfAllTimeSlots = async (
+export const tryDecideIfAllTimeSlots = (
   ctx: AppContext,
   session: SessionRow,
   decidedStart: Date
-): Promise<boolean> => {
-  const reminderAt = computeReminderAt(decidedStart);
-  const result = await ctx.ports.sessions.decideAsking({
-    id: session.id,
-    now: ctx.clock.now(),
-    decidedStartAt: decidedStart,
-    reminderAt
-  });
-  if (result) {
-    // state: ASKING で全員の時間回答が揃った場合のみ DECIDED へ遷移する
-    logger.info(
-      {
-        sessionId: session.id,
-        weekKey: session.weekKey,
-        from: "ASKING",
-        to: "DECIDED",
-        reason: "all time-choice responses received",
-        decidedStartAt: decidedStart.toISOString(),
-        reminderAt: reminderAt.toISOString()
-      },
-      "Session decided."
+): ResultAsync<boolean, AppError> =>
+  safeTry(async function* () {
+    const reminderAt = computeReminderAt(decidedStart);
+    const result = yield* fromDatabasePromise(
+      ctx.ports.sessions.decideAsking({
+        id: session.id,
+        now: ctx.clock.now(),
+        decidedStartAt: decidedStart,
+        reminderAt
+      }),
+      "Failed to transition ASKING→DECIDED."
     );
-    return true;
-  }
-  return false;
-};
-
-type DeadlineDecisionContext = Readonly<{ client: Client; ctx: AppContext; session: SessionRow }>;
-type DeadlineDecisionStrategy<K extends DecisionResult["kind"]> = (
-  context: DeadlineDecisionContext,
-  decision: Extract<DecisionResult, { kind: K }>
-) => Promise<void>;
-type DeadlineDecisionStrategyMap = { [K in DecisionResult["kind"]]: DeadlineDecisionStrategy<K> };
+    if (result) {
+      logger.info(
+        {
+          sessionId: session.id,
+          weekKey: session.weekKey,
+          from: "ASKING",
+          to: "DECIDED",
+          reason: "all time-choice responses received",
+          decidedStartAt: decidedStart.toISOString(),
+          reminderAt: reminderAt.toISOString()
+        },
+        "Session decided."
+      );
+      return okAsync(true);
+    }
+    return okAsync(false);
+  });
 
 const toCancelReason = (reason: Extract<DecisionResult, { kind: "cancelled" }>["reason"]): CancelReason =>
   reason === "all_absent" ? "absent" : "deadline_unanswered";
 
-// why: DecisionResult.kind ごとの処理を strategy map 化し、分岐追加時の影響範囲を局所化する
-// invariant: DecisionResult.kind の全ケースを map key として要求し、未実装を型エラーで検知する
-// source-of-truth: 分岐の起点は DecisionResult.kind（./decide.ts の判定結果）
-const deadlineDecisionStrategies: DeadlineDecisionStrategyMap = {
-  decided: async ({ client, ctx, session }, decision) => {
-    const decided = await tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
-    if (!decided) {return;}
-    // source-of-truth: DECIDED 遷移後の最新 DB 状態 (reminderAt を含む) を元に再描画する
-    const fresh = await ctx.ports.sessions.findSessionById(session.id);
-    if (!fresh) {return;}
-    await updateAskMessage(client, ctx, fresh);
-    // why: §5.1 開催決定メッセージ (別投稿) を送る。ASKING→DECIDED の CAS が 1 回しか成功しないため冪等。
-    // source-of-truth: requirements/base.md §5.1
-    await sendDecidedAnnouncement(client, ctx, fresh);
-    // state: reminderAt まで 10 分未満で DECIDED へ遷移した場合 (遅延 recovery 等) はリマインド省略して COMPLETED へ
-    if (fresh.reminderAt && shouldSkipReminder(ctx.clock.now(), fresh.reminderAt)) {
-      await skipReminderAndComplete(ctx, fresh, ctx.clock.now());
-    }
-  },
-  cancelled: async ({ client, ctx, session }, decision) => {
-    await settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));
-  },
-  pending: async () => {}
-};
-
-const applyDeadlineDecisionByStrategy = async <K extends DecisionResult["kind"]>(
-  context: DeadlineDecisionContext,
-  decision: Extract<DecisionResult, { kind: K }>
-): Promise<void> => deadlineDecisionStrategies[decision.kind](context, decision);
-
-export const applyDeadlineDecision = async (
+export const applyDeadlineDecision = (
   client: Client,
   ctx: AppContext,
   session: SessionRow,
   decision: DecisionResult
-): Promise<void> => {
-  await applyDeadlineDecisionByStrategy({ client, ctx, session }, decision);
-};
+): ResultAsync<void, AppError> =>
+  safeTry(async function* () {
+    switch (decision.kind) {
+      case "pending":
+        return okAsync(undefined);
+      case "cancelled":
+        yield* settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));
+        return okAsync(undefined);
+      case "decided": {
+        const decided = yield* tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
+        if (!decided) {return okAsync(undefined);}
+        // source-of-truth: DECIDED 遷移後の最新 DB 状態 (reminderAt 含む) を元に再描画する
+        const fresh = yield* fromDatabasePromise(
+          ctx.ports.sessions.findSessionById(session.id),
+          "Failed to reload decided session."
+        );
+        if (!fresh) {return okAsync(undefined);}
+        yield* fromDiscordPromise(
+          updateAskMessage(client, ctx, fresh),
+          "Failed to update ask message after decide."
+        );
+        // why: §5.1 開催決定メッセージ。ASKING→DECIDED の CAS が 1 回しか成功しないため冪等。
+        yield* fromDiscordPromise(
+          sendDecidedAnnouncement(client, ctx, fresh),
+          "Failed to send decided announcement."
+        );
+        if (fresh.reminderAt && shouldSkipReminder(ctx.clock.now(), fresh.reminderAt)) {
+          yield* fromDatabasePromise(
+            skipReminderAndComplete(ctx, fresh, ctx.clock.now()),
+            "Failed to skip reminder and complete session."
+          );
+        }
+        return okAsync(undefined);
+      }
+    }
+  });
 
 // source-of-truth: 判定ロジックは ./decide.ts が正本
-export const evaluateAndApplyDeadlineDecision = async (
+export const evaluateAndApplyDeadlineDecision = (
   client: Client,
   ctx: AppContext,
   session: SessionRow,
   responses: readonly ResponseRow[],
   options: EvaluateDeadlineOptions
-): Promise<void> => {
-  const decision = evaluateDeadline(session, responses, options);
-  await applyDeadlineDecision(client, ctx, session, decision);
-};
+): ResultAsync<void, AppError> =>
+  applyDeadlineDecision(client, ctx, session, evaluateDeadline(session, responses, options));

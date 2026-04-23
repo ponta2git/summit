@@ -69,7 +69,15 @@ const settleDueAskingSession = async (
   await evaluateAndApplyDeadlineDecision(client, ctx, session, responses, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
-  });
+  }).match(
+    () => {},
+    (error) => {
+      logger.error(
+        { error, sessionId: session.id, weekKey: session.weekKey },
+        "Failed to apply ask deadline decision."
+      );
+    }
+  );
 };
 
 /**
@@ -115,15 +123,17 @@ export const runPostponeDeadlineTick = async (
   // source-of-truth: DB から期限切れ POSTPONE_VOTING セッションを再計算する。
   const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
   for (const session of due) {
-    try {
-      // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
-      await settlePostponeVotingSession(client, ctx, session, now);
-    } catch (error: unknown) {
-      logger.error(
-        { error, sessionId: session.id, weekKey: session.weekKey },
-        "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
-      );
-    }
+    // race: 既に DB から再計算しているため per-session 失敗は次 tick で再試行する。
+    // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
+    await settlePostponeVotingSession(client, ctx, session, now).match(
+      () => {},
+      (error) => {
+        logger.error(
+          { error, sessionId: session.id, weekKey: session.weekKey },
+          "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
+        );
+      }
+    );
   }
 };
 
@@ -236,7 +246,15 @@ export const runStartupRecovery = async (
           },
           "Startup recovery: settling overdue POSTPONE_VOTING session."
         );
-        await settlePostponeVotingSession(client, ctx, session, now);
+        await settlePostponeVotingSession(client, ctx, session, now).match(
+          () => {},
+          (error) => {
+            logger.error(
+              { error, sessionId: session.id, weekKey: session.weekKey },
+              "Startup recovery: failed to settle POSTPONE_VOTING session."
+            );
+          }
+        );
       } else if (
         session.status === "DECIDED" &&
         session.reminderAt !== null &&

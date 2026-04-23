@@ -164,6 +164,8 @@ const deliverOne = async (
   }
 
   try {
+    // invariant: body !== undefined を通過した時点で renderPayload の契約上 payload.kind === "send_message" が確定する (L108-124)。
+    //   edit_message は body === undefined になり L145-163 の dead-letter 経路で既に処理済み (ADR-0035 Consequences)。
     if (payload.kind === "send_message") {
       const channel = await getTextChannel(client, payload.channelId);
       const sent = await channel.send(body);
@@ -209,13 +211,6 @@ const deliverOne = async (
         },
         "Outbox worker: delivered message."
       );
-    } else {
-      // edit_message: 現フェーズでは未使用 (ADR-0035 Consequences)。安全側で dead letter。
-      await ctx.ports.outbox.markFailed(entry.id, {
-        error: "edit_message not yet supported by worker",
-        now: ctx.clock.now(),
-        nextAttemptAt: null
-      });
     }
   } catch (error: unknown) {
     const failedNow = ctx.clock.now();

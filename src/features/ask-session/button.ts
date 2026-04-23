@@ -1,16 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { ResultAsync, okAsync } from "neverthrow";
+import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
 import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
   type AppResult,
-  okResult,
-  toAppError
+  okResult
 } from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
+import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { askMessages } from "./messages.js";
 import { evaluateDeadline } from "./decide.js";
@@ -32,6 +31,7 @@ import {
 import { applyDeadlineDecision } from "./settle.js";
 import { env } from "../../env.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -125,11 +125,7 @@ const applyDecisionStep = (
   if (decision.kind === "pending") {
     return okAsync(undefined);
   }
-
-  return ResultAsync.fromPromise(
-    applyDeadlineDecision(context.deps.client, context.context, context.session, decision),
-    (cause) => toAppError(cause, "Failed to apply ask deadline decision.")
-  );
+  return applyDeadlineDecision(context.deps.client, context.context, context.session, decision);
 };
 
 const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
@@ -172,9 +168,9 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
       const vm = buildAskMessageViewModel(freshSession, responses, memberRows);
       const rendered = renderAskBody(vm);
       // source-of-truth: 再描画は常に DB の最新 Session + Response から再構築する。
-      return ResultAsync.fromPromise(
+      return fromDiscordPromise(
         context.interaction.message.edit(rendered),
-        (cause) => toAppError(cause, "Failed to edit ask message after response.")
+        "Failed to edit ask message after response."
       )
         .map(() => undefined)
         .orElse((error) => {
@@ -249,33 +245,18 @@ export const handleAskButton = async (
     );
 
   await result.match(
-    async (context) => {
-      // why: ボタン押下者に操作の反映を即座にフィードバックし、UX を改善する。
-      // race: followUp 失敗は本処理（DB 更新・メッセージ再描画）に影響させない。Discord 一時障害時でも本処理は完了済み。
-      try {
-        await interaction.followUp({
-          content: askMessages.interaction.voteConfirmed.ask(context.choice),
-          flags: MessageFlags.Ephemeral
-        });
-        logger.info(
-          {
-            userId: interaction.user.id,
-            sessionId: context.sessionId,
-            choice: context.choice
-          },
-          "voteConfirmSent"
-        );
-      } catch (err: unknown) {
-        logger.warn(
-          {
-            err,
-            userId: interaction.user.id,
-            sessionId: context.sessionId
-          },
-          "Failed to send vote confirmation followUp."
-        );
-      }
-    },
+    async (context) =>
+      sendEphemeralConfirmFollowUp(
+        interaction,
+        askMessages.interaction.voteConfirmed.ask(context.choice),
+        {
+          userId: interaction.user.id,
+          sessionId: context.sessionId,
+          choice: context.choice
+        },
+        "voteConfirmSent",
+        "Failed to send vote confirmation followUp."
+      ),
     async (error) => handleAskPipelineError(interaction, error)
   );
 };

@@ -215,7 +215,6 @@ export const createFakeSessionsPort = (
         ...found,
         status: "POSTPONE_VOTING",
         deadlineAt: input.postponeDeadlineAt,
-        postponeMessageId: input.messageIdPlaceholder ?? found.postponeMessageId,
         updatedAt: input.now
       });
       byId.set(next.id, next);

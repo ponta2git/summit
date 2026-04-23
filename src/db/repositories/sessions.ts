@@ -73,8 +73,6 @@ export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
 ): Promise<SessionRow | undefined> => {
-  // race: (weekKey, postponeCount) unique 制約と onConflictDoNothing で race 敗者は undefined。
-  //   呼び出し側は undefined を「既に別プロセス / 別 tick が作成済み」として skipped 扱いする。
   const rows = await db
     .insert(sessions)
     .values({
@@ -199,7 +197,6 @@ export interface StartPostponeVotingInput {
   readonly id: string;
   readonly now: Date;
   readonly postponeDeadlineAt: Date;
-  readonly messageIdPlaceholder?: string;
   readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
@@ -245,7 +242,7 @@ const runEdgeUpdate = async (
     readonly id: string;
     readonly from: SessionStatus;
     readonly patch: Partial<typeof sessions.$inferInsert>;
-    readonly outbox?: readonly EnqueueOutboxInput[];
+    readonly outbox: readonly EnqueueOutboxInput[] | undefined;
   }
 ): Promise<SessionRow | undefined> =>
   db.transaction(async (tx) => {
@@ -292,7 +289,7 @@ export const cancelAsking = async (
       cancelReason: input.reason,
       updatedAt: input.now
     },
-    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
+    outbox: input.outbox
   });
 
 export const startPostponeVoting = async (
@@ -305,38 +302,24 @@ export const startPostponeVoting = async (
     patch: {
       status: "POSTPONE_VOTING",
       deadlineAt: input.postponeDeadlineAt,
-      ...(input.messageIdPlaceholder !== undefined
-        ? { postponeMessageId: input.messageIdPlaceholder }
-        : {}),
       updatedAt: input.now
     },
-    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
+    outbox: input.outbox
   });
 
 export const completePostponeVoting = async (
   db: DbLike,
   input: CompletePostponeVotingInput
 ): Promise<SessionRow | undefined> => {
-  if (input.outcome === "decided") {
-    return runEdgeUpdate(db, {
-      id: input.id,
-      from: "POSTPONE_VOTING",
-      patch: {
-        status: "POSTPONED",
-        updatedAt: input.now
-      },
-      ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
-    });
-  }
+  const patch: Partial<typeof sessions.$inferInsert> =
+    input.outcome === "decided"
+      ? { status: "POSTPONED", updatedAt: input.now }
+      : { status: "COMPLETED", cancelReason: input.cancelReason, updatedAt: input.now };
   return runEdgeUpdate(db, {
     id: input.id,
     from: "POSTPONE_VOTING",
-    patch: {
-      status: "COMPLETED",
-      cancelReason: input.cancelReason,
-      updatedAt: input.now
-    },
-    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
+    patch,
+    outbox: input.outbox
   });
 };
 
@@ -353,7 +336,7 @@ export const decideAsking = async (
       reminderAt: input.reminderAt,
       updatedAt: input.now
     },
-    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
+    outbox: input.outbox
   });
 
 export const completeCancelledSession = async (
@@ -367,7 +350,7 @@ export const completeCancelledSession = async (
       status: "COMPLETED",
       updatedAt: input.now
     },
-    ...(input.outbox !== undefined ? { outbox: input.outbox } : {})
+    outbox: input.outbox
   });
 
 export const completeSession = async (
@@ -381,7 +364,8 @@ export const completeSession = async (
       status: "COMPLETED",
       reminderSentAt: input.reminderSentAt,
       updatedAt: input.now
-    }
+    },
+    outbox: undefined
   });
 
 /**
@@ -471,7 +455,6 @@ export const findDuePostponeVotingSessions = async (
   db: DbLike,
   now: Date
 ): Promise<SessionRow[]> => {
-  // state: 順延投票の締切判定は `POSTPONE_VOTING` のみ対象。ASKING など他状態は除外する。
   const rows = await db
     .select()
     .from(sessions)
@@ -588,8 +571,6 @@ export const skipSession = async (
   db: DbLike,
   input: { id: string; cancelReason: string }
 ): Promise<SessionRow | undefined> => {
-  // race: 任意の非終端状態から SKIPPED への CAS。IN 条件で原子的に狭める。
-  //   COMPLETED / SKIPPED に既に遷移していれば undefined を返し、呼び出し側は冪等に扱う。
   const rows = await db
     .update(sessions)
     .set({

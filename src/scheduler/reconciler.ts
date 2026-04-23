@@ -31,14 +31,7 @@ import {
   subMs
 } from "../time/index.js";
 import { getTextChannel } from "../discord/shared/channels.js";
-import {
-  DISCORD_UNKNOWN_MESSAGE_CODE,
-  isUnknownMessageError
-} from "../discord/shared/discordErrors.js";
-
-// why: messageEditor / tests が reconciler 経由で参照しているため再 export する。
-//   実体は src/discord/shared/discordErrors.ts (循環依存を避ける中立モジュール)。
-export { DISCORD_UNKNOWN_MESSAGE_CODE, isUnknownMessageError };
+import { isUnknownMessageError } from "../discord/shared/discordErrors.js";
 
 export interface ReconcileReport {
   readonly cancelledPromoted: number;

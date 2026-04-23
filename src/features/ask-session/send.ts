@@ -32,12 +32,29 @@ export interface SendAskMessageResult {
 
 // single-instance: プロセス内 in-flight マップ。Fly app を 2 インスタンス以上にスケールすると
 //   このロックは効かず、DB の sessions_week_key_postpone_count_unique 制約が最終防衛線になる。
-// race: キーは `${weekKey}:${postponeCount}` 形式。Friday (postponeCount=0) と Saturday (postponeCount=1) は
-//   別キーになるため、同一 weekKey 内でも互いをブロックせず独立して並走できる。
-// idempotent: ロック外側でも findSessionByWeekKeyAndPostponeCount による既存検出と unique 制約で重複は防がれる。
-//   このマップは「Discord API 呼び出し前の無駄な往復」を省く最適化の役割。
+// race: キーは `${weekKey}:${postponeCount}` 形式。Friday (0) と Saturday (1) は別キーで独立に並走する。
+// idempotent: ロック外側でも findSessionByWeekKeyAndPostponeCount + unique 制約で重複は防がれる。
+//   このマップは「Discord API 呼び出し前の無駄な往復」を省く最適化。
 // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
 const inFlightSends = new Map<string, Promise<unknown>>();
+
+const withInFlight = <T>(
+  key: string,
+  start: () => Promise<T>
+): { promise: Promise<T>; reused: boolean } => {
+  const ongoing = inFlightSends.get(key) as Promise<T> | undefined;
+  if (ongoing) {
+    return { promise: ongoing, reused: true };
+  }
+  const current = start();
+  inFlightSends.set(key, current);
+  const promise = current.finally(() => {
+    if (inFlightSends.get(key) === current) {
+      inFlightSends.delete(key);
+    }
+  });
+  return { promise, reused: false };
+};
 
 const doSendAskMessage = async (
   client: Client,
@@ -149,30 +166,19 @@ export const sendAskMessage = async (
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
   const weekKey = isoWeekKey(context.context.clock.now());
-  // race: mapKey は ${weekKey}:0。土曜送信の ${weekKey}:1 とは別キーなので並走可能。
-  const mapKey = `${weekKey}:0`;
-  const ongoing = inFlightSends.get(mapKey);
-  if (ongoing) {
-    // why: `:0` サフィックスにより mapKey は Friday 専用。
-    //   このエントリは必ず doSendAskMessage が返す Promise<SendAskMessageResult>。
-    const settled = await (ongoing as Promise<SendAskMessageResult>);
-    return {
-      status: "skipped",
-      weekKey: settled.weekKey,
-      ...(settled.sessionId ? { sessionId: settled.sessionId } : {}),
-      ...(settled.messageId ? { messageId: settled.messageId } : {})
-    };
+  const { promise, reused } = withInFlight(`${weekKey}:0`, () =>
+    doSendAskMessage(client, context)
+  );
+  const settled = await promise;
+  if (!reused) {
+    return settled;
   }
-
-  const current = doSendAskMessage(client, context);
-  inFlightSends.set(mapKey, current);
-  try {
-    return await current;
-  } finally {
-    if (inFlightSends.get(mapKey) === current) {
-      inFlightSends.delete(mapKey);
-    }
-  }
+  return {
+    status: "skipped",
+    weekKey: settled.weekKey,
+    ...(settled.sessionId ? { sessionId: settled.sessionId } : {}),
+    ...(settled.messageId ? { messageId: settled.messageId } : {})
+  };
 };
 
 const doSendPostponedAskMessage = async (
@@ -246,23 +252,10 @@ export const sendPostponedAskMessage = async (
   }
 
   const { weekKey, postponeCount } = saturdaySession;
-  // race: mapKey は ${weekKey}:1。金曜送信の ${weekKey}:0 とは別キーなので並走可能。
-  const mapKey = `${weekKey}:${postponeCount}`;
-  const ongoing = inFlightSends.get(mapKey);
-  if (ongoing) {
-    await ongoing;
-    return;
-  }
-
-  const current = doSendPostponedAskMessage(client, ctx, saturdaySession);
-  inFlightSends.set(mapKey, current);
-  try {
-    await current;
-  } finally {
-    if (inFlightSends.get(mapKey) === current) {
-      inFlightSends.delete(mapKey);
-    }
-  }
+  const { promise } = withInFlight(`${weekKey}:${postponeCount}`, () =>
+    doSendPostponedAskMessage(client, ctx, saturdaySession)
+  );
+  await promise;
 };
 
 export const waitForInFlightSend = async (): Promise<void> => {
