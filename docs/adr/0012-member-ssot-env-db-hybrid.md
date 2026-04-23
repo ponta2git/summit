@@ -10,54 +10,53 @@ tags: [runtime, db, ops]
 
 # ADR-0012: member SSoT を env+DB ハイブリッドに統合する
 
-## Context
-固定 4 名の member 情報が現状 4 箇所に分散している。
+## TL;DR
+member 情報の SSoT を分離する: 「誰が参加者か」は `env.MEMBER_USER_IDS`、表示名は DB `members.display_name`。boot 時の `reconcileMembers(env → DB)` で idempotent upsert し、`DISPLAY_NAMES` の positional coupling を廃止する。
 
-- `env.MEMBER_USER_IDS`: Discord user ID の 4 件。membership gate の根拠。
-- `src/members.ts` の `DISPLAY_NAMES`: 表示名の配列。env の ID 順序と **positional coupling** しており、配列順を reorder すると表示名がズレる。
-- DB `members` テーブル: UUID ↔ Discord ID の map。`display_name` 列が無い。
+## Context
+member 情報の SSoT が 4 箇所に分散している。
+
+- `env.MEMBER_USER_IDS`: Discord user ID 4 件。membership gate の根拠。
+- `src/members.ts` の `DISPLAY_NAMES`: 表示名配列。env の ID 順と **positional coupling**（配列順を reorder すると表示名がズレる）。
+- DB `members` テーブル: UUID ↔ Discord ID の map。`display_name` 列は無い。
 - `requirements/base.md` §18-21: 運用上の初期 member 定義。
 
-この分散により次の事故が顕在化している。
+この分散から次の事故が顕在化している。
 
-- env の ID を入れ替えると `pnpm db:seed` を再実行しないと `interactions.ts:187` で "メンバー登録がありません" エラーになり、runtime が詰む。
-- `DISPLAY_NAMES` の positional coupling が "env 配列の順序を変えない" という暗黙契約を強制し、レビューでは検知しづらい。
+- env の ID を入れ替えると `pnpm db:seed` 再実行なしに `interactions.ts:187` で "メンバー登録がありません" エラーで runtime が詰む。
+- `DISPLAY_NAMES` の positional coupling が "env 配列の順序を変えない" という暗黙契約を強制し、レビューで検知しづらい。
 - 表示名変更のたびに source 編集 → deploy が必要で、軽微な命名変更のコストが過剰。
 
 ## Decision
-member 情報の責務を分離し、以下の SSoT 階層を採用する。
+member 責務を分離し、以下の SSoT 階層を採用する。
 
-- **集合の SSoT = `env.MEMBER_USER_IDS`**: 「誰が参加者か」の唯一の根拠。membership gate もここを引く。
-- **表示名の SSoT = DB `members.display_name` 列**: Discord ID → 表示名の map。migration で列を追加し、初期値は `requirements/base.md` §18-21 に従う。
-- **boot 時に `reconcileMembers(env → DB)` を実行**: env に存在する ID を DB へ idempotent upsert（無ければ挿入、あれば維持）。cron 登録より前に完了させる。
-- **`src/members.ts` の `DISPLAY_NAMES` 配列を廃止**する。positional coupling を排除。
-- migration を 1 本切る（`members.display_name` 列追加 + backfill）。
+### SSoT
+- **集合 = `env.MEMBER_USER_IDS`**: 「誰が参加者か」の唯一根拠。membership gate もここを引き DB round trip を避ける。
+- **表示名 = DB `members.display_name` 列**: migration で列追加、初期値は `requirements/base.md` §18-21。
+
+### Boot flow
+- **`reconcileMembers(env → DB)` を cron 登録より前に実行**。env の ID を DB へ **idempotent upsert**（無ければ挿入 / あれば維持）。失敗時は起動停止。
+- **upsert-only、DELETE しない**（env から削除された ID でも DB レコードは履歴保全のため残す）。
+
+### Invariants
+- **`src/members.ts` の `DISPLAY_NAMES` 配列は廃止**し positional coupling を排除。env 配列順は意味を持たない。
+- migration 1 本（`members.display_name` 列追加 + backfill）。
 
 ## Consequences
 
-### 得られるもの
-- 表示名の変更がデプロイ不要になり、DB 更新のみで反映できる。
-- env 変更時の "seed 忘れ" 事故が消える（boot reconcile で自動吸収）。
-- positional coupling 解消により、env 配列の順序が意味を持たなくなる。
-- membership gate は env を直接引くため DB round trip が発生しない（interaction ごとに DB を叩かない）。
+### Follow-up obligations
+- migration 1 本（`members.display_name` 列追加 + 初期値 backfill）を追加する。
+- boot 順序: `reconcileMembers(env → DB)` を cron 登録より前に実行する層を `src/index.ts` に挿入する。
+- `src/members.ts` の `DISPLAY_NAMES` 配列を廃止し、positional coupling を排除する。
 
-### 失うもの / 制約
-- migration が 1 本増える（列追加 + 初期値 backfill）。
-- boot 順序に member reconcile ステップが挟まる。reconcile 失敗時は起動停止させる invariant を明示する必要がある。
-- 表示名の履歴（旧名 → 新名）を残したい場合は別途検討（現時点では不要）。
-
-### 運用上の含意
-- 新メンバー追加時は `env.MEMBER_USER_IDS` に ID を追加してデプロイ → boot reconcile が DB に自動挿入 → DB で `display_name` を UPDATE、の順。
-- 表示名変更は DB UPDATE のみ。デプロイ不要。
-- env から ID を削除した場合、DB レコードは残す（履歴保全）。reconcile は upsert-only で DELETE しない。
+### Operational invariants & footguns
+- **reconcile 失敗時は起動停止**（DB 到達不能で membership gate の前提が崩れたまま稼働させない）。
+- **upsert-only / DELETE しない**: env から ID を削除しても DB レコードは履歴保全のため残す。孤立行が残る想定で downstream を組む。
+- 新メンバー追加は「env に ID 追加 → デプロイ → boot reconcile が DB 挿入 → DB で `display_name` を UPDATE」の順。表示名単独変更はデプロイ不要で DB UPDATE のみ（デプロイ禁止窓に影響されない）。
+- 表示名の履歴（旧名 → 新名）は保持しない。履歴要件が出たら別途設計。
 
 ## Alternatives considered
 
-### 代替案 A: env-only（表示名も env 化）
-却下。env が膨らみ、表示名変更のたびに Fly secrets 更新 + 再起動が必要になる。さらに env 内の「ID と表示名の対応」を文字列で表現する必要があり、positional coupling か key=value 文字列 parse のどちらかで結局壊れやすい構造になる。
-
-### 代替案 B: DB-only（membership gate も DB で判定）
-却下。interaction ごとに DB round trip が発生する。固定 4 名の membership 判定は env で十分冪等であり、runtime 依存を増やす便益が無い。
-
-### 代替案 C: 現状維持
-却下。positional coupling と seed 忘れによる runtime 停止リスクが解消されない。AI エージェントが env を編集した際、`pnpm db:seed` の実行を忘れる事故は実際に発生している。
+- **A: env-only（表示名も env 化）** — env が膨らみ表示名変更ごとに Fly secrets 更新 + 再起動が必要になり、ID⇔表示名対応の表現が positional coupling か文字列 parse で壊れやすい。
+- **B: DB-only（membership gate も DB 判定）** — interaction ごとに DB round trip が発生。固定 4 名の判定は env で冪等に済み runtime 依存を増やす便益が無い。
+- **C: 現状維持** — positional coupling と seed 忘れによる runtime 停止リスクが解消されず、実際に AI エージェントの seed 忘れ事故が発生している。

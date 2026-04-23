@@ -10,42 +10,37 @@ tags: [runtime, db, ops]
 
 # ADR-0008: 送信専用フェーズにおける DB 未使用実装と in-memory 重複防止（過渡期）
 
+## TL;DR
+**Superseded by ADR-0009.** 送信専用フェーズに限り DB 未使用・in-memory 週キーで重複防止した過渡期判断。ADR-0001 の「DB 正本」原則との一時的妥協で、回答記録実装開始時に ADR-0009 へ移行済み。
+
 ## Context
-- 本 Bot の最終的な設計（ADR-0001）は **DB を正本**とし、Session / Response を永続化して状態遷移・再描画・再起動後の復元を実現する前提である。
-- 一方、最小実装の初期フェーズでは「Discord にボタン付き募集メッセージを投稿する」ところだけを切り出し、ボタン押下の記録・集計・締切判定・順延判定はまだ実装しない方針となった。
-- この段階で Session / Response の DB スキーマを先行実装すると、ボタン本実装時に仕様再考が入った際の手戻りコストが大きい。
-- しかし「自動送信」と「`/ask` 手動送信」が同一週に二重投稿する事故は避けたい。
-- したがって当面は **DB 永続化を行わず、in-memory の週キー記録で重複防止を行う** 妥協を受け入れる必要がある。これは ADR-0001 の「in-memory 状態を信頼しない」原則との一時的な衝突であり、過渡期の決定として明示的に記録する。
+送信専用フェーズで ADR-0001「DB 正本」原則と一時的に衝突する妥協判断。
+
+Forces:
+- 最小実装は「ボタン付き募集メッセージの投稿」だけを切り出し、押下記録・集計・締切・順延判定は後続フェーズに分離する方針になった。
+- この段階で Session / Response の schema を先行実装すると、ボタン本実装時の仕様再考で migration やり直しコストが大きい。
+- 一方で cron 自動送信と `/ask` 手動送信が同一週に二重投稿する事故は避けなければならない。
+- 結果として、DB 永続化を保留しつつ in-memory 週キーで重複防止する案が必要になり、ADR-0001（in-memory を信頼しない）との一時的衝突を過渡期決定として明示記録する必要が生じた。
 
 ## Decision
-- 送信専用フェーズでは **Session / Response テーブルを作らず、DB 書き込みを伴う状態更新も行わない**。
-- 週次重複防止は `src/discord/askMessage.ts` の **module スコープ変数 `lastSentWeekKey`** と、同時実行ガード用の **`inFlightSend` Promise mutex** で実装する。
-  - 同一 ISO 週キー（`src/time/isoWeekKey`）への 2 通目は `{ status: "skipped" }` を返して送信しない。
-  - 同時実行（cron と `/ask` の同時発火など）は in-flight Promise を共有し、後続呼び出しは先行結果を待機後にスキップする。
-- ボタン押下は当面 ephemeral の placeholder 応答（「まだ受付準備中です」）のみとし、DB 記録もメッセージ再描画も行わない。
-- この in-memory 方針は **送信専用フェーズ限定の過渡期措置** と位置付け、回答記録・集計・再描画・順延のいずれかを実装するフェーズに入る時点で、ADR-0001 に沿った DB 永続化へ移行する。
-- 受入リスク:
-  - Bot 再起動時に `lastSentWeekKey` が失われ、同一週に再送信される可能性がある。運用で許容するか、再起動直後の送信を運用者が目視確認する。
-  - Fly.io の restart や deploy 直後には特に注意する。デプロイ禁止窓（金 17:30〜土 01:00 JST）の遵守がこの妥協を運用上カバーする。
 
+**Superseded by ADR-0009。** 以下は過渡期の決定。具体実装は ADR-0009 への移行時に撤去済み。
+
+- 送信専用フェーズでは **Session / Response テーブルを作らず、DB 書き込みを伴う状態更新も行わない**。
+- 週次重複防止は `src/discord/askMessage.ts` の module スコープ変数 `lastSentWeekKey` と同時実行ガードの `inFlightSend` Promise mutex で実装。
+  - 同一 ISO 週キー（`src/time/isoWeekKey`）への 2 通目は `{ status: "skipped" }` を返す。
+  - 同時発火（cron と `/ask` 等）は in-flight Promise を共有し、後続呼び出しは先行結果を待機後にスキップする。
+- ボタン押下は当面 ephemeral の placeholder 応答のみ。DB 記録も message 再描画も行わない。
+- **受入リスク**: Bot 再起動で `lastSentWeekKey` が失われ同一週に再送信される可能性。デプロイ禁止窓の遵守と運用者目視で運用カバーする。
+- **過渡期限定**。回答記録・集計・再描画・順延のいずれかを実装するフェーズに入る時点で ADR-0001 準拠の DB 永続化へ移行する（→ ADR-0009 で移行済み）。
 ## Consequences
-- Positive
-  - DB スキーマ・migration・repository 層をボタン仕様確定後にまとめて設計でき、手戻りを抑制できる。
-  - 最小実装の範囲が明確になり、テスト対象も送信経路とスケジューラに限定できる。
-  - cron と `/ask` の重複防止という最小限の安全性は mutex + 週キー記録で確保できる。
-- Negative
-  - 再起動で in-memory 状態が消えるため、直近送信履歴を忘れる。理論上は同一週に再送信される可能性がある。
-  - ADR-0001 の「DB を正本」「in-memory を信頼しない」原則と一時的に不整合になる。レビューで指摘が出る前提の明示的な妥協である。
-  - ボタン押下者は「受付準備中」を見るだけで、回答が記録されない。利用者体験としては暫定的である。
-- Operational implications
-  - 回答記録・集計・再描画・順延のいずれかを実装するフェーズに入る前に、本 ADR を `superseded` にし、DB 永続化を採用する新 ADR を作成する。
-  - 運用中に Bot 再起動が発生した場合、当該週の `/ask` 実行前に運用者が直近の送信有無を確認する運用ルールを明文化する。
-  - テストでは `__resetSendStateForTest` を通じて in-memory 状態をリセットし、モジュール状態漏れを局所化する。
+
+### Operational invariants & footguns
+- **Historical**: ADR-0009 で `lastSentWeekKey` / `inFlightSend` の module スコープ状態と `__resetSendStateForTest` は撤去済み。過渡期の受入リスク（再起動で in-memory 状態が消え同一週に再送信される可能性）は ADR-0009 の UNIQUE `(week_key, postpone_count)` + `ON CONFLICT DO NOTHING` で解消。
+- **Footgun**: 新規コードに in-memory 週キー dedup パターンを持ち込まない（ADR-0001「DB を正本 / in-memory を信頼しない」原則に反する）。重複防止は DB 側 UNIQUE 制約に寄せる。
 
 ## Alternatives considered
-- **最初から Session / Response テーブルを作成し DB 永続化する**
-  - 却下理由: ボタン仕様（押下集計・順延判定）が固まる前にスキーマを固定すると、migration やり直しと本番運用ポリシー上のコストが大きい。
-- **重複防止を一切行わず、送信は呼び出されるたびに実行する**
-  - 却下理由: cron と `/ask` の同時発火や再実行で二重投稿が起こりやすく、運用事故になる。
-- **重複防止キーをファイル / Redis など軽量ストアに退避する**
-  - 却下理由: 依存を一つ増やすだけで、最終的には DB へ統合する予定のため、暫定手段として追加する費用対効果が低い。
+
+- **最初から Session / Response テーブルで DB 永続化** — ボタン仕様確定前に schema 固定すると migration やり直しと運用ポリシー上のコストが大きい。
+- **重複防止を行わず毎回送信する** — cron と `/ask` の同時発火・再実行で二重投稿が起きやすく運用事故になる。
+- **重複防止キーをファイル / Redis 等に退避** — 最終的には DB 統合予定で暫定依存を追加する費用対効果が低い。

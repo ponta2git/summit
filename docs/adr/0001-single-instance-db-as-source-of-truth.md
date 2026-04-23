@@ -10,52 +10,52 @@ tags: [runtime, ops, db]
 
 # ADR-0001: 単一インスタンス常駐運用と DB を正本とする状態管理
 
+## TL;DR
+Fly.io の単一インスタンス常駐で運用し、週次 Session の正本は常に Neon PostgreSQL。Discord 表示や in-memory 状態は正本にせず、再描画は DB から組み直す。状態遷移は許可遷移を型で閉じた edge-specific API と条件付き UPDATE で冪等に行う。
+
 ## Context
-この Bot は単一 Discord Guild・単一チャンネルで、固定 4 名の出欠確認だけを扱う。
-運用は週 1 回であり、扱うトラフィックも状態数も小さい。
-個人開発のため、高可用性や水平スケールよりも、壊れにくさと理解しやすさを優先する。
-一方で、金曜の募集送信・締切判定、必要なら土曜への順延確認まで、時刻駆動で確実に処理する必要がある（実行スケジュールの現在値は `src/config.ts` (`CRON_ASK_SCHEDULE` / `ASK_START_HHMM` / `CRON_DEADLINE_SCHEDULE` / `ASK_DEADLINE_HHMM`) を参照、ADR-0022）。
-Discord 側の表示は編集失敗や API 一時障害の影響を受けうるため、表示内容を正本にはできない。
-再起動、デプロイ、Discord API 失敗、同一処理の再実行が起きても、週次 Session の状態が破損しない構成が必要だった。
-また `node-cron` は便利だが、多重登録や in-memory 依存を許すと、同じ週の募集や締切判定が二重実行される危険がある。
+週 1 回の時刻駆動処理（募集送信・締切判定・順延確認。スケジュールは `src/config.ts`、ADR-0022）をどこに正本を置いて実現するかの決定。
+
+Forces:
+- 個人開発・固定 4 名規模で、高可用性より壊れにくさ・理解しやすさを優先する。
+- Discord 表示は `message.edit` 失敗や API 一時障害で乖離しうるため正本にできない。
+- 再起動・デプロイ・Discord API 失敗・同一処理の再実行でも週次 Session 状態が破損してはならない。
+- `node-cron` の多重登録や in-memory 状態への依存は、同一週の募集・締切判定を二重実行させる温床。
 
 ## Decision
-- Fly.io では常時起動の単一インスタンスで運用する（`min_machines_running=1`、`auto_stop_machines` 無効、rolling deploy）。複数インスタンス、scale-to-zero、外部 cron 起動型は採用しない。
-- 永続状態の唯一の正本は Neon PostgreSQL 上の DB とする。Session、回答、順延確認、再描画に必要な識別子は DB に保存する。
-- in-memory 状態はキャッシュまたは実行中プロセスの補助情報に限定し、正しさの根拠として扱わない。
-- 起動時は終端でない Session を DB から再読込し、募集、締切、順延、リマインドの未完了タスクを復元する。
-- `node-cron` の登録はプロセス起動中に 1 回だけ行う。同じスケジュールの重複登録はバグとして扱う。
-- cron は毎 tick ごとに DB を読み、現在時刻に対して何を実行すべきかを再計算する。
-- 状態遷移は DB の条件付き更新とトランザクションを前提に冪等に実装し、同一 tick の重複実行や再試行でも結果が変わらないようにする。
-- Session の状態遷移は edge-specific API（`cancelAsking` / `startPostponeVoting` / `completePostponeVoting` / `decideAsking` / `completeCancelledSession` / `completeSession`）でのみ公開し、許可された遷移グラフを型で閉じる。`transitionStatus` のような任意 from/to API は採用しない。
-- 許可遷移の正本は `src/db/ports.ts` の `SESSION_ALLOWED_TRANSITIONS` に集約し、repository 実装は各 edge で `UPDATE ... WHERE status = <expected_from>` を 1 段で実行する。
-- Discord の `message.edit` や投稿が失敗しても、DB 更新済みの状態は巻き戻さない。表示の再同期は次の tick または次の interaction で再試行する。
+
+### Runtime topology
+- Fly.io 単一インスタンス常駐（`min_machines_running=1`、`auto_stop_machines` 無効、rolling deploy）。scale-out / scale-to-zero / 外部 cron 起動型は**禁止**。
+- `node-cron` の登録はプロセス起動中に 1 回のみ。重複登録はバグ扱い。設定値は `src/config.ts` を参照。
+
+### Source of truth
+- **永続状態の唯一の正本は Neon PostgreSQL**。in-memory はキャッシュ/補助情報に限定し、正しさの根拠にしない。
+- Discord の `message.edit` / 投稿失敗で DB を**巻き戻さない**。表示再同期は次 tick または次 interaction で再試行する。
+
+### Startup recovery
+- 起動時に非終端 Session を DB から再読込し、募集・締切・順延・リマインドの未完了タスクを復元する。
+
+### State transitions
+- cron は**毎 tick DB を再読込**して再計算する（**at-least-once** 前提、**同一 tick の重複実行で結果が変わらない冪等性**を保証）。
+- Session の状態遷移は **edge-specific API** のみ公開（`cancelAsking` / `startPostponeVoting` / `completePostponeVoting` / `decideAsking` / `completeCancelledSession` / `completeSession`）。任意 from/to を取る `transitionStatus` 風 API は**採用しない**——許可遷移グラフを型で閉じるため。
+- 許可遷移の正本は `src/db/ports.ts` の `SESSION_ALLOWED_TRANSITIONS`。repository は各 edge で `UPDATE ... WHERE status = <expected_from>` を 1 段の **CAS** として実行する。
 
 ## Consequences
-- Positive
-  - 単一インスタンスのため、分散ロック、リーダー選出、ジョブ二重化対策の実装が不要になる。
-  - DB を正本に固定することで、再起動や deploy 後でも週次 Session を安全に再開できる。
-  - Discord 表示の失敗を状態管理と切り離せるため、一時的な API 障害で論理状態が壊れにくい。
-  - 毎 tick 再計算する設計により、取りこぼし回復と冪等性の説明が簡単になる。
-  - 小規模運用に対して、実装量と運用負荷を最小にできる。
-  - `CANCELLED` を金曜 `ASKING` → `POSTPONE_VOTING` の短命中間に限定し、土曜中止・順延 NG・順延未完は `COMPLETED` へ収束させることで宙づり状態を減らせる。
-- Negative
-  - 単一インスタンス障害中は自動処理が止まるため、可用性は単一障害点に依存する。
-  - DB への保存項目が増え、in-memory 完結より初期実装はやや重くなる。
-  - Discord 表示が一時的に古いまま残る可能性があり、再描画の遅延を許容する必要がある。
-  - cron を冪等に保つため、状態判定と更新条件を慎重に設計する必要がある。
-  - 運用中の応急処置でも、DB と表示の同期を崩さない手順理解が必要になる。
-- Operational implications
-  - Fly.io は `min_machines_running=1` で 1 インスタンスを常時維持し、`auto_stop_machines` は使わない。
-  - 起動時リカバリを前提に、終端でない Session を列挙できる DB スキーマとクエリが必要になる。
-  - 監視では「プロセス生存」だけでなく「tick が継続しているか」を確認する。
+
+### Follow-up obligations
+- 非終端 Session（`COMPLETED` / `SKIPPED` 以外）を列挙できる DB スキーマとクエリを維持する（起動時 recovery の前提）。
+
+### Operational invariants & footguns
+- **Hard invariant**: Fly は `min_machines_running=1` 固定。scale-out / scale-to-zero / 外部 cron 起動型へ切り替えない。分散ロックやリーダー選出を前提にした実装を混ぜ込まない。
+- **Hard invariant**: `node-cron` 登録はプロセス起動中 1 回のみ。hot reload / 動的再登録で多重化しやすい。
+- **Footgun**: `message.edit` / Discord API 失敗で DB を巻き戻さない。表示再同期は次 tick または次 interaction に任せる（DB が正本。応急修正で表示側に合わせると整合が壊れる）。
+- **Footgun**: 任意 from/to を取る `transitionStatus` 風 API を追加しない。許可遷移グラフが型で閉じなくなる。新状態は edge-specific API を追加する（正本は `src/db/ports.ts` の `SESSION_ALLOWED_TRANSITIONS`）。
+- **Footgun**: cron は at-least-once 前提。同一 tick の重複実行で結果が変わらない冪等性を崩さない（状態判定 + 条件付き `UPDATE ... WHERE status = ...` を省略しない）。
+- **Monitoring**: プロセス生存だけでなく cron tick の継続を監視する（healthchecks.io ping 停止で検知）。
 
 ## Alternatives considered
-- 複数インスタンス + 分散ロック
-  - 可用性は上がるが、固定 4 名・週 1 回の個人開発には過剰だった。ロック、重複実行、障害時の解放処理まで含めると複雑さの増分が大きい。
-- Cloudflare Workers など Cron Triggers 型
-  - 定時実行だけなら可能だが、discord.js の運用前提と相性が悪く、常時稼働前提の処理整理が難しい。DB を中心にした状態復元も複雑化する。
-- GitHub Actions の schedule cron
-  - 実行時刻の揺らぎ、ジョブキュー待ち、失敗時の再試行制御が締切判定に不向きだった。21:30 締切の確実な判定基盤として弱い。
-- in-memory 状態を主とし、起動時だけ DB からロード
-  - 再起動直前の状態、Discord 表示との差分、二重起動時の整合性で破綻しやすい。正本が複数化し、説明も実装も難しくなるため却下した。
+
+- **複数インスタンス + 分散ロック** — 固定 4 名・週 1 回の規模に対しロック/重複実行/障害時解放の複雑さが過剰。
+- **Cloudflare Workers 等 Cron Triggers 型** — discord.js の常時稼働前提と相性が悪く、DB 中心の状態復元も複雑化する。
+- **GitHub Actions schedule cron** — 実行時刻の揺らぎ・キュー待ち・再試行制御が締切判定に不向き。
+- **in-memory 状態を主とし起動時だけ DB ロード** — 再起動直前・Discord 表示差分・二重起動で正本が複数化し整合性が破綻する。

@@ -10,28 +10,44 @@ tags: [discord, runtime, db, ops]
 
 # ADR-0023: `/cancel_week` の確認ダイアログと週単位 SKIPPED 収束フロー
 
+## TL;DR
+運営都合の週中止 `/cancel_week` は ephemeral ボタン 2 個（Confirm / Abort）で誤操作を防ぐ。Confirm で週の非終端 Session 全部を CAS で `SKIPPED` 終端化、ask/postpone メッセージを disable 再描画、`cancelReason="manual_skip"`。customId は `cancel_week:{nonce}:{confirm|abort}` で session 束縛しない独立 codec。
+
 ## Context
+`requirements/base.md` §7 で定義される運営都合の週中止 `/cancel_week` は、従来 `未実装です` を返す stub（ADR-0004 / ADR-0020）。実装方針を確定させる必要がある。
 
-`requirements/base.md` §7 は運営都合で今週の開催を取り止める `/cancel_week` を定義している。dispatcher は従来 `未実装です` ephemeral のみ返す stub だった（ADR-0004 / ADR-0020）。実装方針を確定させる必要がある。
-
-制約:
-- 単一インスタンス前提（ADR-0001）。DB が正本。
-- Interaction の 3 秒応答（ADR-0004）。誤操作防止の確認フロー要。
-- 金曜・土曜の 2 Session が同じ `weekKey` を共有する（ADR-0019）。
-- 状態名・slot 値・cron 式は `src/config.ts` / `src/db/schema.ts` が SSoT（ADR-0022）。
-- customId codec は typed（ADR-0016）。
+駆動 force:
+- **誤操作リスク**: 週単位で非終端 Session 全部を終端化する破壊的操作、確認 UI が必要。
+- **週キー共有**: 金曜・土曜 Session が同一 `weekKey` を持つため（ADR-0019）、session 単位でなく週単位で一括処理したい。
+- **customId 方針の分岐**: 既存の `ask:{sessionId}:...` / `postpone:{sessionId}:...` は中央スロットが sessionId だが、本機能は session に紐づかない。
 
 ## Decision
 
-1. **確認 UX は ephemeral ボタン 2 個**（Confirm / Abort）。slash option `confirm: boolean` 案は誤操作リスクが高いので却下。
-2. **customId は独立 codec**: `cancel_week:{nonce}:{confirm|abort}`。nonce は UUID（session と無関係）。既存 `ask:` / `postpone:` の discriminated union に混ぜない（中央が sessionId ではないため）。cheap-first guard（guild/channel/member）＋ ephemeral 可視性で nonce の session 束縛は不要。
-3. **対象は `ISO week` の非終端 Session**。`findNonTerminalSessionsByWeekKey(weekKey)` で取得し、`NON_TERMINAL_STATUSES` を WHERE 条件に入れた **条件付き UPDATE で CAS**（冪等）。既終端は no-op。
-4. **`cancelReason = "manual_skip"`** を DB の free-text カラムへ書く。`CancelReason` UI enum（`src/messages/settle.ts`）は別概念として分離（UI には乗せない）。
-5. **終端は `SKIPPED`**。ask/postpone メッセージを disable + 「今週は見送り」フッターで再描画。チャンネルに 1 回だけ通知（セッション数に依らない）。`env.DEV_SUPPRESS_MENTIONS=true` では mention を plain 文字列へ差し替え（ADR-0011）。
-6. **handler 分離**: slash entry は `src/discord/commands/cancelWeek.ts`、ボタンは `src/discord/buttons/cancelWeekButton.ts`、業務ロジックは `src/discord/settle/skipWeek.ts`（ADR-0020 の分割方針に合わせる）。Port 経由で DB アクセス（ADR-0018）。
+### Flow
+1. `/cancel_week` → **ephemeral 確認 UI**（Confirm / Abort ボタン 2 個）。slash option `confirm: boolean` は却下（誤操作リスク）。
+2. Confirm → 週 (`weekKey`) の**非終端 Session 全件**を対象に CAS で `SKIPPED` 終端化。ask/postpone メッセージを disable + 「今週は見送り」フッターで再描画。チャンネル通知は **1 回のみ**（セッション数非依存）。
+3. Abort / 既に終端 / 再押下 → no-op。
+
+### customId
+- **独立 codec**: `cancel_week:{nonce}:{confirm|abort}`。nonce は UUID（session と無関係）。
+- 既存 `ask:` / `postpone:` の discriminated union には**混ぜない**（中央が sessionId でないため）。
+- cheap-first guard（guild/channel/member）＋ ephemeral 可視性により nonce の session 束縛は不要。
+
+### Invariants / Concurrency
+- **条件付き UPDATE で CAS**: `findNonTerminalSessionsByWeekKey(weekKey)` + `NON_TERMINAL_STATUSES` を WHERE に含め、同時押下・多重実行で冪等。既終端は no-op。
+- **`cancelReason = "manual_skip"`**（DB free-text）。UI 用 `CancelReason` enum（`src/messages/settle.ts`）とは別概念、UI には乗せない。
+- **終端 status は `SKIPPED`**。
+- **mention**: `env.DEV_SUPPRESS_MENTIONS=true` は plain 文字列化（ADR-0011）。
+
+### Handler 分離（ADR-0020）
+- slash entry: `src/discord/commands/cancelWeek.ts`
+- button: `src/discord/buttons/cancelWeekButton.ts`
+- 業務ロジック: `src/discord/settle/skipWeek.ts`
+- DB アクセスは Port 経由（ADR-0018）。実値は `src/config.ts` / `src/db/schema.ts` が SSoT（ADR-0022）。
 
 ## Consequences
 
+### Operational invariants & footguns
 - 週一括で非終端 Session を安全に `SKIPPED` 収束できる。
 - CAS により同時実行・多重押下でも冪等（再確認は `count=0` で通知なし）。
 - customId が 2 系統（session 束縛 / nonce）になるため codec エクスポートが増えるが、意味論が混ざらない利点のほうが大きい。
@@ -40,8 +56,8 @@ tags: [discord, runtime, db, ops]
 
 ## Alternatives considered
 
-- **slash option `confirm: boolean`**: 1 ステップだが誤操作時のリカバリがない。却下。
-- **custom_id 中央に sessionId を埋める**: 週に複数 Session が居るため週キー寄せが自然。nonce で無関連ボタン押下を防ぐほうが単純。却下。
-- **既存 codec の discriminated union に合流**: 中央スロットの意味が「sessionId」から逸脱し読解コストが上がる。却下。
-- **cron 的 auto-expire で skip**: 意思決定主体が運用者なのでスラッシュ発火が妥当。却下。
-- **cancelReason に既存 `settle/messages.ts` の enum 値を再利用**: UI 文言と DB 履歴理由を同じ型に束ねると drift を招く。分離を維持。
+- **slash option `confirm: boolean`** — 1 ステップだが誤操作時のリカバリがない。却下。
+- **custom_id 中央に sessionId を埋める** — 週に複数 Session が居るため週キー寄せが自然、nonce で無関連押下を防ぐ方が単純。却下。
+- **既存 codec の discriminated union に合流** — 中央スロットの意味が sessionId から逸脱し読解コストが上がる。却下。
+- **cron 的 auto-expire で skip** — 意思決定主体が運用者なのでスラッシュ発火が妥当。却下。
+- **cancelReason に settle/messages.ts の enum 値を再利用** — UI 文言と DB 履歴理由を同一型に束ねると drift を招くため分離を維持。

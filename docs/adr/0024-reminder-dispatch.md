@@ -1,56 +1,74 @@
 ---
-id: "0024"
-title: "15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング"
+adr: 0024
+title: 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング
 status: accepted
 date: 2026-04-25
-tags: [runtime, discord, db, time]
 supersedes: []
-superseded-by: []
+superseded-by: null
+tags: [runtime, discord, db, time]
 ---
 
-# 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング
+# ADR-0024: 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング
+
+## TL;DR
+`DECIDED` 遷移時に `reminder_at = decided_start_at - 15 min` を同じ UPDATE で書き、毎分 cron tick で due な Session を claim-first CAS で先着確保してからメンション送信し、`COMPLETED` へ遷移する。開催まで 10 分未満なら送信せず `reminder_sent_at=now` を skip marker として書いて直接 `COMPLETED`。orphaned claim は reconciler（ADR-0033）が閾値超過で reclaim。at-least-once semantics（欠落より重複を選ぶ）。
 
 ## Context
+`requirements/base.md` §5.2 は「開催時刻の **15 分前**に 4 名全員へリマインドを送信」（開催確定から 15 分前まで 10 分未満なら送信不要）、§9.1 は `DECIDED → COMPLETED` の遷移条件を「リマインド送信完了**または**送信不要条件充足時」と定める（Bot はゲーム終了を監視しない）。
 
-`requirements/base.md` §5.2 は「**開催時刻の 15 分前に 4 名全員へリマインドを送信する**。ただし開催が確定した瞬間から開催 15 分前までが 10 分未満の場合はリマインドを送らない」旨を定める。
-§9.1 は `DECIDED → COMPLETED` の遷移条件を「リマインド送信完了 **または** 送信不要条件を満たした時点」とする。Bot は実際のゲーム終了を監視しない。
+それまでの実装ギャップ:
+- 金曜 ASKING の `DECIDED` 遷移は `decidedStartAt` のみ保存し、終端へ到達する経路が無かった。
+- 土曜 ASKING の `DECIDED` は strategy 内で即座に `COMPLETED` へ進めており §9.1 に反し、リマインドも出ていなかった。
+- Schema に `sessions.reminder_at` / `reminder_sent_at` と `reminderAtFor()` helper は既にあったが未使用。
 
-それまでの実装は:
-
-- 金曜 ASKING の `DECIDED` 遷移は `decidedStartAt` のみを保存し、終端へ到達する経路が無かった。
-- 土曜 ASKING の `DECIDED` 遷移は同じ strategy 内で即座に `COMPLETED` に進めていた（仕様違反。§9.1 に反し、かつリマインドも出していなかった）。
-- Schema には `sessions.reminder_at` / `sessions.reminder_sent_at` カラムが既にあり、`reminderAtFor()` helper も存在していた（未使用）。
-
-DB-as-SoT（ADR-0001）と単一インスタンス運用（Fly 1 instance）の制約下で、プロセスが落ちても取りこぼさず、同時実行に対しても冪等な dispatch 機構を用意する必要がある。
+DB-as-SoT（ADR-0001）と単一インスタンス運用の制約下で、プロセス crash でも取りこぼさず、同時実行に対しても冪等な dispatch 機構が要る。
 
 ## Decision
 
-1. **`DECIDED` 遷移時に `reminder_at = decided_start_at - 15 min` を同じ UPDATE で永続化する。**
-   - ASKING → DECIDED の CAS に `reminderAt` を含め、次段の tick 側の判定をシンプルにする。
-2. **毎分 cron tick (`CRON_REMINDER_SCHEDULE`) で `status=DECIDED` かつ `reminder_sent_at IS NULL` かつ `reminder_at <= now` のセッションを拾う。**
-   - `findDueReminderSessions(now)` として sessions repo / port に追加（ADR-0018 の port 経由注入）。
-3. **送信フロー**: 対象 Session を DB から再取得 → **claim-first の条件付き UPDATE** で `reminder_sent_at=now` を確保 (`status=DECIDED AND reminder_sent_at IS NULL` の CAS) → mention + `messages.reminder.body` を送信 → `transitionStatus(DECIDED → COMPLETED, reminderSentAt=now)` で CAS。
-   - **claim-first (race)**: Discord 送信の**前に** DB 層で先着 1 件だけを勝者にする。これにより、起動時 recovery と cron tick の同時並行パスが同じ reminder を二重送信する race を排除する。`src/db/repositories/sessions.ts` の `claimReminderDispatch` が primitive。
-   - **送信失敗時**: `revertReminderClaim` で `reminder_sent_at=NULL` に戻し、`DECIDED` のまま残す。次 tick で再試行する。`at-least-once` semantics: 送信 API が throw したが実際には配送済みだったケースでは次 tick で重複送信し得る。§5.2「送る」を優先し、欠落より重複を選ぶトレードオフ。
-   - **CAS race 敗北**: claim が undefined を返したら no-op。別経路が先着済み。
-4. **skip rule (§5.2) の判定**: 決定直後 (`decided` strategy 内) に `shouldSkipReminder(now, reminderAt)` で判断し、`< 10 min` なら送信せず `reminder_sent_at = now` を書いたうえで `COMPLETED` に遷移する（skip marker を兼ねる）。tick 側では skip 判定を行わない（決定タイミングで確定させる）。
-5. **起動時リカバリ**: `runStartupRecovery` で `status=DECIDED` かつ `reminder_at <= now` かつ `reminder_sent_at IS NULL` の Session を検出し、同じ `sendReminderForSession` を呼ぶ。**scheduler (`createAskScheduler`) は runStartupRecovery 完了後に生成する**。node-cron は schedule() 時点で auto-start するため、モジュール top で生成すると recovery と reminder tick が並行してしまう。`src/index.ts` で startup 順序を制御する。
-6. **リマインド実装値（cron 式・15 分オフセット・skip 閾値）は `src/config.ts` / `src/time/` に集約し、本 ADR には書き写さない（ADR-0022）。**
+### Flow（at-least-once / 欠落より重複を選ぶ）
+1. **`DECIDED` 遷移と同じ UPDATE** で `reminder_at = decided_start_at - 15 min` を永続化（ASKING → DECIDED CAS に `reminderAt` を含める）。
+2. **毎分 cron tick** (`CRON_REMINDER_SCHEDULE`) で `status=DECIDED AND reminder_sent_at IS NULL AND reminder_at <= now` を `findDueReminderSessions(now)` で取得（port 経由、ADR-0018）。
+3. **Claim-first dispatch**:
+   a. DB から Session 再取得
+   b. **`claimReminderDispatch`**: `UPDATE ... SET reminder_sent_at=now WHERE status=DECIDED AND reminder_sent_at IS NULL`（CAS）
+   c. mention + reminder body 送信
+   d. `transitionStatus(DECIDED → COMPLETED, reminderSentAt=now)` で CAS
+4. **送信失敗** → `revertReminderClaim` で `reminder_sent_at=NULL` に戻し `DECIDED` のまま残す → 次 tick で再試行。
+5. **CAS 敗北**（claim が undefined） → no-op。別経路が先着済み。
+
+### Skip rule（§5.2: 開催確定〜15 分前が 10 分未満）
+- **決定タイミングでのみ判定**（`decided` strategy 内）。tick 側では skip 判定しない。
+- 該当時: 送信せず `reminder_sent_at=now` を skip marker として書き、直接 `COMPLETED` へ遷移。
+
+### Invariants
+- **Claim 必須**: Discord 送信の**前に** DB で先着 1 件を確保。これにより起動時 recovery と cron tick の並行実行による二重送信を排除。
+- **`reminder_sent_at` は三重役割**（送信済み / skip 済み / claim 中）。claim 中は `findDueReminderSessions` から除外されるため、process crash で orphaned になりうる → **ADR-0033 reconciler** が `REMINDER_CLAIM_STALENESS_MS` 超過で reclaim。
+- **Startup 順序**: scheduler (`createAskScheduler`) は **`runStartupRecovery` 完了後**に生成する。node-cron は `schedule()` 時点で auto-start するため並行を避ける（`src/index.ts` で制御）。
+- **at-least-once**: 送信 API throw 時の重複送信を許容。§5.2「送る」を優先。
+- **土曜 ASKING の即時 `DECIDED → COMPLETED`（旧 `completeSaturdayAskingSession`）は削除**、金曜と同一経路で終端化。
+
+### Implementation pointers
+- cron 式・15 分オフセット・skip 閾値の実値は `src/config.ts` / `src/time/` が SSoT（ADR-0022）。
+- Cron handle は 4 本（ask / deadline / postpone / reminder）、shutdown で個別 stop。
+- Fake ports (`createTestAppContext`) に `findDueReminderSessions` / `claimReminderDispatch` / `revertReminderClaim` / `transitionStatus(reminderSentAt)` を追加（ADR-0018、`vi.mock` 新設禁止を維持）。
 
 ## Consequences
 
+### Follow-up obligations
+- Test 面では Fake ports (`createTestAppContext`) 側に `findDueReminderSessions` / `claimReminderDispatch` / `revertReminderClaim` / `transitionStatus(reminderSentAt)` が加わる。`vi.mock` を repositories に新規追加しない原則（ADR-0018）は維持。
+
+### Operational invariants & footguns
 - 最大 ~1 分の送信遅延（毎分 tick 粒度）を許容する。実務上問題ない粒度。
 - `reminder_sent_at` は「送信済み or skip 済み or claim 中」の三重役割を持つ。claim 中の行は `findDueReminderSessions` から除外されるため、claim したまま process crash した場合は当該 reminder が永久に送られない (`status=DECIDED AND reminder_sent_at IS NOT NULL` で stuck)。claim → Discord 送信の間はミリ秒オーダーであり、単一インスタンス運用と startup 順序制御により実発生確率は極めて低い。**ADR-0033 で起動時および毎分 tick 境界の reconciler が `REMINDER_CLAIM_STALENESS_MS` を超えた claim を `revertReminderClaim` で reclaim する** ため、crash 由来の orphaned claim は最大でも閾値 + 1 tick 以内に復帰する。
 - Fly restart 窓中に `reminder_at` を跨いでも、再起動後の recovery で 1 分以内に送出される。
 - 土曜 ASKING の即時 `DECIDED → COMPLETED` 経路（旧 `completeSaturdayAskingSession`）は削除され、金曜と同じリマインド経路で終端化される。
 - Cron handle は 4 本（ask / deadline / postpone / reminder）に増え、shutdown でも個別に stop する必要がある。
-- Test 面では Fake ports (`createTestAppContext`) 側に `findDueReminderSessions` / `claimReminderDispatch` / `revertReminderClaim` / `transitionStatus(reminderSentAt)` が加わる。`vi.mock` を repositories に新規追加しない原則（ADR-0018）は維持。
 
 ## Alternatives considered
 
-- **per-session `setTimeout` で 15 分前に firing する**: プロセス再起動で state が飛ぶ / 2 インスタンス時に二重発火 / DB-as-SoT から外れる。却下。
-- **`DECIDED` 時点で reminder メッセージまで投稿する**: Discord embed の事前投稿は mention push 通知が出ないタイミング差で UX を損なう。却下。
-- **skip 判定を tick 側でも行う（両方で判定）**: skip 条件を満たすのは遅延 recovery / 遅延決定の edge ケースのみで、決定時点 1 回で確定させた方がログが読みやすい。却下。
+- **per-session `setTimeout` で 15 分前に firing** — プロセス再起動で state が飛ぶ / 2 インスタンスで二重発火 / DB-as-SoT から外れる。却下。
+- **`DECIDED` 時点で reminder メッセージまで投稿** — 事前投稿は mention push 通知のタイミング差で UX を損なう。却下。
+- **skip 判定を tick 側でも行う（両方で判定）** — 該当は edge ケースのみで、決定時点 1 回で確定させた方がログが読みやすい。却下。
 
 ## References
 

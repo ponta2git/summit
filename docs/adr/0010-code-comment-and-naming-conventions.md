@@ -10,62 +10,59 @@ tags: [docs, runtime, ops]
 
 # ADR-0010: コメント / ネーミング規約（AI フレンドリーな最小十分コメント）
 
+## TL;DR
+コメントは WHY のみ、grep 可能な小文字プレフィックス語彙（`// invariant:` / `// race:` / `// jst:` / `// hack:` 等）から始める。TSDoc は境界越え export と非自明 invariant に限定。動詞辞書（`build*` / `send*` / `find*` / `handle*` / `transition*` / `settle*` 等）で関数名の意味を固定する。
+
 ## Context
-summit は個人開発の Discord Bot で、AI エージェント（Codex / Claude Code / Copilot Coding Agent）が日常的にコードを読み書きする前提で運用する。既存コードベースには次の問題があった。
+AI エージェント（Codex / Claude Code / Copilot Coding Agent）が日常的にコードを読み書きする前提で、コメント / ネーミング規約を定める。既存コードベースには次の力学が併存する。
 
-- 非自明な invariant（race / 冪等 / CAS / 単一インスタンス / JST / 年跨ぎ / Neon pooler / custom_id 契約）がコード近傍にコメント化されていない。読解のたびに AGENTS.md や ADR を横断する必要がある。
-- 既存 TSDoc の一部が WHAT の列挙（実装を読めば自明な情報）で埋まっており、トークンを消費する割に判断材料にならない。
-- 責務と名前のズレがある（例: `findActiveSessionByWeekKey` は active 絞り込みをしない、`candidateDateForSend` は恒等関数で意図が読み取れない）。
-- grep で探せる共通プレフィックス（`invariant:` / `race:` 等）が無く、検索性が低い。
+- 非自明な invariant（race / 冪等 / CAS / 単一インスタンス / JST / 年跨ぎ / Neon pooler / custom_id 契約）が近傍コメント化されておらず、読解のたびに AGENTS.md / ADR 横断が必要。
+- 一方で WHAT 列挙の冗長 TSDoc は AI の読解トークンを圧迫し、SSoT（`requirements/base.md` / 他 ADR / `.github/instructions/*.md`）との二重管理になる。
+- 責務と名前のズレがある（例: `findActiveSessionByWeekKey` が active 絞り込みをしない、`candidateDateForSend` が恒等関数）— 名前で副作用 / 純粋性が判別できない。
+- grep 可能な共通プレフィックス（`invariant:` / `race:` 等）が無く、横断レビュー（全 race condition 列挙など）が困難。
 
-一方で、過剰なコメントや冗長な TSDoc は AI の読解時トークンを増やし、SSoT（`requirements/base.md` / 他 ADR / `.github/instructions/*.md`）と二重管理になる。最小十分で、かつ検索性が高く、かつリネームで置換可能な情報はコメントにしないルールが必要。
+これらは「最小十分・検索性が高い・リネーム可能な情報はコメントにしない」という緊張関係を解く必要がある。
 
 ## Decision
-コメントとネーミングの規約を `.github/instructions/comments.instructions.md` に新設し、`{src,tests}/**/*.ts` に適用する。原則は以下。
+規約本体は `.github/instructions/comments.instructions.md`（適用 `{src,tests}/**/*.ts`）。
 
-1. **ネーミング最優先**。名前で伝わるならコメントを書かない。伝わらないならまずリネームする。
-2. **WHY のみ書く**。コードから自明な WHAT / HOW は書かない。非自明な invariant・race・仕様根拠・過渡期の妥協だけを書く。
-3. **SSoT を再記述しない**。業務仕様・設計判断は ADR / requirements / 他 instructions にある。コード近傍では `@see ADR-NNNN` のようなラベルで済ませる。
-4. **言語の使い分け**:
-   - 業務仕様・運用上の背景・race / 冪等の説明 = 日本語。
-   - 技術的 TSDoc（`@param` / `@returns` / `@throws` / 型の契約）= 英語。
-   - `@remarks` では業務制約を日本語で書いて良い（英日ブリッジ）。
-5. **grep 可能な小文字プレフィックス語彙**を整備する。新規コメントはこの語彙から始める。
-   - 主要: `// invariant:` / `// race:` / `// idempotent:` / `// jst:` / `// iso-week:` / `// state:` / `// source-of-truth:` / `// ack:` / `// unique:` / `// tx:` / `// single-instance:` / `// deploy-window:` / `// redact:` / `// secret:` / `// hack:` / `// todo(ai):` / `// regression:` / `// why:`。
-6. **TSDoc は境界越え export + 非自明 invariant に限定する**。内部 helper、thin wrapper、1 ファイル内利用の private 関数には付けない。
-7. **動詞辞書でネーミングを固定する**: `build*` = pure / `send*` = 副作用 / `find*` = DB read 0..N / `try*` = 条件付き成功 / `handle*` = 入口 / `run*Tick` = cron 駆動 / `transition*` = CAS 状態遷移 / `settle*` = 締切後収束。違反したらリネームする。
-8. **業務語彙（`weekKey` / `postponeCount` / `decidedStartAt` / 状態名 / `custom_id` フォーマット等）はリネーム禁止**。`requirements/base.md` の SSoT 語彙として不変。
-9. **module preamble は原則書かない**。orchestration 責務のファイル（scheduler / interactions）のみ 2〜4 行で俯瞰。目次・責務一覧は書かない。
-10. **テストは `describe` / `it` 名で仕様を語る**。コメントは invariant が非自明なケースの補足のみ。業務 invariant の回帰テストには `// regression:` を付けて削除防止シグナルにする。
+### 原則
+1. **ネーミング最優先**。名前で伝わるならコメント不要、伝わらなければリネーム。
+2. **WHY のみ**。WHAT / HOW は書かない。invariant / race / 仕様根拠 / 過渡期の妥協のみ。
+3. **SSoT 再記述禁止**。コード近傍は `@see ADR-NNNN` ラベルに留める（ADR-0022）。
+
+### 言語
+- 業務説明・race / 冪等 = 日本語。
+- TSDoc（`@param` / `@returns` / `@throws`）= 英語（IDE/LSP tooling 整合）。
+- `@remarks` は日本語可（英日ブリッジ）。
+
+### コメント形式
+- **grep 可能な小文字プレフィックス語彙**から開始。語彙一覧は instructions ファイル参照。新規プレフィックスは instructions を更新してから使う。
+- **TSDoc は境界越え export + 非自明 invariant に限定**。内部 helper / thin wrapper / ファイル内 private には付けない。
+- **module preamble は原則書かない**。orchestration（scheduler / interactions）のみ 2〜4 行で俯瞰、目次・責務一覧は禁止。
+
+### ネーミング
+- **動詞辞書で副作用種別を固定**（`build*` / `send*` / `find*` / `try*` / `handle*` / `run*Tick` / `transition*` / `settle*` 等、定義は instructions）。違反はリネーム。
+- **業務語彙リネーム禁止**: `requirements/base.md` の SSoT 語彙（`weekKey` / `postponeCount` / `decidedStartAt` / 状態名 / `custom_id` フォーマット 等）は不変。
+
+### テスト
+`describe` / `it` 名で仕様を語る。コメントは非自明 invariant のみ。業務 invariant の回帰テストには `// regression:` を付け削除防止シグナルとする。
 
 ## Consequences
 
-### 得られるもの
-- コード近傍で race / 冪等 / 時刻 / 単一インスタンス / pooler などの invariant が読めるため、AI エージェントが ADR を横断せずに判断できる場面が増える。
-- プレフィックス語彙により `rg "// race:"` や `rg "// hack:"` などで全体傾向を即座に把握できる。
-- ネーミングの統一で「関数名で意味が伝わる」範囲が拡大し、コメント量自体が減る。
-- SSoT の一元化が保たれ、仕様変更時の更新箇所が `requirements/base.md` と ADR に限定される。
+### Follow-up obligations
+- 既存コードベースへの適用は段階的に PR 分割する（指針 + ADR / WHY コメント / TSDoc / リネーム / テスト）。過渡期は旧形式と新形式が混在する。
+- `// hack:` を書く PR は必ず対応 ADR を新規作成または参照させる（ADR 作成プロトコルと連動）。
+- 新規プレフィックスは `.github/instructions/comments.instructions.md` を更新してから使用する（自由記述増殖で grep 可読性が劣化する footgun）。
 
-### 失うもの / 制約
-- 既存コメントの書き換えコストが発生する。過渡期は旧形式と新形式が混在する。
-- プレフィックスを覚える必要がある。新規コントリビューターに対するオンボーディング負荷が増える（対策: `.github/instructions/comments.instructions.md` を参照すれば自己完結する構造にする）。
-- 英語 TSDoc と日本語通常コメントの混在で、ファイル内の言語が切り替わる。`@remarks` で日本語を許容することで緩和。
-
-### 運用上の含意
-- 既存コードベースへの適用は段階的に PR 分割する（指針 + ADR / WHY コメント / TSDoc / リネーム / テスト）。
-- 新規 PR のレビューでは、コメント・ネーミング観点のチェックリストを `.github/instructions/comments.instructions.md` 末尾のチェックリストとして参照する。
-- `// hack:` を書く PR は必ず対応 ADR を新規作成または参照させる（過渡期の妥協を永続記録する ADR 作成プロトコルと連動）。
+### Operational invariants & footguns
+- SSoT 再記述禁止: コード近傍に仕様値・ADR 本文を書き写さない（ADR-0022）。drift 源になる。
+- TSDoc を全 export に広げない。thin wrapper / 自明 helper に付けると WHAT 列挙が量産され情報密度が落ちる。
+- 業務語彙（`weekKey` / `postponeCount` / 状態名 / `custom_id` フォーマット 等）は `requirements/base.md` 固定で勝手にリネームしない。
 
 ## Alternatives considered
 
-### 代替案 A: コメントを最小化し、ネーミングと ADR リンクのみで表現する
-- 採用しない理由: コード近傍に race / 冪等 / 3 秒制約などの invariant を書かないと、read-path で ADR まで辿らないと判断できない。AI のトークン消費は減るが、判断の正確性が下がる。
-
-### 代替案 B: コメントはすべて日本語、TSDoc も日本語
-- 採用しない理由: TSDoc は IDE / LSP / 型ツール経由で英語の慣用構文（`@param` / `@returns` / `@throws`）として機能する。業務文脈だけを日本語で書き、型の契約は英語に寄せることで、読解と tooling の両立を図る。
-
-### 代替案 C: プレフィックス語彙を導入せず、自由記述
-- 採用しない理由: grep 可能性が失われ、「全 race condition コメントを列挙したい」のような横断レビューができなくなる。語彙は 18 個に絞り、ファイル単位で覚えなくても横断検索で発見できることを優先する。
-
-### 代替案 D: TSDoc を全 export に付ける
-- 採用しない理由: thin wrapper / 自明な helper にも TSDoc を強制すると、WHAT 列挙コメントが量産されトークンを浪費する。境界越え export + 非自明 invariant に限定することで、TSDoc の情報密度を高く保つ。
+- **コメント最小化（ネーミング + ADR リンクのみ）** — invariant を近傍に残さないと read-path で ADR まで辿る必要があり判断精度が落ちる。
+- **TSDoc も日本語** — TSDoc は IDE / LSP の英語慣用構文（`@param` / `@returns` / `@throws`）として機能させ tooling と両立させたい。
+- **プレフィックス語彙なしの自由記述** — grep 可能性が失われ横断レビュー（例: 全 race condition 列挙）ができなくなる。
+- **TSDoc を全 export に強制** — thin wrapper や自明 helper で WHAT 列挙が量産され情報密度が下がる。境界越え + 非自明 invariant に限定する。
