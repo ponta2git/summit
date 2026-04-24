@@ -60,14 +60,11 @@ export interface CreateAskSessionInput {
 }
 
 /**
- * Creates an ASKING session for the given (weekKey, postponeCount).
- *
- * @returns The newly created session, or `undefined` if another process already inserted one
- *   for the same (weekKey, postponeCount) pair (race lost).
+ * Create an ASKING session for the given `(weekKey, postponeCount)`.
  *
  * @remarks
- * `(weekKey, postponeCount)` unique 制約と `onConflictDoNothing` で race を吸収する。
- * 呼び出し側は `undefined` を skipped として扱い、多重送信を回避する。
+ * unique: `(weekKey, postponeCount)` unique + `onConflictDoNothing` で race を吸収。
+ *   呼び出し側は `undefined` を skipped として扱い多重送信を回避する。
  */
 export const createAskSession = async (
   db: DbLike,
@@ -150,10 +147,9 @@ export const updatePostponeMessageId = async (
  * Back-fill `ask_message_id` only if currently NULL (CAS-on-NULL).
  *
  * @remarks
- * idempotent: outbox 配送が成功した後に呼ばれる。reconciler 再投稿がすでに
- * 別の ask_message_id をセットしている場合は上書きせず、config drift を防ぐ。
- * returns: CAS 勝 (NULL → messageId) で true、既に非 NULL なら false。
- * @see docs/adr/0035-discord-send-outbox.md
+ * idempotent: outbox 配送成功後に呼ばれる。reconciler 再投稿が別 id をセット済みなら上書きせず、
+ *   config drift を防ぐ。CAS 勝で `true`。
+ * @see ADR-0035
  */
 export const backfillAskMessageId = async (
   db: DbLike,
@@ -170,7 +166,9 @@ export const backfillAskMessageId = async (
 
 /**
  * Back-fill `postpone_message_id` only if currently NULL (CAS-on-NULL).
- * @see backfillAskMessageId
+ *
+ * @remarks
+ * See {@link backfillAskMessageId}.
  */
 export const backfillPostponeMessageId = async (
   db: DbLike,
@@ -407,16 +405,12 @@ export const claimReminderDispatch = async (
 };
 
 /**
- * Undo a reminder claim made by {@link claimReminderDispatch} when the Discord send fails.
- *
- * @returns `true` if the claim was reverted, `false` if the row moved on (e.g. completed by
- *   another path or claimed again with a different timestamp).
+ * Undo a reminder claim when the Discord send fails.
  *
  * @remarks
- * race: revert 自体も CAS にして `(status=DECIDED, reminder_sent_at=claimedAt)` 一致時のみ
- *   NULL に戻す。これにより、「revert を発行している間に別経路が COMPLETED に遷移させた」
- *   ケースで誤ってリマインドを NULL 化しない。
- * 前提: 呼び出し側は直前に `claimReminderDispatch` で得た `claimedAt` (= `now`) を渡す。
+ * race: revert 自体も CAS。`(status=DECIDED, reminder_sent_at=claimedAt)` 一致時のみ NULL に戻すため、
+ *   別経路が COMPLETED へ遷移させたケースで誤って NULL 化しない。
+ *   呼び出し側は直前の {@link claimReminderDispatch} で得た `claimedAt` を渡す。
  */
 export const revertReminderClaim = async (
   db: DbLike,
@@ -463,12 +457,11 @@ export const findDuePostponeVotingSessions = async (
 };
 
 /**
- * Finds DECIDED sessions whose 15-minute-before reminder is due and not yet sent.
+ * Find DECIDED sessions whose reminder is due and not yet sent.
  *
  * @remarks
- * cron (毎分) と起動時リカバリの双方から呼ばれる。`reminder_sent_at IS NULL` を条件に入れることで
- * 再送を防ぐ。スキップ判定で `reminder_sent_at=now` を埋めた Session は自動的に除外される。
- * @see requirements/base.md §5.2, docs/adr/0024-reminder-dispatch.md
+ * idempotent: cron (毎分) と起動時リカバリ双方から呼ばれるが `reminder_sent_at IS NULL` 条件で再送を防ぐ。
+ * @see requirements/base.md §5.2, ADR-0024
  */
 export const findDueReminderSessions = async (
   db: DbLike,
@@ -498,12 +491,11 @@ export const findNonTerminalSessions = async (
 };
 
 /**
- * Returns sessions currently in `CANCELLED` status.
+ * Return sessions currently in `CANCELLED` status.
  *
  * @remarks
- * `CANCELLED` は短命中間状態 (ADR-0001)。本メソッドの結果が空でない場合、crash で遷移が止まっている
- * 宙づり状態と解釈する。Startup reconciler から呼ばれる。
- * @see docs/adr/0033-startup-invariant-reconciler.md
+ * `CANCELLED` は短命中間状態 (ADR-0001)。空でなければ crash 由来の宙づり。Startup reconciler から呼ばれる。
+ * @see ADR-0033
  */
 export const findStrandedCancelledSessions = async (
   db: DbLike
@@ -516,12 +508,12 @@ export const findStrandedCancelledSessions = async (
 };
 
 /**
- * Returns DECIDED sessions whose `reminder_sent_at <= olderThan`.
+ * Return DECIDED sessions whose `reminder_sent_at <= olderThan` (staleness boundary).
  *
  * @remarks
- * claim-first が立てた `reminder_sent_at` が staleness 閾値を超えて残っている場合、送信プロセスが
- * revert 前に crash した可能性が高い。Reconciler はこの集合に対し `revertReminderClaim` で戻す。
- * @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+ * claim-first が立てた `reminder_sent_at` が残る = 送信側が revert 前に crash した可能性。
+ * Reconciler がこの集合に対し {@link revertReminderClaim} で戻す。
+ * @see ADR-0024, ADR-0033
  */
 export const findStaleReminderClaims = async (
   db: DbLike,
@@ -556,16 +548,12 @@ export const findNonTerminalSessionsByWeekKey = async (
 };
 
 /**
- * Atomically transitions a non-terminal session to `SKIPPED`.
- *
- * @returns The updated row on success, or `undefined` if the session is already terminal
- *   (COMPLETED / SKIPPED) or does not exist (race lost).
+ * Atomically transition a non-terminal session to `SKIPPED` (`/cancel_week` primitive).
  *
  * @remarks
- * `/cancel_week` 用の CAS プリミティブ。`transitionStatus` と違い from を複数許容するため、
- * `WHERE status IN (non-terminal set)` を一段で評価する。冪等: 既に SKIPPED / COMPLETED の場合は
- * 何もせず undefined。
- * @see docs/adr/0023-cancel-week-command-flow.md
+ * `transitionStatus` と違い from を複数許容するため `WHERE status IN (non-terminal)` を一段で評価する。
+ * idempotent: 既に SKIPPED / COMPLETED なら何もせず undefined。
+ * @see ADR-0023
  */
 export const skipSession = async (
   db: DbLike,
@@ -590,8 +578,7 @@ export const skipSession = async (
 };
 
 export const isNonTerminal = (status: SessionStatus): boolean => {
-  // state: 非終端は startup recovery と /cancel_week 対象。CANCELLED は短命中間状態のため除外。
-  // @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+  // state: 非終端は startup recovery と /cancel_week の対象。CANCELLED は短命中間状態のため除外。 @see ADR-0001
   switch (status) {
     case "ASKING":
     case "POSTPONE_VOTING":

@@ -28,8 +28,7 @@ describe("askMessage race handling", () => {
   });
 
   it("serializes concurrent sends and avoids duplicate posts", async () => {
-    // race: 並走 send 呼び出しに対し、「first が channel.send に到達した瞬間」を明示的に awaitable にする。
-    //   vi.waitFor の timeout 依存 (flake 源) を排除するため、mock 内で deferred を解決する。
+    // race: 並走 send のうち first が channel.send に到達した瞬間を deferred で awaitable にし、vi.waitFor の timeout flake を避ける。
     const sendCalled = deferred<void>();
     const sendDone = deferred<{ id: string }>();
     const send = vi.fn(() => {

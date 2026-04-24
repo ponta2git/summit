@@ -75,13 +75,13 @@ describe("settleAskingSession", () => {
     expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
       reason: "absent"
     });
-    // regression: FR second-opinion H1. 順序保証のため settle 通知は postpone vote と同じ直接送信経路に戻した。
+    // regression: settle 通知は postpone vote と同じ直接送信経路 (FR second-opinion H1)。
     expect(cancelAskingSpy.mock.calls[0]?.[0]).not.toHaveProperty("outbox");
     expect(startPostponeVotingSpy).toHaveBeenCalledTimes(1);
     // invariant: 直接 channel.send は settle 通知 + postpone vote の 2 通。
     expect(channel.send).toHaveBeenCalledTimes(2);
     expect(sentMessages).toHaveLength(2);
-    // invariant: outbox には settle-notice 行は enqueue されない (同期送信に戻したため)。
+    // invariant: 同期送信に戻したため outbox には settle-notice 行は enqueue されない。
     expect(ctx.ports.outbox.listEntries()).toEqual([]);
   });
 
@@ -101,13 +101,13 @@ describe("settleAskingSession", () => {
     });
     expect(completeCancelledSpy).toHaveBeenCalledTimes(1);
     expect(startPostponeVotingSpy).not.toHaveBeenCalled();
-    // regression: 土曜 ASKING も settle 通知は直接送信。channel.send は settle 通知 1 回。
+    // regression: 土曜 ASKING の settle 通知も直接送信。channel.send は 1 回。
     expect(channel.send).toHaveBeenCalledTimes(1);
     // invariant: outbox には settle-notice 行は enqueue されない。
     expect(ctx.ports.outbox.listEntries()).toEqual([]);
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // regression: 土曜中止は CANCELLED 滞留させず COMPLETED へ収束。
+    // regression: 土曜中止は CANCELLED に滞留させず COMPLETED へ収束する。
     expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("saturday_cancelled");
   });
@@ -128,7 +128,7 @@ describe("settleAskingSession", () => {
     });
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // state: DECIDED のまま。COMPLETED への遷移は reminder tick で行う (§5.2, §9.1)。
+    // state: DECIDED のまま。COMPLETED への遷移は reminder tick で行う。
     expect(persisted?.status).toBe("DECIDED");
     expect(persisted?.decidedStartAt?.toISOString()).toBe(startAt.toISOString());
     // invariant: reminderAt = decidedStartAt - 15 分。
@@ -137,8 +137,7 @@ describe("settleAskingSession", () => {
     );
     expect(persisted?.reminderSentAt).toBeNull();
     expect(messageEdit).toHaveBeenCalledTimes(1);
-    // why: DECIDED 遷移時に §5.1 開催決定メッセージは outbox へ enqueue される (ADR-0035)。
-    //   直接の channel.send は ask footer 更新のみで、announcement は worker tick で配送される。
+    // why: DECIDED 遷移時の開催決定メッセージは outbox へ enqueue され worker tick で配送される。直接 channel.send は ask footer 更新のみ (ADR-0035)。
     expect(channel.send).not.toHaveBeenCalled();
     const outboxEntries = ctx.ports.outbox.listEntries();
     const announce = outboxEntries.find((e) => e.dedupeKey === `decided-announcement-${session.id}`);
@@ -208,7 +207,7 @@ describe("settlePostponeVotingSession", () => {
     );
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // regression: 順延 NG は COMPLETE で週を閉じる。
+    // regression: 順延 NG は COMPLETED で週を閉じる。
     expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("postpone_ng");
     expect(ctx.ports.sessions.listSessions().some((s) => s.postponeCount === 1)).toBe(false);
@@ -239,7 +238,7 @@ describe("settlePostponeVotingSession", () => {
     );
 
     const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // regression: 順延未完も COMPLETE で週を閉じる。
+    // regression: 順延未完も COMPLETED で週を閉じる。
     expect(persisted?.status).toBe("COMPLETED");
     expect(persisted?.cancelReason).toBe("postpone_unanswered");
   });

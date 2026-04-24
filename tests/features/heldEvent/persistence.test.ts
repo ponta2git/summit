@@ -141,7 +141,7 @@ describe("HeldEvent persistence via reminder completion", () => {
       session.id,
       new Date("2026-04-24T12:45:00.000Z")
     );
-    // 2nd call: session は既に COMPLETED のため sendReminderForSession は早期 return する。
+    // state: 2 回目は既に COMPLETED のため sendReminderForSession は早期 return する。
     await sendReminderForSession(
       client,
       ctx,

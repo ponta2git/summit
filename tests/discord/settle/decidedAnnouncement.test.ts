@@ -13,7 +13,7 @@ import { env } from "../../../src/env.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
 
-const decidedStartAt = new Date("2026-04-24T14:00:00.000Z"); // JST 23:00
+const decidedStartAt = new Date("2026-04-24T14:00:00.000Z");
 const decidedSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({
     id: "session-decided-1",
@@ -65,7 +65,7 @@ describe("buildDecidedAnnouncementViewModel", () => {
   });
 
   it("formats startTimeLabel in JST HH:MM and orders member lines by MEMBER_USER_IDS", () => {
-    // regression: JST (Asia/Tokyo) 固定の HH:MM 整形と MEMBER_USER_IDS 順を担保
+    // regression: JST (Asia/Tokyo) 固定の HH:MM 整形と MEMBER_USER_IDS 順
     const vm = buildDecidedAnnouncementViewModel(
       { decidedStartAt },
       allTimeSlotResponses(),

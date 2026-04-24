@@ -58,7 +58,7 @@ const applyDecidedOutcome = (
       }),
       "Failed to complete postpone voting (decided)."
     );
-    // why: race-lost (CAS undefined) は無害な分岐として正常終了させる
+    // why: race-lost (CAS undefined) は無害な分岐として正常終了させる @see ADR-0001
     if (!postponed) {return okAsync(undefined);}
 
     logger.info(

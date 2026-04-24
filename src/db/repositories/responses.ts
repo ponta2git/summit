@@ -47,21 +47,16 @@ export interface UpsertResponseInput {
 }
 
 /**
- * Inserts or updates a member's response to a session (押し直し可).
- *
- * @returns The resulting response row after upsert.
- * @throws Error if the upsert returns no row (should never happen under the current schema).
+ * Insert or update a member's response for a session (押し直し可).
  *
  * @remarks
- * `(sessionId, memberId)` unique 制約で二重投入を防ぎつつ、同一メンバーの回答変更は
- * `onConflictDoUpdate` で最新値に上書きする。
+ * unique: `(sessionId, memberId)` unique で二重投入を排除しつつ、同一メンバーの変更は
+ *   `onConflictDoUpdate` で最新 choice に上書きする。
  */
 export const upsertResponse = async (
   db: DbLike,
   input: UpsertResponseInput
 ): Promise<ResponseRow> => {
-  // unique: (sessionId, memberId) unique 制約で二重投入を防ぐ。
-  //   同一メンバーの回答変更 (押し直し) は onConflictDoUpdate で最新値に上書きする。
   const rows = await db
     .insert(responses)
     .values({

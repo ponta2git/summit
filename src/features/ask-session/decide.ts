@@ -21,9 +21,13 @@ export interface EvaluateDeadlineOptions {
 const isAskTimeChoice = (choice: ResponseRow["choice"]): choice is AskTimeChoice =>
   choice === "T2200" || choice === "T2230" || choice === "T2300" || choice === "T2330";
 
-// why: decision logic を domain に抽出して interactions/settle 重複排除
-// invariant: evaluateDeadline は pure (I/O 無し、Date.now 無し)
-// source-of-truth: ask session の締切判定ロジックは本ファイルが正本
+/**
+ * Evaluate an ASKING session's deadline decision.
+ *
+ * @remarks
+ * Pure (no I/O, no `Date.now()`). Callers inject `options.now` for deadline comparison.
+ * source-of-truth: ask session 締切判定の正本。
+ */
 export const evaluateDeadline = (
   session: SessionRow,
   responses: readonly ResponseRow[],

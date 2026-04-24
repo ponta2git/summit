@@ -57,7 +57,7 @@ interface PostponePipelineReady extends PostponePipelineWithSession {
 
 const validatePostponePipeline = (context: PostponePipelineStart): AppResult<PostponePipelineParsed, AppError> =>
   okResult(context)
-    // ack: postpone handler 単体で呼ばれても 3 秒制約内のガード順序を守るため、ここで cheap-first を固定する。
+    // ack: handler 単体呼び出しでも 3 秒制約を満たすため cheap-first を固定。
     .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
     .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
     .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
@@ -213,7 +213,11 @@ const handlePostponePipelineError = async (
 };
 
 /**
- * Handle postpone button interactions via cheap-first validation and DB-backed pipeline composition.
+ * Handle postpone button interactions.
+ *
+ * @remarks
+ * cheap-first validation → DB-backed pipeline。再描画は常に DB から再構築。
+ * @see ADR-0001
  */
 export const handlePostponeButton = async (
   interaction: ButtonInteraction,
@@ -223,7 +227,7 @@ export const handlePostponeButton = async (
   } = {}
 ): Promise<void> => {
   if (!options.acknowledged) {
-    // ack: component interaction は 3 秒制約があるため handler 入口で deferUpdate() する。
+    // ack: component interaction の 3 秒制約を満たすため入口で deferUpdate する。
     await interaction.deferUpdate();
   }
 

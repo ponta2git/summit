@@ -57,6 +57,7 @@ export const askMessages = {
       return lines.join("\n");
     }
   },
+
   settle: {
     decided: ({ slot, count }: SettleDecidedParams): string =>
       `✅ ${count}名の回答で ${slot} 開始に決定しました。`,
@@ -69,12 +70,14 @@ export const askMessages = {
     completed: ({ count }: SettleCompletedParams): string =>
       `✅ ${count}名の回答を反映して完了しました。`
   },
+
   interaction: {
     ask: {
       sent: "送信しました",
       skippedAlreadySent: "本週は既に送信済みのためスキップしました",
       failed: "送信に失敗しました"
     },
+
     voteConfirmed: {
       ask: (choice: AskVoteChoice): string => {
         const labels: Record<AskVoteChoice, string> = {

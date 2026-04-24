@@ -1,7 +1,6 @@
-// source-of-truth: Discord 送信 outbox の DB 境界実装。
-//   状態遷移 tx 内で `enqueue` を呼ぶと CAS と同 tx で outbox 行が積まれる。
-//   worker は `claimNextBatch` で PENDING を取り、成功で DELIVERED / 失敗で FAILED に落とす。
-// @see docs/adr/0035-discord-send-outbox.md
+// source-of-truth: Discord 送信 outbox の DB 境界実装。状態遷移 tx 内で enqueue すれば CAS と同 tx で
+//   outbox 行が積まれる。worker は claimNextBatch で取り、成功で DELIVERED / 失敗で FAILED or 再試行。
+// @see ADR-0035
 
 import { randomUUID } from "node:crypto";
 
@@ -18,8 +17,7 @@ import type { DbLike } from "../rows.js";
 
 // invariant: worker が payload を rehydrate する際の schema。
 //   `kind="send_message"` は新規投稿、`kind="edit_message"` は既存 message の編集。
-//   `target` は配送成功時に sessions の列へ書き戻す対象 (`askMessageId` / `postponeMessageId`)。
-//   `renderer` / `extra` は worker がメッセージを組み立てる際の指示。
+//   `target` は配送成功時に sessions の対応列へ書き戻す対象。
 export type OutboxPayloadTarget = "askMessageId" | "postponeMessageId";
 
 export interface OutboxPayloadBase {
@@ -105,14 +103,13 @@ const mapRow = (row: typeof discordOutbox.$inferSelect): OutboxEntry => ({
 });
 
 /**
- * Insert an outbox row, idempotent via `dedupe_key` partial unique index.
+ * Insert an outbox row; idempotent via `dedupe_key` partial unique index.
  *
  * @remarks
- * tx: 呼び出し側が state transition の tx を渡せば、CAS と outbox enqueue が atomic になる。
- *   tx なし呼び出しでは独立 tx で挿入される (純粋な edit などで使う)。
- * idempotent: `uq_discord_outbox_dedupe_active` (status IN non-FAILED) によって同一 dedupe_key の
- *   2 回目以降は `onConflictDoNothing` で弾かれ skipped=true を返す。
- * @see docs/adr/0035-discord-send-outbox.md
+ * tx: state transition の tx を渡せば CAS と enqueue が atomic。tx なしなら独立 tx で挿入。
+ * idempotent: `uq_discord_outbox_dedupe_active` により同 dedupe_key 2 回目以降は `onConflictDoNothing`
+ *   で弾かれ skipped=true を返す。
+ * @see ADR-0035
  */
 export const enqueueOutbox = async (
   db: DbLike,
@@ -130,9 +127,7 @@ export const enqueueOutbox = async (
     })
     .onConflictDoNothing({
       target: discordOutbox.dedupeKey,
-      // race: partial unique index の述語と一致させないと ON CONFLICT が index を解決できず
-      //   PostgreSQL が "no unique or exclusion constraint matching" でエラー化する。
-      //   @see docs/adr/0035-discord-send-outbox.md / FR second-opinion
+      // race: partial unique index の述語と一致させないと ON CONFLICT が index を解決できない。
       where: sql`${discordOutbox.status} IN ('PENDING','IN_FLIGHT','DELIVERED')`
     })
     .returning({ id: discordOutbox.id });
@@ -154,11 +149,10 @@ export const enqueueOutbox = async (
  * Atomically claim up to `limit` deliverable rows for a worker tick.
  *
  * @remarks
- * race: PENDING もしくは expired IN_FLIGHT を候補に、ID リストを取得したうえで `UPDATE ... WHERE id IN (...)`
- *   を tx 内で実行する。`AND status IN ('PENDING','IN_FLIGHT')` を CAS 条件として含むため、
- *   候補取得と UPDATE の間で他 worker / reconciler が状態を変えた行は自動的に除外される。
- * single-instance: ADR-0001 で 1 インスタンス前提のため、同時 worker による競合は通常起きない。
- *   過渡期 (noOverlap 境界) の二重実行に対しては CAS 条件で吸収する。
+ * race: PENDING もしくは expired IN_FLIGHT を候補に、`AND status IN ('PENDING','IN_FLIGHT')` を CAS 条件として
+ *   `UPDATE ... WHERE id IN (...)` を tx 内で実行。候補取得と UPDATE の間で他 worker / reconciler が
+ *   状態を変えた行は自動的に除外される。
+ * single-instance: ADR-0001 で 1 インスタンス前提だが、noOverlap 境界の二重実行は CAS で吸収する。
  * idempotent: DELIVERED / FAILED は対象外。stale IN_FLIGHT のみ再 claim される。
  */
 export const claimNextOutboxBatch = async (
@@ -211,8 +205,7 @@ export const claimNextOutboxBatch = async (
  * Mark a claimed outbox row as delivered.
  *
  * @remarks
- * state: 条件付き `status=IN_FLIGHT → DELIVERED` の CAS。競合 (別 worker が先に FAIL 扱い) は稀だが
- *   起きても冪等に扱うため、マッチしなければ何もしない。
+ * state: `status=IN_FLIGHT → DELIVERED` の CAS。マッチしなければ no-op。
  */
 export const markOutboxDelivered = async (
   db: DbLike,
@@ -234,11 +227,11 @@ export const markOutboxDelivered = async (
 };
 
 /**
- * Mark a claimed row as failed with exponential backoff or dead-letter.
+ * Mark a claimed row as failed with exponential backoff, or dead-letter when `nextAttemptAt` is null.
  *
  * @remarks
- * state: `nextAttemptAt=now+backoff` で PENDING に戻す (再試行) か、attempt_count が上限超過なら FAILED 終端。
- * idempotent: IN_FLIGHT でないときは no-op。
+ * state: `nextAttemptAt=now+backoff` で PENDING に戻すか、上限超過なら FAILED 終端。
+ * idempotent: IN_FLIGHT でなければ no-op。
  */
 export const markOutboxFailed = async (
   db: DbLike,
@@ -246,7 +239,7 @@ export const markOutboxFailed = async (
   options: {
     readonly error: string;
     readonly now: Date;
-    readonly nextAttemptAt: Date | null; // null → FAILED (dead letter)
+    readonly nextAttemptAt: Date | null;
   }
 ): Promise<boolean> => {
   const rows = await db
@@ -264,13 +257,12 @@ export const markOutboxFailed = async (
 };
 
 /**
- * Release IN_FLIGHT rows whose claim_expires_at has passed (startup crash recovery).
+ * Release IN_FLIGHT rows whose `claim_expires_at` has passed (startup crash recovery).
  *
  * @remarks
- * race: worker が `markDelivered` / `markFailed` を呼ぶ前に crash すると行が IN_FLIGHT 状態で stuck する。
- *   reconciler が startup 時にこの関数を呼んで PENDING に戻し、次 tick で再配送させる。
- * @see docs/adr/0033-startup-invariant-reconciler.md
- * @see docs/adr/0035-discord-send-outbox.md
+ * race: worker が `markDelivered` / `markFailed` を呼ぶ前に crash すると IN_FLIGHT で stuck する。
+ *   reconciler が startup 時に PENDING へ戻し、次 tick で再配送させる。
+ * @see ADR-0033, ADR-0035
  */
 export const releaseExpiredOutboxClaims = async (
   db: DbLike,
@@ -295,10 +287,10 @@ export const releaseExpiredOutboxClaims = async (
 };
 
 /**
- * Returns stranded outbox rows for /status invariant warning.
+ * Return stranded outbox rows for `/status` invariant warning.
  *
  * @remarks
- * FAILED 行 (dead letter) と、attempt_count が警告閾値を超えた PENDING を返す。
+ * FAILED (dead letter) と attempt_count が警告閾値超の PENDING / IN_FLIGHT を返す。
  */
 export const findStrandedOutboxEntries = async (
   db: DbLike,

@@ -26,10 +26,9 @@ export interface PostponeMessageViewModel {
  * Build a view model for the postpone voting message.
  *
  * @remarks
- * Pure. memberRows 省略時は memberStatuses = []（初期投稿時互換 — 【順延投票】セクション非表示）。
- * memberRows 指定時は env.MEMBER_USER_IDS 順に各メンバーの最新 response を反映する。
- * disabled / footerText は options から指定（省略時はそれぞれ false / undefined）。
- * @see docs/adr/0014-naming-dictionary-v2.md
+ * Pure. memberRows 省略時は memberStatuses=[]（初期投稿互換）。指定時は env.MEMBER_USER_IDS 順で
+ * 各メンバーの最新 response を反映。
+ * @see ADR-0014
  */
 export const buildPostponeMessageViewModel = (
   session: Pick<ViewModelSessionInput, "id" | "candidateDateIso">,
@@ -37,7 +36,6 @@ export const buildPostponeMessageViewModel = (
   memberRows?: readonly ViewModelMemberInput[],
   options?: { readonly disabled?: boolean; readonly footerText?: string }
 ): PostponeMessageViewModel => {
-  // invariant: memberRows が undefined なら空配列（初期投稿時は statusLines なし）
   const memberStatuses: PostponeMemberStatus[] =
     memberRows !== undefined
       ? env.MEMBER_USER_IDS.map((userId) => {
@@ -45,7 +43,7 @@ export const buildPostponeMessageViewModel = (
           if (!member) {
             return { userId, displayLabel: userId, state: "unanswered" as const };
           }
-          // last-write-wins: 同一 memberId の最後の応答を採用（リスト末尾 = 最新）
+          // race: 同一 memberId の重複回答はリスト末尾 (最新) を採用し last-write-wins に収束させる。
           const memberResponses = responses?.filter((r) => r.memberId === member.id) ?? [];
           const last = memberResponses[memberResponses.length - 1];
           const state =
@@ -67,6 +65,6 @@ export const buildPostponeMessageViewModel = (
     disabled: options?.disabled ?? false
   };
   const footerText = options?.footerText;
-  // why: exactOptionalPropertyTypes — undefined を代入すると型エラーになるため条件スプレッドで省く
+  // why: exactOptionalPropertyTypes のため undefined を代入せず条件スプレッドで省く。
   return footerText !== undefined ? { ...base, footerText } : base;
 };

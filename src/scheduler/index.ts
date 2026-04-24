@@ -1,3 +1,7 @@
+// Scheduler entry: register all cron tasks once per process (Fly single-instance).
+// Each tick is wrapped by `runTickSafely` for failure isolation; literal schedules
+// live in src/config.ts (CRON_*). @see ADR-0001, ADR-0007, ADR-0033.
+
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
@@ -42,9 +46,7 @@ export interface AskSchedulerDeps {
   readonly context: AppContext;
   readonly sendAsk?: SendAsk;
   readonly cronAdapter?: CronAdapter;
-  /** Optional: `env.HEALTHCHECK_PING_URL`. No-op when undefined. */
   readonly healthcheckUrl?: string;
-  /** Optional: injected fetch implementation for testing. */
   readonly fetchFn?: FetchFn;
 }
 
@@ -52,13 +54,9 @@ export const runScheduledAskTick = async (
   sendAsk: SendAsk,
   context: AppContext
 ): Promise<void> => {
-  // why: 外側の try/catch は runTickSafely が担う (ADR-0035 期の基盤)。ここでは純粋に業務ロジックだけを実行する。
   await sendAsk({ trigger: "cron", context });
 };
 
-/**
- * Evaluate a single ASKING session at the 21:30 deadline.
- */
 const settleDueAskingSession = async (
   client: Client,
   ctx: AppContext,
@@ -81,21 +79,20 @@ const settleDueAskingSession = async (
 };
 
 /**
- * Runs one deadline tick: settles every ASKING session whose deadline has passed.
+ * Settle every ASKING session whose deadline has passed.
  *
  * @remarks
- * cron (毎分) と起動時リカバリの双方から呼ばれる。例外は外に漏らさず log に集約する。
+ * idempotent: settle は CAS 済みのためセッション単位の重複呼び出しに安全。
+ * 例外はセッション単位で log に集約し、外側 `runTickSafely` に委譲する。
  */
 export const runDeadlineTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  // why: 外側の try/catch は runTickSafely に委譲。セッション単位の失敗隔離は内側の try/catch で行う。
   const now = ctx.clock.now();
   const due = await ctx.ports.sessions.findDueAskingSessions(now);
   for (const session of due) {
     try {
-      // idempotent: settle は CAS 済みのため重複呼び出し安全。
       await settleDueAskingSession(client, ctx, session, now);
     } catch (error: unknown) {
       logger.error(
@@ -107,24 +104,20 @@ export const runDeadlineTick = async (
 };
 
 /**
- * Runs one postpone-deadline tick: settles every POSTPONE_VOTING session whose deadline has passed.
+ * Settle every POSTPONE_VOTING session whose deadline has passed.
  *
  * @remarks
- * 土 00:00 JST (POSTPONE_DEADLINE="24:00") の cron tick と起動時リカバリの双方から呼ばれる。
- * セッション単位で try/catch し、1 件の失敗が残りの処理を止めないよう冪等に続行する。
- * @see ADR-0001 single-instance-db-as-source-of-truth
+ * source-of-truth: DB から期限切れセッションを再計算して処理する。
+ * idempotent: settlePostponeVotingSession は内部 CAS で重複呼び出し安全。
+ * @see ADR-0001
  */
 export const runPostponeDeadlineTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  // why: 外側の try/catch は runTickSafely に委譲。
   const now = ctx.clock.now();
-  // source-of-truth: DB から期限切れ POSTPONE_VOTING セッションを再計算する。
   const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
   for (const session of due) {
-    // race: 既に DB から再計算しているため per-session 失敗は次 tick で再試行する。
-    // idempotent: settlePostponeVotingSession は内部で CAS を使うため、重複呼び出しは安全。
     await settlePostponeVotingSession(client, ctx, session, now).match(
       () => {},
       (error) => {
@@ -138,27 +131,23 @@ export const runPostponeDeadlineTick = async (
 };
 
 /**
- * Runs one reminder tick: sends the 15-minute-before reminder for every DECIDED session
- * whose `reminderAt` has passed and has not yet been sent (requirements/base.md §5.2, §9.1).
+ * Dispatch the pre-start reminder for DECIDED sessions whose `reminderAt` has passed.
  *
  * @remarks
- * 毎分 cron tick から呼ばれる。送信後は DECIDED→COMPLETED へ遷移する。
- * 送信失敗時は DECIDED のまま据え置き、次 tick で再試行する (DB-as-SoT)。
- * @see docs/adr/0024-reminder-dispatch.md
+ * source-of-truth: 送信後 DECIDED→COMPLETED へ遷移。送信失敗時は DECIDED 据え置きで次 tick で再試行。
+ * invariant: 毎 tick 境界で stale reminder claim を回収する (H1 only; 他 invariant は起動時のみ)。
+ * @see ADR-0024
+ * @see ADR-0033
  */
 export const runReminderTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  // why: 外側の try/catch は runTickSafely に委譲。
-  // invariant: 毎分 tick 境界で stale reminder claim を回収する (H1)。他の invariant は軽量に保つため起動時のみ。
-  // @see docs/adr/0033-startup-invariant-reconciler.md
   await runReconciler(client, ctx, { scope: "tick" });
   const now = ctx.clock.now();
   const due = await ctx.ports.sessions.findDueReminderSessions(now);
   for (const session of due) {
     try {
-      // idempotent: sendReminderForSession は内部で status/reminderSentAt を再検証する
       await sendReminderForSession(client, ctx, session.id, now);
     } catch (error: unknown) {
       logger.error(
@@ -170,13 +159,12 @@ export const runReminderTick = async (
 };
 
 /**
- * Fires a best-effort healthcheck ping on each minute cron tick.
+ * Best-effort healthcheck ping on each cron tick.
  *
  * @remarks
- * No-op when `url` is `undefined` (i.e., `HEALTHCHECK_PING_URL` is not set).
- * Logs `event=healthcheck.tick_ping` with `ok`, `elapsedMs`, `status`/`errorKind`.
- * URL is never logged.
- * @see docs/adr/0034-healthcheck-ping.md
+ * `url` 未設定時は no-op (`HEALTHCHECK_PING_URL` 未設定)。
+ * redact: URL はログに含めない。`event=healthcheck.tick_ping` でのみログ化。
+ * @see ADR-0034
  */
 export const runHealthcheckTickPing = async (
   url: string | undefined,
@@ -201,24 +189,22 @@ export const runHealthcheckTickPing = async (
       logger.warn(failFields, "Healthcheck tick ping failed.");
     }
   } catch (error: unknown) {
-    // sendHealthcheckPing should never throw; belt-and-suspenders guard.
+    // why: sendHealthcheckPing は throw しない契約だが belt-and-suspenders でガードする。
     logger.warn({ event: "healthcheck.tick_ping", ok: false, error }, "Healthcheck tick ping threw unexpectedly.");
   }
 };
 
 /**
- * Re-settles overdue ASKING and POSTPONE_VOTING sessions found in the DB at startup.
+ * Re-settle overdue non-terminal sessions at process boot.
  *
  * @remarks
- * プロセス再起動で cron tick を取りこぼしても整合を回復させる入口。CAS 済みのため
- * 二重実行安全。非終端 Session を全件スキャンして締切超過のものだけ処理する。
+ * source-of-truth: DB の非終端 Session を走査し締切超過行を settle する。
+ * idempotent: 各 settle は CAS 済みで再起動跨ぎの重複呼び出し安全。
  */
 export const runStartupRecovery = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  // source-of-truth: 起動時に DB の非終端 Session を読み直し、締切超過していれば各 settle を呼ぶ。
-  // idempotent: settle 関数はいずれも CAS 済みのため二重呼び出し安全。
   try {
     const sessions = await ctx.ports.sessions.findNonTerminalSessions();
     const now = ctx.clock.now();
@@ -237,7 +223,6 @@ export const runStartupRecovery = async (
         session.status === "POSTPONE_VOTING" &&
         session.deadlineAt.getTime() <= now.getTime()
       ) {
-        // state: POSTPONE_VOTING かつ deadlineAt 超過のセッションを順延期限切れとして決着させる。
         logger.info(
           {
             sessionId: session.id,
@@ -261,7 +246,6 @@ export const runStartupRecovery = async (
         session.reminderAt.getTime() <= now.getTime() &&
         session.reminderSentAt === null
       ) {
-        // state: DECIDED かつ reminderAt 超過で未送信なら起動時に即リマインド送信を試みる
         logger.info(
           {
             sessionId: session.id,
@@ -279,14 +263,15 @@ export const runStartupRecovery = async (
 };
 
 /**
- * Registers all scheduled cron tasks.
+ * Register all scheduled cron tasks. Call once per process.
  *
  * @remarks
- * プロセス内で 1 度だけ呼ぶこと。複数インスタンスで同時駆動すると Discord への
- * 二重送信や race になる。Fly app は 1 インスタンス固定前提。
- * 戻り値は登録順の ScheduledTask 配列。shutdown 時は `for (const t of ...) t.stop()`。
- *
- * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+ * single-instance: node-cron はプロセスあたり 1 回のみ登録。Fly app を scale すると
+ *   二重駆動する (Discord 二重送信 / race)。
+ * source-of-truth: 各 tick は DB から再計算する。in-memory 状態に依存しない。
+ * idempotent: `noOverlap: true` で次 tick が現 tick と重なった場合は後続をスキップする。
+ * 戻り値は shutdown 時に `for (const t of tasks) t.stop()` で停止する。
+ * @see ADR-0001
  */
 export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTask[] => {
   const { context, client } = deps;
@@ -294,13 +279,9 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
     deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(client, sendContext));
   const cronModule = deps.cronAdapter ?? cron;
 
-  // single-instance: node-cron はプロセスあたり 1 回だけ登録する。Fly app を 2 インスタンスにすると二重駆動する。
-  // source-of-truth: cron tick は DB から再計算する。in-memory 状態に依存しない。
-  // noOverlap: tick の実行が次 tick と重なる場合は後続をスキップ (長時間 tick 中の二重実行防止)。
-  // why: registry 化により feature 追加時の scheduler 変更箇所を 1 行に限定する。
-  //   各 tick の意味論 (cron 式と JST 前提) は config.ts 側の CRON_* 定数に集約。
+  // why: 新 feature の tick 追加箇所を registry に集約する。cron 式と JST 前提は src/config.ts の CRON_* に集約。
   const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
-    // ADR-0007: /ask 送信スケジュール (金曜朝)。
+    // @see ADR-0007
     {
       schedule: CRON_ASK_SCHEDULE,
       tick: () =>
@@ -308,13 +289,11 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
           runScheduledAskTick(sendAsk, context)
         )
     },
-    // 金曜 21:30 JST。candidateDateIso=当日 / deadlineAt=当日 21:30 の組に対応する。
     {
       schedule: CRON_DEADLINE_SCHEDULE,
       tick: () =>
         void runTickSafely({ name: "deadline", logger }, () => runDeadlineTick(client, context))
     },
-    // 土曜 00:00 JST = POSTPONE_DEADLINE="24:00"（候補日翌日 00:00 JST）。
     {
       schedule: CRON_POSTPONE_DEADLINE_SCHEDULE,
       tick: () =>
@@ -322,19 +301,18 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
           runPostponeDeadlineTick(client, context)
         )
     },
-    // 毎分 tick。DECIDED かつ reminderAt 到来のセッションにリマインド送信する (§5.2, §9.1)。
     {
       schedule: CRON_REMINDER_SCHEDULE,
       tick: () =>
         void runTickSafely({ name: "reminder", logger }, () => runReminderTick(client, context))
     },
-    // 毎分 tick。healthchecks.io に死活監視 ping を送る (ADR-0034)。URL 未設定時は no-op。
-    //   runHealthcheckTickPing は既に内部で失敗を握り潰す best-effort 実装のため runTickSafely は挟まない。
+    // why: runHealthcheckTickPing は内部で失敗を握り潰す best-effort 実装のため runTickSafely で囲まない。
+    // @see ADR-0034
     {
       schedule: HEALTHCHECK_PING_INTERVAL_CRON,
       tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
     },
-    // 10 秒周期。Discord send outbox の PENDING 行を配送する (ADR-0035)。
+    // @see ADR-0035
     {
       schedule: CRON_OUTBOX_WORKER_SCHEDULE,
       tick: () =>

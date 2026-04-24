@@ -48,7 +48,7 @@ export const handleAskCommand = async (
       return;
     }
 
-    // invariant: 将来 SendAskMessageResult.status を追加した際に型エラーで気付くため assertNever を残す
+    // invariant: SendAskMessageResult.status 追加時に型エラーで気付くため assertNever を残す。
     return assertNever(result.status, "handleAskCommand: sendAsk result.status");
   } catch (error: unknown) {
     const appError = toAppError(error, "Failed to execute /ask.");

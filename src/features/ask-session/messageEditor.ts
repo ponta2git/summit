@@ -18,7 +18,6 @@ export const updateAskMessage = async (
   const memberRows = await ctx.ports.members.listMembers();
   const fresh = await ctx.ports.sessions.findSessionById(session.id);
   if (!fresh) {return;}
-  // why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
   const responses = await ctx.ports.responses.listResponses(fresh.id);
   const vm = buildAskMessageViewModel(fresh, responses, memberRows);
   const rendered = renderAskBody(vm);
@@ -27,9 +26,10 @@ export const updateAskMessage = async (
     await msg.edit(rendered);
   } catch (error: unknown) {
     if (isUnknownMessageError(error)) {
-      // state: Discord 側で message が削除 (管理者操作 / アカウント削除) された場合は復旧できないため、
-      //   新規投稿し askMessageId を更新する。DB-as-SoT (ADR-0001): 状態は巻き戻さず ID だけ差し替える。
-      // @see docs/adr/0033-startup-invariant-reconciler.md invariant D
+      // state: Discord 側で message が消されたら復旧不可のため新規投稿して askMessageId を差し替える。
+      //   source-of-truth: DB-as-SoT。状態は巻き戻さず ID だけ更新する。
+      // @see ADR-0001
+      // @see ADR-0033
       try {
         const sent = await channel.send(rendered);
         await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);

@@ -1,10 +1,7 @@
 // source-of-truth: HeldEvent (実開催履歴) 集約ルート。
-//   §8.3 の HeldEvent 永続化。中止回 (CANCELLED/SKIPPED) では作成しないため、
-//   DECIDED→COMPLETED CAS と挿入を **単一トランザクション** で行う。
-//   COMPLETED は終端状態で起動時リカバリ (findNonTerminalSessions) が拾わないため、
-//   別 tx に分けると「COMPLETED なのに HeldEvent 無し」の永続不整合が残り得る。
-// @see requirements/base.md §8.3, §8.4
-// @see docs/adr/0031-held-event-persistence.md
+//   DECIDED→COMPLETED CAS と HeldEvent 挿入を **単一 tx** で行う。COMPLETED は終端で起動時リカバリが
+//   拾わないため、別 tx にすると「COMPLETED なのに HeldEvent 無し」の永続不整合が残る。
+// @see requirements/base.md §8.3, §8.4, ADR-0031
 
 import { randomUUID } from "node:crypto";
 
@@ -64,26 +61,21 @@ export interface CompleteDecidedSessionAsHeldResult {
 /**
  * Atomically transition DECIDED→COMPLETED and record the HeldEvent + participants.
  *
- * @returns The updated session, held event, and participant rows; or `undefined` if the
- *   CAS lost (session is not DECIDED anymore — another handler already transitioned it).
- *
  * @remarks
- * tx: session status CAS と held_events / held_event_participants の挿入を 1 トランザクションに
- *   まとめる。CAS 敗北時は held_events を書かない（`RETURNING` 無しならロールバック）。
- * invariant: heldDateIso / startAt は CAS の RETURNING で取れた session 行（candidateDateIso /
- *   decidedStartAt）から**リポジトリ内で**導出する。呼び出し側から入力を受け取って信用すると、
- *   将来 session 本体と不整合な HeldEvent を作り得る。
- * idempotent: `held_events.session_id` unique + `onConflictDoNothing` で二重挿入を防ぐ。
- *   participants 側も複合 PK で衝突時 no-op。起動時リカバリ経路ではそもそも COMPLETED は
- *   拾われないが、保険として冪等を維持する。
- * @see docs/adr/0031-held-event-persistence.md
+ * tx: session CAS と held_events / held_event_participants 挿入を 1 tx に束ねる。CAS 敗北時は
+ *   rollback されるため held_events を書かない。
+ * invariant: `heldDateIso` / `startAt` は RETURNING で取得した session 行から**リポジトリ内で**導出する。
+ *   呼び出し側の入力を信用すると session と不整合な HeldEvent を作り得る。
+ * idempotent: `held_events.session_id` unique + `onConflictDoNothing` で二重挿入防止。
+ *   participants も複合 PK 衝突で no-op。
+ * @see ADR-0031
  */
 export const completeDecidedSessionAsHeld = async (
   db: DbLike,
   input: CompleteDecidedSessionAsHeldInput
 ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
   return db.transaction(async (tx) => {
-    // race: CAS primitive。WHERE status = 'DECIDED' の条件一致のみ遷移成功。
+    // race: CAS primitive。WHERE status = 'DECIDED' 一致のみ遷移成功。
     const updated = await tx
       .update(sessions)
       .set({
@@ -101,8 +93,7 @@ export const completeDecidedSessionAsHeld = async (
     }
 
     if (!sessionRow.decidedStartAt) {
-      // invariant: DECIDED 状態の行は decidedStartAt を必ず持つ (decide.ts 側で保証)。
-      //   取り損なうのは schema drift。tx を abort して呼び出し側に伝える。
+      // invariant: DECIDED 行は decidedStartAt を必ず持つ (decide.ts 側で保証)。欠損は schema drift。
       throw new Error(
         `completeDecidedSessionAsHeld: session ${sessionRow.id} has no decidedStartAt despite DECIDED status`
       );
@@ -117,8 +108,7 @@ export const completeDecidedSessionAsHeld = async (
         heldDateIso: sessionRow.candidateDateIso,
         startAt: sessionRow.decidedStartAt
       })
-      // idempotent: session_id unique 衝突時は既存を尊重。この経路は CAS 勝者のみ通るため
-      //   通常は衝突しないが、仮に重複挿入経路が追加されても本保険で守る。
+      // idempotent: session_id unique 衝突時は既存を尊重。保険的な冪等性。
       .onConflictDoNothing({ target: heldEvents.sessionId })
       .returning();
 
@@ -131,7 +121,7 @@ export const completeDecidedSessionAsHeld = async (
         .limit(1))[0];
 
     if (!heldEventRow) {
-      // defensive: 挿入も取得もできない状況は理論上起きない (tx 内で自己矛盾)。
+      // invariant: tx 内で insert も select も空は自己矛盾。
       throw new Error("completeDecidedSessionAsHeld: heldEventRow missing");
     }
 

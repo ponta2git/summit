@@ -1,8 +1,3 @@
-// why: 起動時および毎 tick 境界で DB と Discord の invariant を強制する単一の収束点。
-//   C1 (CANCELLED 宙づり) / N1 (週次 ask 未作成・削除された Discord message) / H1 (stale reminder claim)
-//   を一箇所に集約し、DB を正本とした自動回復を冪等に提供する。
-// @see docs/adr/0033-startup-invariant-reconciler.md
-
 import type { Client } from "discord.js";
 
 import type { AppContext } from "../appContext.js";
@@ -51,10 +46,9 @@ const EMPTY_REPORT: ReconcileReport = {
 
 const FRIDAY_JS_DAY = 5;
 
-// jst: process.env.TZ=Asia/Tokyo 前提で Date#getDay()/getHours() は JST を返す。
-// source-of-truth: 窓の開始/終了は src/config.ts の ASK_START_HHMM / ASK_DEADLINE_HHMM を参照する
-//   (ADR-0022: ADR/コメントに HH:MM を書き写さない)。
-// @see docs/adr/0002-jst-fixed-time-handling.md
+// jst: Date#getDay/getHours は process.env.TZ=Asia/Tokyo 前提で JST を返す。
+// source-of-truth: 窓境界は src/config.ts の ASK_START_HHMM / ASK_DEADLINE_HHMM。
+// @see ADR-0002
 const isFridayAskWindow = (now: Date): boolean => {
   if (now.getDay() !== FRIDAY_JS_DAY) {return false;}
   const hour = now.getHours();
@@ -72,15 +66,10 @@ const isFridayAskWindow = (now: Date): boolean => {
  * Invariant A: Promote stranded CANCELLED sessions to their next canonical state.
  *
  * @remarks
- * CANCELLED は短命中間状態 (ADR-0001)。プロセスが cancelAsking → 次状態 の間で crash したときに
- * 宙づり行が残る。本関数は次の規則で収束させる:
- *
- * - Saturday (postponeCount=1): 常に `completeCancelledSession` (COMPLETED)。
- * - Friday (postponeCount=0) かつ順延期限前: 順延投票メッセージを投稿し `startPostponeVoting` で POSTPONE_VOTING へ。
- * - Friday (postponeCount=0) かつ順延期限後: `completeCancelledSession` (COMPLETED)。
- *
- * CANCELLED→SKIPPED は許可遷移に無いため (SESSION_ALLOWED_TRANSITIONS)、終端は COMPLETED を採用する。
- * @see docs/adr/0033-startup-invariant-reconciler.md
+ * state: CANCELLED は短命中間状態 (ADR-0001)。crash 等で宙づり行が残った場合に収束させる。
+ * 土曜 (postponeCount=1) は COMPLETED、金曜は順延期限前なら POSTPONE_VOTING、期限後は COMPLETED。
+ * CANCELLED→SKIPPED は許可遷移に無いため終端は COMPLETED を採用する。
+ * @see ADR-0033
  */
 export const reconcileStrandedCancelled = async (
   client: Client,
@@ -131,22 +120,17 @@ const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
   ) {
     return reason;
   }
-  // state: cancelReason が未記録 / 想定外値の場合は postponeCount から妥当なデフォルトへ。
+  // state: cancelReason 未記録 / 想定外値は postponeCount から妥当なデフォルトへ fallback。
   return session.postponeCount === 1 ? "saturday_cancelled" : "deadline_unanswered";
 };
 
-// race: reconciler の cleanup は通常経路 (settleAskingSession) の 2 ステップ
-//   (updateAskMessage → settle 通知送信) をミラーする。crash タイミングが
-//   「cancelAsking 後 / settle 通知送信前後」のいずれでも、DB-as-SoT (ADR-0001) 方針として
-//   最悪 settle 通知 1 通の重複投稿を許容する (冪等ロックは張らない)。
-//   これは「通知が全く出ない」状態を避けるためのベストエフォート。
+// race: cleanup は通常経路 (settleAskingSession) の updateAskMessage → settle 通知送信 を
+//   ミラーする。crash 時は settle 通知 1 通の重複投稿を許容 (DB-as-SoT, ADR-0001)。
 const emitCancelledUiCleanup = async (
   client: Client,
   ctx: AppContext,
   session: SessionRow
 ): Promise<void> => {
-  // source-of-truth: updateAskMessage 内部で DB から fresh を再取得し disabled=true / footerCancelled
-  //   の viewModel で再描画する。10008 時は新規投稿にフォールバックする (ADR-0033 invariant D)。
   await updateAskMessage(client, ctx, session);
   const channel = await getTextChannel(client, session.channelId);
   const settleVm = buildSettleNoticeViewModel(resolveSettleCancelReason(session));
@@ -160,8 +144,7 @@ const promoteStranded = async (
   now: Date
 ): Promise<{ readonly to: "POSTPONE_VOTING" | "COMPLETED"; readonly reason: string } | undefined> => {
   if (session.postponeCount === 1) {
-    // state: 土曜回の CANCELLED は順延経路を持たないため COMPLETED へ収束。
-    //   先に ASK ボタン無効化 + settle 通知を流してから COMPLETED へ遷移する。
+    // state: 土曜回の CANCELLED は順延経路が無いため UI cleanup → COMPLETED。
     await emitCancelledUiCleanup(client, ctx, session);
     const completed = await ctx.ports.sessions.completeCancelledSession({
       id: session.id,
@@ -171,11 +154,10 @@ const promoteStranded = async (
     return { to: "COMPLETED", reason: "saturday_cancelled_stranded" };
   }
 
-  // Friday (postponeCount=0) path.
   const candidateDate = parseCandidateDateIso(session.candidateDateIso);
   const postponeDeadline = postponeDeadlineFor(candidateDate);
   if (now.getTime() >= postponeDeadline.getTime()) {
-    // state: 順延期限 (候補日翌日 00:00 JST) を過ぎた場合は投票経路が無いので COMPLETED へ。
+    // state: 順延期限超過なら投票経路無しで COMPLETED に収束。
     await emitCancelledUiCleanup(client, ctx, session);
     const completed = await ctx.ports.sessions.completeCancelledSession({
       id: session.id,
@@ -185,9 +167,7 @@ const promoteStranded = async (
     return { to: "COMPLETED", reason: "friday_postpone_window_elapsed" };
   }
 
-  // state: 順延期限前 (金曜 cancelAsking 直後の crash など) なら POSTPONE_VOTING へ進める。
-  //   通常経路 (settleAskingSession) と同じく、先に ASK ボタン無効化 + settle 通知を流してから
-  //   順延投票メッセージを送る。
+  // state: 順延期限前は UI cleanup → 順延投票メッセージ送信 → POSTPONE_VOTING へ。
   await emitCancelledUiCleanup(client, ctx, session);
   const channel = await getTextChannel(client, session.channelId);
   const postponeVm = buildPostponeMessageViewModel(session);
@@ -206,10 +186,9 @@ const promoteStranded = async (
  * Invariant B: Ensure this week's Friday ASKING session exists during the publication window.
  *
  * @remarks
- * 金曜 08:00〜21:30 JST の窓で `(weekKey, postponeCount=0)` の Session が無い場合に限り、
- * 通常の `sendAskMessage` 経路で作成する。rolling restart や cron tick 取りこぼし経路の回復点。
- * 窓外では「その週がもう閉じた / まだ始まっていない」と解釈して何もしない。
- * @see docs/adr/0033-startup-invariant-reconciler.md
+ * 金曜の ASK 窓 (src/config.ts ASK_START_HHMM / ASK_DEADLINE_HHMM) 内で
+ * `(weekKey, postponeCount=0)` Session が無い場合のみ通常経路で作成する。窓外では no-op。
+ * @see ADR-0033
  */
 export const reconcileMissingAsk = async (
   client: Client,
@@ -251,13 +230,13 @@ export const reconcileMissingAsk = async (
 };
 
 /**
- * Invariant C: Recover sessions whose `askMessageId` is NULL.
+ * Invariant C: Recover non-terminal sessions whose `askMessageId` is NULL.
  *
  * @remarks
- * `createAskSession` 成功後 `channel.send` が失敗すると `askMessageId=NULL` のまま放置され、
- * unique (`weekKey, postponeCount`) で再作成不能になる。ASKING/POSTPONE_VOTING/POSTPONED の
- * いずれの状態でも再投稿し ID を更新する。
- * @see docs/adr/0033-startup-invariant-reconciler.md
+ * `createAskSession` 成功後 `channel.send` 失敗で askMessageId=NULL のまま放置されると
+ * (weekKey, postponeCount) unique で再作成不能になる。ASKING/POSTPONE_VOTING/POSTPONED を
+ * 対象に再投稿して ID を埋める。
+ * @see ADR-0033
  */
 export const reconcileMissingAskMessage = async (
   client: Client,
@@ -297,7 +276,7 @@ const resendAskMessage = async (
   ctx: AppContext,
   session: SessionRow
 ): Promise<void> => {
-  // source-of-truth: postponeCount=1 (土曜回) は専用送信経路を使い in-flight ロックも共有する。
+  // source-of-truth: postponeCount=1 の ASKING は専用経路で送信し in-flight ロックを共有する。
   if (session.postponeCount === 1 && session.status === "ASKING") {
     await sendPostponedAskMessage(client, ctx, session);
     logger.info(
@@ -334,11 +313,10 @@ const resendAskMessage = async (
  * Invariant E: Reclaim stale reminder claims left behind by a crashed dispatch.
  *
  * @remarks
- * claim-first (ADR-0024) が `reminder_sent_at=now` を立てた直後に Discord 送信前後の crash が
- * 起きると、行が `status=DECIDED AND reminder_sent_at IS NOT NULL` で stuck する。
- * staleness (`REMINDER_CLAIM_STALENESS_MS`) を超えた claim を `revertReminderClaim` で NULL に戻し、
- * 次 tick で再送される状態に復元する。
- * @see docs/adr/0024-reminder-dispatch.md
+ * race: claim-first (ADR-0024) が `reminder_sent_at=now` 直後に crash すると
+ * `status=DECIDED AND reminder_sent_at IS NOT NULL` で stuck する。
+ * `REMINDER_CLAIM_STALENESS_MS` を超えた claim を NULL に戻し次 tick で再送させる。
+ * @see ADR-0024
  */
 export const reconcileStaleReminderClaims = async (
   ctx: AppContext
@@ -383,12 +361,12 @@ export const reconcileStaleReminderClaims = async (
 };
 
 /**
- * Invariant F (outbox claim reclaim): release IN_FLIGHT outbox rows past their claim deadline.
+ * Invariant F: Release IN_FLIGHT outbox rows past their claim deadline.
  *
  * @remarks
- * worker が claim 中に crash すると `discord_outbox.claimExpiresAt` を過ぎたまま IN_FLIGHT で stuck する。
- * startup で一括 PENDING に戻し、次 worker tick で再配送させる。
- * @see docs/adr/0035-discord-send-outbox.md
+ * race: worker が claim 中に crash すると IN_FLIGHT で stuck する。startup/reconnect で
+ * PENDING に戻し次 worker tick で再配送させる。
+ * @see ADR-0035
  */
 export const reconcileOutboxClaims = async (
   ctx: AppContext
@@ -417,12 +395,11 @@ export type ReconcileScope = "startup" | "tick" | "reconnect";
  * Invariant D (startup active probe): Detect deleted Discord messages at boot.
  *
  * @remarks
- * `updateAskMessage` は opportunistic に 10008 を拾って再投稿するが、起動中に bot が停止しており
- * 誰も interaction を起こさない場合は ask / postpone メッセージが削除されたまま放置される。
- * startup 時だけ `channel.messages.fetch(messageId)` で能動的に probe し、`Unknown Message`
- * (10008) を検知したら新規投稿して ID を差し替える。tick scope では毎分 Discord fetch を叩く
- * コストに見合わないため実施しない。
- * @see docs/adr/0033-startup-invariant-reconciler.md
+ * `updateAskMessage` は opportunistic に 10008 を拾って再投稿するが、停止中は interaction が
+ * 無いため ask / postpone メッセージが削除されたまま放置される。startup 時のみ能動的に fetch し、
+ * Unknown Message (10008) 検知で新規投稿して ID を差し替える。tick scope では毎分 fetch コストに
+ * 見合わないため実施しない。
+ * @see ADR-0033
  */
 export const probeDeletedMessagesAtStartup = async (
   client: Client,
@@ -488,7 +465,7 @@ const probeAndRecreateAskMessage = async (
       );
       return false;
     }
-    // state: messageEditor.ts の 10008 フォールバックと同じ viewModel で新規投稿し ID を差し替える。
+    // state: messageEditor.ts の 10008 フォールバックと同 viewModel で新規投稿し ID を差し替え。
     const memberRows = await ctx.ports.members.listMembers();
     const fresh = await ctx.ports.sessions.findSessionById(session.id);
     if (!fresh) {return false;}
@@ -568,17 +545,16 @@ const probeAndRecreatePostponeMessage = async (
 };
 
 /**
- * Run all reconciliation invariants.
+ * Run all reconciliation invariants for the given scope.
  *
  * @remarks
- * `scope="startup"`: A〜C + E + F + startup-only active probe (D') を実行。
- *   (通常運転中の invariant D は scheduler tick 側の再描画経路で扱う)。
- * `scope="reconnect"`: shardReady 再接続時に A〜C + E + F を実行 (D' は毎再接続で fetch させないため除外)。
- *   in-flight lock と debounce は呼び出し側 (src/index.ts) で保証する (ADR-0036)。
- * `scope="tick"`: E のみ (stale reminder claim 回収)。起動時より軽量で毎 tick に載せられる。
- * いずれも冪等で DB を正本とする (ADR-0001)。
- * @see docs/adr/0033-startup-invariant-reconciler.md
- * @see docs/adr/0036-reconnect-replay.md
+ * idempotent: いずれの scope も DB を正本として冪等に収束させる (ADR-0001)。
+ * - `startup`: A〜C + E + F + invariant D (active probe)。
+ * - `reconnect`: A〜C + E + F (D は毎再接続で fetch させないため除外)。
+ *    in-flight lock / debounce は呼び出し側が保証する (ADR-0036)。
+ * - `tick`: E のみ (毎 tick 境界で軽量に stale reminder claim を回収)。
+ * @see ADR-0033
+ * @see ADR-0036
  */
 export const runReconciler = async (
   client: Client,
@@ -590,17 +566,15 @@ export const runReconciler = async (
     return { ...EMPTY_REPORT, staleClaimReclaimed };
   }
 
-  // Run independently so that one invariant's failure does not block others. Each helper has its own try/catch.
   const cancelledPromoted = await reconcileStrandedCancelled(client, ctx);
   const askCreated = await reconcileMissingAsk(client, ctx);
   const messageResent = await reconcileMissingAskMessage(client, ctx);
-  // why: probe は startup 限定 (毎再接続で Discord fetch N 件は高コスト)。
-  //   reconnect では抑制し、scheduler tick 側の opportunistic な再描画 (updateAskMessage) に任せる。
+  // why: active probe は startup 限定。reconnect は毎回 Discord fetch するコストに見合わず、
+  //   scheduler tick の opportunistic な updateAskMessage に委ねる。
   if (options.scope === "startup") {
     await probeDeletedMessagesAtStartup(client, ctx);
   }
   const staleClaimReclaimed = await reconcileStaleReminderClaims(ctx);
-  // invariant: outbox worker が claim 中に crash した行を startup/reconnect で reclaim する (ADR-0035)。
   const outboxClaimReleased = await reconcileOutboxClaims(ctx);
 
   return {

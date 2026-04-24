@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { TICK_DURATION_WARN_MS } from "../../src/config.js";
 import { createTickSafetyWrap, runTickSafely } from "../../src/scheduler/tickRunner.js";
 
-// Build a minimal pino-shaped mock logger for assertion purposes.
 const makeLogger = () => {
   const info = vi.fn();
   const warn = vi.fn();
@@ -41,11 +40,9 @@ describe("runTickSafely", () => {
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ event: "scheduler.tick_failed", tick: "failTick", err })
     );
-    // tick_started must have been emitted before the failure
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: "scheduler.tick_started", tick: "failTick" })
     );
-    // no finish log on the error path
     expect(logger.info).not.toHaveBeenCalledWith(
       expect.objectContaining({ event: "scheduler.tick_finished" })
     );
@@ -72,7 +69,7 @@ describe("runTickSafely", () => {
 
   it("does not log tick_slow when elapsed is within threshold", async () => {
     const logger = makeLogger();
-    const nowFn = (): number => 0; // always 0 → elapsedMs = 0
+    const nowFn = (): number => 0;
 
     await runTickSafely({ name: "fastTick", logger, nowFn }, async () => {});
 

@@ -10,9 +10,10 @@ import { type DecidedAnnouncementViewModel } from "./viewModel.js";
  * Render the decided announcement content (mentions line + body).
  *
  * @remarks
- * Pure. `DEV_SUPPRESS_MENTIONS=true` 時は mention 行を省く (ADR-0011)。
- * ask footer (footerDecided) とは別の独立投稿なので `<@id>` 形式のメンションを含める。
+ * Pure. ask footer (footerDecided) とは別の独立投稿なので mention 行を含める。
+ * `DEV_SUPPRESS_MENTIONS=true` 時は省略。
  * @see requirements/base.md §5.1
+ * @see ADR-0011
  */
 export const renderDecidedAnnouncement = (
   vm: DecidedAnnouncementViewModel
@@ -21,7 +22,6 @@ export const renderDecidedAnnouncement = (
     startTimeLabel: vm.startTimeLabel,
     memberLines: vm.memberLines
   });
-  // why: DEV_SUPPRESS_MENTIONS 時は mention 行を省く (settle / reminder と同じ方針)。
   if (vm.suppressMentions) {
     return { content: body };
   }
@@ -33,13 +33,13 @@ export const renderDecidedAnnouncement = (
  * Enqueue the decided announcement for a DECIDED session into the outbox.
  *
  * @remarks
- * idempotent: ASKING→DECIDED の CAS が成功した直後に呼ばれる。`dedupeKey=decided-announcement-{sessionId}`
- *   で at-most-once を保証する (再 enqueue は `skipped=true` で no-op)。
- * state: Session が DECIDED でなければ no-op。reconnect-replay で再呼び出しされても dedupe で守る。
- * source-of-truth: 実 render は outbox worker tick で DB から最新 session/responses/members を取り直して構築する
- *   (@see scheduler/outboxWorker.ts の `decided_announcement` renderer)。
+ * idempotent: ASKING→DECIDED CAS 成功直後に呼ばれる。`dedupeKey=decided-announcement-{sessionId}` で
+ *   at-most-once を保証 (再 enqueue は `skipped=true`)。
+ * state: Session が DECIDED でなければ no-op。
+ * source-of-truth: 実 render は outbox worker tick で DB から再構築する (scheduler/outboxWorker.ts の
+ *   `decided_announcement` renderer)。
  * @see requirements/base.md §5.1
- * @see docs/adr/0035-discord-send-outbox.md
+ * @see ADR-0035
  */
 export const sendDecidedAnnouncement = async (
   _client: Client,

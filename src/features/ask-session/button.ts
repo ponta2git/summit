@@ -54,7 +54,8 @@ interface AskPipelineReady extends AskPipelineWithSession {
 
 const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelineParsed, AppError> =>
   okResult(context)
-    // invariant: interaction-review.instructions.md の cheap-first 順序を ask ハンドラ単体でも維持する。
+    // invariant: cheap-first の検証順序を ask ハンドラ単体でも維持する。
+    //   @see .github/instructions/interaction-review.instructions.md
     .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
     .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
     .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
@@ -103,7 +104,7 @@ const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineR
     }),
     "Failed to record ask response."
   )
-    // race: responses.(sessionId, memberId) unique 制約 + upsert で同時押下でも最終回答 1 件に収束。
+    // race: `responses` の unique 制約 + upsert で同時押下でも最終回答 1 件に収束。
     .map(() => context)
     .andTee((current) => {
       logger.info(
@@ -140,7 +141,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
       const activeMembers = memberRows.filter((member) =>
         env.MEMBER_USER_IDS.includes(member.userId)
       );
-      // source-of-truth: 判定ロジックは features/ask-session/decide.ts が正本。
+      // source-of-truth: 判定ロジックは ./decide.ts。
       const decision = evaluateDeadline(context.session, responses, {
         memberCountExpected: activeMembers.length
       });
@@ -174,7 +175,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
       )
         .map(() => undefined)
         .orElse((error) => {
-          // race: edit 失敗でも DB は巻き戻さず、次 tick / 次押下で再描画して回復する。
+          // race: edit 失敗でも DB は巻き戻さず次 tick / 次押下で再描画して回復する。
           logger.warn(
             {
               error,
@@ -187,8 +188,8 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
         });
     });
 
-// invariant: GuardFailureReason → reject message の網羅を GUARD_REASON_TO_MESSAGE で担保し、
-//   reason ごとに適切な ephemeral 文言を返す。reason 不明なら再 throw して上位で捕捉する。
+// invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
+//   reason 不明なら再 throw して上位で捕捉する。
 const handleAskPipelineError = async (
   interaction: ButtonInteraction,
   error: AppError
@@ -198,7 +199,7 @@ const handleAskPipelineError = async (
     throw error;
   }
 
-  // why: invalid_custom_id / member_not_registered は内部整合性の問題として warn ログを残す
+  // why: `invalid_custom_id` / `member_not_registered` は内部整合性の問題として warn ログを残す。
   if (reason === "invalid_custom_id") {
     logger.warn(
       { interactionId: interaction.id, userId: interaction.user.id },
@@ -222,14 +223,12 @@ const handleAskPipelineError = async (
  * Handle ask button interactions via cheap-first validation and DB-backed pipeline composition.
  *
  * @remarks
- * `deferUpdate()` は dispatcher 側で先に実行済み。ここでは検証 → 状態更新 → 再描画だけを扱う。
+ * ack: `deferUpdate()` は dispatcher 側で実行済み。ここでは検証 → 状態更新 → 再描画のみ。
  */
 export const handleAskButton = async (
   interaction: ButtonInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
-  // ack: component interaction の deferUpdate は dispatcher 入口で完了済み。
-  // why: 分岐を局所化し、validation -> state transition -> response の pipeline を維持する。
   const pipelineStart: AskPipelineStart = {
     interaction,
     deps,

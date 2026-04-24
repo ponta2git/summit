@@ -28,12 +28,8 @@ let postponeViewModel: PostponeViewModel;
 let envModule: Env;
 let testing: Testing;
 
-// why: 対象モジュール (render / postpone/render / settle / ask-viewModel / postpone-viewModel / env) は全て env を
-//   モジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下で
-//   再 import する必要がある。cold load が支配的コスト (~1.5s) なので `beforeAll` で
-//   1 度だけ償却する。`beforeEach` 化すると 4 倍に増える。
-// invariant: 以下のテストは全て DEV_SUPPRESS_MENTIONS=true を前提にした regression。
-//   env-independent な assertion は含めない (env=false 側は client.test.ts / render.test.ts でカバー)。
+// why: 対象モジュール群は env をモジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下での再 import が必要。cold load (~1.5s) を償却するため beforeAll で 1 度だけ行う (beforeEach だと 4 倍コスト)。
+// invariant: 本 describe の assertion は全て DEV_SUPPRESS_MENTIONS=true 前提。env=false 側は client.test.ts / render.test.ts でカバー。
 beforeAll(async () => {
   vi.stubEnv("DEV_SUPPRESS_MENTIONS", "true");
   vi.resetModules();
@@ -65,7 +61,7 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
     const rendered = askRender.renderAskBody(vm);
     expect(rendered.content).not.toContain("<@");
     expect(rendered.content).toContain("開催候補日");
-    // regression: 本文の空行レイアウトが維持されていること（filter(Boolean) 地雷の回避）
+    // regression: 本文の空行レイアウトが維持されること (filter(Boolean) 地雷の回避)
     expect(rendered.content).toMatch(/今週の桃鉄1年勝負の出欠確認です\n\n開催候補日/);
   });
 
@@ -104,7 +100,7 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
 
     await settle.settleAskingSession(client, ctx, session.id, "absent");
 
-    // regression: settle 通知は直接送信 (FR second-opinion H1)。sendMock の第1引数から文言を検証する。
+    // regression: settle 通知は直接送信経路 (FR second-opinion H1)。sendMock の第1引数から文言を検証。
     expect(sendMock).toHaveBeenCalled();
     const firstCall = sendMock.mock.calls[0]?.[0] as { content?: string };
     const content = firstCall?.content ?? "";

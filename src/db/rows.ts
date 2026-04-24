@@ -1,4 +1,4 @@
-// why: DB の Row 型と drizzle 派生型を集約 (ADR-0014)
+// source-of-truth: DB Row 型集約 (@see ADR-0014)。
 import type { db as defaultDb } from "./client.js";
 import {
   RESPONSE_CHOICES,
@@ -24,8 +24,8 @@ export type ResponseRow = Omit<typeof responses.$inferSelect, "choice"> & {
 export type HeldEventRow = typeof heldEvents.$inferSelect;
 export type HeldEventParticipantRow = typeof heldEventParticipants.$inferSelect;
 
-// why: listMembers は 3 列のみ select しているため、port / fixtures が見る MemberRow は
-//   schema 全列ではなく実運用で surface される shape に合わせる。
+// why: listMembers は 3 列のみ select するため、port / fixtures が見る shape を
+//   schema 全列ではなく実運用で surface する列に合わせる。
 export type MemberRow = {
   readonly id: string;
   readonly userId: string;

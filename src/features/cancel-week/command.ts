@@ -15,9 +15,7 @@ import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards
 
 const rejectMessage = rejectMessages.reject.notMember;
 
-// why: /cancel_week は破壊的（週全体のスキップ）なので confirmation ダイアログ必須。
-//   nonce は invocation ごとに発行し、stale dialog の踏み直し判別に使う。
-// @see docs/adr/0023-cancel-week-command-flow.md
+// why: /cancel_week は破壊的なので confirmation 必須。nonce を invocation ごとに発行し stale dialog 踏み直しを判別 @see ADR-0023
 const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {
   const confirmButton = new ButtonBuilder()
     .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", nonce, choice: "confirm" }))
@@ -33,10 +31,10 @@ const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {
 export const handleCancelWeekCommand = async (
   interaction: ChatInputCommandInteraction
 ): Promise<void> => {
-  // ack: 3 秒制約。確認ボタンは ephemeral 返信として発行する（実行者のみが視認可能）。
+  // ack: 3 秒制約。確認ボタンは ephemeral で実行者のみ視認可能。
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // invariant: interaction-review cheap-first 順 (guild/channel → member)
+  // invariant: cheap-first 順 (guild/channel → member)
   if (!assertGuildAndChannel(interaction.guildId, interaction.channelId) || !assertMember(interaction.user.id)) {
     await interaction.editReply(rejectMessage);
     return;

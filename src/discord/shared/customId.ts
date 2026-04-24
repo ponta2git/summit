@@ -1,14 +1,10 @@
-// why: Discord interaction の custom_id 3-segment codec を集約する。
-//   ask / postpone / cancel_week の 3 種類の "custom_id 文字列全体" の parse/build を担う。
-//   slot の lowercase wire 表現（t2200 等）もここが所有する: slot の意味は src/slot.ts の
-//   SlotKey で、ここは "custom_id 内でどう書くか" の wire 層だけを扱う。
-//   DB は SlotKey を verbatim で保存するため DB 側の wire 変換は不要（identity）。
+// why: custom_id の 3-segment codec と slot の wire 表現（lowercase）をここで所有する。
+//   SlotKey の意味論は src/slot.ts、DB は SlotKey を verbatim 保存するため DB 側の wire 変換は不要。
 // @see docs/adr/0016-customid-codec-hmac-rejected.md
 import { z } from "zod";
 import type { SlotKey } from "../../slot.js";
 
-// --- slot wire in custom_id ---
-// invariant: lowercase 4 値。SlotKey (大文字) と 1:1 対応するが、custom_id 内での表現は別。
+// invariant: SlotKey と 1:1 対応する lowercase wire 表現。
 export const CUSTOM_ID_SLOT_CHOICES = ["t2200", "t2230", "t2300", "t2330"] as const;
 export type CustomIdSlotChoice = (typeof CUSTOM_ID_SLOT_CHOICES)[number];
 
@@ -32,7 +28,6 @@ export const slotKeyFromCustomIdChoice = (choice: CustomIdSlotChoice): SlotKey =
 export const customIdChoiceFromSlotKey = (slotKey: SlotKey): CustomIdSlotChoice =>
   SLOT_KEY_TO_CUSTOM_ID[slotKey];
 
-// --- 3-segment envelope codec ---
 const askCustomIdChoiceSchema = z.union([
   z.enum(CUSTOM_ID_SLOT_CHOICES),
   z.literal("absent")
@@ -82,9 +77,8 @@ export const parseCustomId = (raw: string): z.ZodSafeParseResult<CustomIdSpec> =
 export const buildCustomId = (spec: CustomIdSpec): string =>
   `${spec.kind}:${spec.sessionId}:${spec.choice}`;
 
-// why: cancel_week の確認ダイアログは session を持たない独立フロー。中段に nonce を置いて
-//   「stale dialog を踏み直した」ケースを識別しつつ、既存 ask/postpone の codec と衝突しないよう
-//   別 codec として持つ。3 セグメント形式は踏襲し、prefix で dispatcher 側が分岐する。
+// why: cancel_week は session を持たない独立フロー。nonce で stale dialog を識別し、
+//   ask/postpone codec と衝突させないため別 schema にする。
 // @see docs/adr/0023-cancel-week-command-flow.md
 const cancelWeekCustomIdSpecSchema = z.object({
   kind: z.literal("cancel_week"),

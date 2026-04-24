@@ -1,6 +1,3 @@
-// invariant: viewModel は pure (I/O なし)。
-// why: DB 型を表示層から分離し、テストで容易に検証できるようにする。
-
 import { format } from "date-fns";
 import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.js";
 import {
@@ -16,7 +13,7 @@ import {
   type InvariantWarning
 } from "./invariantChecks.js";
 
-// jst: TZ=Asia/Tokyo 前提。date-fns format は内部で getHours() 等を使うため TZ 設定が反映される。
+// jst: TZ=Asia/Tokyo 前提。date-fns format は getHours() 等を使うため TZ が反映される @see ADR-0002
 const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");
 const fmtJstFull = (d: Date): string => format(d, "yyyy-MM-dd HH:mm");
 
@@ -39,7 +36,6 @@ export interface SessionStatusViewModel {
   readonly reminderSentAt: string | null;
   readonly responseCount: number;
   readonly memberCountExpected: number;
-  /** DECIDED sessions: whether HeldEvent exists */
   readonly heldEventExists: boolean | null;
   readonly warnings: readonly InvariantWarning[];
 }
@@ -48,7 +44,6 @@ export interface StatusViewModel {
   readonly nowJst: string;
   readonly currentWeekKey: string;
   readonly sessions: readonly SessionStatusViewModel[];
-  /** ISO string of next upcoming deadline or reminder across all sessions, or null */
   readonly nextEventAt: string | null;
   readonly totalWarnings: number;
   readonly strandedCancelled: readonly StrandedCancelledEntry[];
@@ -84,9 +79,6 @@ const buildSessionStatusViewModel = (
   };
 };
 
-/**
- * Computes the earliest upcoming deadline or reminder across all non-terminal sessions.
- */
 const buildNextEventAt = (
   sessions: readonly SessionRow[],
   now: Date
@@ -109,10 +101,10 @@ const buildNextEventAt = (
 };
 
 /**
- * Builds the pure view model for the /status reply.
+ * Build the pure view model for the /status reply.
  *
  * @remarks
- * All inputs are already fetched from ports; this function has no I/O.
+ * Pure. 入力は全て ports から fetch 済み。
  */
 export const buildStatusViewModel = (input: {
   readonly now: Date;
@@ -161,10 +153,7 @@ export const buildStatusViewModel = (input: {
 };
 
 /**
- * Renders the status view model as a compact text block for Discord reply.
- *
- * @remarks
- * Discord code block で囲むことで等幅表示にする。
+ * Render the status view model as a Discord code-block text.
  */
 export const renderStatusText = (vm: StatusViewModel): string => {
   const lines: string[] = [];

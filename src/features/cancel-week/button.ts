@@ -12,10 +12,9 @@ import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js"
  * Handle cancel_week confirm/abort button from the ephemeral confirmation dialog.
  *
  * @remarks
- * 確認ダイアログは ephemeral なので押せるのは実行者のみだが、invariant として cheap-first guard を
- * 再評価する。abort は単に ephemeral を更新するだけ、confirm は applyManualSkip で週全体の SKIPPED 遷移を
- * 行う。
- * @see docs/adr/0023-cancel-week-command-flow.md
+ * 確認ダイアログは ephemeral で実行者のみ押下可。confirm で週全体を SKIPPED に遷移、abort は dialog 更新のみ。
+ * cheap-first guard は dispatcher 側でも実施済みだが防御的に再評価する。
+ * @see ADR-0023
  */
 export const handleCancelWeekButton = async (
   interaction: ButtonInteraction,
@@ -25,12 +24,11 @@ export const handleCancelWeekButton = async (
   } = {}
 ): Promise<void> => {
   if (!options.acknowledged) {
-    // ack: ephemeral confirmation の更新は update() で原子的に行う（deferUpdate はこの関数の中で行う）。
+    // ack: ephemeral confirmation の更新のため入口で deferUpdate する。
     await interaction.deferUpdate();
   }
 
-  // invariant: cheap-first. guild/channel/member は dispatcher 側でも検証済みだが、
-  //   confirmation dialog でも念のため再評価（防御的多重化）。
+  // invariant: cheap-first 順 (guild/channel → member)
   if (
     !assertGuildAndChannel(interaction.guildId, interaction.channelId) ||
     !assertMember(interaction.user.id)
@@ -69,7 +67,6 @@ export const handleCancelWeekButton = async (
     return;
   }
 
-  // choice === "confirm"
   const outcome = await applyManualSkip(deps.client, deps.context, {
     invokerUserId: interaction.user.id
   });

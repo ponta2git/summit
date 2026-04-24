@@ -42,12 +42,12 @@ describeDb("sessions repository contract (integration)", () => {
   const db = drizzle(client, { schema, casing: "snake_case" });
 
   beforeAll(async () => {
-    // fail-fast: migrate 忘れを検出する。スキーマ不在だと error が飛び、他テストまで道連れにしない。
+    // invariant: migrate 済みのスキーマが存在することを fail-fast で検査する。
     await db.execute(sql`SELECT 1 FROM sessions LIMIT 0`);
     await db.execute(sql`SELECT 1 FROM members LIMIT 0`);
     await db.execute(sql`SELECT 1 FROM responses LIMIT 0`);
 
-    // members 4 名 seed。beforeEach の TRUNCATE では CASCADE しないため、ここで一度だけ挿入する。
+    // why: beforeEach の TRUNCATE は members を残すため、seed は一度だけ挿入する。
     await db.execute(sql`
       INSERT INTO members (id, user_id, display_name) VALUES
         ('m1','333333333333333333','Member1'),
@@ -82,7 +82,6 @@ describeDb("sessions repository contract (integration)", () => {
     const first = await createAskSession(db, { id: "s1", ...baseSession });
     expect(first?.id).toBe("s1");
 
-    // 同じ (weekKey, postponeCount) で別 id を渡しても unique で弾かれる。
     const second = await createAskSession(db, { id: "s2", ...baseSession });
     expect(second).toBeUndefined();
 
@@ -197,11 +196,10 @@ describeDb("sessions repository contract (integration)", () => {
     expect(rows[0]?.choice).toBe("T2330");
   });
 
-  // invariant: postponeCount IN (0,1) CHECK 制約 (sessions_postpone_count_check) の regression guard。
-  //   ドメイン層より先に DB 側で弾かれることを保証する。
-  //   why: drizzle でラップされた error message には constraint 名が含まれないため、rejection の事実と
-  //   「行が挿入されなかったこと」を組み合わせて確認する。
-  // @see src/db/schema.ts:84-87
+  // regression: postponeCount IN (0,1) の DB CHECK 制約がドメイン層より先に弾くことを保証する。
+  //   why: drizzle は error message に constraint 名を含めないため、rejection と「行が入っていない」
+  //   の 2 つで検証する。
+  // @see src/db/schema.ts
   it("DB rejects postponeCount >= 2 via CHECK constraint", async () => {
     let caught: unknown;
     try {
@@ -215,7 +213,7 @@ describeDb("sessions repository contract (integration)", () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(Error);
-    // postgres.js は原因エラーを cause (または Error.cause) に持たせる。constraint 名で regression を特定。
+    // why: postgres.js は原因エラーを cause に持たせる。constraint 名で regression を特定する。
     const causeMsg = String(
       (caught as { cause?: { constraint_name?: string; message?: string } }).cause
         ?.constraint_name ??

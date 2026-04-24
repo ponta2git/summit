@@ -19,6 +19,7 @@ import {
   buildCancelInteraction
 } from "../helpers/interaction.js";
 
+// why: render を stub し、interaction router の defer/reply と委譲経路のみを検証する。
 vi.mock("../../src/discord/ask/render.js", () => ({
   renderAskBody: vi.fn(() => ({ content: "mocked-render", components: [] })),
   buildAskRow: vi.fn()
@@ -320,7 +321,7 @@ describe("interaction router", () => {
 
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk, ctx));
 
-    // invariant: upsertResponse は ports 経由で呼ばれ、responses 側に 1 件記録される。
+    // invariant: upsertResponse は ports 経由で呼ばれ responses に 1 件記録される。
     const responses = await ctx.ports.responses.listResponses(testSessionId);
     expect(responses).toHaveLength(1);
     expect(responses[0]?.choice).toBe("T2200");

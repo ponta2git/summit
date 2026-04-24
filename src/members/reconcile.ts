@@ -6,17 +6,13 @@ import { logger } from "../logger.js";
 import type { MemberReconcileInput } from "./inputs.js";
 
 /**
- * Idempotently reconcile env.MEMBER_USER_IDS with the DB members table.
+ * Reconcile env.MEMBER_USER_IDS into the DB members table idempotently.
  *
  * @remarks
- * env に存在する userId を DB へ upsert（無ければ挿入、あれば no-op）する。
- * DELETE は行わない（ADR-0012: env から除外されたメンバーの履歴を保全するため）。
- * boot 時に cron 登録・bot login より前に呼び出し、失敗時は起動を中止する。
- * @see docs/adr/0012-member-ssot-env-db-hybrid.md
+ * env は identity (userId) の SSoT、DB は display_name の正本。env から消えた行は DELETE しない
+ * （履歴保全）。起動時に cron 登録・login より前に呼び、失敗時は起動中止。
+ * @see ADR-0012
  */
-// why: env を SSoT とし起動時に DB へ反映 (ADR-0012)
-// idempotent: 再実行しても副作用が増えない
-// invariant: members テーブル = env.MEMBER_USER_IDS の superset。display_name は DB を正本とする。
 export const reconcileMembers = async (
   memberInputs: ReadonlyArray<MemberReconcileInput>,
   db: DbLike
@@ -36,8 +32,6 @@ export const reconcileMembers = async (
   const alreadyPresent: string[] = [];
   const rowsToInsert: { id: string; userId: string; displayName: string }[] = [];
 
-  // why: display_name は DB に移送 (ADR-0012)
-  // invariant: env は identity (user_id), DB は付随データ (display_name)
   for (const [index, memberInput] of memberInputs.entries()) {
     const existingRow = existingByUserId.get(memberInput.userId);
     if (existingRow) {
@@ -64,7 +58,7 @@ export const reconcileMembers = async (
   }
 
   if (rowsToInsert.length > 0) {
-    // idempotent: userId unique 制約と onConflictDoNothing で race / 再実行を吸収する。
+    // idempotent: userId unique + onConflictDoNothing で race / 再実行を吸収。
     await db
       .insert(members)
       .values(rowsToInsert)

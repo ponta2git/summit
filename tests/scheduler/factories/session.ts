@@ -4,7 +4,6 @@ import { env } from "../../../src/env.js";
 // why: scheduler テストは channelId を実挙動で使わない (settle* を mock するため) が、
 //   factory を discord 系と共有するとシグネチャ結合で将来の drift を誘発する。
 //   意図的に独立 factory を維持する。
-// @see tests/strategy review P2-b
 export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow => ({
   id: "session-default",
   weekKey: "2026-W17",

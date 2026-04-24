@@ -1,4 +1,4 @@
-// source-of-truth: 本ディレクトリの公開 API を集約。外部モジュールはここから import する。
+// source-of-truth: 本ディレクトリの公開 API を集約。
 
 export {
   cancelAsking,

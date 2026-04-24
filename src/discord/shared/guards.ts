@@ -18,7 +18,6 @@ import {
   type PostponeCustomIdChoice
 } from "./customId.js";
 
-// why: cheap-first validation を統一
 export const assertGuildAndChannel = (
   guildId: string | null,
   channelId: string | null
@@ -223,7 +222,6 @@ export const GUARD_REASON_TO_MESSAGE: Record<GuardFailureReason, string> = {
   member_not_registered: rejectMessages.reject.memberNotRegistered
 };
 
-// why: dispatcher 入口の cheap-first guard を 1 関数に集約しつつ、拒否理由を個別に返す。
 export const cheapFirstGuard = (
   guildId: string | null,
   channelId: string | null,

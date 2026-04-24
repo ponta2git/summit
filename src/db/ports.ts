@@ -1,9 +1,7 @@
-// source-of-truth: DB 境界を表す port 契約。repository 実装はここを `satisfies` し、
-//   テストは Fake 実装でここを満たす。call-site は `ctx.ports.sessions.findSessionById(id)` 形で読める。
-// why: db ハンドルを port 実装が closure で保持し、call-site を db 非依存にする。Discord client は
-//   抽象化しない（ADR-0017）。この非対称は意図的で、DB は testability の要、Discord は discord.js を直接扱う方がシンプル。
-// @see docs/adr/0018-port-wiring-and-factory-injection.md
-// @see docs/adr/0026-boundary-rationalization.md
+// source-of-truth: DB 境界契約。repository 実装はここを `satisfies` し、テストは Fake で満たす。
+//   db ハンドルは port 実装が closure で保持し、call-site を db 非依存にする。
+//   Discord client は抽象化しない (ADR-0017, ADR-0026)。
+// @see ADR-0018
 
 import type {
   HeldEventParticipantRow,
@@ -58,6 +56,7 @@ export type {
   OutboxPayload,
   OutboxPayloadTarget
 };
+
 export type { ResponseChoice } from "./rows.js";
 
 export const SESSION_ALLOWED_TRANSITIONS = {
@@ -75,7 +74,7 @@ export const SESSION_ALLOWED_TRANSITIONS = {
  *
  * @remarks
  * 各実装は DB を正本とし、競合時に `undefined` を返す CAS 契約を維持する。
- * @see docs/adr/0001-single-instance-db-as-source-of-truth.md
+ * @see ADR-0001
  */
 export interface SessionsPort {
   createAskSession(input: CreateAskSessionInput): Promise<SessionRow | undefined>;
@@ -87,18 +86,20 @@ export interface SessionsPort {
   updateAskMessageId(id: string, messageId: string): Promise<void>;
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
   /**
-   * Back-fill `ask_message_id` atomically only if it is currently NULL (CAS-on-NULL).
+   * Back-fill `ask_message_id` atomically only if currently NULL (CAS-on-NULL).
    *
    * @remarks
-   * Returns `true` on CAS win (NULL → messageId). Returns `false` if the column was already set
-   * (e.g., reconciler or retry path has already populated it). Used by the outbox worker to
-   * avoid racing with reconciler repost. Unconditional overwrite must use `updateAskMessageId`.
-   * @see docs/adr/0035-discord-send-outbox.md
+   * Returns `true` on CAS win, `false` if already set (reconciler / retry has populated it).
+   * Outbox worker uses this to avoid racing with reconciler repost. Unconditional overwrite
+   * must use `updateAskMessageId`.
+   * @see ADR-0035
    */
   backfillAskMessageId(id: string, messageId: string): Promise<boolean>;
   /**
-   * Back-fill `postpone_message_id` atomically only if it is currently NULL (CAS-on-NULL).
-   * Returns `true` on CAS win. See `backfillAskMessageId` for rationale.
+   * Back-fill `postpone_message_id` atomically only if currently NULL (CAS-on-NULL).
+   *
+   * @remarks
+   * See {@link SessionsPort.backfillAskMessageId} for rationale.
    */
   backfillPostponeMessageId(id: string, messageId: string): Promise<boolean>;
   cancelAsking(input: CancelAskingInput): Promise<SessionRow | undefined>;
@@ -108,34 +109,38 @@ export interface SessionsPort {
   completeCancelledSession(input: CompleteCancelledSessionInput): Promise<SessionRow | undefined>;
   completeSession(input: CompleteSessionInput): Promise<SessionRow | undefined>;
   /**
-   * Claim the reminder dispatch slot atomically BEFORE sending to Discord.
-   * Returns the row on CAS win (session was DECIDED and `reminder_sent_at` was NULL),
-   * `undefined` if a concurrent path already claimed/completed it.
-   * @see docs/adr/0024-reminder-dispatch.md
+   * Claim the reminder dispatch slot atomically before sending to Discord.
+   *
+   * @remarks
+   * CAS 勝 (status=DECIDED, reminder_sent_at IS NULL) で行を返し、競合敗北時は undefined。
+   * @see ADR-0024
    */
   claimReminderDispatch(id: string, now: Date): Promise<SessionRow | undefined>;
   /**
-   * Release a reminder claim if Discord send fails so the next tick can retry.
-   * Only reverts when `(status=DECIDED, reminder_sent_at=claimedAt)` still holds.
+   * Release a reminder claim if the Discord send fails so the next tick can retry.
+   *
+   * @remarks
+   * `(status=DECIDED, reminder_sent_at=claimedAt)` 一致時のみ NULL に戻す。
    */
   revertReminderClaim(id: string, claimedAt: Date): Promise<boolean>;
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;
   /**
-   * Returns sessions currently in `CANCELLED` status.
+   * Returns sessions currently in `CANCELLED` status (startup reconciler target).
+   *
    * @remarks
-   * `CANCELLED` は短命中間状態 (ADR-0001)。通常時は瞬時に次状態へ遷移するため本メソッドは空集合を返す。
-   * Startup reconciler が crash 由来の「宙づり CANCELLED」を回収するために使う。
-   * @see docs/adr/0033-startup-invariant-reconciler.md
+   * `CANCELLED` は短命中間状態 (ADR-0001)。通常時は空。crash 由来の宙づり回収に使う。
+   * @see ADR-0033
    */
   findStrandedCancelledSessions(): Promise<readonly SessionRow[]>;
   /**
-   * Returns DECIDED sessions whose `reminder_sent_at` is older than `olderThan` (claim staleness boundary).
+   * Returns DECIDED sessions whose `reminder_sent_at` is older than `olderThan`.
+   *
    * @remarks
-   * claim-first で `reminder_sent_at=now` を立てたまま Discord 送信 → revert の経路で crash した場合、
-   * 行が永久に stuck する。reconciler がこのメソッドで候補を検出し `revertReminderClaim` で戻す。
-   * @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+   * claim-first で `reminder_sent_at=now` を立てたまま送信 → revert 経路で crash すると stuck する。
+   * reconciler が候補検出 → `revertReminderClaim` で戻す。
+   * @see ADR-0024, ADR-0033
    */
   findStaleReminderClaims(olderThan: Date): Promise<readonly SessionRow[]>;
   findNonTerminalSessions(): Promise<readonly SessionRow[]>;
@@ -158,9 +163,9 @@ export interface MembersPort {
  * HeldEvent persistence port.
  *
  * @remarks
- * §8.3 の HeldEvent (実開催履歴) を扱う。中止回 (§8.4) では作成しないため、
- * 唯一の作成経路は `completeDecidedSessionAsHeld` (DECIDED→COMPLETED CAS と同一 tx)。
- * @see docs/adr/0031-held-event-persistence.md
+ * §8.3 の実開催履歴を扱う。中止回 (§8.4) では作成しないため、唯一の作成経路は
+ * `completeDecidedSessionAsHeld` (DECIDED→COMPLETED CAS と同一 tx)。
+ * @see ADR-0031
  */
 export interface HeldEventsPort {
   completeDecidedSessionAsHeld(
@@ -175,10 +180,9 @@ export interface HeldEventsPort {
  *
  * @remarks
  * 状態遷移と Discord 送信を非同期に切り離す at-least-once 配送キュー。
- * `enqueue` は純粋な outbox 単独挿入 (純粋な edit など tx 非依存経路で使う)。
- * 状態遷移 tx 内で atomic に enqueue したい場合は、Session 系 CAS API の `outbox` フィールドに
- * `EnqueueOutboxInput[]` を渡す (同 tx で insert される)。
- * @see docs/adr/0035-discord-send-outbox.md
+ * `enqueue` は outbox 単独挿入 (tx 非依存経路用)。状態遷移 tx 内で atomic に enqueue したい場合は、
+ * Session 系 CAS API の `outbox` フィールドに `EnqueueOutboxInput[]` を渡す (同 tx で insert される)。
+ * @see ADR-0035
  */
 export interface OutboxPort {
   enqueue(input: EnqueueOutboxInput): Promise<EnqueueResult>;
@@ -207,8 +211,8 @@ export interface OutboxPort {
  * Aggregate port bundle supplied to handlers / scheduler / workflow via AppContext.
  *
  * @remarks
- * Discord client は抽象化しない (ADR-0017 参照)。本 Bot 規模では discord.js の Client / ButtonInteraction
- * を直接扱う方がシンプルで、追加の抽象レイヤは便益を生まない。
+ * Discord client は抽象化しない (ADR-0017)。discord.js の Client / ButtonInteraction を
+ * 直接扱う方がシンプルで、追加抽象は便益を生まない。
  */
 export interface AppPorts {
   readonly sessions: SessionsPort;

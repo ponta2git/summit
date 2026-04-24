@@ -14,21 +14,27 @@ export interface SkipWeekOutcome {
   readonly weekKey: string;
 }
 
-// why: /cancel_week 用ワークフロー。現在 ISO 週の全非終端 Session を SKIPPED に CAS で遷移し、
-//   関連メッセージを disabled で再描画、チャンネル通知を送る。DB が正本、冪等に設計。
-// @see docs/adr/0023-cancel-week-command-flow.md
+/**
+ * Apply /cancel_week: transition all non-terminal sessions of the current ISO week to SKIPPED.
+ *
+ * @remarks
+ * jst: 現在時刻から ISO 週キーを算出 (src/time/)。
+ * state: CANCELLED は短命中間 (ADR-0001)。対象は実運用上の非終端のみ。
+ * idempotent: skipSession は既終端なら undefined。session 単位で冪等。
+ * source-of-truth: 再描画は DB 最新から。チャンネル通知は outbox 経由で at-most-once (同週・同 invoker の
+ *   dedupe)。
+ * @see ADR-0023
+ * @see ADR-0035
+ */
 export const applyManualSkip = async (
   client: Client,
   ctx: AppContext,
   params: { readonly invokerUserId: string }
 ): Promise<SkipWeekOutcome> => {
-  // jst: 現在時刻から ISO 週キーを算出。src/time/ に集約 (AGENTS.md rule #1)。
   const weekKey = isoWeekKey(ctx.clock.now());
 
-  // state: ADR-0001 で CANCELLED は短命中間に限定。/cancel_week 対象は実運用上の非終端のみ。
   const nonTerminalSessions = await ctx.ports.sessions.findNonTerminalSessionsByWeekKey(weekKey);
 
-  // idempotent: skipSession は既終端ならば undefined を返す。ここで個別 session 単位で冪等。
   const skipped: SessionRow[] = [];
   for (const session of nonTerminalSessions) {
     const updated = await ctx.ports.sessions.skipSession({
@@ -58,7 +64,7 @@ export const applyManualSkip = async (
     return { skippedCount: 0, weekKey };
   }
 
-  // source-of-truth: 再描画は常に DB 最新状態から。updateAskMessage は内部で findSessionById 再取得する。
+  // source-of-truth: 再描画は常に DB 最新状態から。updateAskMessage は内部で findSessionById する。
   for (const session of skipped) {
     await updateAskMessage(client, ctx, session);
     if (session.postponeMessageId) {
@@ -73,10 +79,8 @@ export const applyManualSkip = async (
     }
   }
 
-  // why: チャンネル通知は 1 件のみ（週単位のスキップなので Friday/Saturday の両 session で通知を重ねない）。
-  //   ADR-0035: outbox 経由にして disconnect 中の送信失敗を worker が retry で拾えるようにする。
-  //   dedupe: 同週・同 invoker の重複 enqueue は skipped (at-most-once)。別 invoker の再実行は別 key なので通知し直される。
-  //   anchor: sessionId は skipped の先頭 (reconciler の session/outbox 紐付けで利用)。
+  // idempotent: チャンネル通知は週単位で 1 件のみ (同週・同 invoker の重複 enqueue は dedupe で skipped)。
+  //   別 invoker の再実行は別 key で通知し直される。anchor は skipped[0].id (reconciler 紐付け)。
   const anchorSessionId = skipped[0]?.id;
   if (anchorSessionId) {
     const enqueued = await ctx.ports.outbox.enqueue({

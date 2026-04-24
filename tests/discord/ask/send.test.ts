@@ -79,7 +79,7 @@ describe("sendPostponedAskMessage", () => {
 
     await sendPostponedAskMessage(client, ctx, alreadySent);
 
-    // idempotent: channel.send を呼ばず、updateAskMessageId も呼ばない。
+    // idempotent: ask_message_id 済の場合は send も updateAskMessageId も呼ばない。
     expect(send).not.toHaveBeenCalled();
     const updateCalls = ctx.ports.sessions.calls.filter((c) => c.name === "updateAskMessageId");
     expect(updateCalls).toHaveLength(0);
@@ -115,7 +115,7 @@ describe("sendPostponedAskMessage", () => {
 
   describe("in-flight dedup", () => {
     it("serializes concurrent Saturday sends and avoids duplicate posts", async () => {
-      // race: 並走する土曜送信を 1 本化する。
+      // race: 並走する土曜送信を in-flight map で 1 本化する。
       const sendCalled = deferred<void>();
       const sendDone = deferred<{ id: string }>();
       const send = vi.fn(async () => {
@@ -142,8 +142,7 @@ describe("sendPostponedAskMessage", () => {
     });
 
     it("Friday (postponeCount=0) and Saturday (postponeCount=1) sends with same weekKey proceed independently", async () => {
-      // race: 旧実装では weekKey のみをキーにしていたため、Friday の in-flight が Saturday をブロックした。
-      //   ${weekKey}:0 と ${weekKey}:1 に分離したことで、両者は互いをブロックせず並走できる。
+      // regression: 旧実装は weekKey のみをキーにしており Friday in-flight が Saturday をブロックした。現在は postponeCount を合成キーに含め独立並走する。
       const fridaySendCalled = deferred<void>();
       const fridaySendDone = deferred<{ id: string }>();
       const saturdaySendCalled = deferred<void>();
@@ -153,11 +152,9 @@ describe("sendPostponedAskMessage", () => {
       const send = vi.fn(async () => {
         const n = ++sendInvocation;
         if (n === 1) {
-          // Friday reaches channel.send first; hold it open
           fridaySendCalled.resolve();
           return fridaySendDone.promise;
         }
-        // Saturday reaches channel.send while Friday is still pending
         saturdaySendCalled.resolve();
         return saturdaySendDone.promise;
       });
@@ -170,20 +167,14 @@ describe("sendPostponedAskMessage", () => {
         seed: { members: seedMembers, sessions: [saturdaySession] }
       });
 
-      // Start Friday send (will block at channel.send)
       const fridayPromise = sendAskMessage(client, { trigger: "cron", context: ctx });
 
-      // Wait for Friday to reach channel.send
       await fridaySendCalled.promise;
 
-      // Start Saturday send while Friday is still in-flight.
-      // With ${weekKey}:1 key, it must NOT be blocked by Friday's ${weekKey}:0 entry.
       const saturdayPromise = sendPostponedAskMessage(client, ctx, saturdaySession);
 
-      // Saturday must reach channel.send before Friday resolves
       await saturdaySendCalled.promise;
 
-      // Resolve both
       fridaySendDone.resolve({ id: "fri-msg" });
       saturdaySendDone.resolve({ id: "sat-msg" });
 

@@ -35,7 +35,6 @@ const latestResponsesByMember = (
   return [...deduped.values()];
 };
 
-// why: postpone 投票の状態判定を pure 関数へ抽出し、handler/settle の重複ロジックを排除する。
 // state: NG が 1 件でもあれば取消。全員 OK で順延確定。期限超過で未回答が残れば取消。
 export const evaluatePostponeVote = (
   session: SessionRow,

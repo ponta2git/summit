@@ -1,7 +1,5 @@
-// why: AppContext 定義 + composition root factory。production は src/index.ts から `createAppContext()`、
-//   tests は `createAppContext({ ports: fakePorts, clock: fakeClock })` で同じ形を使う。
-// invariant: AppContext を受け取るすべての factory は、ここ以外から依存を解決しない。
-// @see docs/adr/0018-port-wiring-and-factory-injection.md
+// why: composition root。AppContext を受け取る factory は、ここ以外から依存を解決しない。
+// @see ADR-0018
 
 import { db as defaultDb } from "./db/client.js";
 import type { AppPorts } from "./db/ports.js";

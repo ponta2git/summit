@@ -29,25 +29,18 @@ export const systemClock: Clock = {
 /**
  * Returns the ISO-week key in `YYYY-Www` form for a given instant.
  *
- * @param value - Date whose ISO week representation is requested.
- * @returns ISO-week key such as `2026-W17`.
- *
  * @remarks
- * 金曜 Session と翌土曜の順延 Session は同一週キーを共有する。年跨ぎで暦年と ISO year が
- * 乖離するため、`getISOWeekYear` と `getISOWeek` を必ず併用すること。
+ * iso-week: 金曜と翌土曜 (順延) は同一週キーを共有。年跨ぎで暦年と ISO year が乖離するため
+ * `getISOWeekYear` と `getISOWeek` を必ず併用する (自作禁止)。
  */
 export const isoWeekKey = (value: Date): string => {
-  // iso-week: 年跨ぎ (12/31 金 と 1/1 土 が同じ ISO week に属する等) で暦年と ISO year が乖離するため、
-  //   getISOWeekYear と getISOWeek を必ず併用する。getFullYear で自作すると YYYY-Www がズレる。
   const isoYear = getISOWeekYear(value);
   const isoWeek = String(getISOWeek(value)).padStart(2, "0");
   return `${isoYear}-W${isoWeek}`;
 };
 
-// why: 「送信時点の日付をそのまま候補日とする」仕様の恒等関数。
-//   cron (金 08:00 JST) でも /ask コマンドでも now を候補日として扱う。
-//   日付境界を跨ぐ操作 (翌日候補化等) が必要になった場合のみここに集約する。
-// @see docs/adr/0007-ask-command-always-available-and-08-jst-cron.md
+// why: 送信時点の now をそのまま候補日とする恒等関数。日付境界を跨ぐ操作が必要になった場合のみ拡張。
+// @see ADR-0007
 export const candidateDateForAsk = (now: Date): Date => now;
 
 export const formatCandidateJa = (value: Date): string =>
@@ -62,20 +55,15 @@ export type AskTimeChoice = SlotKey;
 /**
  * Parses a `YYYY-MM-DD` string as the JST midnight of that date.
  *
- * @param value - ISO-like date string (no time component).
- * @returns JST 00:00 of the specified date.
- * @throws Error if `value` does not match `YYYY-MM-DD`.
- *
  * @remarks
- * `process.env.TZ=Asia/Tokyo` 前提。UTC として解釈すると締切や候補日が 9 時間ズレるため、
- * 必ずこの関数経由で復元する。
+ * jst: `process.env.TZ=Asia/Tokyo` 前提。UTC として解釈すると candidateDate / deadlineAt が
+ * 9 時間ズレるため必ずこの関数経由で復元する。
+ * @throws if `value` does not match `YYYY-MM-DD`.
  */
 export const parseCandidateDateIso = (value: string): Date => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) {throw new Error(`Invalid candidate date: ${value}`);}
   const [, y, m, d] = match;
-  // jst: process.env.TZ=Asia/Tokyo 前提で new Date(y,m-1,d) を JST 0:00 として生成する。
-  //   UTC ベースで解釈すると candidateDate と deadlineAt が 9 時間ズレるため TZ 固定が必須。
   return set(startOfDay(new Date(Number(y), Number(m) - 1, Number(d))), {
     hours: 0,
     minutes: 0,
@@ -85,18 +73,13 @@ export const parseCandidateDateIso = (value: string): Date => {
 };
 
 /**
- * Computes the asking-deadline timestamp (21:30 JST) for a candidate date.
- *
- * @param candidateDate - Date to ask about (typically JST 00:00).
- * @returns Deadline instant at 21:30 JST on the same date.
+ * Computes the asking-deadline timestamp for a candidate date.
  *
  * @remarks
- * 送信時刻 (金 08:00 JST) や順延期限 (候補日翌日 00:00 JST) とは別物。
- * 仕様は `requirements/base.md` §4 を参照。
+ * jst: 締切は候補日当日の `ASK_DEADLINE_HHMM` (src/config.ts)。
+ * @see requirements/base.md §4
  */
 export const deadlineFor = (candidateDate: Date): Date =>
-  // jst: 締切は候補日当日 21:30 JST。送信時刻 (金 08:00) や順延 (候補日翌日 00:00) とは別物。
-  // @see requirements/base.md §4
   set(startOfDay(candidateDate), {
     hours: ASK_DEADLINE_HHMM.hour,
     minutes: ASK_DEADLINE_HHMM.minute,
@@ -105,22 +88,16 @@ export const deadlineFor = (candidateDate: Date): Date =>
   });
 
 /**
- * Computes the postpone-vote deadline for a given candidate date.
- * @returns The instant at 00:00 JST of the day **after** `candidateDate`.
+ * Computes the postpone-vote deadline for a candidate date.
+ *
  * @remarks
- * 候補日翌日 00:00 JST の意。`POSTPONE_DEADLINE="24:00"` 表記のアプリ解釈に一致する。
- * @see requirements/base.md §6 / POSTPONE_DEADLINE
+ * jst: `POSTPONE_DEADLINE` の "翌日 00:00 JST" 表記に対応する (src/config.ts / src/env.ts)。
+ * @see requirements/base.md §6
  */
 export const postponeDeadlineFor = (candidateDate: Date): Date =>
-  // jst: `24:00` は候補日の翌日 00:00 JST として扱う（将来 tunable 化する場合も time 層で正規化する）。
   startOfDay(addDays(candidateDate, 1));
 
-/**
- * Given the Friday candidate date, compute the Saturday postponed-session candidate date.
- * @returns `candidateDate + 1 day` at 00:00 JST.
- */
 export const saturdayCandidateFrom = (fridayCandidate: Date): Date =>
-  // jst: 順延先は常に翌日の土曜 00:00 JST（年跨ぎでも +1 day で扱う）。
   startOfDay(addDays(fridayCandidate, 1));
 
 const CHOICE_RANK: Record<AskTimeChoice, number> = {
@@ -138,14 +115,10 @@ export const latestChoice = (
 };
 
 /**
- * Computes the decided start instant for a session given the members' latest choices.
- *
- * @param candidateDate - Candidate date (JST 00:00).
- * @param choices - Members' time-slot choices that are still alive.
- * @returns The start instant for the latest chosen slot, or `undefined` if `choices` is empty.
+ * Decided start instant derived from the members' latest alive choices.
  *
  * @remarks
- * 「全員が合意できる最も遅いスロット」に相当する。`latestChoice` の戻り値がそのまま採用される。
+ * 全員が合意できる最も遅いスロットを採用する。`choices` が空なら `undefined`。
  */
 export const decidedStartAt = (
   candidateDate: Date,
@@ -165,13 +138,6 @@ export const decidedStartAt = (
 export const reminderAtFor = (startAt: Date): Date =>
   addMinutes(startAt, REMINDER_LEAD_MINUTES);
 
-/**
- * Returns a new Date that is `ms` milliseconds earlier than `now`.
- *
- * @remarks
- * `new Date()` を `src/time/` 外で直接生成しない方針 (AGENTS.md §1) に従い、
- * 「現在時刻から相対的なオフセットを引く」操作も time 層に集約する。
- * デルタ計算であり壁時計依存ではないが、ルール遵守のため helper 経由とする。
- */
+// why: `new Date()` を src/time/ 外で直接生成しないルールに従い、相対オフセット計算も time 層に集約する。
 export const subMs = (now: Date, ms: number): Date =>
   new Date(now.getTime() - ms);

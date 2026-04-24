@@ -20,12 +20,11 @@ import { parseCandidateDateIso, postponeDeadlineFor } from "../../time/index.js"
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
 /**
- * Settles an ASKING session into a cancelled path.
+ * Settles an ASKING session into the cancelled path.
  *
  * @remarks
- * 金曜回 (postponeCount=0) は CANCELLED → POSTPONE_VOTING へ進み、順延投票を送る。
- * 土曜回 (postponeCount=1) は `saturday_cancelled` を記録したうえで COMPLETED に収束させる。
- * race: race-lost (CAS が undefined) は無害なため `Ok(void)` として終了する。
+ * state: 金曜回は CANCELLED → POSTPONE_VOTING。土曜回は `saturday_cancelled` を記録し COMPLETED へ収束。
+ * race: race-lost（CAS が undefined）は無害として `Ok(void)` で終了。
  */
 export const settleAskingSession = (
   client: Client,
@@ -52,9 +51,9 @@ export const settleAskingSession = (
 
     const now = ctx.clock.now();
     // state: ASKING→CANCELLED の CAS。
-    //   source-of-truth: settle notice と postpone message は同じ直接送信経路で順序保証する (FR second-opinion H1)。
-    //     outbox 経由にすると worker 周期 (≤10s) 分だけ settle 通知が遅延し、postpone vote との UX 順序が逆転する。
-    //     outbox 化は renderer coverage が ask/postpone 全体を覆ってから (ADR-0035 Consequences)。
+    //   why: settle notice と postpone message は直接送信で順序を保証する（outbox 経由だと worker
+    //     周期ぶん settle 通知が遅延し postpone vote と UX 順序が逆転）。outbox 化は renderer
+    //     coverage 完成後に再検討。@see ADR-0035
     const cancelled = yield* fromDatabasePromise(
       ctx.ports.sessions.cancelAsking({ id: sessionId, now, reason: resolvedReason }),
       "Failed to cancel ASKING session."
@@ -86,7 +85,7 @@ export const settleAskingSession = (
     );
 
     if (cancelled.postponeCount === 1) {
-      // regression: 土曜回中止は CANCELLED に滞留させず、短命中間を経由して COMPLETED へ収束させる。
+      // regression: 土曜回中止は CANCELLED に滞留させず短命中間を経由して COMPLETED へ収束させる。
       const completed = yield* fromDatabasePromise(
         ctx.ports.sessions.completeCancelledSession({ id: cancelled.id, now: ctx.clock.now() }),
         "Failed to complete cancelled Saturday session."
@@ -141,12 +140,11 @@ export const settleAskingSession = (
   });
 
 /**
- * If all 4 members have responded with time choices (no ABSENT),
- * transition ASKING → DECIDED and record decided_start_at along with reminderAt.
- * Resolves to true when the transition was performed.
+ * Transitions ASKING → DECIDED when every member answered with a time slot (no ABSENT).
  *
  * @remarks
- * reminderAt = decidedStart + REMINDER_LEAD_MINUTES(-15 分)。この時点では reminderSentAt は更新しない。
+ * state: CAS。成功時のみ `true`。`reminderAt` は decidedStart からのオフセットで計算し、
+ *   `reminderSentAt` はこの段階では更新しない。@see src/features/reminder/send.ts
  */
 export const tryDecideIfAllTimeSlots = (
   ctx: AppContext,
@@ -201,7 +199,7 @@ export const applyDeadlineDecision = (
       case "decided": {
         const decided = yield* tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
         if (!decided) {return okAsync(undefined);}
-        // source-of-truth: DECIDED 遷移後の最新 DB 状態 (reminderAt 含む) を元に再描画する
+        // source-of-truth: DECIDED 遷移後の最新 DB 状態（`reminderAt` 含む）を元に再描画する。
         const fresh = yield* fromDatabasePromise(
           ctx.ports.sessions.findSessionById(session.id),
           "Failed to reload decided session."
@@ -211,7 +209,8 @@ export const applyDeadlineDecision = (
           updateAskMessage(client, ctx, fresh),
           "Failed to update ask message after decide."
         );
-        // why: §5.1 開催決定メッセージ。ASKING→DECIDED の CAS が 1 回しか成功しないため冪等。
+        // idempotent: ASKING→DECIDED の CAS は 1 回しか成功しないため開催決定メッセージも一度きり。
+        //   @see requirements/base.md §5.1
         yield* fromDiscordPromise(
           sendDecidedAnnouncement(client, ctx, fresh),
           "Failed to send decided announcement."
@@ -227,7 +226,7 @@ export const applyDeadlineDecision = (
     }
   });
 
-// source-of-truth: 判定ロジックは ./decide.ts が正本
+// source-of-truth: 判定ロジックは ./decide.ts。
 export const evaluateAndApplyDeadlineDecision = (
   client: Client,
   ctx: AppContext,

@@ -7,7 +7,6 @@ import { memberUserId } from "./env.js";
 //   tests/discord/interactions.test.ts に散らばっていた 3 factory を共通化する。
 //   Partial<Record<string, unknown>> の緩い override を廃し、
 //   実際に override される場面 (user.id の差し替え等) に型を合わせる。
-// @see tests/strategy review P2-b
 
 type AskOverride = {
   readonly user?: { readonly id: string };

@@ -1,6 +1,3 @@
-// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-// source-of-truth: renderPostponeBody は vm.memberStatuses → statusLines → messages.postpone.body の
-//   pipeline で組み立てる。DB 型に依存しない。
 import { describe, expect, it } from "vitest";
 
 import { buildPostponeMessageViewModel } from "../../../src/features/postpone-voting/viewModel.js";
@@ -11,8 +8,7 @@ import type {
 import { renderPostponeBody } from "../../../src/features/postpone-voting/render.js";
 import { env } from "../../../src/env.js";
 
-// invariant: テスト内メンバーの userId は env.MEMBER_USER_IDS と一致させる（buildPostponeMessageViewModel
-//   が env.MEMBER_USER_IDS を走査するため）。
+// invariant: テスト内メンバー userId は env.MEMBER_USER_IDS と一致させる (viewModel が env.MEMBER_USER_IDS を走査するため)。
 const buildMembers = (): ViewModelMemberInput[] =>
   env.MEMBER_USER_IDS.map((userId, i) => ({
     id: `m${i + 1}`,
@@ -72,7 +68,7 @@ describe("buildPostponeMessageViewModel", () => {
   });
 
   it("falls back to userId as displayLabel when member not found in memberRows", () => {
-    // regression: env.MEMBER_USER_IDS にあるが memberRows にない userId のフォールバック確認
+    // regression: env.MEMBER_USER_IDS にあるが memberRows にない userId のフォールバック
     const partialMembers: ViewModelMemberInput[] = [];
     const vm = buildPostponeMessageViewModel(
       { id: SESSION_ID, candidateDateIso: CANDIDATE_DATE },
@@ -85,7 +81,7 @@ describe("buildPostponeMessageViewModel", () => {
   it("adopts last response for a member when duplicates exist (last-write-wins)", () => {
     const members = buildMembers();
     const userId0 = env.MEMBER_USER_IDS[0];
-    // regression: 同一 memberId で複数回答 → 最後 (配列末尾) が採用される
+    // regression: 同一 memberId の複数回答は最後 (配列末尾) が採用される (last-write-wins)
     const responses: ViewModelResponseInput[] = [
       { memberId: "m1", choice: "POSTPONE_OK" },
       { memberId: "m1", choice: "POSTPONE_NG" }
@@ -199,14 +195,13 @@ describe("renderPostponeBody", () => {
       { footerText: "✅ 順延確定" }
     );
     const rendered = renderPostponeBody(vm);
-    // invariant: footerText は本文末尾（全員〜行）の後に 1 空行を挟んで追加される
+    // invariant: footerText は本文末尾 (全員〜行) の後に 1 空行を挟んで追加される
     expect(rendered.content).toContain("全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。\n\n✅ 順延確定");
   });
 
   it("includes mention line when suppressMentions=false (default)", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    // why: DEV_SUPPRESS_MENTIONS=false(テストデフォルト) では mention 行が先頭に来る
     for (const userId of env.MEMBER_USER_IDS) {
       expect(rendered.content).toContain(`<@${userId}>`);
     }

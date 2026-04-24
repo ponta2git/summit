@@ -85,7 +85,6 @@ describe("ask scheduler", () => {
       return { stop } as unknown as ScheduledTask;
     });
     const context = createTestAppContext();
-    // ports.sessions の全 find* を throw させ、各 tick の業務ロジックを失敗させる。
     vi.spyOn(context.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("x"));
     vi.spyOn(context.ports.sessions, "findDuePostponeVotingSessions").mockRejectedValue(
       new Error("x")
@@ -98,20 +97,17 @@ describe("ask scheduler", () => {
 
     createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
 
-    // tick 登録順: ask / deadline / postpone / reminder / healthcheck / outbox
-    // healthcheck (index=4) は runTickSafely で包まれていないので対象外。
+    // invariant: 登録順 ask/deadline/postpone/reminder/healthcheck/outbox のうち healthcheck は
+    //   内部で best-effort に握り潰すため runTickSafely の対象外。
     const wrappedIndices = [0, 1, 2, 3, 5];
     for (const i of wrappedIndices) {
       const tick = capturedTicks[i];
       if (!tick) {
         throw new Error(`tick ${i} not registered`);
       }
-      // runTickSafely は voided。tick 実行は即 return し、await 後も throw しない。
       tick();
     }
-    // microtask flush: runTickSafely 内の async 経路を完走させる (unhandled rejection を検出)
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // 到達: ここまで throw なしなら全 tick が runTickSafely で隔離されている。
   });
 
   it("registers reminder cron with noOverlap on Asia/Tokyo", () => {

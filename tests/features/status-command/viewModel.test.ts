@@ -51,9 +51,8 @@ describe("buildStatusViewModel", () => {
     expect(s!.postponeCount).toBe(0);
     expect(s!.responseCount).toBe(1);
     expect(s!.memberCountExpected).toBe(4);
-    // sessionId is sliced to first 8 chars
     expect(s!.sessionId).toBe("session-");
-    expect(s!.heldEventExists).toBeNull(); // not DECIDED
+    expect(s!.heldEventExists).toBeNull();
   });
 
   it("marks DECIDED session heldEventExists as false when no HeldEvent", () => {
@@ -90,8 +89,8 @@ describe("buildStatusViewModel", () => {
   });
 
   it("computes nextEventAt as the earliest upcoming deadline", () => {
-    const future1 = new Date(NOW.getTime() + 60 * 60 * 1000); // +1h
-    const future2 = new Date(NOW.getTime() + 2 * 60 * 60 * 1000); // +2h
+    const future1 = new Date(NOW.getTime() + 60 * 60 * 1000);
+    const future2 = new Date(NOW.getTime() + 2 * 60 * 60 * 1000);
     const session1 = makeSession({ id: "s1", deadlineAt: future1, status: "ASKING", askMessageId: "x" });
     const session2 = makeSession({ id: "s2", deadlineAt: future2, status: "ASKING", askMessageId: "y" });
 
@@ -102,16 +101,15 @@ describe("buildStatusViewModel", () => {
       heldEventBySessionId: new Map()
     });
 
-    // nextEventAt should be the earlier deadline (future1)
+    // invariant: nextEventAt は最も近い未来の deadline を `yyyy-MM-dd HH:mm` で返す。
     expect(vm.nextEventAt).not.toBeNull();
-    // format check: yyyy-MM-dd HH:mm
     expect(vm.nextEventAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 
   it("generates a warning for ASKING session with past deadline and null messageId", () => {
     const session = makeSession({
       status: "ASKING",
-      deadlineAt: new Date("2026-04-25T12:00:00.000Z"), // past
+      deadlineAt: new Date("2026-04-25T12:00:00.000Z"),
       askMessageId: null
     });
 

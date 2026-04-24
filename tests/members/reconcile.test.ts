@@ -4,6 +4,7 @@ import type { DbLike } from "../../src/db/rows.js";
 import { reconcileMembers } from "../../src/members/reconcile.js";
 import type { MemberReconcileInput } from "../../src/members/inputs.js";
 
+// why: logger の副作用を抑止し、reconcile の DB 操作だけを検証対象に絞る。
 vi.mock("../../src/logger.js", () => ({
   logger: {
     info: vi.fn(),

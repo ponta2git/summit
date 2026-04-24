@@ -1,6 +1,5 @@
-// why: repository を束ねて AppPorts を構成する production 実装。db ハンドルを closure で保持する。
-// invariant: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue に徹する。
-// @see docs/adr/0018-port-wiring-and-factory-injection.md
+// source-of-truth: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue。
+// @see ADR-0018
 
 import type { DbLike } from "./rows.js";
 import {

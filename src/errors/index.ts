@@ -15,8 +15,7 @@ export interface AppErrorOptions {
   cause?: unknown;
 }
 
-// why: ADR-0015 で境界層のエラー分類を AppError + Result に統一するため。
-// source-of-truth: AppError 階層と AppResult 定義は src/errors/index.ts を正本とする。
+// why: 境界層のエラー分類統一 → ADR-0015
 export abstract class AppError extends Error {
   public readonly code: AppErrorCode;
   public override readonly cause: unknown;

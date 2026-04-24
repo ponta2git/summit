@@ -31,7 +31,6 @@ export const buildPostponeRow = (
   return new ActionRowBuilder<ButtonBuilder>().addComponents(ok, ng);
 };
 
-// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
 export const renderPostponeBody = (
   vm: PostponeMessageViewModel
 ): MessageCreateOptions => {
@@ -46,9 +45,7 @@ export const renderPostponeBody = (
           .join("\n")
       : "";
 
-  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行自体を省く。filter(Boolean) は意図した空行まで
-  //   消すため条件付き push で組み立てる。
-  // @see docs/adr/0011-dev-mention-suppression.md
+  // why: filter(Boolean) だと意図した空行まで消えるため条件付き push で mention 行を制御する @see ADR-0011
   const lines: string[] = [];
   if (!vm.suppressMentions) {
     lines.push(vm.memberUserIds.map((id) => `<@${id}>`).join(" "));

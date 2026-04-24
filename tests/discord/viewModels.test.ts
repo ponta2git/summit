@@ -1,5 +1,3 @@
-// invariant: viewModel は pure (I/O なし、Date.now なし)
-// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
 import { describe, expect, it } from "vitest";
 
 import {
@@ -91,7 +89,7 @@ describe("buildAskMessageViewModel", () => {
   });
 
   it("shows tentative footer when ASKING and all 4 members answered with time choices", () => {
-    // regression: requirements/base.md §4.3 暫定状態の表示
+    // regression: §4.3 暫定状態の表示 (@see requirements/base.md)
     const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
       id: `m${i + 1}`,
       userId,
@@ -99,7 +97,7 @@ describe("buildAskMessageViewModel", () => {
     }));
     const allResponses: ViewModelResponseInput[] = allMembers.map((m, i) => ({
       memberId: m.id,
-      // invariant: latest (= 最遅) = T2300 → 暫定開始時刻 23:00
+      // invariant: latest (最遅) = T2300 → 暫定開始時刻 23:00
       choice: ["T2200", "T2230", "T2300", "T2200"][i] ?? "T2200"
     }));
     const vm = buildAskMessageViewModel(session, allResponses, allMembers);
@@ -126,7 +124,6 @@ describe("buildAskMessageViewModel", () => {
       userId,
       displayName: `User${i + 1}`
     }));
-    // 3 / 4 のみ回答
     const partial: ViewModelResponseInput[] = allMembers
       .slice(0, 3)
       .map((m) => ({ memberId: m.id, choice: "T2200" }));

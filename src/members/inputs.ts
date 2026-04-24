@@ -35,13 +35,12 @@ export const buildMemberReconcileInputs = (
     throw new Error(`MEMBER_DISPLAY_NAMES must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
   }
 
-  // invariant: env は identity (user_id), DB は付随データ (display_name)
+  // invariant: env は identity (userId)、DB が display_name の正本 → ADR-0012
   return memberUserIds.map((userId, index) => {
     if (!userId) {
       throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
     }
 
-    // why: display_name は DB に移送 (ADR-0012)
     const displayName = memberDisplayNames?.[index]
       ?? LEGACY_DISPLAY_NAME_BY_POSITION[toLegacyDisplayNamePosition(index)];
 

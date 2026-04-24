@@ -1,6 +1,3 @@
-// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
-// invariant: viewModel は pure (I/O なし、Date.now なし)
-
 import { slotKeySchema } from "../../slot.js";
 import { env } from "../../env.js";
 import { askMessages, type SettleCancelReason } from "./messages.js";
@@ -56,9 +53,8 @@ const computeAskFooter = (
   if (session.status === "SKIPPED") {
     return askMessages.ask.footerSkipped;
   }
-  // why: requirements/base.md §4.3 暫定状態の表示。
-  //   ASKING 中に env.MEMBER_USER_IDS 全員が時刻スロットで回答済み (absent 0 名) の場合のみ
-  //   暫定開始時刻を末尾に出す。確定は締切 (21:30) まで行わない (§4.2)。
+  // why: ASKING 中に全員が時刻スロットで回答済み（absent 0 名）なら暫定開始時刻を末尾に出す。
+  //   確定は締切到達まで行わない。@see requirements/base.md §4.2 §4.3
   if (session.status === "ASKING") {
     const userIdByMemberId = new Map(members.map((m) => [m.id, m.userId]));
     const choiceByUserId = new Map<string, string>();
@@ -85,12 +81,11 @@ const computeAskFooter = (
 };
 
 /**
- * Build a view model for the ask message from DB rows.
+ * Build the ask message view model from DB rows.
  *
  * @remarks
- * Pure. responsesByUserId は memberId → userId の逆引きを経由して構築する。
- * footer は session.status に応じて自動計算される。
- * @see docs/adr/0014-naming-dictionary-v2.md
+ * Pure. `responsesByUserId` は memberId → userId 逆引きで構築。`footer` は `session.status` に応じて
+ *   自動計算される。
  */
 export const buildAskMessageViewModel = (
   session: ViewModelSessionInput,
@@ -121,10 +116,10 @@ export const buildAskMessageViewModel = (
 };
 
 /**
- * Build a view model for the initial ask message (no responses yet).
+ * Build the initial ask message view model (no responses yet).
  *
  * @remarks
- * Pure. 初回投稿用のため responses は空、disabled は false 固定。
+ * Pure. 初回投稿用のため responses 空・disabled false 固定。
  */
 export const buildInitialAskMessageViewModel = (
   sessionId: string,
@@ -149,11 +144,9 @@ export const buildSettleNoticeViewModel = (
   suppressMentions: env.DEV_SUPPRESS_MENTIONS
 });
 
-// why: DB 型を UI 層から分離 (ADR-0014, naming-boundaries-audit)
 export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string } => {
-  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く。単純な `${mentions}\n${cancel}` 連結だと
-  //   mentions="" のとき先頭改行が残るため、filter で空文字を除外してから join する。
-  // @see docs/adr/0011-dev-mention-suppression.md
+  // why: suppressMentions=true のとき mention 行を省く。単純連結だと先頭改行が残るため空文字を
+  //   `filter` で除いてから join する。@see ADR-0011
   const lines = [
     vm.suppressMentions ? "" : vm.memberUserIds.map((id) => `<@${id}>`).join(" "),
     vm.cancelText

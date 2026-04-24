@@ -2,48 +2,40 @@ import { env } from "./env.js";
 
 export type Hhmm = Readonly<{ hour: number; minute: number }>;
 
-// why: runtime tunables を config.ts に集約 (ADR-0013)
+// why: runtime tunables 集約 → ADR-0013
+
 // why: cron 送信スケジュールは暫定 → ADR-0007
 export const CRON_ASK_SCHEDULE = "0 8 * * 5" as const;
-// why: CRON_ASK_SCHEDULE ("0 8 * * 5") と同じ値を HH:MM 形式で表現する。reconciler の
-//   「金曜 ask 窓内か」判定で参照するための SSoT。ADR/コメントに "08:00" を書き写さない (ADR-0022)。
+// invariant: CRON_ASK_SCHEDULE と同じ時刻を HH:MM で保持し reconciler の ask 窓判定が参照する。
 export const ASK_START_HHMM = { hour: 8, minute: 0 } as const satisfies Hhmm;
 export const CRON_DEADLINE_SCHEDULE = "30 21 * * 5" as const;
-// jst: 土 00:00 JST = POSTPONE_DEADLINE="24:00" の「候補日翌日 00:00 JST」に対応する。
+// jst: POSTPONE_DEADLINE="24:00" = 候補日翌日 00:00 JST に対応する土曜境界 tick。
 export const CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6" as const;
-// jst: 15 分前リマインドは毎分 tick で due 判定する。ADR-0024。
+// why: reminder 到達判定を毎 tick で行う → ADR-0024
 export const CRON_REMINDER_SCHEDULE = "* * * * *" as const;
 export const ASK_DEADLINE_HHMM = { hour: 21, minute: 30 } as const satisfies Hhmm;
 export const REMINDER_LEAD_MINUTES = -15 as const;
-// why: 開催確定からリマインド予定時刻まで10分未満の場合は送らない（requirements/base.md §5.2）
+// why: 開催確定からリマインド予定まで余裕がない場合は送信をスキップする（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
-// why: リマインド claim (reminder_sent_at を送信前に立てる) が長時間戻されない場合、
-//   claim 保持プロセスが crash したとみなして startup/tick reconciler が reclaim する閾値。
-//   claim → Discord 送信は通常ミリ秒オーダーのため、分単位の保持は異常と判断する。
-// @see docs/adr/0024-reminder-dispatch.md, docs/adr/0033-startup-invariant-reconciler.md
+// why: reminder claim が長時間戻らない場合に保持プロセス crash とみなして reclaim する閾値。
+// @see ADR-0024, ADR-0033
 export const REMINDER_CLAIM_STALENESS_MS = 5 * 60 * 1000;
-// why: cron tick が 1 分 = 60 秒周期のため、これを超えると次 tick と競合するリスクがある。
-//   10 秒を warn 閾値とし、長時間 tick を早期検知して noOverlap の有効性を評価できるようにする。
+// why: 1 分 tick 周期を超える tick を warn で早期検知し noOverlap の健全性を観測する。
 export const TICK_DURATION_WARN_MS = 10_000;
-// why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
-//   定義は env.ts（循環参照回避のため）。消費側は config.ts 経由で import する。
+// why: メンバー数 SSoT → ADR-0012。循環参照回避のため定義は env.ts、消費側は config 経由で import。
 export { MEMBER_COUNT_EXPECTED } from "./env.js";
-// why: healthcheck ping を毎分 tick で送り、プロセス死亡を検知する (ADR-0034)。
-//   CRON_REMINDER_SCHEDULE ("* * * * *") と同じ頻度だが独立した観測シグナルとして分ける。
+// why: healthcheck ping でプロセス死亡を検知する → ADR-0034
 export const HEALTHCHECK_PING_INTERVAL_CRON = "*/1 * * * *" as const;
-// why: healthcheck ping の HTTP タイムアウト。healthchecks.io が応答しない場合でも起動/tick を止めない (ADR-0034)。
+// why: healthchecks.io 無応答時も起動/tick を止めないための HTTP タイムアウト → ADR-0034
 export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 
-// why: Discord send outbox worker (ADR-0035)。10 秒周期で PENDING 行を配送する。
-//   state transitions が同 tx で enqueue し、worker が非同期に Discord API へ委譲する。
+// why: Discord send outbox worker → ADR-0035。state transitions が同 tx で enqueue し worker が非同期送信。
 export const CRON_OUTBOX_WORKER_SCHEDULE = "*/10 * * * * *" as const;
-// why: 1 tick で処理する最大行数。単一インスタンス前提で rate limit を踏みにくい値。
+// single-instance: rate limit を踏みにくい 1 tick 処理上限。
 export const OUTBOX_WORKER_BATCH_LIMIT = 10 as const;
-// race: claim を保持できる最大時間。worker が crash しても claimExpiresAt 経過で reclaim される。
-//   1 tick (10s) の 3 倍を目安に。
+// race: worker crash 時に claimExpiresAt 経過で reclaim される最大保持時間（tick 周期の数倍）。
 export const OUTBOX_CLAIM_DURATION_MS = 30_000 as const;
-// why: 失敗時の指数バックオフ列 (ms)。attempt_count-1 を index に使う。
-//   超過分は末尾値で頭打ち。配列内の値を書き換えてもコード変更は不要 (ADR-0022)。
+// why: 失敗時の指数バックオフ列。attempt_count-1 を index に使い、超過分は末尾値で頭打ち。
 export const OUTBOX_BACKOFF_MS_SEQUENCE = [
   1_000,
   2_000,
@@ -53,15 +45,13 @@ export const OUTBOX_BACKOFF_MS_SEQUENCE = [
   300_000,
   900_000
 ] as const satisfies readonly number[];
-// why: attempt_count がこれを超えたら dead letter (status=FAILED) へ落とす。
-//   /status が警告し運用者が手動対応するまで再試行しない (将来 ADR で auto-replay を検討)。
+// why: dead letter (status=FAILED) へ落とす attempt 上限。以降は /status 警告で運用者が手動対応。
 export const OUTBOX_MAX_ATTEMPTS = 10 as const;
-// why: /status の invariant 警告で「多重失敗の疑い」として拾う閾値。FAILED は常に警告対象。
+// why: /status の invariant 警告で多重失敗疑いとして拾う閾値。
 export const OUTBOX_STRANDED_ATTEMPTS_THRESHOLD = 5 as const;
 
-// why: shardReady 再接続時に reconnect-replay (reconciler + startup recovery) をトリガする debounce 閾値。
-//   in-flight lock (Promise) + 時刻 debounce の併用で、flappy な再接続を安全側に倒す。
-// @see docs/adr/0036-reconnect-replay.md
+// why: shardReady 再接続時の replay debounce。in-flight lock + 時刻 debounce 併用。
+// @see ADR-0036
 export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;
 
 const parseHhmm = (value: string): Hhmm => {
@@ -75,6 +65,7 @@ const parseHhmm = (value: string): Hhmm => {
   if (minute < 0 || minute > 59) {
     throw new Error(`Invalid HH:MM minute: ${value}`);
   }
+  // jst: "24:00" のみ境界表記として許可、他の 24 超え表記は env schema で既に排除済み。
   if (hour === 24 && minute === 0) {
     return { hour, minute };
   }
@@ -84,5 +75,5 @@ const parseHhmm = (value: string): Hhmm => {
   return { hour, minute };
 };
 
-// invariant: POSTPONE_DEADLINE は env.ts で "24:00" に固定済み。ここでは runtime tunable 形式へ正規化する。
+// invariant: POSTPONE_DEADLINE は env schema で literal 固定済み。ここでは runtime tunable 形式へ正規化する。
 export const POSTPONE_DEADLINE_HHMM = parseHhmm(env.POSTPONE_DEADLINE);

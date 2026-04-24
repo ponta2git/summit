@@ -18,10 +18,9 @@ describe("time utilities", () => {
     expect(isoWeekKey(new Date("2026-01-02T00:00:00+09:00"))).toBe("2026-W01");
   });
 
-  // regression: 金曜 Session と翌土曜順延 Session は同一 weekKey を共有しなければならない。
-  //   calendar year 跨ぎ (Fri=12/31 / Sat=01/01) や ISO W53 年 (2026/2032 isoYear) で暦年と
-  //   ISO year が乖離するケースが仕様上最もズレやすい。2024–2035 の境界ペアを網羅。
-  // iso-week: date-fns/getISOWeekYear + getISOWeek の併用が守られているかを検証する invariant。
+  // regression: 金曜 Session と翌土曜順延 Session が同一 weekKey を共有する invariant。
+  //   暦年跨ぎ (Fri=12/31 / Sat=01/01) と ISO W53 年で ISO year が暦年と乖離するケースを網羅する。
+  // iso-week: date-fns/getISOWeekYear + getISOWeek 併用が守られているかを検証する。
   // @see src/time/index.ts isoWeekKey, requirements/base.md §2 (weekKey)
   describe.each<{
     label: string;
@@ -29,13 +28,9 @@ describe("time utilities", () => {
     sat: string;
     weekKey: string;
   }>([
-    // 年跨ぎ + ISO W53 (Fri が 12/31、Sat が 01/01、両日とも前暦年の W53)
     { label: "2026→2027 boundary (W53)", fri: "2026-12-31", sat: "2027-01-01", weekKey: "2026-W53" },
-    // 年跨ぎ + ISO W52 (Fri が 12/31、Sat が 01/01、両日とも前暦年の W52)
     { label: "2027→2028 boundary (W52)", fri: "2027-12-31", sat: "2028-01-01", weekKey: "2027-W52" },
-    // 年跨ぎ + ISO W53 (2032 は 53 週年)
     { label: "2032→2033 boundary (W53)", fri: "2032-12-31", sat: "2033-01-01", weekKey: "2032-W53" },
-    // 暦年内だが Jan 第1週 / Dec 最終週 (ISO year は暦年と一致)
     { label: "2025 first week", fri: "2025-01-03", sat: "2025-01-04", weekKey: "2025-W01" },
     { label: "2025 last week", fri: "2025-12-26", sat: "2025-12-27", weekKey: "2025-W52" },
     { label: "2028 first week", fri: "2028-01-07", sat: "2028-01-08", weekKey: "2028-W01" },

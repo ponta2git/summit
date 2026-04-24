@@ -34,6 +34,7 @@ export const postponeMessages = {
       lines.push("全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。");
       return lines.join("\n");
     },
+
     decided: ({ candidateDateIso, count }: PostponeDecidedParams): string =>
       `✅ ${count}名全員 OK により ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))} へ順延します。`,
     cancelled: ({ reason }: PostponeCancelledParams): string =>
@@ -41,10 +42,12 @@ export const postponeMessages = {
         ? "🛑 1名以上が NG を選択したため、今週はお流れです。"
         : "🛑 未回答があったため、今週はお流れです。"
   },
+
   interaction: {
     postpone: {
       pending: "順延投票は受付準備中です。近日公開予定です。"
     },
+
     voteConfirmed: {
       postpone: (choice: PostponeVoteChoice): string => {
         const labels: Record<PostponeVoteChoice, string> = {

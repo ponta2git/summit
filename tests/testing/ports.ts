@@ -142,6 +142,7 @@ export const createFakeSessionsPort = (
       byId.set(created.id, created);
       return clone(created);
     },
+
     findSessionByWeekKeyAndPostponeCount: async (weekKey, postponeCount) => {
       recordCall(calls, "findSessionByWeekKeyAndPostponeCount", { weekKey, postponeCount });
       const found = Array.from(byId.values()).find(
@@ -149,11 +150,13 @@ export const createFakeSessionsPort = (
       );
       return found ? clone(found) : undefined;
     },
+
     findSessionById: async (id) => {
       recordCall(calls, "findSessionById", { id });
       const found = byId.get(id);
       return found ? clone(found) : undefined;
     },
+
     updateAskMessageId: async (id, messageId) => {
       recordCall(calls, "updateAskMessageId", { id, messageId });
       const found = byId.get(id);
@@ -162,6 +165,7 @@ export const createFakeSessionsPort = (
       }
       byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: clock.now() }));
     },
+
     updatePostponeMessageId: async (id, messageId) => {
       recordCall(calls, "updatePostponeMessageId", { id, messageId });
       const found = byId.get(id);
@@ -170,6 +174,7 @@ export const createFakeSessionsPort = (
       }
       byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: clock.now() }));
     },
+
     backfillAskMessageId: async (id, messageId) => {
       // idempotent: CAS-on-NULL; 既に askMessageId が設定されていれば何もせず false を返す。
       recordCall(calls, "backfillAskMessageId", { id, messageId });
@@ -180,6 +185,7 @@ export const createFakeSessionsPort = (
       byId.set(id, makeSession({ ...found, askMessageId: messageId, updatedAt: clock.now() }));
       return true;
     },
+
     backfillPostponeMessageId: async (id, messageId) => {
       recordCall(calls, "backfillPostponeMessageId", { id, messageId });
       const found = byId.get(id);
@@ -189,6 +195,7 @@ export const createFakeSessionsPort = (
       byId.set(id, makeSession({ ...found, postponeMessageId: messageId, updatedAt: clock.now() }));
       return true;
     },
+
     cancelAsking: async (input: CancelAskingInput) => {
       recordCall(calls, "cancelAsking", { input });
       const found = byId.get(input.id);
@@ -205,6 +212,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     startPostponeVoting: async (input: StartPostponeVotingInput) => {
       recordCall(calls, "startPostponeVoting", { input });
       const found = byId.get(input.id);
@@ -221,6 +229,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     completePostponeVoting: async (input: CompletePostponeVotingInput) => {
       recordCall(calls, "completePostponeVoting", { input });
       const found = byId.get(input.id);
@@ -238,6 +247,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     decideAsking: async (input: DecideAskingInput) => {
       recordCall(calls, "decideAsking", { input });
       const found = byId.get(input.id);
@@ -255,6 +265,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     completeCancelledSession: async (input: CompleteCancelledSessionInput) => {
       recordCall(calls, "completeCancelledSession", { input });
       const found = byId.get(input.id);
@@ -270,6 +281,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     completeSession: async (input: CompleteSessionInput) => {
       recordCall(calls, "completeSession", { input });
       const found = byId.get(input.id);
@@ -286,6 +298,7 @@ export const createFakeSessionsPort = (
       enqueueOutbox(input.outbox);
       return clone(next);
     },
+
     claimReminderDispatch: async (id, now) => {
       recordCall(calls, "claimReminderDispatch", { id, now });
       const found = byId.get(id);
@@ -302,6 +315,7 @@ export const createFakeSessionsPort = (
       byId.set(next.id, next);
       return clone(next);
     },
+
     revertReminderClaim: async (id, claimedAt) => {
       recordCall(calls, "revertReminderClaim", { id, claimedAt });
       const found = byId.get(id);
@@ -322,18 +336,21 @@ export const createFakeSessionsPort = (
       byId.set(next.id, next);
       return true;
     },
+
     findDueAskingSessions: async (now) => {
       recordCall(calls, "findDueAskingSessions", { now });
       return Array.from(byId.values())
         .filter((s) => s.status === "ASKING" && s.deadlineAt <= now)
         .map(clone);
     },
+
     findDuePostponeVotingSessions: async (now) => {
       recordCall(calls, "findDuePostponeVotingSessions", { now });
       return Array.from(byId.values())
         .filter((s) => s.status === "POSTPONE_VOTING" && s.deadlineAt <= now)
         .map(clone);
     },
+
     findDueReminderSessions: async (now) => {
       recordCall(calls, "findDueReminderSessions", { now });
       return Array.from(byId.values())
@@ -346,18 +363,21 @@ export const createFakeSessionsPort = (
         )
         .map(clone);
     },
+
     findNonTerminalSessions: async () => {
       recordCall(calls, "findNonTerminalSessions", {});
       return Array.from(byId.values())
         .filter((s) => NON_TERMINAL_STATUSES.includes(s.status))
         .map(clone);
     },
+
     findStrandedCancelledSessions: async () => {
       recordCall(calls, "findStrandedCancelledSessions", {});
       return Array.from(byId.values())
         .filter((s) => s.status === "CANCELLED")
         .map(clone);
     },
+
     findStaleReminderClaims: async (olderThan) => {
       recordCall(calls, "findStaleReminderClaims", { olderThan });
       return Array.from(byId.values())
@@ -369,12 +389,14 @@ export const createFakeSessionsPort = (
         )
         .map(clone);
     },
+
     findNonTerminalSessionsByWeekKey: async (weekKey) => {
       recordCall(calls, "findNonTerminalSessionsByWeekKey", { weekKey });
       return Array.from(byId.values())
         .filter((s) => s.weekKey === weekKey && NON_TERMINAL_STATUSES.includes(s.status))
         .map(clone);
     },
+
     skipSession: async (input) => {
       recordCall(calls, "skipSession", { input });
       const found = byId.get(input.id);
@@ -391,6 +413,7 @@ export const createFakeSessionsPort = (
       byId.set(next.id, next);
       return clone(next);
     },
+
     isNonTerminal: (status) => NON_TERMINAL_STATUSES.includes(status)
   };
 };
@@ -415,6 +438,7 @@ export const createFakeResponsesPort = (
       recordCall(calls, "listResponses", { sessionId });
       return responses.filter((r) => r.sessionId === sessionId).map(clone);
     },
+
     upsertResponse: async (input: UpsertResponseInput) => {
       recordCall(calls, "upsertResponse", { input });
       const idx = responses.findIndex(
@@ -437,9 +461,6 @@ export const createFakeResponsesPort = (
   };
 };
 
-/**
- * Create an in-memory fake for {@link MembersPort}.
- */
 export const createFakeMembersPort = (
   seed: ReadonlyArray<MemberRow> = []
 ): FakeMembersPort => {
@@ -452,6 +473,7 @@ export const createFakeMembersPort = (
       recordCall(calls, "findMemberIdByUserId", { userId });
       return members.find((m) => m.userId === userId)?.id;
     },
+
     listMembers: async () => {
       recordCall(calls, "listMembers", {});
       return members.map((m) => makeMember(m));
@@ -547,11 +569,13 @@ export const createFakeHeldEventsPort = (
         participants: insertedParticipants.map(cloneParticipant)
       };
     },
+
     findBySessionId: async (sessionId) => {
       recordCall(calls, "findBySessionId", { sessionId });
       const found = heldEvents.find((h) => h.sessionId === sessionId);
       return found ? cloneHeld(found) : undefined;
     },
+
     listParticipants: async (heldEventId) => {
       recordCall(calls, "listParticipants", { heldEventId });
       return participants
@@ -601,6 +625,7 @@ export const createFakeOutboxPort = (
     seedEntry: (entry) => {
       byId.set(entry.id, { ...entry });
     },
+
     enqueue: async (input: EnqueueOutboxInput): Promise<EnqueueResult> => {
       recordCall(calls, "enqueue", { input });
       // unique: 非 FAILED な同 dedupe_key は 1 件のみ (partial unique index 模倣)。
@@ -629,6 +654,7 @@ export const createFakeOutboxPort = (
       byId.set(id, entry);
       return { id, skipped: false };
     },
+
     claimNextBatch: async ({ limit, now, claimDurationMs }) => {
       recordCall(calls, "claimNextBatch", { limit, now, claimDurationMs });
       // race: PENDING で next_attempt_at<=now もしくは expired IN_FLIGHT を候補にし、limit 件まで claim。
@@ -660,6 +686,7 @@ export const createFakeOutboxPort = (
       }
       return claimed;
     },
+
     markDelivered: async (id, { deliveredMessageId, now }) => {
       recordCall(calls, "markDelivered", { id, deliveredMessageId, now });
       const found = byId.get(id);
@@ -675,6 +702,7 @@ export const createFakeOutboxPort = (
       });
       return true;
     },
+
     markFailed: async (id, { error, now, nextAttemptAt }) => {
       recordCall(calls, "markFailed", { id, error, now, nextAttemptAt });
       const found = byId.get(id);
@@ -689,6 +717,7 @@ export const createFakeOutboxPort = (
       });
       return true;
     },
+
     releaseExpiredClaims: async (now) => {
       recordCall(calls, "releaseExpiredClaims", { now });
       let released = 0;
@@ -710,6 +739,7 @@ export const createFakeOutboxPort = (
       }
       return released;
     },
+
     findStranded: async (threshold) => {
       recordCall(calls, "findStranded", { threshold });
       return Array.from(byId.values())

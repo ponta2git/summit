@@ -2,26 +2,23 @@ import { config } from "dotenv";
 import { z } from "zod";
 
 config({ path: ".env.local" });
-// jst: 時刻計算・表示・ログ整形の全経路を Asia/Tokyo 固定にする。
-//   env.ts の import 時点で確定させることで、後続 import (logger / time / drizzle) より先に反映される。
-// @see docs/adr/0002-jst-fixed-time-handling.md
+// jst: TZ を env.ts import 時点で固定し、後続 import (logger / time / drizzle) より先に反映。
+// @see ADR-0002
 process.env.TZ ??= "Asia/Tokyo";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 
-// why: メンバー数の SSoT は config.MEMBER_COUNT_EXPECTED (ADR-0012)
-// invariant: 固定 4 名運用（requirements/base.md §1）。env.MEMBER_USER_IDS はこの長さを満たす。
-//   config.ts が env.ts に依存するため、循環参照回避のためこの位置で定義し config.ts から re-export する。
+// why: メンバー数 SSoT → ADR-0012。config.ts が env.ts に依存するため循環回避でここに置き re-export する。
 export const MEMBER_COUNT_EXPECTED = 4 as const;
 
 export const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DISCORD_GUILD_ID: discordId,
   DISCORD_CHANNEL_ID: discordId,
-  // invariant: 固定 4 名運用。MEMBER_COUNT_EXPECTED を崩すと勝敗判定・通知対象・seed が破綻する。
-  //   5 人目メンバーの扱いは仕様未定 (todo(ai)) のため、追加時は requirements/base.md の更新と合わせて変更する。
+  // invariant: 固定 4 名運用。崩すと勝敗判定・通知対象・seed が破綻する → ADR-0012
   MEMBER_USER_IDS: z
     .string()
+    // why: カンマ区切り文字列 → trim/空要素除去した配列に正規化してから length 検証する。
     .transform((value) =>
       value
         .split(",")
@@ -30,6 +27,7 @@ export const envSchema = z.object({
     )
     .pipe(z.array(discordId).length(MEMBER_COUNT_EXPECTED)),
   MEMBER_DISPLAY_NAMES: z.preprocess(
+    // why: 空文字・未設定は undefined 扱いにしたうえでカンマ区切りを配列化する。
     (value) => {
       if (value === "" || value === undefined) {
         return undefined;
@@ -45,25 +43,19 @@ export const envSchema = z.object({
     z.array(z.string().min(1).max(32)).length(MEMBER_COUNT_EXPECTED).optional()
   ),
   DATABASE_URL: z.string().url(),
-  // jst: TZ は Asia/Tokyo 固定のみ許可する (DST なし、仕様上他地域での運用想定なし)。
+  // jst: Asia/Tokyo 固定のみ許可（DST なし、他地域運用想定なし）。
   TZ: z.literal("Asia/Tokyo"),
-  // jst: "24:00" は「候補日翌日 00:00 JST」のみとして解釈する。
-  //   "25:00" 等の 24 超え表記、他の値は仕様未定義のため literal で固定。
-  // @see requirements/base.md §5, docs/adr/0002-jst-fixed-time-handling.md
+  // jst: "24:00" = 候補日翌日 00:00 JST の literal 固定。24 超え表記は parse 段階で弾く。
+  // @see ADR-0002
   POSTPONE_DEADLINE: z.literal("24:00"),
   HEALTHCHECK_PING_URL: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().url().optional()
   ),
-  // why: デプロイごとのコミット追跡用。Fly が自動挿入する FLY_IMAGE_REF を優先し、
-  //   CI で GIT_SHA を別途 inject する場合はフォールバックとして使う。
-  //   いずれも未設定なら 'unknown' として startup.ready ログに出力する。
+  // why: デプロイ追跡用。Fly の FLY_IMAGE_REF を優先、CI inject の GIT_SHA をフォールバックに使う。
   FLY_IMAGE_REF: z.string().optional(),
   GIT_SHA: z.string().optional(),
-  // why: 開発中に本番チャンネルへ投稿しても `<@id>` の push 通知を固定 4 名へ飛ばさないためのスイッチ。
-  //   本番 invariant: 常時 OFF（未設定 = false）。true にすると本文から mention 行を除去し、
-  //   加えて Client-level `allowedMentions: { parse: [] }` で保険をかける。
-  // @see docs/adr/0011-dev-mention-suppression.md
+  // why: 開発時に `<@id>` の push 通知を抑止するスイッチ。本番 invariant は OFF → ADR-0011
   DEV_SUPPRESS_MENTIONS: z.preprocess(
     (value) => (value === "" || value === undefined ? undefined : value),
     z.stringbool().default(false)
@@ -77,7 +69,7 @@ if (!result.success) {
     .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
     .join("\n");
   process.stderr.write(`Invalid environment variables:\n${details}\n`);
-  // why: env 不備は運用事故に直結するため起動時に即停止。遅延 throw は fly restart ループを誘発する。
+  // why: env 不備は遅延 throw せず即停止する（fly restart ループ回避）。
   process.exit(1);
 }
 

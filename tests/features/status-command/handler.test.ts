@@ -58,7 +58,6 @@ describe("handleStatusCommand", () => {
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
     );
-    // sessions port should NOT be called
     expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
   });
 
@@ -125,7 +124,6 @@ describe("handleStatusCommand", () => {
     const [content] = call;
     expect(content.content).toContain("宙づり CANCELLED");
     expect(content.content).toContain("⚠");
-    // session short-id appears in warning message
     expect(content.content).toContain("cancell");
   });
 
@@ -137,13 +135,11 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, ctx);
 
-    // sessions port must have been called for stranded CANCELLED query
     expect(
       ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")
     ).toBe(true);
     const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
     const [content] = call;
-    // The aggregate warning message should mention 2 sessions
     expect(content.content).toContain("2");
   });
 });

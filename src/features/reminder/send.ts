@@ -10,8 +10,7 @@ import { reminderAtFor } from "../../time/index.js";
 
 import { getTextChannel } from "../../discord/shared/channels.js";
 
-// why: HH:MM を JST で整形する。process.env.TZ=Asia/Tokyo 前提で Date#getHours() は JST を返す。
-// @see docs/adr/0002-jst-fixed-time-handling.md
+// jst: TZ=Asia/Tokyo 前提で getHours() は JST を返す @see ADR-0002
 const formatJstHhmm = (instant: Date): string => {
   const hh = String(instant.getHours()).padStart(2, "0");
   const mm = String(instant.getMinutes()).padStart(2, "0");
@@ -25,9 +24,9 @@ const TIME_CHOICES: ReadonlySet<ResponseChoice> = new Set([
   "T2330"
 ]);
 
-// why: §8.3 「参加メンバー一覧」を responses の時刻選択から派生させる。
-//   env.MEMBER_USER_IDS は「今の設定値」であり「その開催の実参加スナップショット」ではない。
-//   DECIDED 到達時点で ABSENT は存在しない (decide.ts) ため、TIME_CHOICES のみで十分。
+// why: 参加メンバー一覧は responses の時刻選択から派生する。env.MEMBER_USER_IDS は「今の設定値」で
+//   開催スナップショットではない。DECIDED 到達時点で ABSENT は存在しない (ask-session/decide) ため
+//   TIME_CHOICES のみで十分 @see requirements/base.md §8.3
 const extractHeldParticipantMemberIds = (
   responses: readonly ResponseRow[]
 ): readonly string[] =>
@@ -37,8 +36,7 @@ const extractHeldParticipantMemberIds = (
 
 const buildReminderContent = (startAt: Date): string => {
   const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
-  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く（settle と同じ方針）。
-  // @see docs/adr/0011-dev-mention-suppression.md
+  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く @see ADR-0011
   if (env.DEV_SUPPRESS_MENTIONS) {
     return body;
   }
@@ -47,20 +45,17 @@ const buildReminderContent = (startAt: Date): string => {
 };
 
 /**
- * Determine whether the reminder must be skipped because the decision happened too close to the reminder time.
+ * Decide whether the reminder must be skipped because the decision happened too close to the reminder time.
  *
  * @remarks
- * 開催確定 (now) からリマインド予定時刻まで 10 分未満なら送らない（requirements/base.md §5.2）。
- * reminderAt - now < THRESHOLD のときに true を返す。
+ * reminderAt - now が `REMINDER_SKIP_THRESHOLD_MINUTES` 未満なら true。
+ * @see requirements/base.md §5.2
  */
 export const shouldSkipReminder = (now: Date, reminderAt: Date): boolean => {
   const diffMs = reminderAt.getTime() - now.getTime();
   return diffMs < REMINDER_SKIP_THRESHOLD_MINUTES * 60_000;
 };
 
-/**
- * Compute `reminderAt` from a decided start instant.
- */
 export const computeReminderAt = (decidedStartAt: Date): Date => reminderAtFor(decidedStartAt);
 
 const completeAfterReminder = async (
@@ -77,14 +72,12 @@ const completeAfterReminder = async (
     );
     return;
   }
-  // source-of-truth: HeldEvent の参加者は responses の時刻選択 (§8.3) から派生する。
   const responses = await ctx.ports.responses.listResponses(session.id);
   const memberIds = extractHeldParticipantMemberIds(responses);
 
-  // tx: DECIDED→COMPLETED CAS と HeldEvent/participants 挿入を単一 tx でまとめ、
+  // tx: DECIDED→COMPLETED CAS と HeldEvent/participants 挿入を単一 tx にまとめ、
   //   「COMPLETED なのに HeldEvent 無し」の永続不整合を避ける。COMPLETED は終端で
-  //   起動時リカバリが拾わないため、別 tx に分けると失敗時に自然回復しない。
-  // @see docs/adr/0031-held-event-persistence.md
+  //   起動時リカバリが拾わないため、別 tx だと失敗時に自然回復しない @see ADR-0031
   const completed = await ctx.ports.heldEvents.completeDecidedSessionAsHeld({
     sessionId: session.id,
     reminderSentAt: now,
@@ -116,16 +109,14 @@ const completeAfterReminder = async (
  * Send the 15-minute-before reminder and transition DECIDED→COMPLETED.
  *
  * @remarks
- * DB を正本とし、呼び出し時点で Session を再取得してから処理する。
- * race: Discord 送信の**前に** `claimReminderDispatch` で `reminder_sent_at=now` を
- *   条件付き UPDATE (status=DECIDED AND reminder_sent_at IS NULL) で原子的に確保する。
- *   これにより cron tick と起動時 recovery が同じ reminder を並行送信する race を DB 層で防ぐ。
- * idempotent: 敗者 (undefined 返却) は no-op。既に COMPLETED / 既に送信済みの経路も同様。
- * 失敗回復: Discord 送信が throw したら `revertReminderClaim` で claim を戻し、次 tick で
- *   再試行する (at-least-once semantics; 送信後に throw したケースでは重複送信の可能性を
- *   受容する。§5.2 の「送る」側を優先)。
+ * source-of-truth: DB から最新 Session を再取得して処理する。
+ * race: Discord 送信の**前に** `claimReminderDispatch` で条件付き UPDATE により claim を確保し、
+ *   cron tick と起動時 recovery の並行送信を DB 層で防ぐ。
+ * idempotent: 敗者 (undefined) は no-op。COMPLETED / 送信済みも no-op。
+ * 失敗回復: 送信が throw したら `revertReminderClaim` で claim を戻し次 tick で再試行。
+ *   at-least-once: 送信後 throw では重複送信を受容する (§5.2「送る」優先)。
  * @see requirements/base.md §5.2, §9.1
- * @see docs/adr/0024-reminder-dispatch.md
+ * @see ADR-0024
  */
 export const sendReminderForSession = async (
   client: Client,
@@ -133,7 +124,6 @@ export const sendReminderForSession = async (
   sessionId: string,
   now: Date
 ): Promise<void> => {
-  // source-of-truth: DB から最新状態を取り直す。in-memory 状態を信じない。
   const fresh = await ctx.ports.sessions.findSessionById(sessionId);
   if (!fresh) {return;}
   if (fresh.status !== "DECIDED") {
@@ -152,7 +142,7 @@ export const sendReminderForSession = async (
     return;
   }
 
-  // race: claim-first。DB 層で先着 1 件のみ勝者とし、以降の同時呼び出しは undefined を観測する。
+  // race: claim-first。DB 層で先着 1 件のみ勝者とし、以降は undefined を観測する。
   const claimed = await ctx.ports.sessions.claimReminderDispatch(fresh.id, now);
   if (!claimed) {
     logger.info(
@@ -168,9 +158,9 @@ export const sendReminderForSession = async (
     const channel = await getTextChannel(client, claimed.channelId);
     await channel.send(content);
   } catch (error: unknown) {
-    // source-of-truth: 送信失敗時は claim を戻して DECIDED + reminderSentAt=NULL に復元し、次 tick で再試行。
-    //   at-least-once: 送信 API が throw したが実際には配送済みだった場合、次 tick で重複送信し得る。
-    //   §5.2「送る」を優先し、欠落より重複を選ぶトレードオフ。
+    // race: 送信失敗時は claim を戻し DECIDED + reminderSentAt=NULL に復元し次 tick で再試行。
+    //   at-least-once: API throw でも実際には配送済みだった場合、次 tick で重複送信し得る。
+    //   §5.2 の「送る」を優先し欠落より重複を選ぶ。
     const reverted = await ctx.ports.sessions.revertReminderClaim(fresh.id, now);
     logger.warn(
       { error, sessionId: fresh.id, weekKey: fresh.weekKey, reverted },
@@ -186,7 +176,7 @@ export const sendReminderForSession = async (
  * Transition DECIDED→COMPLETED without sending a reminder (skip rule).
  *
  * @remarks
- * 開催確定時点でリマインド予定まで 10 分未満 (§5.2) のときに使う。送信 tick 側では使わない。
+ * 開催確定時点でリマインド予定までしきい値未満 (§5.2) のときに使う。
  */
 export const skipReminderAndComplete = async (
   ctx: AppContext,

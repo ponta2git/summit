@@ -14,18 +14,17 @@ import { buildStatusViewModel, renderStatusText } from "./viewModel.js";
  * Handle the /status slash command.
  *
  * @remarks
- * Reads all non-terminal sessions from the DB and returns an ephemeral status summary.
- * Uses deferReply because multiple DB reads may exceed the 3-second Discord limit.
- * @see docs/adr/0032-status-command.md
+ * 非終端セッションを DB から読み上げ ephemeral で状態サマリを返す。
+ * ack: 複数 DB read が 3 秒を超えうるため deferReply。
+ * @see ADR-0032
  */
 export const handleStatusCommand = async (
   interaction: ChatInputCommandInteraction,
   ctx: AppContext
 ): Promise<void> => {
-  // ack: deferReply で 3 秒制約を回避。DB read が複数あるため。
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // invariant: cheap-first 順（guild → channel → member）
+  // invariant: cheap-first 順 (guild → channel → member)
   if (
     !assertGuildAndChannel(interaction.guildId, interaction.channelId) ||
     !assertMember(interaction.user.id)
@@ -41,7 +40,6 @@ export const handleStatusCommand = async (
     ctx.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
   ]);
 
-  // 並列で responses と decided sessions の heldEvent を取得する。
   const [responsesNested, heldEventsNested] = await Promise.all([
     Promise.all(sessions.map((s) => ctx.ports.responses.listResponses(s.id))),
     Promise.all(

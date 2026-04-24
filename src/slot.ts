@@ -1,10 +1,8 @@
 import { z } from "zod";
 
-// why: 候補時刻スロット（22:00/22:30/23:00/23:30）のドメイン SSoT。
-//   SlotKey は DB enum 値・time 計算・UI ラベル・customId wire が参照する唯一の正典。
-//   customId の lowercase wire 表現（t2200 等）は src/discord/shared/customId.ts が所有する。
-//   DB は SlotKey を verbatim に保存するため DB ↔ SlotKey の変換関数は持たない。
-// @see ADR-0026 cross-cutting wire format SSoT
+// source-of-truth: SlotKey は DB enum 値・time 計算・UI ラベル・customId wire が参照する正典。
+//   customId の wire 表現は src/discord/shared/customId.ts。DB は SlotKey を verbatim に保存。
+// @see ADR-0026
 
 export type SlotKey = "T2200" | "T2230" | "T2300" | "T2330";
 

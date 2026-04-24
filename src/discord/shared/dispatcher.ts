@@ -83,7 +83,7 @@ const handleButton = async (
   interaction: ButtonInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
-  // why: UX 判断 — guild/channel/member 各ガードの拒否理由を個別メッセージで伝える
+  // why: ガード拒否理由ごとに別文言で返し、ユーザーに原因を伝える。
   const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
   if (reason) {
     await interaction.followUp(buildEphemeralReject(GUARD_REASON_TO_MESSAGE[reason]));
@@ -105,8 +105,7 @@ const handleButton = async (
     return;
   }
 
-  // why: 古いメッセージの stale ボタンを押したユーザーが「何も起きない」と困惑するのを防ぐ
-  // ack: deferUpdate() は interaction 入口で実行済み。ここでは followUp で ephemeral 通知する。
+  // ack: deferUpdate() は dispatcher 入口で実行済み。stale ボタンは followUp で ephemeral 通知する。
   logger.warn(
     {
       interactionId: interaction.id,
@@ -177,7 +176,7 @@ export const registerInteractionHandlers = (
   } = {}
 ): void => {
   client.on("interactionCreate", (interaction) => {
-    // ack: 3 秒制約・入口 try/catch を集約
+    // ack: 3 秒制約に備え入口で try/catch を集約する。
     void (async () => {
       try {
         const readyDeps =
@@ -211,7 +210,7 @@ export const registerInteractionHandlers = (
             });
           }
         } catch {
-          // invariant: エラー通知自体の失敗は握りつぶし、二重障害で unhandled rejection を作らない。
+          // race: エラー通知自体の失敗は握りつぶし、二重障害で unhandled rejection を作らない。
         }
       }
     })();

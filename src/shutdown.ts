@@ -25,23 +25,19 @@ const beginShutdown = (): boolean => {
 /**
  * Gracefully tears down the Bot: scheduler → in-flight sends → DB → Discord client.
  *
- * @returns `true` if this invocation performed the shutdown, `false` if another signal
- *   already initiated shutdown (idempotent).
- *
  * @remarks
- * SIGINT / SIGTERM の連続受信でも 1 度だけ実行される。停止順序を逆にすると待機中に
- * 新たな cron tick で in-flight が積み増されるため、必ず scheduler を先に止めること。
+ * SIGINT / SIGTERM の連続受信でも 1 度だけ実行される（idempotent）。停止順序を逆にすると
+ * 待機中の cron tick が in-flight を積み増すため、必ず scheduler を先に止めること。
+ * @returns `true` if this invocation performed the shutdown, `false` if already in progress.
  */
 export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> => {
-  // idempotent: SIGINT + SIGTERM 連続受信や重複発火でも 1 回だけ shutdown を走らせる。
   if (!beginShutdown()) {
     logger.info({ signal: deps.signal }, "Shutdown already in progress.");
     return false;
   }
 
   logger.info({ signal: deps.signal }, "Shutdown started.");
-  // why: 先に scheduler を停止してから in-flight を待つ。この順序を逆にすると
-  //   waitForInFlightSend 中に新たな cron tick が起動して in-flight が積み増される。
+  // invariant: scheduler 停止 → in-flight 待機の順序。逆にすると cron tick が in-flight を積み増す。
   deps.stopScheduler();
 
   try {

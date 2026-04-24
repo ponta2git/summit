@@ -10,6 +10,7 @@ import { errAsync, okAsync } from "neverthrow";
 
 import { DiscordApiError } from "../../src/errors/index.js";
 
+// why: settle 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
 vi.mock("../../src/features/ask-session/settle.js", () => ({
   evaluateAndApplyDeadlineDecision: vi.fn(() => okAsync(undefined))
 }));

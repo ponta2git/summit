@@ -17,7 +17,7 @@ export interface DecidedAnnouncementViewModel {
   }>;
 }
 
-// invariant: SLOT → 表示ラベル (requirements/base.md §5.1 例: "22:30")
+// invariant: SLOT → 表示ラベル @see requirements/base.md §5.1
 const SLOT_TO_LABEL: Record<AskTimeChoice, string> = {
   T2200: "22:00",
   T2230: "22:30",
@@ -29,9 +29,9 @@ const SLOT_TO_LABEL: Record<AskTimeChoice, string> = {
  * Build the decided announcement view model from DB rows.
  *
  * @remarks
- * Pure. session.decidedStartAt と env.MEMBER_USER_IDS 順の response+member から memberLines を組む。
- * DECIDED セッションは全員が時間回答済み (ABSENT 不在) の invariant を features/ask-session/decide で保証しており、
- * ここでは未回答/ABSENT は "-" で fallback 表示する (直前に race で変わっても壊れないように)。
+ * Pure. session.decidedStartAt と env.MEMBER_USER_IDS 順で memberLines を組む。
+ * DECIDED セッションは全員が時間回答済み (ABSENT 不在) を ask-session/decide で保証するが、
+ * 直前 race 防御として未回答/ABSENT は "-" に fallback する。
  * @see requirements/base.md §5.1
  */
 export const buildDecidedAnnouncementViewModel = (
@@ -39,7 +39,7 @@ export const buildDecidedAnnouncementViewModel = (
   responses: ReadonlyArray<ViewModelResponseInput>,
   members: ReadonlyArray<ViewModelMemberInput>
 ): DecidedAnnouncementViewModel | undefined => {
-  // invariant: DECIDED でない / decidedStartAt null の場合はメッセージを組み立てない。呼び出し側は undefined を検出して send を skip する。
+  // invariant: decidedStartAt null なら組み立てない。呼び出し側は undefined で send を skip する。
   if (!session.decidedStartAt) {return undefined;}
 
   const hh = String(session.decidedStartAt.getHours()).padStart(2, "0");

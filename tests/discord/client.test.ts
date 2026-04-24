@@ -6,10 +6,8 @@ describe("createDiscordClient", () => {
     vi.resetModules();
   });
 
-  // regression: DEV_SUPPRESS_MENTIONS が false 側 (未設定 / "" / "false") のとき Client-level の
-  //   allowedMentions は抑止モードにならないこと。discord.js は未指定時の値に `{}` / `undefined` の
-  //   ぶれがあるため、`parse !== []` (= 全抑止ではない) だけを invariant として検証する。
-  // @see docs/adr/0011-dev-mention-suppression.md
+  // regression: DEV_SUPPRESS_MENTIONS=false 系 (未設定 / "" / "false") では Client-level allowedMentions が全抑止にならない。discord.js は未指定時の値に `{}`/`undefined` のぶれがあるため `parse !== []` だけを invariant として検証。
+  // @see ADR-0011
   it.each<{ label: string; value: string }>([
     { label: "unset (empty)", value: "" },
     { label: "explicit false", value: "false" }
