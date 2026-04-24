@@ -8,10 +8,11 @@ import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
 import type { CancelReason } from "../features/ask-session/cancelReason.js";
 import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "../features/ask-session/decide.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import { settleAskingSession, tryDecideIfAllTimeSlots } from "../features/ask-session/settle.js";
+import { tryDecideIfAllTimeSlots } from "../features/ask-session/settle.js";
 import { sendDecidedAnnouncement } from "../features/decided-announcement/send.js";
 import { skipReminderAndComplete } from "../features/reminder/send.js";
 import { shouldSkipReminder } from "../features/reminder/time.js";
+import { settleAskingSession } from "./askSettleCancel.js";
 
 const toCancelReason = (reason: Extract<DecisionResult, { kind: "cancelled" }>["reason"]): CancelReason =>
   reason === "all_absent" ? "absent" : "deadline_unanswered";

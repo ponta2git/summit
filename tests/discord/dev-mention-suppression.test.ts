@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { SessionRow } from "../../src/db/rows.js";
 import type * as AskRenderModule from "../../src/features/ask-session/render.js";
 import type * as PostponeModule from "../../src/features/postpone-voting/render.js";
-import type * as SettleModule from "../../src/features/ask-session/settle.js";
+import type * as SettleModule from "../../src/orchestration/askSettleCancel.js";
 import type * as AskViewModelModule from "../../src/features/ask-session/viewModel.js";
 import type * as PostponeViewModelModule from "../../src/features/postpone-voting/viewModel.js";
 import type * as EnvModule from "../../src/env.js";
@@ -36,7 +36,7 @@ beforeAll(async () => {
   envModule = await import("../../src/env.js");
   askRender = await import("../../src/features/ask-session/render.js");
   postponeRender = await import("../../src/features/postpone-voting/render.js");
-  settle = await import("../../src/features/ask-session/settle.js");
+  settle = await import("../../src/orchestration/askSettleCancel.js");
   askViewModel = await import("../../src/features/ask-session/viewModel.js");
   postponeViewModel = await import("../../src/features/postpone-voting/viewModel.js");
   testing = await import("../testing/index.js");
