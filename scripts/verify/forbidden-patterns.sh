@@ -70,6 +70,10 @@ run_rule "no-direct-url-in-src" "DIRECT_URL" -g "src/**" -g "!src/logger.ts" -g 
 
 run_rule "no-require-in-ts" "\\brequire\\s*\\(" -g "src/**" -g "tests/**"
 
+run_rule "no-cross-feature-side-effect-import" \
+  "from\\s+\"\\.\\./[a-z-]+/(send|settle|messageEditor)\\.js\"" \
+  -g "src/features/**"
+
 run_rule "no-secret-shape" "[A-Za-z0-9_-]{23,28}\\.[A-Za-z0-9_-]{6,7}\\.[A-Za-z0-9_-]{27,}" . \
   -g "!node_modules/**" \
   -g "!dist/**" \
@@ -88,6 +92,7 @@ if [[ "${total_matches}" -gt 0 ]]; then
     no-adhoc-date \
     no-direct-url-in-src \
     no-require-in-ts \
+    no-cross-feature-side-effect-import \
     no-secret-shape; do
     local_count=$(printf '%s' "${RULE_COUNTS}" | grep -E "^${rule_id}=" | tail -1 | cut -d= -f2)
     echo "${rule_id}: ${local_count:-0}"
