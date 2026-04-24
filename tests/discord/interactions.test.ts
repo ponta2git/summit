@@ -309,6 +309,7 @@ describe("interaction router", () => {
     }));
 
     const ctx = createTestAppContext({
+      now: new Date("2026-04-24T10:00:00.000Z"), // before deadlineAt 12:30Z
       seed: { sessions: [session], members: mockMembers }
     });
 
