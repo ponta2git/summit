@@ -26,7 +26,7 @@ import {
   guardSessionPostponeVoting,
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.js";
-import { settlePostponeVotingSession } from "./settle.js";
+import { settlePostponeVotingSession } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 

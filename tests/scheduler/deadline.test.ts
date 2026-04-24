@@ -14,12 +14,12 @@ import { DiscordApiError } from "../../src/errors/index.js";
 vi.mock("../../src/features/ask-session/settle.js", () => ({
   evaluateAndApplyDeadlineDecision: vi.fn(() => okAsync(undefined))
 }));
-vi.mock("../../src/features/postpone-voting/settle.js", () => ({
+vi.mock("../../src/orchestration/postponeVoting.js", () => ({
   settlePostponeVotingSession: vi.fn(() => okAsync(undefined))
 }));
 
 const askSettle = await import("../../src/features/ask-session/settle.js");
-const postponeSettle = await import("../../src/features/postpone-voting/settle.js");
+const postponeSettle = await import("../../src/orchestration/postponeVoting.js");
 // why: 旧来の `settle.foo` 参照をそのまま残すため、features 2 モジュールをマージした view を作る。
 const settle = { ...askSettle, ...postponeSettle };
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(

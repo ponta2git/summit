@@ -3,24 +3,24 @@ import { randomUUID } from "node:crypto";
 import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { ResponseRow, SessionRow } from "../../db/rows.js";
+import type { AppContext } from "../appContext.js";
+import { MEMBER_COUNT_EXPECTED } from "../config.js";
+import type { ResponseRow, SessionRow } from "../db/rows.js";
+import type { AppError } from "../errors/index.js";
+import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
+import { sendPostponedAskMessage } from "../features/ask-session/send.js";
 import {
   evaluatePostponeVote,
   type PostponeDecisionResult
-} from "./decide.js";
-import type { AppError } from "../../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
+} from "../features/postpone-voting/decide.js";
+import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
+import { logger } from "../logger.js";
 import {
   deadlineFor,
   formatCandidateDateIso,
   parseCandidateDateIso,
   saturdayCandidateFrom
-} from "../../time/index.js";
-import { sendPostponedAskMessage } from "../ask-session/send.js";
-import { updatePostponeMessage } from "./messageEditor.js";
+} from "../time/index.js";
 
 const postponeDecisionFooter = (
   decision: Exclude<PostponeDecisionResult, { kind: "pending" }>
@@ -135,6 +135,7 @@ const applyCancelledOutcome = (
  * race: race-lost (CAS が undefined を返す) は `Ok(void)` として扱う。
  *   別経路が先に遷移済み = 正常な分岐であり、エラーではない (ADR-0001 DB-as-SoT)。
  * idempotent: 内部で CAS を使うため重複呼び出しは安全。
+ * @see ADR-0040
  */
 export const settlePostponeVotingSession = (
   client: Client,
