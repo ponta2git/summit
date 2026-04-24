@@ -3,11 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionRow } from "../../../src/db/rows.js";
 import {
-  computeReminderAt,
   sendReminderForSession,
-  shouldSkipReminder,
   skipReminderAndComplete
 } from "../../../src/features/reminder/send.js";
+import { computeReminderAt, shouldSkipReminder } from "../../../src/features/reminder/time.js";
 import { env } from "../../../src/env.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";

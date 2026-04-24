@@ -10,17 +10,17 @@ import { errAsync, okAsync } from "neverthrow";
 
 import { DiscordApiError } from "../../src/errors/index.js";
 
-// why: settle 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
-vi.mock("../../src/features/ask-session/settle.js", () => ({
+// why: orchestration 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
+vi.mock("../../src/orchestration/askDeadline.js", () => ({
   evaluateAndApplyDeadlineDecision: vi.fn(() => okAsync(undefined))
 }));
 vi.mock("../../src/orchestration/postponeVoting.js", () => ({
   settlePostponeVotingSession: vi.fn(() => okAsync(undefined))
 }));
 
-const askSettle = await import("../../src/features/ask-session/settle.js");
+const askSettle = await import("../../src/orchestration/askDeadline.js");
 const postponeSettle = await import("../../src/orchestration/postponeVoting.js");
-// why: 旧来の `settle.foo` 参照をそのまま残すため、features 2 モジュールをマージした view を作る。
+// why: 旧来の `settle.foo` 参照をそのまま残すため、orchestration 2 モジュールをマージした view を作る。
 const settle = { ...askSettle, ...postponeSettle };
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
   "../../src/scheduler/index.js"

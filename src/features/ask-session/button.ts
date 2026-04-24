@@ -28,7 +28,7 @@ import {
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.js";
-import { applyDeadlineDecision } from "./settle.js";
+import { applyDeadlineDecision } from "../../orchestration/index.js";
 import { env } from "../../env.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";

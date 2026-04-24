@@ -2,8 +2,8 @@ import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../src/db/rows.js";
-import { applyDeadlineDecision, settleAskingSession } from "../../src/features/ask-session/settle.js"
-import { settlePostponeVotingSession } from "../../src/orchestration/index.js";
+import { settleAskingSession } from "../../src/features/ask-session/settle.js"
+import { applyDeadlineDecision, settlePostponeVotingSession } from "../../src/orchestration/index.js";
 import { env } from "../../src/env.js";
 import { createTestAppContext } from "../testing/index.js";
 

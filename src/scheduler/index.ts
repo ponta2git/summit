@@ -23,9 +23,8 @@ import {
   type SendAskMessageContext,
   type SendAskMessageResult
 } from "../features/ask-session/send.js";
-import { evaluateAndApplyDeadlineDecision } from "../features/ask-session/settle.js"
+import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.js";
 import { sendReminderForSession } from "../features/reminder/send.js"
-import { settlePostponeVotingSession } from "../orchestration/index.js";
 import { logger } from "../logger.js";
 import { runReconciler } from "./reconciler.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";

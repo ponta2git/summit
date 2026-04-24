@@ -2,8 +2,7 @@ import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
-import type { ResponseRow, SessionRow } from "../../db/rows.js";
-import { evaluateDeadline, type DecisionResult, type EvaluateDeadlineOptions } from "./decide.js";
+import type { SessionRow } from "../../db/rows.js";
 import type { AppError } from "../../errors/index.js";
 import { fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
@@ -13,8 +12,7 @@ import { buildPostponeMessageViewModel } from "../postpone-voting/viewModel.js";
 import { getTextChannel } from "../../discord/shared/channels.js";
 import type { CancelReason } from "./cancelReason.js";
 import { updateAskMessage } from "./messageEditor.js";
-import { computeReminderAt, shouldSkipReminder, skipReminderAndComplete } from "../reminder/send.js";
-import { sendDecidedAnnouncement } from "../decided-announcement/send.js";
+import { computeReminderAt } from "../reminder/time.js";
 import { parseCandidateDateIso, postponeDeadlineFor } from "../../time/index.js";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
@@ -180,58 +178,3 @@ export const tryDecideIfAllTimeSlots = (
     return okAsync(false);
   });
 
-const toCancelReason = (reason: Extract<DecisionResult, { kind: "cancelled" }>["reason"]): CancelReason =>
-  reason === "all_absent" ? "absent" : "deadline_unanswered";
-
-export const applyDeadlineDecision = (
-  client: Client,
-  ctx: AppContext,
-  session: SessionRow,
-  decision: DecisionResult
-): ResultAsync<void, AppError> =>
-  safeTry(async function* () {
-    switch (decision.kind) {
-      case "pending":
-        return okAsync(undefined);
-      case "cancelled":
-        yield* settleAskingSession(client, ctx, session.id, toCancelReason(decision.reason));
-        return okAsync(undefined);
-      case "decided": {
-        const decided = yield* tryDecideIfAllTimeSlots(ctx, session, decision.startAt);
-        if (!decided) {return okAsync(undefined);}
-        // source-of-truth: DECIDED 遷移後の最新 DB 状態（`reminderAt` 含む）を元に再描画する。
-        const fresh = yield* fromDatabasePromise(
-          ctx.ports.sessions.findSessionById(session.id),
-          "Failed to reload decided session."
-        );
-        if (!fresh) {return okAsync(undefined);}
-        yield* fromDiscordPromise(
-          updateAskMessage(client, ctx, fresh),
-          "Failed to update ask message after decide."
-        );
-        // idempotent: ASKING→DECIDED の CAS は 1 回しか成功しないため開催決定メッセージも一度きり。
-        //   @see requirements/base.md §5.1
-        yield* fromDiscordPromise(
-          sendDecidedAnnouncement(client, ctx, fresh),
-          "Failed to send decided announcement."
-        );
-        if (fresh.reminderAt && shouldSkipReminder(ctx.clock.now(), fresh.reminderAt)) {
-          yield* fromDatabasePromise(
-            skipReminderAndComplete(ctx, fresh, ctx.clock.now()),
-            "Failed to skip reminder and complete session."
-          );
-        }
-        return okAsync(undefined);
-      }
-    }
-  });
-
-// source-of-truth: 判定ロジックは ./decide.ts。
-export const evaluateAndApplyDeadlineDecision = (
-  client: Client,
-  ctx: AppContext,
-  session: SessionRow,
-  responses: readonly ResponseRow[],
-  options: EvaluateDeadlineOptions
-): ResultAsync<void, AppError> =>
-  applyDeadlineDecision(client, ctx, session, evaluateDeadline(session, responses, options));
