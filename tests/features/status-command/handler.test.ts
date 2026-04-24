@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { handleStatusCommand } from "../../../src/features/status-command/handler.js";
 import { env } from "../../../src/env.js";
+import { callArg } from "../../helpers/assertions.js";
 import { memberUserId } from "../../helpers/env.js";
 import { makeSession } from "../../testing/fixtures.js";
 import { createTestAppContext } from "../../testing/ports.js";
@@ -22,6 +23,9 @@ const buildInteraction = (override: {
   editReply: vi.fn(async () => undefined)
 });
 
+const editReplyContent = (interaction: ReturnType<typeof buildInteraction>): string =>
+  callArg<{ content: string }>(interaction.editReply).content;
+
 describe("handleStatusCommand", () => {
   it("regression: returns promptly even when 0 non-terminal sessions exist (must not throw)", async () => {
     const ctx = createTestAppContext({ seed: {} });
@@ -33,9 +37,7 @@ describe("handleStatusCommand", () => {
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(interaction.editReply).toHaveBeenCalledOnce();
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).toContain("非終端セッション: なし");
+    expect(editReplyContent(interaction)).toContain("非終端セッション: なし");
   });
 
   it("returns session info for an ASKING session", async () => {
@@ -45,9 +47,7 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).toContain("[ASKING]");
+    expect(editReplyContent(interaction)).toContain("[ASKING]");
   });
 
   it("rejects a non-member user ephemerally", async () => {
@@ -108,9 +108,7 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).toContain("⚠");
+    expect(editReplyContent(interaction)).toContain("⚠");
   });
 
   it("does not show stranded CANCELLED section when there are none", async () => {
@@ -119,9 +117,7 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).not.toContain("宙づり CANCELLED");
+    expect(editReplyContent(interaction)).not.toContain("宙づり CANCELLED");
   });
 
   it("shows stranded CANCELLED section and warning when stranded sessions exist", async () => {
@@ -131,11 +127,10 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).toContain("宙づり CANCELLED");
-    expect(content.content).toContain("⚠");
-    expect(content.content).toContain("cancell");
+    const content = editReplyContent(interaction);
+    expect(content).toContain("宙づり CANCELLED");
+    expect(content).toContain("⚠");
+    expect(content).toContain("cancell");
   });
 
   it("includes stranded CANCELLED in total warning count", async () => {
@@ -149,8 +144,6 @@ describe("handleStatusCommand", () => {
     expect(
       ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")
     ).toBe(true);
-    const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
-    const [content] = call;
-    expect(content.content).toContain("2");
+    expect(editReplyContent(interaction)).toContain("2");
   });
 });

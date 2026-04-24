@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
 
 import { envSchema } from "../../src/env.js";
+import { expectParseFailure, expectParseSuccess } from "../helpers/assertions.js";
 
 const validEnvInput = {
   DISCORD_TOKEN: "dummy-token",
@@ -21,21 +22,13 @@ describe("envSchema", () => {
       HEALTHCHECK_PING_URL: ""
     });
 
-    expect(result.success).toBe(true);
-    if (!result.success) {
-      return;
-    }
-    expect(result.data.HEALTHCHECK_PING_URL).toBeUndefined();
+    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBeUndefined();
   });
 
   it("accepts missing HEALTHCHECK_PING_URL as undefined", () => {
     const result = envSchema.safeParse(validEnvInput);
 
-    expect(result.success).toBe(true);
-    if (!result.success) {
-      return;
-    }
-    expect(result.data.HEALTHCHECK_PING_URL).toBeUndefined();
+    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBeUndefined();
   });
 
   it("accepts valid HEALTHCHECK_PING_URL URL", () => {
@@ -44,11 +37,7 @@ describe("envSchema", () => {
       HEALTHCHECK_PING_URL: "https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     });
 
-    expect(result.success).toBe(true);
-    if (!result.success) {
-      return;
-    }
-    expect(result.data.HEALTHCHECK_PING_URL).toBe(
+    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBe(
       "https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     );
   });
@@ -151,7 +140,7 @@ describe("envSchema", () => {
 
     for (const testCase of cases) {
       const result = envSchema.safeParse(testCase.input);
-      expect(result.success, testCase.name).toBe(false);
+      expectParseFailure(result, testCase.name);
     }
   });
 
@@ -199,7 +188,7 @@ describe("envSchema", () => {
         ...validEnvInput,
         DEV_SUPPRESS_MENTIONS: "maybe"
       });
-      expect(result.success).toBe(false);
+      expectParseFailure(result);
     });
   });
 });

@@ -1,4 +1,3 @@
-import { ChannelType } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionRow } from "../../../src/db/rows.js";
@@ -8,6 +7,7 @@ import {
 } from "../../../src/features/reminder/send.js";
 import { computeReminderAt, shouldSkipReminder } from "../../../src/features/reminder/time.js";
 import { env } from "../../../src/env.js";
+import { createDiscordTextFixture, sentPayload } from "../../helpers/discord.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
 
@@ -25,20 +25,10 @@ const decidedSession = (overrides: Partial<SessionRow> = {}): SessionRow => {
 };
 
 function makeChannel(opts: { readonly sendFails?: boolean } = {}) {
-  const send = vi.fn(async (_content: unknown) => {
+  return createDiscordTextFixture(async () => {
     if (opts.sendFails === true) {throw new Error("send failed");}
     return { id: "reminder-msg-id" };
   });
-  const channel = {
-    type: ChannelType.GuildText,
-    isSendable: () => true,
-    send,
-    messages: { fetch: vi.fn() }
-  };
-  const client = {
-    channels: { fetch: vi.fn(async () => channel) }
-  } as unknown as Parameters<typeof sendReminderForSession>[0];
-  return { channel, client, send };
 }
 
 describe("shouldSkipReminder", () => {
@@ -86,7 +76,7 @@ describe("sendReminderForSession", () => {
     await sendReminderForSession(client, ctx, session.id, now);
 
     expect(send).toHaveBeenCalledTimes(1);
-    const payload = send.mock.calls[0]?.[0] as string;
+    const payload = sentPayload(send);
     expect(payload).toContain("15分後に開始");
     for (const userId of env.MEMBER_USER_IDS) {
       expect(payload).toContain(`<@${userId}>`);
@@ -164,7 +154,7 @@ describe("sendReminderForSession", () => {
 
       await sendReminderForSession(client, ctx, session.id, new Date("2026-04-24T12:45:00.000Z"));
 
-      const payload = send.mock.calls[0]?.[0] as string;
+      const payload = sentPayload(send);
       for (const userId of env.MEMBER_USER_IDS) {
         expect(payload).not.toContain(`<@${userId}>`);
       }

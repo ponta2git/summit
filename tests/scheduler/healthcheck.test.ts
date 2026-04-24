@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runHealthcheckTickPing } from "../../src/scheduler/index.js";
 import { logger } from "../../src/logger.js";
+import { callArg } from "../helpers/assertions.js";
 
 describe("runHealthcheckTickPing", () => {
   it("is a no-op when url is undefined — fetch is never called", async () => {
@@ -20,7 +21,7 @@ describe("runHealthcheckTickPing", () => {
 
       expect(fetchFn).toHaveBeenCalledOnce();
       expect(infoSpy).toHaveBeenCalledOnce();
-      const logFields = infoSpy.mock.calls[0]![0] as Record<string, unknown>;
+      const logFields = callArg<Record<string, unknown>>(infoSpy);
       expect(logFields["event"]).toBe("healthcheck.tick_ping");
       expect(logFields["ok"]).toBe(true);
       expect(logFields["elapsedMs"]).toBeTypeOf("number");
@@ -41,7 +42,7 @@ describe("runHealthcheckTickPing", () => {
       await runHealthcheckTickPing(url, fetchFn);
 
       expect(warnSpy).toHaveBeenCalledOnce();
-      const logFields = warnSpy.mock.calls[0]![0] as Record<string, unknown>;
+      const logFields = callArg<Record<string, unknown>>(warnSpy);
       expect(logFields["event"]).toBe("healthcheck.tick_ping");
       expect(logFields["ok"]).toBe(false);
       expect(logFields["elapsedMs"]).toBeTypeOf("number");
@@ -63,7 +64,7 @@ describe("runHealthcheckTickPing", () => {
       await runHealthcheckTickPing(url, fetchFn);
 
       expect(warnSpy).toHaveBeenCalledOnce();
-      const logFields = warnSpy.mock.calls[0]![0] as Record<string, unknown>;
+      const logFields = callArg<Record<string, unknown>>(warnSpy);
       expect(logFields["event"]).toBe("healthcheck.tick_ping");
       expect(logFields["ok"]).toBe(false);
       expect(logFields["errorKind"]).toBe("timeout");
@@ -81,7 +82,7 @@ describe("runHealthcheckTickPing", () => {
       await runHealthcheckTickPing(url, fetchFn);
 
       expect(warnSpy).toHaveBeenCalledOnce();
-      const logFields = warnSpy.mock.calls[0]![0] as Record<string, unknown>;
+      const logFields = callArg<Record<string, unknown>>(warnSpy);
       expect(logFields["event"]).toBe("healthcheck.tick_ping");
       expect(logFields["ok"]).toBe(false);
       expect(logFields["status"]).toBe(503);

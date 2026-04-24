@@ -553,9 +553,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const recreated = await probeDeletedMessagesAtStartup(client, ctx);
 
     expect(recreated).toBe(1);
-    expect(fetchedMessageIds).toEqual(
-      expect.arrayContaining(["ask-ok", "gone-postpone-id"])
-    );
+    expect(new Set(fetchedMessageIds)).toStrictEqual(new Set(["ask-ok", "gone-postpone-id"]));
     const after = await ctx.ports.sessions.findSessionById("probe-postpone-gone");
     expect(after?.postponeMessageId).toBe("sent-1");
     // invariant: ASK 側は fetch 成功したため ID は差し替わらない。

@@ -9,6 +9,7 @@ import { askMessages } from "../../src/features/ask-session/messages.js";
 import { cancelWeekMessages } from "../../src/features/cancel-week/messages.js";
 import { postponeMessages } from "../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../src/features/interaction-reject/messages.js";
+import { callArg } from "../helpers/assertions.js";
 import { memberUserId } from "../helpers/env.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
@@ -80,12 +81,11 @@ describe("interaction router", () => {
     await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.confirmPrompt,
-        components: expect.any(Array)
-      })
+    const payload = callArg<{ content: string; components: readonly unknown[] }>(
+      interaction.editReply
     );
+    expect(payload.content).toBe(cancelWeekMessages.cancelWeek.confirmPrompt);
+    expect(payload.components).toHaveLength(1);
   });
 
   it("rejects invalid ask button custom ids", async () => {
@@ -171,15 +171,20 @@ describe("interaction router", () => {
       content: "このボタンは現在有効ではありません。最新のメッセージから操作してください。",
       flags: MessageFlags.Ephemeral
     });
-    expect(loggerWarnSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        interactionId: "interaction-button",
-        userId: memberUserId,
-        customId: "totally:unknown:id",
-        reason: "unknown_or_stale_button"
-      }),
-      "Unknown or stale button custom_id."
-    );
+    const warnFields = callArg<Record<string, unknown>>(loggerWarnSpy);
+    expect({
+      interactionId: warnFields["interactionId"],
+      userId: warnFields["userId"],
+      customId: warnFields["customId"],
+      reason: warnFields["reason"],
+      message: callArg<string>(loggerWarnSpy, 0, 1)
+    }).toStrictEqual({
+      interactionId: "interaction-button",
+      userId: memberUserId,
+      customId: "totally:unknown:id",
+      reason: "unknown_or_stale_button",
+      message: "Unknown or stale button custom_id."
+    });
     expect(sendAsk).not.toHaveBeenCalled();
   });
 
@@ -190,11 +195,8 @@ describe("interaction router", () => {
 
     registerInteractionHandlers(client, createTestAppContext());
 
-    const listener = on.mock.calls[0]?.[1] as ((interaction: Interaction) => void) | undefined;
+    const listener = callArg<(interaction: Interaction) => void>(on, 0, 1);
     expect(listener).toBeTypeOf("function");
-    if (!listener) {
-      return;
-    }
 
     const reply = vi.fn(async () => undefined);
     const interaction = {
@@ -214,15 +216,19 @@ describe("interaction router", () => {
     listener(interaction);
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(loggerErrorSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        err: expect.any(Error),
-        interactionId: "interaction-crash",
-        userId: memberUserId,
-        customId: undefined
-      }),
-      "interaction handler crashed"
-    );
+    const errorFields = callArg<Record<string, unknown>>(loggerErrorSpy);
+    expect(errorFields["err"]).toBeInstanceOf(Error);
+    expect({
+      interactionId: errorFields["interactionId"],
+      userId: errorFields["userId"],
+      customId: errorFields["customId"],
+      message: callArg<string>(loggerErrorSpy, 0, 1)
+    }).toStrictEqual({
+      interactionId: "interaction-crash",
+      userId: memberUserId,
+      customId: undefined,
+      message: "interaction handler crashed"
+    });
     expect(reply).toHaveBeenCalledWith({
       content: "内部エラーが発生しました。管理者に連絡してください。",
       flags: MessageFlags.Ephemeral

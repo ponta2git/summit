@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleInteraction, type AppReadyState } from "../../src/discord/shared/dispatcher.js";
 import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
+import { callArg } from "../helpers/assertions.js";
 import { buildButtonInteraction, buildAskInteraction } from "../helpers/interaction.js";
 import { buildSessionRow } from "./factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
@@ -53,16 +54,25 @@ describe("startup interaction ready gate", () => {
     expect(
       context.ports.responses.calls.some((call) => call.name === "upsertResponse")
     ).toBe(false);
-    expect(loggerInfoSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "interaction.rejected_not_ready",
-        interactionId: "interaction-button",
-        userId: interaction.user.id,
-        customId: interaction.customId,
-        reason: "startup"
-      }),
-      "Rejected interaction because startup/reconnect is not ready."
-    );
+    const [fields, message] = [
+      callArg<Record<string, unknown>>(loggerInfoSpy),
+      callArg<string>(loggerInfoSpy, 0, 1)
+    ];
+    expect({
+      event: fields["event"],
+      interactionId: fields["interactionId"],
+      userId: fields["userId"],
+      customId: fields["customId"],
+      reason: fields["reason"],
+      message
+    }).toStrictEqual({
+      event: "interaction.rejected_not_ready",
+      interactionId: "interaction-button",
+      userId: interaction.user.id,
+      customId: interaction.customId,
+      reason: "startup",
+      message: "Rejected interaction because startup/reconnect is not ready."
+    });
   });
 
   it("rejects slash command while app is not ready", async () => {

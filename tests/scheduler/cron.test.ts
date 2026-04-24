@@ -4,8 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
 import { CRON_REMINDER_SCHEDULE } from "../../src/config.js";
+import { callArgs } from "../helpers/assertions.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext } from "../testing/index.js";
+
+type ScheduleCall = readonly [
+  expression: string,
+  tick: () => void,
+  options: { readonly timezone: string; readonly noOverlap: boolean }
+];
+
+const registeredSchedules = (schedule: ReturnType<typeof vi.fn>) =>
+  schedule.mock.calls.map((_, index) => {
+    const [expression, , options] = callArgs<ScheduleCall>(schedule, index);
+    return { expression, options };
+  });
 
 describe("ask scheduler", () => {
   it("registers friday 08:00 JST ask cron as the first task with noOverlap", () => {
@@ -29,10 +42,10 @@ describe("ask scheduler", () => {
 
     expect(tasks).toHaveLength(8);
     expect(tasks[0]?.stop).toBe(stop);
-    expect(schedule).toHaveBeenNthCalledWith(1, "0 8 * * 5", expect.any(Function), {
-      timezone: "Asia/Tokyo",
-      noOverlap: true
-    });
+    const [expression, tick, options] = callArgs<ScheduleCall>(schedule);
+    expect(expression).toBe("0 8 * * 5");
+    expect(tick).toBeTypeOf("function");
+    expect(options).toStrictEqual({ timezone: "Asia/Tokyo", noOverlap: true });
   });
 
   it("registers saturday 00:00 JST postpone-deadline cron with noOverlap", () => {
@@ -55,9 +68,9 @@ describe("ask scheduler", () => {
     });
 
     expect(tasks).toHaveLength(8);
-    expect(schedule).toHaveBeenCalledWith("0 0 * * 6", expect.any(Function), {
-      timezone: "Asia/Tokyo",
-      noOverlap: true
+    expect(registeredSchedules(schedule)).toContainEqual({
+      expression: "0 0 * * 6",
+      options: { timezone: "Asia/Tokyo", noOverlap: true }
     });
   });
 
@@ -121,9 +134,9 @@ describe("ask scheduler", () => {
     });
 
     expect(tasks).toHaveLength(8);
-    expect(schedule).toHaveBeenCalledWith(CRON_REMINDER_SCHEDULE, expect.any(Function), {
-      timezone: "Asia/Tokyo",
-      noOverlap: true
+    expect(registeredSchedules(schedule)).toContainEqual({
+      expression: CRON_REMINDER_SCHEDULE,
+      options: { timezone: "Asia/Tokyo", noOverlap: true }
     });
   });
 

@@ -9,6 +9,7 @@ import {
 } from "../../src/config.js";
 import { logger } from "../../src/logger.js";
 import { runOutboxMetricsTick } from "../../src/scheduler/outboxMetrics.js";
+import { callArg } from "../helpers/assertions.js";
 import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
@@ -60,8 +61,13 @@ describe("runOutboxMetricsTick", () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledTimes(1);
-    const fields = info.mock.calls[0]?.[0];
-    expect(fields).toMatchObject({
+    const fields = callArg<Record<string, unknown>>(info);
+    expect({
+      event: fields["event"],
+      pending: fields["pending"],
+      inFlight: fields["inFlight"],
+      failed: fields["failed"]
+    }).toStrictEqual({
       event: "outbox.metrics",
       pending: 1,
       inFlight: 0,
@@ -90,7 +96,12 @@ describe("runOutboxMetricsTick", () => {
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+    const fields = callArg<Record<string, unknown>>(warn);
+    expect({
+      event: fields["event"],
+      failed: fields["failed"],
+      oldestFailedAgeMs: fields["oldestFailedAgeMs"]
+    }).toStrictEqual({
       event: "outbox.metrics",
       failed: 1,
       oldestFailedAgeMs: 60_000
@@ -139,9 +150,9 @@ describe("runOutboxMetricsTick", () => {
     await runOutboxMetricsTick(ctx);
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[0]).toMatchObject({
-      pending: OUTBOX_METRICS_PENDING_WARN_DEPTH + 1
-    });
+    expect(callArg<Record<string, unknown>>(warn)["pending"]).toBe(
+      OUTBOX_METRICS_PENDING_WARN_DEPTH + 1
+    );
   });
 
   it("emits zero-depth baseline at info level when outbox is empty", async () => {
@@ -153,7 +164,14 @@ describe("runOutboxMetricsTick", () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledTimes(1);
-    expect(info.mock.calls[0]?.[0]).toMatchObject({
+    const fields = callArg<Record<string, unknown>>(info);
+    expect({
+      pending: fields["pending"],
+      inFlight: fields["inFlight"],
+      failed: fields["failed"],
+      oldestPendingAgeMs: fields["oldestPendingAgeMs"],
+      oldestFailedAgeMs: fields["oldestFailedAgeMs"]
+    }).toStrictEqual({
       pending: 0,
       inFlight: 0,
       failed: 0,

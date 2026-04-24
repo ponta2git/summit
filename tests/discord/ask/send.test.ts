@@ -1,4 +1,3 @@
-import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,6 +7,11 @@ import {
 } from "../../../src/features/ask-session/send.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
+import {
+  createClientWithChannel,
+  createDiscordTextFixture,
+  createSendableTextChannel
+} from "../../helpers/discord.js";
 import { createTestAppContext, makeSession } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
 
@@ -27,19 +31,6 @@ const saturdaySession = makeSession({
   askMessageId: null
 });
 
-const createMockClient = (channel: unknown): Client =>
-  ({
-    channels: {
-      fetch: vi.fn(async () => channel)
-    }
-  }) as unknown as Client;
-
-const buildSendableChannel = (send: ReturnType<typeof vi.fn>) => ({
-  type: ChannelType.GuildText,
-  isSendable: () => true,
-  send
-});
-
 describe("sendPostponedAskMessage", () => {
   beforeEach(() => {
     __resetSendStateForTest();
@@ -47,9 +38,7 @@ describe("sendPostponedAskMessage", () => {
   });
 
   it("sends the Discord message and saves ask_message_id", async () => {
-    const send = vi.fn(async () => ({ id: "sat-discord-msg-1" }));
-    const channel = buildSendableChannel(send);
-    const client = createMockClient(channel);
+    const { client, send } = createDiscordTextFixture(async () => ({ id: "sat-discord-msg-1" }));
 
     const ctx = createTestAppContext({
       seed: { members: seedMembers, sessions: [saturdaySession] }
@@ -60,8 +49,12 @@ describe("sendPostponedAskMessage", () => {
     expect(send).toHaveBeenCalledTimes(1);
 
     const calls = ctx.ports.sessions.calls.filter((c) => c.name === "updateAskMessageId");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.args).toMatchObject({ id: "sat-session-1", messageId: "sat-discord-msg-1" });
+    expect(calls).toStrictEqual([
+      {
+        name: "updateAskMessageId",
+        args: { id: "sat-session-1", messageId: "sat-discord-msg-1" }
+      }
+    ]);
   });
 
   it("skips sending when ask_message_id is already set (reentrant / restart)", async () => {
@@ -69,9 +62,7 @@ describe("sendPostponedAskMessage", () => {
       ...saturdaySession,
       askMessageId: "already-set-msg-id"
     });
-    const send = vi.fn();
-    const channel = buildSendableChannel(send);
-    const client = createMockClient(channel);
+    const { client, send } = createDiscordTextFixture();
 
     const ctx = createTestAppContext({
       seed: { members: seedMembers, sessions: [alreadySent] }
@@ -87,9 +78,7 @@ describe("sendPostponedAskMessage", () => {
 
   it("surfaces Discord send error and does not save ask_message_id", async () => {
     const discordError = new Error("Discord API error");
-    const send = vi.fn(async () => { throw discordError; });
-    const channel = buildSendableChannel(send);
-    const client = createMockClient(channel);
+    const { client } = createDiscordTextFixture(async () => { throw discordError; });
 
     const ctx = createTestAppContext({
       seed: { members: seedMembers, sessions: [saturdaySession] }
@@ -105,7 +94,7 @@ describe("sendPostponedAskMessage", () => {
 
   it("throws when called with postponeCount !== 1", async () => {
     const fridaySession = buildSessionRow({ postponeCount: 0 });
-    const client = createMockClient(null);
+    const client = createClientWithChannel(null);
     const ctx = createTestAppContext({ seed: { members: seedMembers } });
 
     await expect(sendPostponedAskMessage(client, ctx, fridaySession)).rejects.toThrow(
@@ -122,8 +111,8 @@ describe("sendPostponedAskMessage", () => {
         sendCalled.resolve();
         return sendDone.promise;
       });
-      const channel = buildSendableChannel(send);
-      const client = createMockClient(channel);
+      const { channel } = createSendableTextChannel(send);
+      const client = createClientWithChannel(channel);
 
       const ctx = createTestAppContext({
         seed: { members: seedMembers, sessions: [saturdaySession] }
@@ -159,8 +148,8 @@ describe("sendPostponedAskMessage", () => {
         return saturdaySendDone.promise;
       });
 
-      const channel = buildSendableChannel(send);
-      const client = createMockClient(channel);
+      const { channel } = createSendableTextChannel(send);
+      const client = createClientWithChannel(channel);
 
       const ctx = createTestAppContext({
         now: new Date("2026-04-24T18:00:00+09:00"),

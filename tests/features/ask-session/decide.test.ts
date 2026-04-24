@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { evaluateDeadline } from "../../../src/features/ask-session/decide.js";
+import { expectKind } from "../../helpers/assertions.js";
 import { buildSessionRow } from "../../scheduler/factories/session.js";
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
@@ -44,12 +45,11 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
     );
 
-    expect(result.kind).toBe("decided");
-    if (result.kind !== "decided") {
-      return;
-    }
-    expect(result.chosenSlot).toBe("T2330");
-    expect(result.startAt.toISOString()).toBe("2026-04-24T14:30:00.000Z");
+    expect(expectKind(result, "decided")).toStrictEqual({
+      kind: "decided",
+      chosenSlot: "T2330",
+      startAt: new Date("2026-04-24T14:30:00.000Z")
+    });
   });
 
   it("keeps deterministic latest slot when the same latest choice is tied", () => {
@@ -65,11 +65,7 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
     );
 
-    expect(result.kind).toBe("decided");
-    if (result.kind !== "decided") {
-      return;
-    }
-    expect(result.chosenSlot).toBe("T2330");
+    expect(expectKind(result, "decided").chosenSlot).toBe("T2330");
   });
 
   it("returns cancelled/deadline_unanswered when still partial after deadline", () => {

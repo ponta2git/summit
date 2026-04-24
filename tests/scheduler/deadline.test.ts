@@ -9,6 +9,7 @@ import { buildSessionRow } from "./factories/session.js";
 import { errAsync, okAsync } from "neverthrow";
 
 import { DiscordApiError } from "../../src/errors/index.js";
+import { callArgs } from "../helpers/assertions.js";
 
 // why: orchestration 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
 vi.mock("../../src/orchestration/askDeadline.js", () => ({
@@ -40,6 +41,9 @@ const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
 
 const client = {} as unknown as Client;
 
+type AskDeadlineCall = Parameters<typeof settle.evaluateAndApplyDeadlineDecision>;
+type PostponeDeadlineCall = Parameters<typeof settle.settlePostponeVotingSession>;
+
 describe("runDeadlineTick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,22 +68,24 @@ describe("runDeadlineTick", () => {
     await runDeadlineTick(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(2);
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenNthCalledWith(
-      1,
-      client,
-      ctx,
-      expect.objectContaining({ id: "a" }),
-      [],
-      { memberCountExpected: 4, now }
+    const firstCall = callArgs<AskDeadlineCall>(
+      vi.mocked(settle.evaluateAndApplyDeadlineDecision),
+      0
     );
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenNthCalledWith(
-      2,
-      client,
-      ctx,
-      expect.objectContaining({ id: "b" }),
-      [],
-      { memberCountExpected: 4, now }
+    const secondCall = callArgs<AskDeadlineCall>(
+      vi.mocked(settle.evaluateAndApplyDeadlineDecision),
+      1
     );
+    expect(firstCall[0]).toBe(client);
+    expect(firstCall[1]).toBe(ctx);
+    expect(firstCall[2].id).toBe("a");
+    expect(firstCall[3]).toStrictEqual([]);
+    expect(firstCall[4]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(secondCall[0]).toBe(client);
+    expect(secondCall[1]).toBe(ctx);
+    expect(secondCall[2].id).toBe("b");
+    expect(secondCall[3]).toStrictEqual([]);
+    expect(secondCall[4]).toStrictEqual({ memberCountExpected: 4, now });
   });
 
   it("passes full responses to deadline evaluator", async () => {
@@ -101,13 +107,12 @@ describe("runDeadlineTick", () => {
     await runDeadlineTick(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledWith(
-      client,
-      ctx,
-      expect.objectContaining({ id: "a" }),
-      expect.arrayContaining(responses),
-      { memberCountExpected: 4, now }
-    );
+    const call = callArgs<AskDeadlineCall>(vi.mocked(settle.evaluateAndApplyDeadlineDecision));
+    expect(call[0]).toBe(client);
+    expect(call[1]).toBe(ctx);
+    expect(call[2].id).toBe("a");
+    expect(call[3]).toStrictEqual(responses);
+    expect(call[4]).toStrictEqual({ memberCountExpected: 4, now });
   });
 
   it("propagates port errors to runTickSafely wrapper", async () => {
@@ -151,13 +156,12 @@ describe("runStartupRecovery", () => {
     await runStartupRecovery(client, ctx);
 
     expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledWith(
-      client,
-      ctx,
-      expect.objectContaining({ id: "overdue" }),
-      [],
-      { memberCountExpected: 4, now }
-    );
+    const call = callArgs<AskDeadlineCall>(vi.mocked(settle.evaluateAndApplyDeadlineDecision));
+    expect(call[0]).toBe(client);
+    expect(call[1]).toBe(ctx);
+    expect(call[2].id).toBe("overdue");
+    expect(call[3]).toStrictEqual([]);
+    expect(call[4]).toStrictEqual({ memberCountExpected: 4, now });
   });
 
   it("settles overdue POSTPONE_VOTING sessions on startup", async () => {
@@ -174,12 +178,11 @@ describe("runStartupRecovery", () => {
     await runStartupRecovery(client, ctx);
 
     expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(1);
-    expect(settle.settlePostponeVotingSession).toHaveBeenCalledWith(
-      client,
-      ctx,
-      expect.objectContaining({ id: "pv-overdue" }),
-      now
-    );
+    const call = callArgs<PostponeDeadlineCall>(vi.mocked(settle.settlePostponeVotingSession));
+    expect(call[0]).toBe(client);
+    expect(call[1]).toBe(ctx);
+    expect(call[2].id).toBe("pv-overdue");
+    expect(call[3]).toBe(now);
   });
 
   it("leaves POSTPONE_VOTING sessions with future deadlines untouched on startup", async () => {
@@ -226,20 +229,22 @@ describe("runPostponeDeadlineTick", () => {
     await runPostponeDeadlineTick(client, ctx);
 
     expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
-    expect(settle.settlePostponeVotingSession).toHaveBeenNthCalledWith(
-      1,
-      client,
-      ctx,
-      expect.objectContaining({ id: "pv-a" }),
-      now
+    const firstCall = callArgs<PostponeDeadlineCall>(
+      vi.mocked(settle.settlePostponeVotingSession),
+      0
     );
-    expect(settle.settlePostponeVotingSession).toHaveBeenNthCalledWith(
-      2,
-      client,
-      ctx,
-      expect.objectContaining({ id: "pv-b" }),
-      now
+    const secondCall = callArgs<PostponeDeadlineCall>(
+      vi.mocked(settle.settlePostponeVotingSession),
+      1
     );
+    expect(firstCall[0]).toBe(client);
+    expect(firstCall[1]).toBe(ctx);
+    expect(firstCall[2].id).toBe("pv-a");
+    expect(firstCall[3]).toBe(now);
+    expect(secondCall[0]).toBe(client);
+    expect(secondCall[1]).toBe(ctx);
+    expect(secondCall[2].id).toBe("pv-b");
+    expect(secondCall[3]).toBe(now);
   });
 
   it("error in one session does not prevent others from being settled", async () => {

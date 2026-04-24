@@ -10,6 +10,7 @@ import type * as PostponeViewModelModule from "../../src/features/postpone-votin
 import type * as EnvModule from "../../src/env.js";
 import type * as TestingModule from "../testing/index.js";
 
+import { callArg } from "../helpers/assertions.js";
 import { buildSessionRow } from "./factories/session.js";
 
 type RenderAsk = typeof AskRenderModule;
@@ -102,7 +103,7 @@ describe("DEV_SUPPRESS_MENTIONS=true", () => {
 
     // regression: settle 通知は直接送信経路 (FR second-opinion H1)。sendMock の第1引数から文言を検証。
     expect(sendMock).toHaveBeenCalled();
-    const firstCall = sendMock.mock.calls[0]?.[0] as { content?: string };
+    const firstCall = callArg<{ content?: string }>(sendMock);
     const content = firstCall?.content ?? "";
     expect(content).not.toContain("<@");
     expect(content.startsWith("\n")).toBe(false);

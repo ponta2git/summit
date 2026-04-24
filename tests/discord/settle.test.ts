@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResponseRow, SessionRow } from "../../src/db/rows.js";
 import { applyDeadlineDecision, settleAskingSession, settlePostponeVotingSession } from "../../src/orchestration/index.js";
 import { env } from "../../src/env.js";
+import { callArg } from "../helpers/assertions.js";
 import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
@@ -71,11 +72,9 @@ describe("settleAskingSession", () => {
     await settleAskingSession(stubClient(channel), ctx, session.id, "absent");
 
     expect(cancelAskingSpy).toHaveBeenCalledTimes(1);
-    expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
-      reason: "absent"
-    });
+    expect(callArg<{ reason: string }>(cancelAskingSpy).reason).toBe("absent");
     // regression: settle 通知は postpone vote と同じ直接送信経路 (FR second-opinion H1)。
-    expect(cancelAskingSpy.mock.calls[0]?.[0]).not.toHaveProperty("outbox");
+    expect(callArg<unknown>(cancelAskingSpy)).not.toHaveProperty("outbox");
     expect(startPostponeVotingSpy).toHaveBeenCalledTimes(1);
     // invariant: 直接 channel.send は settle 通知 + postpone vote の 2 通。
     expect(channel.send).toHaveBeenCalledTimes(2);
@@ -95,9 +94,7 @@ describe("settleAskingSession", () => {
     await settleAskingSession(stubClient(channel), ctx, session.id, "deadline_unanswered");
 
     expect(cancelAskingSpy).toHaveBeenCalledTimes(1);
-    expect(cancelAskingSpy.mock.calls[0]?.[0]).toMatchObject({
-      reason: "saturday_cancelled"
-    });
+    expect(callArg<{ reason: string }>(cancelAskingSpy).reason).toBe("saturday_cancelled");
     expect(completeCancelledSpy).toHaveBeenCalledTimes(1);
     expect(startPostponeVotingSpy).not.toHaveBeenCalled();
     // regression: 土曜 ASKING の settle 通知も直接送信。channel.send は 1 回。
@@ -180,7 +177,7 @@ describe("settlePostponeVotingSession", () => {
     expect(saturday?.status).toBe("ASKING");
     expect(saturday?.candidateDateIso).toBe("2026-04-25");
     expect(messageEdit).toHaveBeenCalledTimes(1);
-    const rendered = messageEdit.mock.calls[0]?.[0] as { content: string };
+    const rendered = callArg<{ content: string }>(messageEdit);
     expect(rendered.content).toContain("順延されました");
   });
 
@@ -211,7 +208,7 @@ describe("settlePostponeVotingSession", () => {
     expect(persisted?.cancelReason).toBe("postpone_ng");
     expect(ctx.ports.sessions.listSessions().some((s) => s.postponeCount === 1)).toBe(false);
     expect(messageEdit).toHaveBeenCalledTimes(1);
-    const rendered = messageEdit.mock.calls[0]?.[0] as { content: string };
+    const rendered = callArg<{ content: string }>(messageEdit);
     expect(rendered.content).toContain("この回はお流れになりました");
   });
 

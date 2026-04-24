@@ -6,6 +6,7 @@ import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatc
 import type { SessionRow } from "../../../src/db/rows.js";
 import { env } from "../../../src/env.js";
 import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.js";
+import { callArg } from "../../helpers/assertions.js";
 import { buildCancelInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
@@ -60,6 +61,11 @@ const buildDeps = (
   context
 });
 
+const editReplyPayload = (interaction: { readonly editReply: ReturnType<typeof vi.fn> }) =>
+  callArg<{ readonly content: string; readonly components?: readonly unknown[] }>(
+    interaction.editReply
+  );
+
 describe("/cancel_week command flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,10 +82,10 @@ describe("/cancel_week command flow", () => {
     await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
-    const editCall = (interaction.editReply as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+    const editCall = callArg<{
       content: string;
       components: readonly unknown[];
-    };
+    }>(interaction.editReply);
     expect(editCall.content).toBe(cancelWeekMessages.cancelWeek.confirmPrompt);
     expect(editCall.components).toHaveLength(1);
   });
@@ -147,12 +153,10 @@ describe("cancel_week confirmation button", () => {
     }
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.done({ count: 2 }),
-        components: []
-      })
-    );
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: cancelWeekMessages.cancelWeek.done({ count: 2 }),
+      components: []
+    });
   });
 
   it("abort: no state changes and ephemeral updated to aborted message", async () => {
@@ -170,12 +174,10 @@ describe("cancel_week confirmation button", () => {
     expect(after?.status).toBe("ASKING");
     expect(channelSend).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.aborted,
-        components: []
-      })
-    );
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: cancelWeekMessages.cancelWeek.aborted,
+      components: []
+    });
   });
 
   it("confirm with no active session: ephemeral reports zero targets, no notice sent", async () => {
@@ -190,12 +192,10 @@ describe("cancel_week confirmation button", () => {
 
     expect(channelSend).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.done({ count: 0 }),
-        components: []
-      })
-    );
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: cancelWeekMessages.cancelWeek.done({ count: 0 }),
+      components: []
+    });
   });
 
   it("confirm: reports failure when orchestration cannot enqueue the notice", async () => {
@@ -214,12 +214,10 @@ describe("cancel_week confirmation button", () => {
 
     await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
 
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.failed,
-        components: []
-      })
-    );
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: cancelWeekMessages.cancelWeek.failed,
+      components: []
+    });
   });
 
   it("idempotent: confirm on already-SKIPPED sessions does not send notice again", async () => {
@@ -234,10 +232,8 @@ describe("cancel_week confirmation button", () => {
     await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: cancelWeekMessages.cancelWeek.done({ count: 0 })
-      })
+    expect(editReplyPayload(interaction).content).toBe(
+      cancelWeekMessages.cancelWeek.done({ count: 0 })
     );
   });
 });

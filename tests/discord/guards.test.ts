@@ -13,7 +13,7 @@ import { memberUserId } from "../helpers/env.js";
 describe("interaction guards", () => {
   it("maps every guard failure reason to a user-facing message", () => {
     for (const reason of GUARD_FAILURE_REASONS) {
-      expect(GUARD_REASON_TO_MESSAGE[reason]).toEqual(expect.any(String));
+      expect(typeof GUARD_REASON_TO_MESSAGE[reason]).toBe("string");
       expect(GUARD_REASON_TO_MESSAGE[reason].length).toBeGreaterThan(0);
     }
   });

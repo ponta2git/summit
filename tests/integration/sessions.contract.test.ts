@@ -1,9 +1,6 @@
 import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import * as schema from "../../src/db/schema.js";
 import {
   cancelAsking,
   claimReminderDispatch,
@@ -19,52 +16,29 @@ import {
   listResponses,
   upsertResponse
 } from "../../src/db/repositories/responses.js";
+import {
+  assertSchemaReady,
+  createIntegrationDb,
+  isIntegration,
+  seedBaseMembers,
+  truncatePerTestTables
+} from "./_support.js";
 
 // invariant: INTEGRATION_DB=1 のときだけ実行する。gate は vitest.integration.config.ts の
 //   include 側と二重化することで、誤って `pnpm test` に拾われても no-op にする。
 // @see docs/adr/0003-postgres-drizzle-operations.md
-const isIntegration = process.env.INTEGRATION_DB === "1";
 const describeDb = isIntegration ? describe : describe.skip;
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
-
 describeDb("sessions repository contract (integration)", () => {
-  const url = process.env.DATABASE_URL ?? "";
-  // secret: 本番誤爆防止。localhost / docker compose 内 hostname のみ許可。
-  //   本番の DATABASE_URL を誤って export して実行しても fail-fast で拒否する。
-  if (url && !LOCAL_HOSTS.has(new URL(url).hostname)) {
-    throw new Error(
-      `Refusing integration test on non-local DATABASE_URL host: ${new URL(url).hostname}`
-    );
-  }
-
-  // tx: src/db/client.ts の singleton は流用しない。close 競合・並列時の脆さを避けるため
-  //   このスイート専用の接続を開き、afterAll で確実に閉じる。
-  //   invariant: single worker (vitest.integration.config.ts) 前提。max: 1 で十分。
-  const client = postgres(url, { prepare: false, max: 1 });
-  const db = drizzle(client, { schema, casing: "snake_case" });
+  const { db, client } = createIntegrationDb();
 
   beforeAll(async () => {
-    // invariant: migrate 済みのスキーマが存在することを fail-fast で検査する。
-    await db.execute(sql`SELECT 1 FROM sessions LIMIT 0`);
-    await db.execute(sql`SELECT 1 FROM members LIMIT 0`);
-    await db.execute(sql`SELECT 1 FROM responses LIMIT 0`);
-
-    // why: beforeEach の TRUNCATE は members を残すため、seed は一度だけ挿入する。
-    await db.execute(sql`
-      INSERT INTO members (id, user_id, display_name) VALUES
-        ('m1','333333333333333333','Member1'),
-        ('m2','444444444444444444','Member2'),
-        ('m3','555555555555555555','Member3'),
-        ('m4','666666666666666666','Member4')
-      ON CONFLICT (id) DO NOTHING
-    `);
+    await assertSchemaReady(db);
+    await seedBaseMembers(db);
   });
 
   beforeEach(async () => {
-    // idempotent: responses → sessions の順で TRUNCATE CASCADE。members は保持する。
-    //   RESTART IDENTITY は将来 serial 列を追加したとき用の保険。
-    await db.execute(sql`TRUNCATE TABLE responses, sessions RESTART IDENTITY CASCADE`);
+    await truncatePerTestTables(db);
   });
 
   afterAll(async () => {
