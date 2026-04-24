@@ -1,13 +1,13 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../appContext.js";
-import type { SessionRow } from "../../db/rows.js";
-import { env } from "../../env.js";
-import { logger } from "../../logger.js";
-import { askMessages } from "../ask-session/messages.js";
-import { isoWeekKey } from "../../time/index.js";
-import { updateAskMessage } from "../ask-session/messageEditor.js";
-import { updatePostponeMessage } from "../postpone-voting/messageEditor.js";
+import type { AppContext } from "../appContext.js";
+import type { SessionRow } from "../db/rows.js";
+import { env } from "../env.js";
+import { askMessages } from "../features/ask-session/messages.js";
+import { updateAskMessage } from "../features/ask-session/messageEditor.js";
+import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
+import { logger } from "../logger.js";
+import { isoWeekKey } from "../time/index.js";
 
 export interface SkipWeekOutcome {
   readonly skippedCount: number;
@@ -15,7 +15,8 @@ export interface SkipWeekOutcome {
 }
 
 /**
- * Apply /cancel_week: transition all non-terminal sessions of the current ISO week to SKIPPED.
+ * Apply /cancel_week: transition all non-terminal sessions of the current ISO week to SKIPPED,
+ * then repaint cross-feature UI (ask + postpone) and enqueue the channel-wide notice.
  *
  * @remarks
  * jst: 現在時刻から ISO 週キーを算出 (src/time/)。
@@ -25,6 +26,7 @@ export interface SkipWeekOutcome {
  *   dedupe)。
  * @see ADR-0023
  * @see ADR-0035
+ * @see ADR-0040
  */
 export const applyManualSkip = async (
   client: Client,
