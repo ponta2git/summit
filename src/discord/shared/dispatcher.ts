@@ -9,10 +9,7 @@ import {
 import type { AppContext } from "../../appContext.js";
 import { logger } from "../../logger.js";
 import { rejectMessages } from "../../features/interaction-reject/messages.js";
-import {
-  sendAskMessage,
-  type SendAskMessageResult
-} from "../../features/ask-session/send.js";
+import { sendAskMessage } from "../../features/ask-session/send.js";
 import { handlePostponeButton } from "../../features/postpone-voting/button.js";
 import { handleAskButton } from "../../features/ask-session/button.js";
 import { handleCancelWeekButton } from "../../features/cancel-week/button.js";
@@ -20,23 +17,13 @@ import { handleAskCommand } from "../../features/ask-session/command.js";
 import { handleCancelWeekCommand } from "../../features/cancel-week/command.js";
 import { handleStatusCommand } from "../../features/status-command/index.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
+import type {
+  AppReadyState,
+  InteractionHandlerDeps,
+  SendAsk
+} from "./interactionHandlerDeps.js";
 
-export type SendAsk = (args: {
-  readonly trigger: "cron" | "command";
-  readonly invokerId?: string;
-}) => Promise<SendAskMessageResult>;
-
-export interface InteractionHandlerDeps {
-  readonly sendAsk: SendAsk;
-  readonly client: Client;
-  readonly context: AppContext;
-  readonly getReadyState?: () => AppReadyState;
-}
-
-export interface AppReadyState {
-  ready: boolean;
-  reason: string | undefined;
-}
+export type { AppReadyState, InteractionHandlerDeps, SendAsk };
 
 const STARTUP_NOT_READY_MESSAGE = "起動処理中です。数秒待って再度お試しください。";
 
