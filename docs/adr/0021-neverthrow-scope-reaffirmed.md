@@ -1,10 +1,10 @@
 ---
 adr: 0021
 title: neverthrow 全面採用の却下とスコープ再確認
-status: accepted
+status: superseded
 date: 2026-04-24
 supersedes: []
-superseded-by: null
+superseded-by: 0045
 tags: [runtime, ops]
 ---
 

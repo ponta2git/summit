@@ -6,6 +6,7 @@ import { env } from "../../../src/env.js";
 import { memberUserId } from "../../helpers/env.js";
 import { makeSession } from "../../testing/fixtures.js";
 import { createTestAppContext } from "../../testing/ports.js";
+import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 
 const buildInteraction = (override: {
   readonly guildId?: string | null;
@@ -67,9 +68,7 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.stringContaining("メンバー")
-    );
+    expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongChannel);
     expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
   });
 
@@ -79,10 +78,22 @@ describe("handleStatusCommand", () => {
 
     await handleStatusCommand(interaction as never, { context: ctx } as never);
 
-    expect(interaction.editReply).toHaveBeenCalledWith(
-      expect.stringContaining("メンバー")
-    );
+    expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongGuild);
     expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
+  });
+
+  it("returns an internal error message when status DB loading fails", async () => {
+    const ctx = createTestAppContext({ seed: {} });
+    Object.assign(ctx.ports.sessions, {
+      findNonTerminalSessions: vi.fn(async () => {
+        throw new Error("database unavailable");
+      })
+    });
+    const interaction = buildInteraction();
+
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.internalError);
   });
 
   it("surfaces invariant warning when ASKING session has past deadline and null messageId", async () => {

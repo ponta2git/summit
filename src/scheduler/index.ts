@@ -19,6 +19,7 @@ import {
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
+import type { AppError } from "../errors/index.js";
 import { sendHealthcheckPing, type FetchFn } from "../healthcheck/ping.js";
 import {
   sendAskMessage,
@@ -35,6 +36,22 @@ import { runOutboxWorkerTick } from "./outboxWorker.js";
 import { runTickSafely } from "./tickRunner.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
+
+const logSessionResultError = (
+  error: AppError,
+  session: SessionRow,
+  message: string
+): void => {
+  logger.error(
+    {
+      error,
+      errorCode: error.code,
+      sessionId: session.id,
+      weekKey: session.weekKey
+    },
+    message
+  );
+};
 
 interface CronAdapter {
   schedule(
@@ -72,12 +89,7 @@ const settleDueAskingSession = async (
     now
   }).match(
     () => {},
-    (error) => {
-      logger.error(
-        { error, sessionId: session.id, weekKey: session.weekKey },
-        "Failed to apply ask deadline decision."
-      );
-    }
+    (error) => logSessionResultError(error, session, "Failed to apply ask deadline decision.")
   );
 };
 
@@ -123,12 +135,12 @@ export const runPostponeDeadlineTick = async (
   for (const session of due) {
     await settlePostponeVotingSession(client, ctx, session, now).match(
       () => {},
-      (error) => {
-        logger.error(
-          { error, sessionId: session.id, weekKey: session.weekKey },
+      (error) =>
+        logSessionResultError(
+          error,
+          session,
           "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
-        );
-      }
+        )
     );
   }
 };
@@ -236,12 +248,12 @@ export const runStartupRecovery = async (
         );
         await settlePostponeVotingSession(client, ctx, session, now).match(
           () => {},
-          (error) => {
-            logger.error(
-              { error, sessionId: session.id, weekKey: session.weekKey },
+          (error) =>
+            logSessionResultError(
+              error,
+              session,
               "Startup recovery: failed to settle POSTPONE_VOTING session."
-            );
-          }
+            )
         );
       } else if (
         session.status === "DECIDED" &&

@@ -198,6 +198,30 @@ describe("cancel_week confirmation button", () => {
     );
   });
 
+  it("confirm: reports failure when orchestration cannot enqueue the notice", async () => {
+    const session = currentWeekSession({ id: "11111111-aaaa-4bbb-8ccc-000000000003" });
+    const ctx = createTestAppContext({
+      seed: { sessions: [session], members: seededMembers },
+      now: new Date("2026-04-24T10:00:00.000Z")
+    });
+    Object.assign(ctx.ports.outbox, {
+      enqueue: vi.fn(async () => {
+        throw new Error("outbox unavailable");
+      })
+    });
+    const { client } = createDiscordClient();
+    const interaction = buildCancelButtonInteraction(confirmCustomId());
+
+    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: cancelWeekMessages.cancelWeek.failed,
+        components: []
+      })
+    );
+  });
+
   it("idempotent: confirm on already-SKIPPED sessions does not send notice again", async () => {
     const session = currentWeekSession({ status: "SKIPPED", cancelReason: "manual_skip" });
     const ctx = createTestAppContext({

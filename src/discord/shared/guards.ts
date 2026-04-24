@@ -12,8 +12,10 @@ import {
   type AppResult
 } from "../../errors/index.js";
 import {
+  parseCancelWeekCustomId,
   parseCustomId,
   type AskCustomIdChoice,
+  type CancelWeekCustomIdChoice,
   type PostponeCustomIdChoice
 } from "./customId.js";
 
@@ -114,6 +116,21 @@ export const guardPostponeCustomId = (
     sessionId: parsed.data.sessionId,
     choice: parsed.data.choice
   });
+};
+
+export interface CancelWeekCustomIdGuardResult {
+  readonly choice: CancelWeekCustomIdChoice;
+}
+
+export const guardCancelWeekCustomId = (
+  customId: string
+): AppResult<CancelWeekCustomIdGuardResult, ValidationError> => {
+  const parsed = parseCancelWeekCustomId(customId);
+  if (!parsed.success) {
+    return errResult(buildValidationError("invalid_custom_id", "Invalid cancel_week custom_id."));
+  }
+
+  return okResult({ choice: parsed.data.choice });
 };
 
 export const guardSessionExists = (

@@ -4,6 +4,7 @@ export const cancelWeekMessages = {
     confirmButtonLabel: "はい、スキップする",
     abortButtonLabel: "キャンセル",
     aborted: "キャンセルしました。今週の運用は継続します。",
+    failed: "スキップ処理に失敗しました。時間をおいて再度お試しください。",
     done: (params: { count: number }) =>
       params.count === 0
         ? "今週のスキップ対象はありませんでした。"

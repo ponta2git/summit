@@ -26,6 +26,10 @@ TypeScript/Node 24 実装作法。対象 `{src,tests}/**/*.ts`。時刻・Intera
 
 ## エラー処理
 - 業務エラー（中止 / 順延 NG）は状態遷移で表現し throw しない。
+- neverthrow は Interaction handler pipeline と cross-feature orchestration の境界で使う（ADR-0045）。DB / Discord / outbox 等の複数 I/O を順序合成する exported flow は `ResultAsync<..., AppError>` を優先する。
+- repository / ports / pure domain を blanket に `ResultAsync` 化しない。CAS race / no-op は `undefined` 等の state return、業務判断は discriminated union を維持し、呼び出し側境界で `fromDatabasePromise()` 等に包む。
+- scheduler tick entry は `Promise<void>` を維持し `runTickSafely` で隔離する。`ResultAsync` を返す orchestration は scheduler / handler 境界で unwrap し、`AppError.code` と文脈識別子を構造化ログに含める。
+- env/config parse、`assertNever`、impossible state の fail-fast throw は許容する。
 - 実行時エラーは handler 境界で catch → log → 可能なら ephemeral 応答。
 - cron tick は最外周 `try/catch`。例外を次 tick に持ち越すな。
 - Discord API 失敗と DB 失敗を同列に扱うな。DB 更新済みなら状態維持し、再描画は再試行で回復。
