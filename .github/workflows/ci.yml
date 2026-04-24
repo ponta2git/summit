@@ -52,6 +52,9 @@ jobs:
       - name: Forbidden patterns
         run: pnpm verify:forbidden
 
+      - name: File size advisory
+        run: pnpm verify:file-size
+
   drift-check:
     runs-on: ubuntu-latest
     steps:
