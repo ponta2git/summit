@@ -35,7 +35,7 @@
 | discord | 0004, 0007, 0009, 0011, 0016, 0017, 0019, 0020, 0023, 0024, 0025, 0026, 0027, 0028, 0030, 0032, 0033, 0035, 0036, 0037 |
 | time | 0002, 0007, 0019, 0024 |
 | ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036 |
-| docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038 |
+| docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038, 0039 |
 | testing | 0018 |
 | dev-tools | 0029 |
 
@@ -188,3 +188,4 @@ feature 相互依存は避ける。共通化が必要なら `discord/shared/` �
 | [0036](./0036-reconnect-replay.md) | Reconnect replay on shardReady — in-flight lock + debounce + scope=reconnect | accepted | 2026-04-21 | runtime, discord, ops |
 | [0037](./0037-feature-locality-over-cross-cutting-extraction.md) | feature locality 優先と cross-cutting 抽出基準の明示化 | accepted | 2026-04-24 | runtime, discord, docs |
 | [0038](./0038-sessions-repository-role-split.md) | sessions repository を role-based で分割する | accepted | 2026-04-24 | db, docs |
+| [0039](./0039-reconciler-invariant-based-split.md) | reconciler を invariant 単位で分割する | accepted | 2026-04-25 | runtime, docs |
