@@ -17,23 +17,16 @@ import type {
   DbLike,
   HeldEventParticipantRow,
   HeldEventRow,
-  SessionRow,
-  SessionStatus
+  SessionRow
 } from "../rows.js";
-
-const assertStatus = (value: string): SessionStatus => {
-  if ((SESSION_STATUSES as readonly string[]).includes(value)) {
-    return value as SessionStatus;
-  }
-  throw new Error(`Invalid session status: ${value}`);
-};
+import { assertEnum } from "../rows.js";
 
 const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   id: row.id,
   weekKey: row.weekKey,
   postponeCount: row.postponeCount,
   candidateDateIso: row.candidateDateIso,
-  status: assertStatus(row.status),
+  status: assertEnum(SESSION_STATUSES, row.status, "session status"),
   channelId: row.channelId,
   askMessageId: row.askMessageId,
   postponeMessageId: row.postponeMessageId,

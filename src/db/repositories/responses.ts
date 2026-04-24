@@ -10,20 +10,14 @@ import type {
   ResponseChoice,
   ResponseRow
 } from "../rows.js";
+import { assertEnum } from "../rows.js";
 
-
-const assertChoice = (value: string): ResponseChoice => {
-  if ((RESPONSE_CHOICES as readonly string[]).includes(value)) {
-    return value as ResponseChoice;
-  }
-  throw new Error(`Invalid response choice: ${value}`);
-};
 
 const mapResponse = (row: typeof responses.$inferSelect): ResponseRow => ({
   id: row.id,
   sessionId: row.sessionId,
   memberId: row.memberId,
-  choice: assertChoice(row.choice),
+  choice: assertEnum(RESPONSE_CHOICES, row.choice, "response choice"),
   answeredAt: row.answeredAt
 });
 

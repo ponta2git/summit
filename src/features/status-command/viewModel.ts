@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.js";
+import type { SessionStatus } from "../../db/rows.js";
 import {
   isoWeekKey,
   postponeDeadlineFor,
@@ -27,7 +28,7 @@ export interface SessionStatusViewModel {
   readonly sessionId: string;
   readonly weekKey: string;
   readonly postponeCount: number;
-  readonly status: string;
+  readonly status: SessionStatus;
   readonly candidateDateIso: string;
   readonly deadlineAt: string;
   readonly postponeDeadlineAt: string;

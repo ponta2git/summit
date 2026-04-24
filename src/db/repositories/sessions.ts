@@ -11,6 +11,8 @@ import type {
   SessionRow,
   SessionStatus
 } from "../rows.js";
+import { assertEnum } from "../rows.js";
+import type { AllowedNextStatus } from "../ports.js";
 import type { EnqueueOutboxInput } from "./outbox.js";
 
 
@@ -25,19 +27,12 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${String(value)}`);
 };
 
-const assertStatus = (value: string): SessionStatus => {
-  if ((SESSION_STATUSES as readonly string[]).includes(value)) {
-    return value as SessionStatus;
-  }
-  throw new Error(`Invalid session status: ${value}`);
-};
-
 const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   id: row.id,
   weekKey: row.weekKey,
   postponeCount: row.postponeCount,
   candidateDateIso: row.candidateDateIso,
-  status: assertStatus(row.status),
+  status: assertEnum(SESSION_STATUSES, row.status, "session status"),
   channelId: row.channelId,
   askMessageId: row.askMessageId,
   postponeMessageId: row.postponeMessageId,
@@ -234,12 +229,14 @@ export interface CompleteSessionInput {
   readonly outbox?: readonly EnqueueOutboxInput[];
 }
 
-const runEdgeUpdate = async (
+const runEdgeUpdate = async <S extends SessionStatus>(
   db: DbLike,
   input: {
     readonly id: string;
-    readonly from: SessionStatus;
-    readonly patch: Partial<typeof sessions.$inferInsert>;
+    readonly from: S;
+    readonly patch: {
+      readonly status: AllowedNextStatus<S>;
+    } & Partial<Omit<typeof sessions.$inferInsert, "status">>;
     readonly outbox: readonly EnqueueOutboxInput[] | undefined;
   }
 ): Promise<SessionRow | undefined> =>
@@ -309,14 +306,18 @@ export const completePostponeVoting = async (
   db: DbLike,
   input: CompletePostponeVotingInput
 ): Promise<SessionRow | undefined> => {
-  const patch: Partial<typeof sessions.$inferInsert> =
-    input.outcome === "decided"
-      ? { status: "POSTPONED", updatedAt: input.now }
-      : { status: "COMPLETED", cancelReason: input.cancelReason, updatedAt: input.now };
+  if (input.outcome === "decided") {
+    return runEdgeUpdate(db, {
+      id: input.id,
+      from: "POSTPONE_VOTING",
+      patch: { status: "POSTPONED", updatedAt: input.now },
+      outbox: input.outbox
+    });
+  }
   return runEdgeUpdate(db, {
     id: input.id,
     from: "POSTPONE_VOTING",
-    patch,
+    patch: { status: "COMPLETED", cancelReason: input.cancelReason, updatedAt: input.now },
     outbox: input.outbox
   });
 };
@@ -486,7 +487,7 @@ export const findNonTerminalSessions = async (
   const rows = await db
     .select()
     .from(sessions)
-    .where(inArray(sessions.status, NON_TERMINAL_STATUSES as SessionStatus[]));
+    .where(inArray(sessions.status, [...NON_TERMINAL_STATUSES]));
   return rows.map(mapSession);
 };
 
@@ -541,7 +542,7 @@ export const findNonTerminalSessionsByWeekKey = async (
     .where(
       and(
         eq(sessions.weekKey, weekKey),
-        inArray(sessions.status, NON_TERMINAL_STATUSES as SessionStatus[])
+        inArray(sessions.status, [...NON_TERMINAL_STATUSES])
       )
     );
   return rows.map(mapSession);
@@ -569,7 +570,7 @@ export const skipSession = async (
     .where(
       and(
         eq(sessions.id, input.id),
-        inArray(sessions.status, NON_TERMINAL_STATUSES as SessionStatus[])
+        inArray(sessions.status, [...NON_TERMINAL_STATUSES])
       )
     )
     .returning();

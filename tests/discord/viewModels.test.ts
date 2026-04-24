@@ -98,7 +98,7 @@ describe("buildAskMessageViewModel", () => {
     const allResponses: ViewModelResponseInput[] = allMembers.map((m, i) => ({
       memberId: m.id,
       // invariant: latest (最遅) = T2300 → 暫定開始時刻 23:00
-      choice: ["T2200", "T2230", "T2300", "T2200"][i] ?? "T2200"
+      choice: (["T2200", "T2230", "T2300", "T2200"] as const)[i] ?? "T2200"
     }));
     const vm = buildAskMessageViewModel(session, allResponses, allMembers);
     expect(vm.footer).toBe("暫定開始時刻: 23:00（21:30 の締切で確定）");

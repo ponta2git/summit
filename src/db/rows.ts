@@ -32,6 +32,23 @@ export type MemberRow = {
   readonly displayName: string;
 };
 
+/**
+ * Elevate a DB text column value to a domain literal union T.
+ *
+ * @remarks
+ * `readonly T[]` parameter is covariant, so `as const` arrays can be passed directly without casting.
+ * `T` is inferred from `allowed`, so callers need no explicit type argument.
+ * Throws on startup if the DB contains an unexpected value.
+ */
+export const assertEnum = <T extends string>(
+  allowed: readonly T[],
+  value: string,
+  label: string
+): T => {
+  if ((allowed as readonly string[]).includes(value)) { return value as T; }
+  throw new Error(`Invalid ${label}: "${value}". Expected one of: ${allowed.join(", ")}`);
+};
+
 export {
   RESPONSE_CHOICES,
   SESSION_STATUSES

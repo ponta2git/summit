@@ -14,6 +14,7 @@ import {
   type OutboxStatus
 } from "../schema.js";
 import type { DbLike } from "../rows.js";
+import { assertEnum } from "../rows.js";
 
 // invariant: worker が payload を rehydrate する際の schema。
 //   `kind="send_message"` は新規投稿、`kind="edit_message"` は既存 message の編集。
@@ -71,27 +72,13 @@ export interface EnqueueResult {
   readonly skipped: boolean;
 }
 
-const assertKind = (value: string): OutboxKind => {
-  if ((OUTBOX_KINDS as readonly string[]).includes(value)) {
-    return value as OutboxKind;
-  }
-  throw new Error(`Invalid outbox kind: ${value}`);
-};
-
-const assertStatus = (value: string): OutboxStatus => {
-  if ((OUTBOX_STATUSES as readonly string[]).includes(value)) {
-    return value as OutboxStatus;
-  }
-  throw new Error(`Invalid outbox status: ${value}`);
-};
-
 const mapRow = (row: typeof discordOutbox.$inferSelect): OutboxEntry => ({
   id: row.id,
-  kind: assertKind(row.kind),
+  kind: assertEnum(OUTBOX_KINDS, row.kind, "outbox kind"),
   sessionId: row.sessionId,
   payload: row.payload as OutboxPayload,
   dedupeKey: row.dedupeKey,
-  status: assertStatus(row.status),
+  status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status"),
   attemptCount: row.attemptCount,
   lastError: row.lastError,
   claimExpiresAt: row.claimExpiresAt,

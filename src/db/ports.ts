@@ -70,6 +70,20 @@ export const SESSION_ALLOWED_TRANSITIONS = {
 } as const satisfies Readonly<Record<SessionStatus, readonly SessionStatus[]>>;
 
 /**
+ * Derive the union of valid next statuses for a given source status `S`.
+ *
+ * @remarks
+ * Indexed access type over `SESSION_ALLOWED_TRANSITIONS`. Enables `runEdgeUpdate` to enforce
+ * state machine transitions at compile time without runtime overhead.
+ *
+ * @example
+ * AllowedNextStatus<"ASKING">         // = "CANCELLED" | "DECIDED"
+ * AllowedNextStatus<"COMPLETED">      // = never  (terminal state)
+ */
+export type AllowedNextStatus<S extends SessionStatus> =
+  (typeof SESSION_ALLOWED_TRANSITIONS)[S][number];
+
+/**
  * Session repository operations exposed as a DI port.
  *
  * @remarks
