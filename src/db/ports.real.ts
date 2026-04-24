@@ -45,6 +45,7 @@ import {
   claimNextOutboxBatch,
   enqueueOutbox,
   findStrandedOutboxEntries,
+  getOutboxMetrics,
   markOutboxDelivered,
   markOutboxFailed,
   pruneOutbox,
@@ -111,7 +112,8 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   markFailed: (id, options) => markOutboxFailed(db, id, options),
   releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
   findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
-  prune: (options) => pruneOutbox(db, options)
+  prune: (options) => pruneOutbox(db, options),
+  getMetrics: (now) => getOutboxMetrics(db, now)
 });
 
 export const makeRealPorts = (db: DbLike): AppPorts => ({

@@ -56,6 +56,12 @@ export const OUTBOX_RETENTION_FAILED_MS = 30 * 24 * 60 * 60 * 1_000;
 // jst: オフピーク帯 (4:00 JST) で 1 日 1 回 prune。deploy 禁止窓 (金 17:30〜土 01:00 JST) と重ならない。
 export const CRON_OUTBOX_RETENTION_SCHEDULE = "0 4 * * *" as const;
 
+// why: outbox 観測メトリクスの cron cadence と warn 昇格しきい値。
+//   5 分粒度はノイズと検知遅延のバランス。warn 条件は OR で評価される。@see ADR-0043
+export const CRON_OUTBOX_METRICS_SCHEDULE = "*/5 * * * *" as const;
+export const OUTBOX_METRICS_PENDING_WARN_DEPTH = 50 as const;
+export const OUTBOX_METRICS_PENDING_AGE_WARN_MS = 5 * 60 * 1_000;
+
 // why: shardReady 再接続時の replay debounce。in-flight lock + 時刻 debounce 併用。
 // @see ADR-0036
 export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;

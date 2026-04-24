@@ -343,3 +343,59 @@ export const pruneOutbox = async (
     failedPruned: failedRows.length
   };
 };
+
+export interface OutboxMetricsResult {
+  readonly pending: number;
+  readonly inFlight: number;
+  readonly failed: number;
+  readonly oldestPendingAgeMs: number | null;
+  readonly oldestFailedAgeMs: number | null;
+}
+
+/**
+ * Snapshot outbox depth and age metrics for periodic observability logging.
+ *
+ * @remarks
+ * idempotent: read-only snapshot。observability 用途で同一 tick の重複呼び出しに副作用なし。
+ * @see ADR-0043
+ */
+export const getOutboxMetrics = async (
+  db: DbLike,
+  now: Date
+): Promise<OutboxMetricsResult> => {
+  const grouped = await db
+    .select({
+      status: discordOutbox.status,
+      n: sql<number>`count(*)::int`
+    })
+    .from(discordOutbox)
+    .where(inArray(discordOutbox.status, ["PENDING", "IN_FLIGHT", "FAILED"]))
+    .groupBy(discordOutbox.status);
+
+  const counts = { pending: 0, inFlight: 0, failed: 0 };
+  for (const row of grouped) {
+    if (row.status === "PENDING") {counts.pending = Number(row.n);}
+    else if (row.status === "IN_FLIGHT") {counts.inFlight = Number(row.n);}
+    else if (row.status === "FAILED") {counts.failed = Number(row.n);}
+  }
+
+  const [oldestPendingRow] = await db
+    .select({ oldest: sql<Date | null>`min(${discordOutbox.createdAt})` })
+    .from(discordOutbox)
+    .where(eq(discordOutbox.status, "PENDING"));
+  const [oldestFailedRow] = await db
+    .select({ oldest: sql<Date | null>`min(${discordOutbox.updatedAt})` })
+    .from(discordOutbox)
+    .where(eq(discordOutbox.status, "FAILED"));
+
+  const ageMs = (d: Date | null | undefined): number | null =>
+    d === null || d === undefined ? null : Math.max(0, now.getTime() - new Date(d).getTime());
+
+  return {
+    pending: counts.pending,
+    inFlight: counts.inFlight,
+    failed: counts.failed,
+    oldestPendingAgeMs: ageMs(oldestPendingRow?.oldest ?? null),
+    oldestFailedAgeMs: ageMs(oldestFailedRow?.oldest ?? null)
+  };
+};

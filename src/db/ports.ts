@@ -223,6 +223,13 @@ export interface OutboxPort {
     readonly deliveredOlderThan: Date;
     readonly failedOlderThan: Date;
   }): Promise<{ readonly deliveredPruned: number; readonly failedPruned: number }>;
+  getMetrics(now: Date): Promise<{
+    readonly pending: number;
+    readonly inFlight: number;
+    readonly failed: number;
+    readonly oldestPendingAgeMs: number | null;
+    readonly oldestFailedAgeMs: number | null;
+  }>;
 }
 
 /**

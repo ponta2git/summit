@@ -5,6 +5,7 @@ import {
   claimNextOutboxBatch,
   enqueueOutbox,
   findStrandedOutboxEntries,
+  getOutboxMetrics,
   markOutboxDelivered,
   markOutboxFailed,
   pruneOutbox,
@@ -355,5 +356,67 @@ describeDb("discord_outbox repository contract (integration)", () => {
     expect(remainingIds).toContain(pendingId);
     expect(remainingIds).not.toContain(oldDelId);
     expect(remainingIds).not.toContain(oldFailedId);
+  });
+
+  // invariant: getOutboxMetrics は PENDING / IN_FLIGHT / FAILED を独立カウントし、
+  //   oldest age は createdAt(PENDING) / updatedAt(FAILED) を基準に算出する。@see ADR-0043
+  it("getOutboxMetrics: counts non-DELIVERED status and reports oldest age", async () => {
+    const now = new Date("2026-04-25T01:00:00.000Z");
+    const oldPendingTs = new Date(now.getTime() - 10 * 60_000);
+    const recentPendingTs = new Date(now.getTime() - 30_000);
+    const failedTs = new Date(now.getTime() - 5 * 60_000);
+
+    const { id: oldPendingId } = await enqueueWithNextAttempt(
+      "metrics-pending-old",
+      oldPendingTs
+    );
+    await db
+      .update(discordOutbox)
+      .set({ createdAt: oldPendingTs })
+      .where(sql`${discordOutbox.id} = ${oldPendingId}`);
+
+    const { id: recentPendingId } = await enqueueWithNextAttempt(
+      "metrics-pending-recent",
+      recentPendingTs
+    );
+    await db
+      .update(discordOutbox)
+      .set({ createdAt: recentPendingTs })
+      .where(sql`${discordOutbox.id} = ${recentPendingId}`);
+
+    // FAILED row
+    const { id: failedId } = await enqueueWithNextAttempt(
+      "metrics-failed",
+      failedTs
+    );
+    await claimNextOutboxBatch(db, { limit: 1, now: failedTs, claimDurationMs: 30_000 });
+    await markOutboxFailed(db, failedId, {
+      error: "boom",
+      now: failedTs,
+      nextAttemptAt: null
+    });
+    await db
+      .update(discordOutbox)
+      .set({ updatedAt: failedTs })
+      .where(sql`${discordOutbox.id} = ${failedId}`);
+
+    // DELIVERED row should NOT count
+    const { id: deliveredId } = await enqueueWithNextAttempt(
+      "metrics-delivered",
+      now
+    );
+    await claimNextOutboxBatch(db, { limit: 1, now, claimDurationMs: 30_000 });
+    await markOutboxDelivered(db, deliveredId, {
+      deliveredMessageId: "msg-x",
+      now
+    });
+
+    const metrics = await getOutboxMetrics(db, now);
+
+    expect(metrics.pending).toBe(2);
+    expect(metrics.inFlight).toBe(0);
+    expect(metrics.failed).toBe(1);
+    expect(metrics.oldestPendingAgeMs).toBe(10 * 60_000);
+    expect(metrics.oldestFailedAgeMs).toBe(5 * 60_000);
   });
 });

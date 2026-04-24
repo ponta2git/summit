@@ -772,6 +772,39 @@ export const createFakeOutboxPort = (
         }
       }
       return { deliveredPruned, failedPruned };
+    },
+
+    getMetrics: async (now) => {
+      recordCall(calls, "getMetrics", { now });
+      let pending = 0;
+      let inFlight = 0;
+      let failed = 0;
+      let oldestPending: Date | null = null;
+      let oldestFailed: Date | null = null;
+      for (const e of byId.values()) {
+        if (e.status === "PENDING") {
+          pending += 1;
+          if (oldestPending === null || e.createdAt < oldestPending) {
+            oldestPending = e.createdAt;
+          }
+        } else if (e.status === "IN_FLIGHT") {
+          inFlight += 1;
+        } else if (e.status === "FAILED") {
+          failed += 1;
+          if (oldestFailed === null || e.updatedAt < oldestFailed) {
+            oldestFailed = e.updatedAt;
+          }
+        }
+      }
+      const ageMs = (d: Date | null): number | null =>
+        d === null ? null : Math.max(0, now.getTime() - d.getTime());
+      return {
+        pending,
+        inFlight,
+        failed,
+        oldestPendingAgeMs: ageMs(oldestPending),
+        oldestFailedAgeMs: ageMs(oldestFailed)
+      };
     }
   };
   return port;
