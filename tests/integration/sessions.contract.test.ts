@@ -196,6 +196,28 @@ describeDb("sessions repository contract (integration)", () => {
     expect(rows[0]?.choice).toBe("T2330");
   });
 
+  // race: 並行した cancelAsking (ASKING→CANCELLED) で片方だけが勝つ。もう片方は undefined。
+  //   invariant: DB の `UPDATE ... WHERE status='ASKING'` が CAS primitive として機能することを
+  //   実 postgres で確認する。Fake ports との契約一致の根拠。
+  it("cancelAsking: concurrent CAS on same ASKING session — exactly one wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    const [a, b] = await Promise.all([
+      cancelAsking(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:31:00.000Z"),
+        reason: "deadline_unanswered"
+      }),
+      cancelAsking(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:31:00.001Z"),
+        reason: "deadline_unanswered"
+      })
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]?.status).toBe("CANCELLED");
+  });
+
   // regression: postponeCount IN (0,1) の DB CHECK 制約がドメイン層より先に弾くことを保証する。
   //   why: drizzle は error message に constraint 名を含めないため、rejection と「行が入っていない」
   //   の 2 つで検証する。
