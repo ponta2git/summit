@@ -78,7 +78,7 @@ const handleButton = async (
   }
 
   if (interaction.customId.startsWith("ask:")) {
-    await handleAskButton(interaction, deps);
+    await handleAskButton(interaction, deps, { acknowledged: true });
     return;
   }
 
@@ -128,12 +128,12 @@ export const handleInteraction = async (
     }
 
     if (interaction.commandName === "cancel_week") {
-      await handleCancelWeekCommand(interaction);
+      await handleCancelWeekCommand(interaction, deps);
       return;
     }
 
     if (interaction.commandName === "status") {
-      await handleStatusCommand(interaction, deps.context);
+      await handleStatusCommand(interaction, deps);
       return;
     }
 

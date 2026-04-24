@@ -227,7 +227,8 @@ const handleAskPipelineError = async (
  */
 export const handleAskButton = async (
   interaction: ButtonInteraction,
-  deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps,
+  _ack: { readonly acknowledged: true } = { acknowledged: true }
 ): Promise<void> => {
   const pipelineStart: AskPipelineStart = {
     interaction,

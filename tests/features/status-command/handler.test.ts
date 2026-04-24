@@ -27,7 +27,7 @@ describe("handleStatusCommand", () => {
     const interaction = buildInteraction();
 
     await expect(
-      handleStatusCommand(interaction as never, ctx)
+      handleStatusCommand(interaction as never, { context: ctx } as never)
     ).resolves.not.toThrow();
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
@@ -42,7 +42,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
     const [content] = call;
@@ -53,7 +53,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ userId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
@@ -65,7 +65,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ channelId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
@@ -77,7 +77,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ guildId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
@@ -95,7 +95,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
     const [content] = call;
@@ -106,7 +106,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
     const [content] = call;
@@ -118,7 +118,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [strandedSession] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     const call = interaction.editReply.mock.calls[0] as unknown as [{ content: string }];
     const [content] = call;
@@ -133,7 +133,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [strandedSession1, strandedSession2] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, ctx);
+    await handleStatusCommand(interaction as never, { context: ctx } as never);
 
     expect(
       ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")

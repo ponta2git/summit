@@ -1,12 +1,12 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
-import type { AppContext } from "../../appContext.js";
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.js";
 import { logger } from "../../logger.js";
 import {
   assertGuildAndChannel,
   assertMember
 } from "../../discord/shared/guards.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.js";
 import { rejectMessages } from "../interaction-reject/messages.js";
 import { buildStatusViewModel, renderStatusText } from "./viewModel.js";
 
@@ -16,12 +16,13 @@ import { buildStatusViewModel, renderStatusText } from "./viewModel.js";
  * @remarks
  * 非終端セッションを DB から読み上げ ephemeral で状態サマリを返す。
  * ack: 複数 DB read が 3 秒を超えうるため deferReply。
- * @see ADR-0032
+ * @see ADR-0032 ADR-0041
  */
 export const handleStatusCommand = async (
   interaction: ChatInputCommandInteraction,
-  ctx: AppContext
+  deps: InteractionHandlerDeps
 ): Promise<void> => {
+  const ctx = deps.context;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // invariant: cheap-first 順 (guild → channel → member)

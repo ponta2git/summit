@@ -12,6 +12,7 @@ import { cancelWeekMessages } from "./messages.js";
 import { rejectMessages } from "../interaction-reject/messages.js";
 import { buildCancelWeekCustomId } from "../../discord/shared/customId.js";
 import { assertGuildAndChannel, assertMember } from "../../discord/shared/guards.js";
+import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.js";
 
 const rejectMessage = rejectMessages.reject.notMember;
 
@@ -29,7 +30,8 @@ const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {
 };
 
 export const handleCancelWeekCommand = async (
-  interaction: ChatInputCommandInteraction
+  interaction: ChatInputCommandInteraction,
+  _deps: InteractionHandlerDeps
 ): Promise<void> => {
   // ack: 3 秒制約。確認ボタンは ephemeral で実行者のみ視認可能。
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
