@@ -47,6 +47,7 @@ import {
   findStrandedOutboxEntries,
   markOutboxDelivered,
   markOutboxFailed,
+  pruneOutbox,
   releaseExpiredOutboxClaims
 } from "./repositories/outbox.js";
 import type {
@@ -109,7 +110,8 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   markDelivered: (id, options) => markOutboxDelivered(db, id, options),
   markFailed: (id, options) => markOutboxFailed(db, id, options),
   releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
-  findStranded: (threshold) => findStrandedOutboxEntries(db, threshold)
+  findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
+  prune: (options) => pruneOutbox(db, options)
 });
 
 export const makeRealPorts = (db: DbLike): AppPorts => ({

@@ -219,6 +219,10 @@ export interface OutboxPort {
   ): Promise<boolean>;
   releaseExpiredClaims(now: Date): Promise<number>;
   findStranded(attemptsThreshold: number): Promise<readonly OutboxEntry[]>;
+  prune(options: {
+    readonly deliveredOlderThan: Date;
+    readonly failedOlderThan: Date;
+  }): Promise<{ readonly deliveredPruned: number; readonly failedPruned: number }>;
 }
 
 /**

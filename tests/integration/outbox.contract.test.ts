@@ -7,6 +7,7 @@ import {
   findStrandedOutboxEntries,
   markOutboxDelivered,
   markOutboxFailed,
+  pruneOutbox,
   releaseExpiredOutboxClaims,
   type OutboxPayload
 } from "../../src/db/repositories/outbox.js";
@@ -265,5 +266,94 @@ describeDb("discord_outbox repository contract (integration)", () => {
     const strandedIds = new Set(stranded.map((r) => r.id));
     expect(strandedIds.has(failedId)).toBe(true);
     expect(strandedIds.has(highAttemptId)).toBe(true);
+  });
+
+  // invariant: pruneOutbox は DELIVERED / FAILED のみ削除し、PENDING / IN_FLIGHT には触れない。
+  // @see ADR-0042
+  it("pruneOutbox: deletes only DELIVERED past delivered_at and FAILED past updated_at", async () => {
+    const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
+    const oldFailed = new Date("2026-04-01T00:00:00.000Z");
+    const recent = new Date("2026-04-23T00:00:00.000Z");
+    const now = new Date("2026-04-24T00:00:00.000Z");
+
+    // DELIVERED past retention -> pruned
+    const { id: oldDelId } = await enqueueWithNextAttempt(
+      "prune-old-delivered",
+      new Date("2026-03-30T00:00:00.000Z")
+    );
+    await claimNextOutboxBatch(db, {
+      limit: 1,
+      now: oldDelivered,
+      claimDurationMs: 30_000
+    });
+    await markOutboxDelivered(db, oldDelId, {
+      deliveredMessageId: "msg-1",
+      now: oldDelivered
+    });
+    await db
+      .update(discordOutbox)
+      .set({ deliveredAt: oldDelivered })
+      .where(sql`${discordOutbox.id} = ${oldDelId}`);
+
+    // DELIVERED recent -> kept
+    const { id: recentDelId } = await enqueueWithNextAttempt(
+      "prune-recent-delivered",
+      new Date("2026-04-22T00:00:00.000Z")
+    );
+    await claimNextOutboxBatch(db, {
+      limit: 1,
+      now: recent,
+      claimDurationMs: 30_000
+    });
+    await markOutboxDelivered(db, recentDelId, {
+      deliveredMessageId: "msg-2",
+      now: recent
+    });
+    await db
+      .update(discordOutbox)
+      .set({ deliveredAt: recent })
+      .where(sql`${discordOutbox.id} = ${recentDelId}`);
+
+    // FAILED past retention -> pruned
+    const { id: oldFailedId } = await enqueueWithNextAttempt(
+      "prune-old-failed",
+      new Date("2026-03-30T00:00:00.000Z")
+    );
+    await claimNextOutboxBatch(db, {
+      limit: 1,
+      now: oldFailed,
+      claimDurationMs: 30_000
+    });
+    await markOutboxFailed(db, oldFailedId, {
+      error: "boom",
+      now: oldFailed,
+      nextAttemptAt: null
+    });
+    await db
+      .update(discordOutbox)
+      .set({ updatedAt: oldFailed })
+      .where(sql`${discordOutbox.id} = ${oldFailedId}`);
+
+    // PENDING regardless of age -> kept
+    const { id: pendingId } = await enqueueWithNextAttempt(
+      "prune-pending",
+      new Date("2026-03-30T00:00:00.000Z")
+    );
+
+    const result = await pruneOutbox(db, {
+      deliveredOlderThan: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000),
+      failedOlderThan: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000)
+    });
+
+    expect(result.deliveredPruned).toBe(1);
+    expect(result.failedPruned).toBe(1);
+
+    const remainingIds = (
+      await db.select({ id: discordOutbox.id }).from(discordOutbox)
+    ).map((r) => r.id);
+    expect(remainingIds).toContain(recentDelId);
+    expect(remainingIds).toContain(pendingId);
+    expect(remainingIds).not.toContain(oldDelId);
+    expect(remainingIds).not.toContain(oldFailedId);
   });
 });

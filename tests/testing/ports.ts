@@ -750,6 +750,28 @@ export const createFakeOutboxPort = (
               e.attemptCount >= threshold)
         )
         .map(cloneEntry);
+    },
+
+    prune: async ({ deliveredOlderThan, failedOlderThan }) => {
+      recordCall(calls, "prune", { deliveredOlderThan, failedOlderThan });
+      let deliveredPruned = 0;
+      let failedPruned = 0;
+      for (const e of Array.from(byId.values())) {
+        if (
+          e.status === "DELIVERED" &&
+          e.deliveredAt !== null &&
+          e.deliveredAt <= deliveredOlderThan
+        ) {
+          byId.delete(e.id);
+          deliveredPruned += 1;
+          continue;
+        }
+        if (e.status === "FAILED" && e.updatedAt <= failedOlderThan) {
+          byId.delete(e.id);
+          failedPruned += 1;
+        }
+      }
+      return { deliveredPruned, failedPruned };
     }
   };
   return port;

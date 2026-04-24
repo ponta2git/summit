@@ -9,6 +9,7 @@ import type { AppContext } from "../appContext.js";
 import {
   CRON_ASK_SCHEDULE,
   CRON_DEADLINE_SCHEDULE,
+  CRON_OUTBOX_RETENTION_SCHEDULE,
   CRON_OUTBOX_WORKER_SCHEDULE,
   CRON_POSTPONE_DEADLINE_SCHEDULE,
   CRON_REMINDER_SCHEDULE,
@@ -27,6 +28,7 @@ import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from ".
 import { sendReminderForSession } from "../features/reminder/send.js"
 import { logger } from "../logger.js";
 import { runReconciler } from "./reconciler.js";
+import { runOutboxRetentionTick } from "./outboxRetention.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";
 import { runTickSafely } from "./tickRunner.js";
 
@@ -317,6 +319,14 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
       tick: () =>
         void runTickSafely({ name: "outbox_worker", logger }, () =>
           runOutboxWorkerTick(client, context)
+        )
+    },
+    // @see ADR-0042
+    {
+      schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
+      tick: () =>
+        void runTickSafely({ name: "outbox_retention", logger }, () =>
+          runOutboxRetentionTick(context)
         )
     }
   ];

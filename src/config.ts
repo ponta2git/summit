@@ -49,6 +49,12 @@ export const OUTBOX_BACKOFF_MS_SEQUENCE = [
 export const OUTBOX_MAX_ATTEMPTS = 10 as const;
 // why: /status の invariant 警告で多重失敗疑いとして拾う閾値。
 export const OUTBOX_STRANDED_ATTEMPTS_THRESHOLD = 5 as const;
+// why: 終端行 (DELIVERED / FAILED) の retention。週次運用前提で DELIVERED は直近週の audit 用、
+//   FAILED は dead letter 調査用としてより長く保持する。@see ADR-0042
+export const OUTBOX_RETENTION_DELIVERED_MS = 7 * 24 * 60 * 60 * 1_000;
+export const OUTBOX_RETENTION_FAILED_MS = 30 * 24 * 60 * 60 * 1_000;
+// jst: オフピーク帯 (4:00 JST) で 1 日 1 回 prune。deploy 禁止窓 (金 17:30〜土 01:00 JST) と重ならない。
+export const CRON_OUTBOX_RETENTION_SCHEDULE = "0 4 * * *" as const;
 
 // why: shardReady 再接続時の replay debounce。in-flight lock + 時刻 debounce 併用。
 // @see ADR-0036
