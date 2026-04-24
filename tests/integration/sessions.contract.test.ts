@@ -6,11 +6,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../../src/db/schema.js";
 import {
   cancelAsking,
+  claimReminderDispatch,
+  completeCancelledSession,
   completePostponeVoting,
   createAskSession,
-  startPostponeVoting,
+  decideAsking,
   findSessionByWeekKeyAndPostponeCount,
-  decideAsking
+  revertReminderClaim,
+  startPostponeVoting
 } from "../../src/db/repositories/sessions.js";
 import {
   listResponses,
@@ -246,5 +249,171 @@ describeDb("sessions repository contract (integration)", () => {
 
     const rows = await db.execute(sql`SELECT id FROM sessions WHERE id = 's-bad'`);
     expect(rows).toHaveLength(0);
+  });
+
+  // race: 並行した startPostponeVoting (CANCELLED→POSTPONE_VOTING) で片方だけが勝つ。
+  //   invariant: deadlineAt は勝った側の値で確定する (UPDATE は 1 件しか成功しないため矛盾しない)。
+  it("startPostponeVoting: concurrent CAS on same CANCELLED session — exactly one wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await cancelAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
+    });
+
+    const [a, b] = await Promise.all([
+      startPostponeVoting(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:32:00.000Z"),
+        postponeDeadlineAt: new Date("2026-04-24T15:00:00.000Z")
+      }),
+      startPostponeVoting(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:32:00.001Z"),
+        postponeDeadlineAt: new Date("2026-04-24T15:00:00.000Z")
+      })
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]?.status).toBe("POSTPONE_VOTING");
+  });
+
+  // race: 並行した completePostponeVoting (decided と cancelled_full) — POSTPONE_VOTING への CAS は
+  //   先着 1 件のみ勝ち、後着は undefined。負け側の outcome は適用されないことを保証する。
+  it("completePostponeVoting: concurrent CAS with conflicting outcomes — first writer wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await cancelAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "deadline_unanswered"
+    });
+    await startPostponeVoting(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:32:00.000Z"),
+      postponeDeadlineAt: new Date("2026-04-24T15:00:00.000Z")
+    });
+
+    const [a, b] = await Promise.all([
+      completePostponeVoting(db, {
+        id: "s1",
+        now: new Date("2026-04-24T15:00:01.000Z"),
+        outcome: "decided"
+      }),
+      completePostponeVoting(db, {
+        id: "s1",
+        now: new Date("2026-04-24T15:00:01.001Z"),
+        outcome: "cancelled_full",
+        cancelReason: "postpone_unanswered"
+      })
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(["POSTPONED", "COMPLETED"]).toContain(winners[0]?.status);
+  });
+
+  // race: 並行した decideAsking (ASKING→DECIDED) で片方だけが勝つ。
+  //   decidedStartAt は勝者の値で確定し、後着は CAS lost で undefined を返す。
+  it("decideAsking: concurrent CAS on same ASKING session — exactly one wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+
+    const [a, b] = await Promise.all([
+      decideAsking(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:31:00.000Z"),
+        decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+        reminderAt: new Date("2026-04-24T13:45:00.000Z")
+      }),
+      decideAsking(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:31:00.001Z"),
+        decidedStartAt: new Date("2026-04-24T14:30:00.000Z"),
+        reminderAt: new Date("2026-04-24T14:15:00.000Z")
+      })
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]?.status).toBe("DECIDED");
+  });
+
+  // race: completeCancelledSession (CANCELLED→COMPLETED) を並行実行しても 1 件だけが勝つ。
+  it("completeCancelledSession: concurrent CAS on same CANCELLED session — exactly one wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await cancelAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      reason: "saturday_cancelled"
+    });
+
+    const [a, b] = await Promise.all([
+      completeCancelledSession(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:32:00.000Z")
+      }),
+      completeCancelledSession(db, {
+        id: "s1",
+        now: new Date("2026-04-24T12:32:00.001Z")
+      })
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]?.status).toBe("COMPLETED");
+  });
+
+  // race: claimReminderDispatch は claim-first プリミティブ。並行 claim でも先着 1 件のみ
+  //   reminder_sent_at をセットでき、後着は undefined。Discord 二重送信の根本防止。
+  // @see docs/adr/0024-reminder-dispatch.md
+  it("claimReminderDispatch: concurrent claim on same DECIDED session — exactly one wins", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await decideAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
+
+    const [a, b] = await Promise.all([
+      claimReminderDispatch(db, "s1", new Date("2026-04-24T13:45:00.000Z")),
+      claimReminderDispatch(db, "s1", new Date("2026-04-24T13:45:00.001Z"))
+    ]);
+    const winners = [a, b].filter((r) => r !== undefined);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]?.reminderSentAt).toBeInstanceOf(Date);
+  });
+
+  // race: revertReminderClaim は (status=DECIDED, reminder_sent_at=claimedAt) 一致時のみ NULL に戻す。
+  //   既に別経路が COMPLETED 化していたら NULL 化しない (誤った re-dispatch を防ぐ)。
+  it("revertReminderClaim: only reverts when claimedAt matches and status is still DECIDED", async () => {
+    await createAskSession(db, { id: "s1", ...baseSession });
+    await decideAsking(db, {
+      id: "s1",
+      now: new Date("2026-04-24T12:31:00.000Z"),
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
+    const claimedAt = new Date("2026-04-24T13:45:00.000Z");
+    const claim = await claimReminderDispatch(db, "s1", claimedAt);
+    expect(claim?.reminderSentAt?.toISOString()).toBe(claimedAt.toISOString());
+
+    // claimedAt mismatch → no-op
+    const revertWrong = await revertReminderClaim(
+      db,
+      "s1",
+      new Date("2026-04-24T13:46:00.000Z")
+    );
+    expect(revertWrong).toBe(false);
+
+    // matching claimedAt → reverted
+    const revertOk = await revertReminderClaim(db, "s1", claimedAt);
+    expect(revertOk).toBe(true);
+
+    // re-claim must succeed after revert (at-least-once recovery)
+    const reclaim = await claimReminderDispatch(
+      db,
+      "s1",
+      new Date("2026-04-24T13:47:00.000Z")
+    );
+    expect(reclaim?.reminderSentAt?.toISOString()).toBe(
+      "2026-04-24T13:47:00.000Z"
+    );
   });
 });

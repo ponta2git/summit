@@ -273,7 +273,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
   // @see ADR-0042
   it("pruneOutbox: deletes only DELIVERED past delivered_at and FAILED past updated_at", async () => {
     const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
-    const oldFailed = new Date("2026-04-01T00:00:00.000Z");
     const recent = new Date("2026-04-23T00:00:00.000Z");
     const now = new Date("2026-04-24T00:00:00.000Z");
 
@@ -318,21 +317,21 @@ describeDb("discord_outbox repository contract (integration)", () => {
     // FAILED past retention -> pruned
     const { id: oldFailedId } = await enqueueWithNextAttempt(
       "prune-old-failed",
-      new Date("2026-03-30T00:00:00.000Z")
+      new Date("2026-03-20T00:00:00.000Z")
     );
     await claimNextOutboxBatch(db, {
       limit: 1,
-      now: oldFailed,
+      now: new Date("2026-03-20T00:00:00.000Z"),
       claimDurationMs: 30_000
     });
     await markOutboxFailed(db, oldFailedId, {
       error: "boom",
-      now: oldFailed,
+      now: new Date("2026-03-20T00:00:00.000Z"),
       nextAttemptAt: null
     });
     await db
       .update(discordOutbox)
-      .set({ updatedAt: oldFailed })
+      .set({ updatedAt: new Date("2026-03-20T00:00:00.000Z") })
       .where(sql`${discordOutbox.id} = ${oldFailedId}`);
 
     // PENDING regardless of age -> kept
@@ -384,32 +383,28 @@ describeDb("discord_outbox repository contract (integration)", () => {
       .set({ createdAt: recentPendingTs })
       .where(sql`${discordOutbox.id} = ${recentPendingId}`);
 
-    // FAILED row
+    // FAILED row: enqueue then transition via raw SQL (claim ordering picks oldest first,
+    //   not necessarily this one). updatedAt stays at failedTs to assert oldestFailedAgeMs.
     const { id: failedId } = await enqueueWithNextAttempt(
       "metrics-failed",
       failedTs
     );
-    await claimNextOutboxBatch(db, { limit: 1, now: failedTs, claimDurationMs: 30_000 });
-    await markOutboxFailed(db, failedId, {
-      error: "boom",
-      now: failedTs,
-      nextAttemptAt: null
-    });
     await db
       .update(discordOutbox)
-      .set({ updatedAt: failedTs })
+      .set({ status: "FAILED", updatedAt: failedTs })
       .where(sql`${discordOutbox.id} = ${failedId}`);
 
-    // DELIVERED row should NOT count
+    // DELIVERED row should NOT count: enqueue then mark via raw SQL update
+    //   (claimNextOutboxBatch picks oldest next_attempt_at first, so we can't easily
+    //    target a specific row through the normal claim → markDelivered flow).
     const { id: deliveredId } = await enqueueWithNextAttempt(
       "metrics-delivered",
       now
     );
-    await claimNextOutboxBatch(db, { limit: 1, now, claimDurationMs: 30_000 });
-    await markOutboxDelivered(db, deliveredId, {
-      deliveredMessageId: "msg-x",
-      now
-    });
+    await db
+      .update(discordOutbox)
+      .set({ status: "DELIVERED", deliveredAt: now })
+      .where(sql`${discordOutbox.id} = ${deliveredId}`);
 
     const metrics = await getOutboxMetrics(db, now);
 
