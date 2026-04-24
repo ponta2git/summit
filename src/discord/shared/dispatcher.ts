@@ -10,12 +10,8 @@ import type { AppContext } from "../../appContext.js";
 import { logger } from "../../logger.js";
 import { rejectMessages } from "../../features/interaction-reject/messages.js";
 import { sendAskMessage } from "../../features/ask-session/send.js";
-import { handlePostponeButton } from "../../features/postpone-voting/button.js";
-import { handleAskButton } from "../../features/ask-session/button.js";
-import { handleCancelWeekButton } from "../../features/cancel-week/button.js";
-import { handleAskCommand } from "../../features/ask-session/command.js";
-import { handleCancelWeekCommand } from "../../features/cancel-week/command.js";
-import { handleStatusCommand } from "../../features/status-command/index.js";
+import { buildFeatureRegistry, type FeatureRegistry } from "../registry/index.js";
+import { featureModules } from "../registry/modules.js";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
 import type {
   AppReadyState,
@@ -68,7 +64,8 @@ const handleNotReadyInteraction = async (
 
 const handleButton = async (
   interaction: ButtonInteraction,
-  deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps,
+  registry: FeatureRegistry
 ): Promise<void> => {
   // why: ガード拒否理由ごとに別文言で返し、ユーザーに原因を伝える。
   const reason = cheapFirstGuard(interaction.guildId, interaction.channelId, interaction.user.id);
@@ -77,18 +74,9 @@ const handleButton = async (
     return;
   }
 
-  if (interaction.customId.startsWith("ask:")) {
-    await handleAskButton(interaction, deps, { acknowledged: true });
-    return;
-  }
-
-  if (interaction.customId.startsWith("postpone:")) {
-    await handlePostponeButton(interaction, deps, { acknowledged: true });
-    return;
-  }
-
-  if (interaction.customId.startsWith("cancel_week:")) {
-    await handleCancelWeekButton(interaction, deps, { acknowledged: true });
+  const route = registry.resolveButton(interaction.customId);
+  if (route) {
+    await route.handle(interaction, deps, { acknowledged: true });
     return;
   }
 
@@ -109,9 +97,17 @@ const handleButton = async (
   });
 };
 
+/**
+ * Dispatch a Discord interaction to its registered feature handler.
+ *
+ * @remarks
+ * registry-driven。新 feature 追加時にこの関数の編集は不要 (ADR-0041)。
+ * registry を DI 可能にしてあり、テストでは差し替え可能。
+ */
 export const handleInteraction = async (
   interaction: Interaction,
-  deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps,
+  registry: FeatureRegistry = defaultRegistry
 ): Promise<void> => {
   const readyState = deps.getReadyState?.() ?? { ready: true, reason: undefined };
   if (!readyState.ready) {
@@ -122,18 +118,9 @@ export const handleInteraction = async (
   }
 
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "ask") {
-      await handleAskCommand(interaction, deps);
-      return;
-    }
-
-    if (interaction.commandName === "cancel_week") {
-      await handleCancelWeekCommand(interaction, deps);
-      return;
-    }
-
-    if (interaction.commandName === "status") {
-      await handleStatusCommand(interaction, deps);
+    const route = registry.resolveCommand(interaction.commandName);
+    if (route) {
+      await route.handle(interaction, deps);
       return;
     }
 
@@ -146,7 +133,7 @@ export const handleInteraction = async (
 
   if (interaction.isButton()) {
     await interaction.deferUpdate();
-    await handleButton(interaction, deps);
+    await handleButton(interaction, deps, registry);
     return;
   }
 
@@ -155,13 +142,18 @@ export const handleInteraction = async (
   }
 };
 
+// why: アプリ起動時に 1 度だけ build (fail-fast)。検査結果は登録済 feature が変わらない限り不変。
+const defaultRegistry: FeatureRegistry = buildFeatureRegistry(featureModules);
+
 export const registerInteractionHandlers = (
   client: Client,
   context: AppContext,
   options: {
     readonly getReadyState?: () => AppReadyState;
+    readonly registry?: FeatureRegistry;
   } = {}
 ): void => {
+  const registry = options.registry ?? defaultRegistry;
   client.on("interactionCreate", (interaction) => {
     // ack: 3 秒制約に備え入口で try/catch を集約する。
     void (async () => {
@@ -170,12 +162,16 @@ export const registerInteractionHandlers = (
           options.getReadyState === undefined
             ? {}
             : { getReadyState: options.getReadyState };
-        await handleInteraction(interaction, {
-          client,
-          context,
-          ...readyDeps,
-          sendAsk: (args) => sendAskMessage(client, { ...args, context })
-        });
+        await handleInteraction(
+          interaction,
+          {
+            client,
+            context,
+            ...readyDeps,
+            sendAsk: (args) => sendAskMessage(client, { ...args, context })
+          },
+          registry
+        );
       } catch (err: unknown) {
         const customId = interaction.isMessageComponent() ? interaction.customId : undefined;
 
