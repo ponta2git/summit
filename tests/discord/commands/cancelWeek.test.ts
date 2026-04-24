@@ -10,18 +10,7 @@ import { buildCancelInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
-// why: render を stub し、cancel_week ハンドラの state 遷移と outbox enqueue のみを検証する。
-vi.mock("../../../src/discord/ask/render.js", () => ({
-  renderAskBody: vi.fn(() => ({ content: "mocked-ask", components: [] })),
-  buildAskRow: vi.fn()
-}));
-
-// why: render を stub し、cancel_week ハンドラの state 遷移と outbox enqueue のみを検証する。
-vi.mock("../../../src/discord/postpone/render.js", () => ({
-  renderPostponeBody: vi.fn(() => ({ content: "mocked-postpone", components: [] })),
-  buildPostponeRow: vi.fn()
-}));
-
+// why: render は pure builder (ADR-0028) なので stub 不要。Fake ports の state と outbox entries を直接検証する。
 const seededMembers = env.MEMBER_USER_IDS.map((userId, index) => ({
   id: `member-${index}`,
   userId,

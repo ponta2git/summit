@@ -19,12 +19,7 @@ import {
   buildCancelInteraction
 } from "../helpers/interaction.js";
 
-// why: render を stub し、interaction router の defer/reply と委譲経路のみを検証する。
-vi.mock("../../src/discord/ask/render.js", () => ({
-  renderAskBody: vi.fn(() => ({ content: "mocked-render", components: [] })),
-  buildAskRow: vi.fn()
-}));
-
+// why: render は pure builder (ADR-0028) なので stub 不要。Fake ports の state を直接検証する。
 const stubClient = {} as unknown as Client;
 
 const defaultDeps = (
