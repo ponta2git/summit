@@ -54,7 +54,7 @@ const computeAskFooter = (
   if (session.status === "SKIPPED") {
     return askMessages.ask.footerSkipped;
   }
-  // why: ASKING 中に全員が時刻スロットで回答済み（absent 0 名）なら暫定開始時刻を末尾に出す。
+  // why: ASKING 中に全員が時刻スロットで回答済み（absent 0 名）なら開始見込みを末尾に出す。
   //   確定は締切到達まで行わない。@see requirements/base.md §4.2 §4.3
   if (session.status === "ASKING") {
     const userIdByMemberId = new Map(members.map((m) => [m.id, m.userId]));
@@ -142,11 +142,12 @@ export const buildInitialAskMessageViewModel = (
 });
 
 export const buildSettleNoticeViewModel = (
-  reason: SettleCancelReason
+  reason: SettleCancelReason,
+  options: { readonly forceSuppressMentions?: boolean } = {}
 ): SettleNoticeViewModel => ({
   cancelText: askMessages.settle.cancelled(reason),
   memberUserIds: appConfig.memberUserIds,
-  suppressMentions: appConfig.dev.suppressMentions
+  suppressMentions: appConfig.dev.suppressMentions || options.forceSuppressMentions === true
 });
 
 export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string } => {

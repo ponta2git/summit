@@ -21,7 +21,7 @@ import type {
 
 export type { AppReadyState, InteractionHandlerDeps, SendAsk };
 
-const STARTUP_NOT_READY_MESSAGE = "起動処理中です。数秒待って再度お試しください。";
+const STARTUP_NOT_READY_MESSAGE = "準備中です。数秒待ってもう一度お試しください。";
 
 const buildNotReadyPayload = (): InteractionReplyOptions => ({
   content: STARTUP_NOT_READY_MESSAGE,

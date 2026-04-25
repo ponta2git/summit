@@ -10,7 +10,7 @@ import { asDiscordClient } from "../helpers/discord.js";
 import { buildSessionRow } from "./factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
 
-const bootMessage = "起動処理中です。数秒待って再度お試しください。";
+const bootMessage = "準備中です。数秒待ってもう一度お試しください。";
 
 const stubClient = asDiscordClient({});
 

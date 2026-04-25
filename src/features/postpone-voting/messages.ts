@@ -17,8 +17,6 @@ interface PostponeCancelledParams {
   reason: "ng" | "unanswered";
 }
 
-type PostponeVoteChoice = "ok" | "ng";
-
 const formatPostponeDeadline = (): string =>
   POSTPONE_DEADLINE_HHMM.hour === 24 && POSTPONE_DEADLINE_HHMM.minute === 0
     ? "候補日翌日 00:00 JST"
@@ -28,51 +26,44 @@ export const postponeMessages = {
   postpone: {
     body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
       const lines = [
-        "🔁 今週は中止になりました。翌日に順延しますか？",
+        "🔁 今回はお流れです。明日も募集しますか？",
         "",
         `元の候補日: ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))}`,
         `順延先: 翌日 ${SLOT_TO_LABEL.T2200} 以降`,
-        `回答締切: ${formatPostponeDeadline()}（押さなければ NG 扱い）`,
+        `回答締切: ${formatPostponeDeadline()}`,
         ""
       ];
       if (statusLines) {
         lines.push("【順延投票】", statusLines, "");
       }
-      lines.push("全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。");
+      lines.push(
+        "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
+        "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+      );
       return lines.join("\n");
     },
 
     decided: ({ candidateDateIso, count }: PostponeDecidedParams): string =>
-      `✅ ${count}名全員 OK により ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))} へ順延します。`,
+      `✅ ${count}名全員が「明日も募集OK」なので、${formatCandidateJa(parseCandidateDateIso(candidateDateIso))} の出欠確認へ進みます。`,
     cancelled: ({ reason }: PostponeCancelledParams): string =>
       reason === "ng"
-        ? "🛑 1名以上が NG を選択したため、今週はお流れです。"
-        : "🛑 未回答があったため、今週はお流れです。"
+        ? "🛑 今週はお流れです。予定がそろわない人がいました。"
+        : "🛑 今週はお流れです。締切までに4人分の回答がそろいませんでした。"
   },
 
   interaction: {
     postpone: {
-      pending: "順延投票は受付準備中です。近日公開予定です。"
-    },
-
-    voteConfirmed: {
-      postpone: (choice: PostponeVoteChoice): string => {
-        const labels: Record<PostponeVoteChoice, string> = {
-          ok: "OK",
-          ng: "NG"
-        };
-        return `順延投票を受け付けました: ${labels[choice]}`;
-      }
+      pending: "順延投票はまだ準備中です。少し待ってください。"
     }
   },
 
   ngConfirm: {
     prompt:
-      "⚠️ NG を送信します。1 名でも NG があれば今週はお流れになります。よろしいですか？",
-    confirmButtonLabel: "NG を送信する",
+      "⚠️ 今週はお流れで送信しますか？\n送信すると、この順延確認は終了します。",
+    confirmButtonLabel: "今週はお流れにする",
     abortButtonLabel: "キャンセル",
-    confirmed: "NG を送信しました。",
-    aborted: "キャンセルしました。NG は送信されていません。",
-    failed: "エラーが発生しました。再度お試しください。"
+    confirmed: "今週はお流れで受け付けました。",
+    aborted: "キャンセルしました。回答はまだ変わっていません。",
+    failed: "処理に失敗しました。少し待ってもう一度お試しください。"
   }
 } as const;

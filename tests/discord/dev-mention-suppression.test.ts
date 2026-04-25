@@ -67,7 +67,7 @@ describe("dev.suppressMentions=true", () => {
     expect(rendered.content).not.toContain("<@");
     expect(rendered.content).toContain("開催候補日");
     // regression: 本文の空行レイアウトが維持されること (filter(Boolean) 地雷の回避)
-    expect(rendered.content).toMatch(/今週の桃鉄1年勝負の出欠確認です\n\n開催候補日/);
+    expect(rendered.content).toMatch(/今週の桃鉄1年勝負、出欠確認です\n\n開催候補日/);
   });
 
   it("renderInitialAskBody content contains no <@ mentions", () => {

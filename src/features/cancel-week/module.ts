@@ -7,7 +7,7 @@ import { handleCancelWeekCommand } from "./command.js";
 
 const cancelWeekSlashBuilder = new SlashCommandBuilder()
   .setName("cancel_week")
-  .setDescription("Cancel the current attendance session for this ISO week.");
+  .setDescription("今週の出欠確認をお休みにします。");
 
 export const cancelWeekModule: FeatureModule = {
   id: "cancel-week",

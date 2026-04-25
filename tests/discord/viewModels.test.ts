@@ -68,7 +68,7 @@ describe("buildAskMessageViewModel", () => {
       [],
       []
     );
-    expect(vm.footer).toContain("中止");
+    expect(vm.footer).toContain("お流れ");
   });
 
   it("computes DECIDED footer with start time", () => {
@@ -97,11 +97,11 @@ describe("buildAskMessageViewModel", () => {
     }));
     const allResponses: ViewModelResponseInput[] = allMembers.map((m, i) => ({
       memberId: m.id,
-      // invariant: latest (最遅) = T2300 → 暫定開始時刻 23:00
+      // invariant: latest (最遅) = T2300 → 開始見込み 23:00
       choice: (["T2200", "T2230", "T2300", "T2200"] as const)[i] ?? "T2200"
     }));
     const vm = buildAskMessageViewModel(session, allResponses, allMembers);
-    expect(vm.footer).toBe("暫定開始時刻: 23:00（21:30 の締切で確定）");
+    expect(vm.footer).toBe("いまの見込み: 23:00 開始（21:30 に確定）");
   });
 
   it("does not show tentative footer when any member answered ABSENT", () => {
@@ -223,17 +223,17 @@ describe("buildPostponeMessageViewModel", () => {
       { id: "s3", candidateDateIso: "2026-04-24" },
       undefined,
       undefined,
-      { disabled: true, footerText: "🛑 見送り" }
+      { disabled: true, footerText: "🛑 お流れ" }
     );
     expect(vm.disabled).toBe(true);
-    expect(vm.footerText).toBe("🛑 見送り");
+    expect(vm.footerText).toBe("🛑 お流れ");
   });
 });
 
 describe("buildSettleNoticeViewModel", () => {
   it("generates absent cancel text", () => {
     const vm = buildSettleNoticeViewModel("absent");
-    expect(vm.cancelText).toContain("欠席");
+    expect(vm.cancelText).toContain("予定がそろわなかった");
   });
 
   it("generates deadline_unanswered cancel text", () => {

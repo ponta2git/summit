@@ -178,7 +178,7 @@ describe("settlePostponeVotingSession", () => {
     expect(saturday?.candidateDateIso).toBe("2026-04-25");
     expect(messageEdit).toHaveBeenCalledTimes(1);
     const rendered = callArg<{ content: string }>(messageEdit);
-    expect(rendered.content).toContain("順延されました");
+    expect(rendered.content).toContain("明日の出欠確認へ進みます");
   });
 
   it("cancels with postpone_ng when any member selects NG", async () => {

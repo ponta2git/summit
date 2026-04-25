@@ -8,7 +8,7 @@ import { handleAskCommand } from "./command.js";
 
 const askSlashBuilder = new SlashCommandBuilder()
   .setName("ask")
-  .setDescription("Post the weekly attendance message with buttons.");
+  .setDescription("今週の出欠確認を投稿します。");
 
 export const askSessionModule: FeatureModule = {
   id: "ask-session",

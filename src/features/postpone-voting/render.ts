@@ -39,7 +39,11 @@ export const renderPostponeBody = (
       ? vm.memberStatuses
           .map((ms) => {
             const label =
-              ms.state === "ok" ? "OK" : ms.state === "ng" ? "NG" : "未回答";
+              ms.state === "ok"
+                ? "明日も募集OK"
+                : ms.state === "ng"
+                  ? "今週はお流れ"
+                  : "未回答";
             return `- ${ms.displayLabel}: ${label}`;
           })
           .join("\n")

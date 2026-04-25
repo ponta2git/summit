@@ -30,7 +30,6 @@ import {
 } from "../../discord/shared/guards.js";
 import { applyDeadlineDecision } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 import { buildAbsentConfirmRow } from "./absentConfirm.js";
 import { appConfig } from "../../userConfig.js";
 
@@ -280,16 +279,13 @@ export const handleAskButton = async (
   await result.match(
     async (context) => {
       deps.wakeScheduler?.("ask_button_recorded");
-      await sendEphemeralConfirmFollowUp(
-        interaction,
-        askMessages.interaction.voteConfirmed.ask(context.choice),
+      logger.info(
         {
           userId: interaction.user.id,
           sessionId: context.sessionId,
           choice: context.choice
         },
-        "voteConfirmSent",
-        "Failed to send vote confirmation followUp."
+        "Ask response reflected in public message."
       );
     },
     async (error) => handleAskPipelineError(interaction, error)

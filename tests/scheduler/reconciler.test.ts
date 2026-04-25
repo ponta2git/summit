@@ -456,7 +456,10 @@ describe("promoteStranded cancelled UI cleanup", () => {
     // invariant: settle 通知を送ってから順延投票メッセージを送る。
     expect(sentMessages.length).toBeGreaterThanOrEqual(2);
     const settleContent = extractContent(sentMessages[0]?.payload);
-    expect(settleContent).toContain("21:30 までに未回答者");
+    expect(settleContent).toContain("21:30 までに4人分の回答");
+    expect(settleContent).not.toContain("<@");
+    const postponeContent = extractContent(sentMessages[1]?.payload);
+    expect(postponeContent).toContain("<@");
     const after = await ctx.ports.sessions.findSessionById("c-fri-ui");
     expect(after?.status).toBe("POSTPONE_VOTING");
     expect(after?.postponeMessageId).toBeTruthy();
@@ -483,7 +486,7 @@ describe("promoteStranded cancelled UI cleanup", () => {
     expect(editCalls[0]?.messageId).toBe("ask-sat");
     expect(sentMessages).toHaveLength(1);
     const settleContent = extractContent(sentMessages[0]?.payload);
-    expect(settleContent).toContain("土曜回も成立しなかった");
+    expect(settleContent).toContain("土曜回も予定がそろわなかった");
     const after = await ctx.ports.sessions.findSessionById("c-sat-ui");
     expect(after?.status).toBe("COMPLETED");
   });
@@ -508,7 +511,7 @@ describe("promoteStranded cancelled UI cleanup", () => {
     expect(promoted).toBe(1);
     expect(sentMessages).toHaveLength(1);
     const settleContent = extractContent(sentMessages[0]?.payload);
-    expect(settleContent).toContain("欠席が出たため");
+    expect(settleContent).toContain("予定がそろわなかった");
     const after = await ctx.ports.sessions.findSessionById("c-late-ui");
     expect(after?.status).toBe("COMPLETED");
   });

@@ -105,8 +105,8 @@ describe("renderDecidedAnnouncement", () => {
       ]
     }).content;
     expect(content.startsWith("<@u1> <@u2>\n")).toBe(true);
-    expect(content).toContain("🎉 今週の桃鉄1年勝負は開催します！");
-    expect(content).toContain("開始時刻: 23:00");
+    expect(content).toContain("🎉 今週の桃鉄1年勝負、開催です！");
+    expect(content).toContain("開始: 23:00");
     expect(content).toContain("回答内訳:");
     expect(content).toContain("- A   : 22:30");
     expect(content).toContain("- Bee : 23:00");

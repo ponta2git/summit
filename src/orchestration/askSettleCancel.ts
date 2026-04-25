@@ -74,7 +74,9 @@ export const settleAskingSession = (
       getTextChannel(client, cancelled.channelId),
       "Failed to resolve text channel for settle notice."
     );
-    const settleVm = buildSettleNoticeViewModel(resolvedReason);
+    const settleVm = buildSettleNoticeViewModel(resolvedReason, {
+      forceSuppressMentions: cancelled.postponeCount === 0
+    });
     yield* fromDiscordPromise(
       channel.send(renderSettleNotice(settleVm)),
       "Failed to send settle notice."

@@ -29,7 +29,6 @@ import {
 import { settlePostponeVotingSession } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import type { PostponeCustomIdChoice } from "../../discord/shared/customId.js";
-import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 import { buildPostponeNgConfirmRow } from "./ngConfirm.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
@@ -282,9 +281,7 @@ export const handlePostponeButton = async (
   await result.match(
     async (context) => {
       deps.wakeScheduler?.("postpone_button_recorded");
-      await sendEphemeralConfirmFollowUp(
-        interaction,
-        postponeMessages.interaction.voteConfirmed.postpone(context.choice),
+      logger.info(
         {
           interactionId: interaction.id,
           customId: interaction.customId,
@@ -293,8 +290,7 @@ export const handlePostponeButton = async (
           userId: interaction.user.id,
           choice: context.choice
         },
-        "postponeVoteConfirmSent",
-        "Failed to send postpone vote confirmation followUp."
+        "Postpone response reflected in public message."
       );
     },
     async (error) => handlePostponePipelineError(interaction, error)

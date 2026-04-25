@@ -1,18 +1,18 @@
 export const rejectMessages = {
   reject: {
-    notMember: "このボットは登録メンバーのみ操作できます",
-    wrongChannel: "このチャンネル以外からは操作できません",
-    wrongGuild: "このサーバー以外からは操作できません",
-    invalidCustomId: "ボタンの形式が不正です",
-    staleSession: "この募集は既に締切されています",
-    askingClosed: "受付は締め切られました",
-    postponeVotingClosed: "順延投票はすでに締め切られています",
-    sessionNotFound: "このセッションは存在しません",
-    memberNotRegistered: "メンバー登録がありません",
-    outOfScopeButton: "このボタンは対象外です"
+    notMember: "このボットは登録メンバーだけ使えます",
+    wrongChannel: "出欠用チャンネルで操作してください",
+    wrongGuild: "このサーバーでは使えません",
+    invalidCustomId: "このボタンは読み取れません。最新のメッセージから操作してください。",
+    staleSession: "この出欠確認は締め切り済みです",
+    askingClosed: "回答締切を過ぎました",
+    postponeVotingClosed: "この順延確認は締め切り済みです",
+    sessionNotFound: "この出欠確認は見つかりません",
+    memberNotRegistered: "メンバー登録が見つかりません",
+    outOfScopeButton: "このボタンは現在使えません"
   },
 
-  unknownCommand: "未対応コマンドです",
-  staleButton: "このボタンは現在有効ではありません。最新のメッセージから操作してください。",
-  internalError: "内部エラーが発生しました。管理者に連絡してください。"
+  unknownCommand: "このコマンドには対応していません",
+  staleButton: "このボタンは現在使えません。最新のメッセージから操作してください。",
+  internalError: "うまく処理できませんでした。少し待ってもう一度お試しください。"
 } as const;

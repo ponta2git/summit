@@ -98,10 +98,7 @@ describe("handlePostponeButton", () => {
     expect(responses[0]?.choice).toBe("POSTPONE_OK");
     expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
     expect(messageEdit).toHaveBeenCalledOnce();
-    expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: postponeMessages.interaction.voteConfirmed.postpone("ok"),
-      flags: MessageFlags.Ephemeral
-    });
+    expect(interactionWithMessage.followUp).not.toHaveBeenCalled();
   });
 
   it("NG button shows ephemeral confirmation dialog (no response recorded)", async () => {

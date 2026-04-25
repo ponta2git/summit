@@ -81,11 +81,12 @@ const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
 const emitCancelledUiCleanup = async (
   client: Client,
   ctx: AppContext,
-  session: SessionRow
+  session: SessionRow,
+  options: { readonly forceSuppressMentions?: boolean } = {}
 ): Promise<void> => {
   await updateAskMessage(client, ctx, session);
   const channel = await getTextChannel(client, session.channelId);
-  const settleVm = buildSettleNoticeViewModel(resolveSettleCancelReason(session));
+  const settleVm = buildSettleNoticeViewModel(resolveSettleCancelReason(session), options);
   await channel.send(renderSettleNotice(settleVm));
 };
 
@@ -120,7 +121,7 @@ const promoteStranded = async (
   }
 
   // state: 順延期限前は UI cleanup → 順延投票メッセージ送信 → POSTPONE_VOTING へ。
-  await emitCancelledUiCleanup(client, ctx, session);
+  await emitCancelledUiCleanup(client, ctx, session, { forceSuppressMentions: true });
   const channel = await getTextChannel(client, session.channelId);
   const postponeVm = buildPostponeMessageViewModel(session);
   const sent = await channel.send(renderPostponeBody(postponeVm));

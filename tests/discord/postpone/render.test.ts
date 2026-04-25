@@ -140,7 +140,7 @@ describe("renderPostponeBody", () => {
     const rendered = renderPostponeBody(vm);
     expect(rendered.content).not.toContain("【順延投票】");
     expect(rendered.content).toContain("🔁");
-    expect(rendered.content).toContain("全員が OK を押せば順延確定");
+    expect(rendered.content).toContain("全員分そろえば明日の出欠確認へ進みます");
   });
 
   it("includes 【順延投票】 section with member state lines when memberRows provided", () => {
@@ -156,8 +156,8 @@ describe("renderPostponeBody", () => {
     );
     const rendered = renderPostponeBody(vm);
     expect(rendered.content).toContain("【順延投票】");
-    expect(rendered.content).toContain("- メンバー1: OK");
-    expect(rendered.content).toContain("- メンバー2: NG");
+    expect(rendered.content).toContain("- メンバー1: 明日も募集OK");
+    expect(rendered.content).toContain("- メンバー2: 今週はお流れ");
     expect(rendered.content).toContain("- メンバー3: 未回答");
     expect(rendered.content).toContain("- メンバー4: 未回答");
   });
@@ -196,7 +196,7 @@ describe("renderPostponeBody", () => {
     );
     const rendered = renderPostponeBody(vm);
     // invariant: footerText は本文末尾 (全員〜行) の後に 1 空行を挟んで追加される
-    expect(rendered.content).toContain("全員が OK を押せば順延確定、1人でも NG / 未回答なら今週はお流れです。\n\n✅ 順延確定");
+    expect(rendered.content).toContain("全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。\n\n✅ 順延確定");
   });
 
   it("includes mention line when suppressMentions=false (default)", () => {

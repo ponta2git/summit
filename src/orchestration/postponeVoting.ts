@@ -26,7 +26,7 @@ const postponeDecisionFooter = (
   decision: Exclude<PostponeDecisionResult, { kind: "pending" }>
 ): string => {
   if (decision.kind === "all_ok") {
-    return "順延されました";
+    return "明日の出欠確認へ進みます";
   }
   return "この回はお流れになりました";
 };

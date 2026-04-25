@@ -51,7 +51,7 @@ describe("interaction router", () => {
     await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.deferReply).toHaveBeenCalledOnce();
-    expect(interaction.editReply).toHaveBeenCalledWith("送信しました");
+    expect(interaction.editReply).toHaveBeenCalledWith(askMessages.interaction.ask.sent);
     expect(sendAsk).toHaveBeenCalledWith({
       trigger: "command",
       invokerId: memberUserId
@@ -78,7 +78,7 @@ describe("interaction router", () => {
 
     await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
-    expect(interaction.editReply).toHaveBeenCalledWith("送信に失敗しました");
+    expect(interaction.editReply).toHaveBeenCalledWith(askMessages.interaction.ask.failed);
   });
 
   it("opens /cancel_week confirmation dialog", async () => {
@@ -108,7 +108,7 @@ describe("interaction router", () => {
     });
   });
 
-  it("records postpone vote and returns ephemeral confirmation", async () => {
+  it("records postpone vote and relies on public message update for feedback", async () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const sessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
     const session = buildSessionRow({
@@ -159,10 +159,7 @@ describe("interaction router", () => {
     );
 
     expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
-    expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: postponeMessages.interaction.voteConfirmed.postpone("ok"),
-      flags: MessageFlags.Ephemeral
-    });
+    expect(interactionWithMessage.followUp).not.toHaveBeenCalled();
     expect(messageEdit).toHaveBeenCalledOnce();
   });
 
@@ -175,7 +172,7 @@ describe("interaction router", () => {
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
-      content: "このボタンは現在有効ではありません。最新のメッセージから操作してください。",
+      content: rejectMessages.staleButton,
       flags: MessageFlags.Ephemeral
     });
     const warnFields = callArg<Record<string, unknown>>(loggerWarnSpy);
@@ -237,7 +234,7 @@ describe("interaction router", () => {
       message: "interaction handler crashed"
     });
     expect(reply).toHaveBeenCalledWith({
-      content: "内部エラーが発生しました。管理者に連絡してください。",
+      content: rejectMessages.internalError,
       flags: MessageFlags.Ephemeral
     });
   });
@@ -307,7 +304,7 @@ describe("interaction router", () => {
     });
   });
 
-  it("sends ephemeral vote confirmation on successful ask button press", async () => {
+  it("records ask vote and relies on public message update for feedback", async () => {
     const testSessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
     const session = buildSessionRow({ id: testSessionId, askMessageId: "test-msg-id" });
     const mockMembers = appConfig.memberUserIds.map((userId, i) => ({
@@ -336,10 +333,7 @@ describe("interaction router", () => {
     expect(responses[0]?.choice).toBe("T2200");
     expect(responses[0]?.memberId).toBe("member-0");
     expect(interaction.message.edit).toHaveBeenCalledOnce();
-    expect(interaction.followUp).toHaveBeenCalledWith({
-      content: askMessages.interaction.voteConfirmed.ask("T2200"),
-      flags: MessageFlags.Ephemeral
-    });
+    expect(interaction.followUp).not.toHaveBeenCalled();
   });
 
   it("shows ephemeral absent confirmation dialog on absent button press (no response recorded)", async () => {
