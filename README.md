@@ -148,6 +148,9 @@ deploy 前の基本手順:
 3. デプロイ禁止窓外で `pnpm deploy:production` を実行する。
 4. slash command 定義を変えた場合は `pnpm commands:sync` を実行する。
 
+通常の本番 migration は `fly deploy` の `release_command` で自動適用されます。
+本番 deploy は `Dockerfile` を Fly の remote builder で build する前提です。
+
 金 17:30〜土 01:00 JST は deploy / restart / schema 変更を避けます。詳細な運用手順は [`docs/operations/`](./docs/operations/) にあります。
 
 ## Documentation map（ドキュメント）

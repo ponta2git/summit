@@ -46,7 +46,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 ## 連絡先 / 監視
 
 - 死活監視: healthchecks.io (`HEALTHCHECK_PING_URL`)
-- ログ: `fly logs -a summit` (構造化 JSON、`event` で grep)
+- ログ: `fly logs -a summit-momotetsu` (構造化 JSON、`event` で grep)
 - DB console: Neon dashboard
 - Discord guild / channel: `SUMMIT_CONFIG_YAML` (from `summit.config.production.yml`)
 

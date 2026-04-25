@@ -34,7 +34,7 @@ Summit の DB は Neon PostgreSQL 16 を使用する。本ファイルは backup
 復旧中にアプリが書き込みを続けると PITR 後の状態が壊れるので、一旦止める:
 
 ```bash
-fly scale count 0 -a summit
+fly scale count 0 -a summit-momotetsu
 ```
 
 ### 3. Neon dashboard で PITR 実行
@@ -46,14 +46,14 @@ fly scale count 0 -a summit
 
 ### 4. 接続文字列の切り替え
 
-- `fly secrets set DATABASE_URL=... DIRECT_URL=... -a summit`
+- `fly secrets set DATABASE_URL=... DIRECT_URL=... -a summit-momotetsu`
 - **旧接続文字列は即 rotate** ([secrets-rotation.md](./secrets-rotation.md))
 
 ### 5. Fly app 再起動
 
 ```bash
-fly scale count 1 -a summit
-fly deploy -a summit   # 必要に応じて
+fly scale count 1 -a summit-momotetsu
+fly deploy -a summit-momotetsu   # 必要に応じて
 ```
 
 ### 6. 整合性確認

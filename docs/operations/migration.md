@@ -38,7 +38,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 Fly deploy 時に自動で走る (Dockerfile / release_command 参照) のが基本。手動で走らせる場合:
 
 ```bash
-fly ssh console -a summit -C "pnpm db:migrate"
+fly ssh console -a summit-momotetsu -C "pnpm db:migrate"
 ```
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (AGENTS.md `prohibited_actions`)。

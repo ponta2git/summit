@@ -32,8 +32,8 @@ ADR-0044 の挙動表と対応:
 ### `fly machine restart` 手順
 
 ```bash
-fly machine list -a summit
-fly machine restart <machine_id> -a summit
+fly machine list -a summit-momotetsu
+fly machine restart <machine_id> -a summit-momotetsu
 ```
 
 **禁止窓チェック**: 金 17:30〜土 01:00 JST に該当する場合は原則実施しない。ただし **週キー破綻リスクが高い大 skew 発生時は例外的に実施** (AGENTS.md の deploy 禁止窓は「deploy / restart / schema 変更を提案・実行しない」とあるが、skew が業務影響を出しているなら放置するほうがリスクが高い)。実施した場合は事後に PR で経緯を記録する。

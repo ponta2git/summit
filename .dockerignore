@@ -1,0 +1,15 @@
+# flyctl launch added from .gitignore
+**/.env.local
+**/.env
+**/summit.config.yml
+**/summit.config.*.yml
+!**/summit.config.example.yml
+**/node_modules
+**/dist
+**/.pnpm-store
+**/coverage
+**/.DS_Store
+
+# Serena MCP workspace
+**/.serena
+fly.toml
