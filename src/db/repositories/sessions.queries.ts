@@ -4,7 +4,7 @@
 import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.js";
-import type { DbLike, SessionRow } from "../rows.js";
+import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.js";
 import type { SchedulerSessionHints } from "../ports.js";
 import { NON_TERMINAL_STATUSES, mapSession } from "./sessions.internal.js";
 
@@ -98,15 +98,15 @@ export const getSchedulerSessionHints = async (
   _now: Date
 ): Promise<SchedulerSessionHints> => {
   const [asking] = await db
-    .select({ next: sql<Date | null>`min(${sessions.deadlineAt})` })
+    .select({ next: sql<unknown>`min(${sessions.deadlineAt})` })
     .from(sessions)
     .where(eq(sessions.status, "ASKING"));
   const [postpone] = await db
-    .select({ next: sql<Date | null>`min(${sessions.deadlineAt})` })
+    .select({ next: sql<unknown>`min(${sessions.deadlineAt})` })
     .from(sessions)
     .where(eq(sessions.status, "POSTPONE_VOTING"));
   const [reminder] = await db
-    .select({ next: sql<Date | null>`min(${sessions.reminderAt})` })
+    .select({ next: sql<unknown>`min(${sessions.reminderAt})` })
     .from(sessions)
     .where(
       and(
@@ -116,9 +116,18 @@ export const getSchedulerSessionHints = async (
     );
 
   return {
-    nextAskingDeadlineAt: asking?.next ?? null,
-    nextPostponeDeadlineAt: postpone?.next ?? null,
-    nextReminderAt: reminder?.next ?? null
+    nextAskingDeadlineAt: parseDbTimestamp(
+      asking?.next ?? null,
+      "next asking deadline timestamp"
+    ),
+    nextPostponeDeadlineAt: parseDbTimestamp(
+      postpone?.next ?? null,
+      "next postpone deadline timestamp"
+    ),
+    nextReminderAt: parseDbTimestamp(
+      reminder?.next ?? null,
+      "next reminder timestamp"
+    )
   };
 };
 

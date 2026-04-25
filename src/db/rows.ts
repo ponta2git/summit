@@ -49,6 +49,26 @@ export const assertEnum = <T extends string>(
   throw new Error(`Invalid ${label}: "${value}". Expected one of: ${allowed.join(", ")}`);
 };
 
+/**
+ * Normalize raw SQL timestamp aggregate values returned by postgres.js.
+ *
+ * @remarks
+ * Drizzle maps table timestamp columns to Date, but raw aggregate expressions such as `min(...)`
+ * can surface as strings. Keep conversion explicit at repository boundaries.
+ */
+export const parseDbTimestamp = (
+  value: unknown,
+  label: string
+): Date | null => {
+  if (value === null || value === undefined) { return null; }
+  if (value instanceof Date) { return value; }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) { return parsed; }
+  }
+  throw new Error(`Invalid ${label}: expected timestamp-compatible value`);
+};
+
 export {
   RESPONSE_CHOICES,
   SESSION_STATUSES

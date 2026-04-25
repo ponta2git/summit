@@ -7,7 +7,9 @@ process.env.TZ = "Asia/Tokyo";
 // secret: テスト用ダミー値。env.ts の zod スキーマを通すための最小値で、実値ではない。
 process.env.DISCORD_TOKEN ??= "dummy-token";
 process.env.DATABASE_URL ??= "postgres://summit:summit@localhost:5433/summit";
-process.env.SUMMIT_CONFIG_YAML ??= readFileSync("summit.config.example.yml", "utf8");
+if (!process.env.SUMMIT_CONFIG_YAML) {
+  process.env.SUMMIT_CONFIG_YAML = readFileSync("summit.config.example.yml", "utf8");
+}
 process.env.HEALTHCHECK_PING_URL ??= "";
 
 export default defineConfig({

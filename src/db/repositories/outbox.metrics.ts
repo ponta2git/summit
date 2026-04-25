@@ -1,7 +1,7 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import { discordOutbox } from "../schema.js";
-import type { DbLike } from "../rows.js";
+import { parseDbTimestamp, type DbLike } from "../rows.js";
 import { mapOutboxRow, type OutboxEntry } from "./outbox.types.js";
 
 /**
@@ -111,23 +111,25 @@ export const getOutboxMetrics = async (
   }
 
   const [oldestPendingRow] = await db
-    .select({ oldest: sql<Date | null>`min(${discordOutbox.createdAt})` })
+    .select({ oldest: sql<unknown>`min(${discordOutbox.createdAt})` })
     .from(discordOutbox)
     .where(eq(discordOutbox.status, "PENDING"));
   const [oldestFailedRow] = await db
-    .select({ oldest: sql<Date | null>`min(${discordOutbox.updatedAt})` })
+    .select({ oldest: sql<unknown>`min(${discordOutbox.updatedAt})` })
     .from(discordOutbox)
     .where(eq(discordOutbox.status, "FAILED"));
 
-  const ageMs = (d: Date | null | undefined): number | null =>
-    d === null || d === undefined ? null : Math.max(0, now.getTime() - d.getTime());
+  const ageMs = (value: unknown, label: string): number | null => {
+    const date = parseDbTimestamp(value, label);
+    return date === null ? null : Math.max(0, now.getTime() - date.getTime());
+  };
 
   return {
     pending: counts.pending,
     inFlight: counts.inFlight,
     failed: counts.failed,
-    oldestPendingAgeMs: ageMs(oldestPendingRow?.oldest ?? null),
-    oldestFailedAgeMs: ageMs(oldestFailedRow?.oldest ?? null)
+    oldestPendingAgeMs: ageMs(oldestPendingRow?.oldest ?? null, "oldest pending outbox timestamp"),
+    oldestFailedAgeMs: ageMs(oldestFailedRow?.oldest ?? null, "oldest failed outbox timestamp")
   };
 };
 
@@ -144,7 +146,7 @@ export const getNextOutboxDispatchAt = async (
 ): Promise<Date | null> => {
   const [row] = await db
     .select({
-      next: sql<Date | null>`
+      next: sql<unknown>`
         min(
           case
             when ${discordOutbox.status} = 'PENDING' then ${discordOutbox.nextAttemptAt}
@@ -156,5 +158,5 @@ export const getNextOutboxDispatchAt = async (
     })
     .from(discordOutbox)
     .where(inArray(discordOutbox.status, ["PENDING", "IN_FLIGHT"]));
-  return row?.next ?? null;
+  return parseDbTimestamp(row?.next ?? null, "next outbox dispatch timestamp");
 };
