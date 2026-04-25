@@ -7,6 +7,7 @@ import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
+import { callArg } from "../../helpers/assertions.js";
 import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
 import { buildSessionRow } from "../factories/session.js";
@@ -103,41 +104,38 @@ describe("handlePostponeButton", () => {
     });
   });
 
-  it("persists NG vote and settles session to COMPLETED", async () => {
+  it("NG button shows ephemeral confirmation dialog (no response recorded)", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
       now: new Date("2026-04-25T12:00:00.000Z"),
-      seed: {
-        sessions: [session],
-        members: seededMembers,
-        responses: [
-          postponeResponse(1, "POSTPONE_OK", session.id),
-          postponeResponse(2, "POSTPONE_OK", session.id),
-          postponeResponse(3, "POSTPONE_OK", session.id)
-        ]
-      }
+      seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
-    const messageEdit = vi.fn(async () => undefined);
-    const interactionWithMessage = { ...interaction, message: { edit: messageEdit } };
+    const interactionWithMessage = {
+      ...interaction,
+      message: { edit: vi.fn(async () => undefined) }
+    };
 
     await handlePostponeButton(
       asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
-    const persisted = context.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // regression: 順延 NG は CANCELLED を経由せず最終的に COMPLETED へ収束する。
-    expect(persisted?.status).toBe("COMPLETED");
-    expect(persisted?.cancelReason).toBe("postpone_ng");
-    expect(interactionWithMessage.followUp).toHaveBeenCalledWith({
-      content: postponeMessages.interaction.voteConfirmed.postpone("ng"),
-      flags: MessageFlags.Ephemeral
-    });
+    // invariant: NG は確認ダイアログを経由するため、この時点では response は記録されない。
+    const responses = await context.ports.responses.listResponses(session.id);
+    expect(responses).toHaveLength(0);
+    expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
+    expect(interactionWithMessage.followUp).toHaveBeenCalledOnce();
+    const followUpArg = callArg<{ content: string; components: readonly unknown[]; flags: unknown }>(
+      interactionWithMessage.followUp
+    );
+    expect(followUpArg.content).toBe(postponeMessages.ngConfirm.prompt);
+    expect(followUpArg.components).toHaveLength(1);
+    expect(followUpArg.flags).toBe(MessageFlags.Ephemeral);
   });
 
-  it("updates an existing vote via upsert (OK -> NG)", async () => {
+  it("NG button shows confirmation dialog even when an existing OK vote is present", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
@@ -159,10 +157,11 @@ describe("handlePostponeButton", () => {
       buildDeps(context, client)
     );
 
-    const memberResponses = (await context.ports.responses.listResponses(session.id))
-      .filter((response) => response.memberId === seededMembers[0]!.id);
-    expect(memberResponses).toHaveLength(1);
-    expect(memberResponses[0]?.choice).toBe("POSTPONE_NG");
+    // invariant: ダイアログ表示の段階では既存の OK 票は上書きされない。
+    const responses = await context.ports.responses.listResponses(session.id);
+    expect(responses).toHaveLength(1);
+    expect(responses[0]?.choice).toBe("POSTPONE_OK");
+    expect(interactionWithMessage.followUp).toHaveBeenCalledOnce();
   });
 
   it.each([

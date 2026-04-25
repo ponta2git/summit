@@ -151,3 +151,40 @@ export const parseAbsentConfirmCustomId = (
 // invariant: buildAbsentConfirmCustomId ∘ parseAbsentConfirmCustomId = identity on valid inputs
 export const buildAbsentConfirmCustomId = (spec: AbsentConfirmCustomIdSpec): string =>
   `${spec.kind}:${spec.sessionId}:${spec.choice}`;
+
+// why: postpone_ng は NG の不可逆性ゆえに確認 dialog が必要。sessionId を使い、
+//   DB CAS と組み合わせて同時押下による二重確定を吸収する。
+const postponeNgCustomIdSpecSchema = z.object({
+  kind: z.literal("postpone_ng"),
+  sessionId: z.uuid(),
+  choice: z.enum(["confirm", "abort"])
+});
+
+const postponeNgCodecSchema = z
+  .string()
+  .transform((raw, ctx) => {
+    const segments = raw.split(":");
+    if (segments.length !== 3) {
+      ctx.addIssue({
+        code: "custom",
+        message: "postpone_ng custom_id must have exactly 3 segments."
+      });
+      return z.NEVER;
+    }
+    const [kind, sessionId, choice] = segments;
+    return { kind, sessionId, choice };
+  })
+  .pipe(postponeNgCustomIdSpecSchema);
+
+export type PostponeNgConfirmCustomIdSpec = z.infer<typeof postponeNgCustomIdSpecSchema>;
+export type PostponeNgConfirmCustomIdChoice = PostponeNgConfirmCustomIdSpec["choice"];
+
+export const POSTPONE_NG_CUSTOM_ID_PREFIX = "postpone_ng:" as const;
+
+export const parsePostponeNgConfirmCustomId = (
+  raw: string
+): z.ZodSafeParseResult<PostponeNgConfirmCustomIdSpec> => postponeNgCodecSchema.safeParse(raw);
+
+// invariant: buildPostponeNgConfirmCustomId ∘ parsePostponeNgConfirmCustomId = identity on valid inputs
+export const buildPostponeNgConfirmCustomId = (spec: PostponeNgConfirmCustomIdSpec): string =>
+  `${spec.kind}:${spec.sessionId}:${spec.choice}`;

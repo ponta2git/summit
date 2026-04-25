@@ -372,4 +372,42 @@ describe("interaction router", () => {
     expect(followUpCall.components).toHaveLength(1);
     expect(followUpCall.flags).toBe(MessageFlags.Ephemeral);
   });
+
+  it("shows ephemeral NG confirmation dialog on postpone NG button press (no response recorded)", async () => {
+    const testSessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
+    const session = buildSessionRow({
+      id: testSessionId,
+      status: "POSTPONE_VOTING",
+      postponeMessageId: "postpone-msg-1",
+      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+    });
+    const mockMembers = appConfig.memberUserIds.map((userId, i) => ({
+      id: `member-${i}`,
+      userId,
+      displayName: `Member ${i}`
+    }));
+
+    const ctx = createTestAppContext({
+      now: new Date("2026-04-25T12:00:00.000Z"), // before deadlineAt 15:00Z
+      seed: { sessions: [session], members: mockMembers }
+    });
+
+    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const interaction = buildButtonInteraction(`postpone:${testSessionId}:ng`);
+
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk, ctx));
+
+    // invariant: NG は確認ダイアログを経由するため、この時点では response は記録されない。
+    const responses = await ctx.ports.responses.listResponses(testSessionId);
+    expect(responses).toHaveLength(0);
+    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+    const ngFollowUpCall = callArg<{
+      content: string;
+      components: readonly unknown[];
+      flags: unknown;
+    }>(interaction.followUp);
+    expect(ngFollowUpCall.content).toBe(postponeMessages.ngConfirm.prompt);
+    expect(ngFollowUpCall.components).toHaveLength(1);
+    expect(ngFollowUpCall.flags).toBe(MessageFlags.Ephemeral);
+  });
 });

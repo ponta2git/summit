@@ -14,11 +14,13 @@ import {
 import {
   parseCancelWeekCustomId,
   parseAbsentConfirmCustomId,
+  parsePostponeNgConfirmCustomId,
   parseCustomId,
   type AbsentConfirmCustomIdChoice,
   type AskCustomIdChoice,
   type CancelWeekCustomIdChoice,
-  type PostponeCustomIdChoice
+  type PostponeCustomIdChoice,
+  type PostponeNgConfirmCustomIdChoice
 } from "./customId.js";
 
 export const assertGuildAndChannel = (
@@ -146,6 +148,22 @@ export const guardAbsentConfirmCustomId = (
   const parsed = parseAbsentConfirmCustomId(customId);
   if (!parsed.success) {
     return errResult(buildValidationError("invalid_custom_id", "Invalid ask_absent custom_id."));
+  }
+
+  return okResult({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
+};
+
+export interface PostponeNgConfirmCustomIdGuardResult {
+  readonly sessionId: string;
+  readonly choice: PostponeNgConfirmCustomIdChoice;
+}
+
+export const guardPostponeNgConfirmCustomId = (
+  customId: string
+): AppResult<PostponeNgConfirmCustomIdGuardResult, ValidationError> => {
+  const parsed = parsePostponeNgConfirmCustomId(customId);
+  if (!parsed.success) {
+    return errResult(buildValidationError("invalid_custom_id", "Invalid postpone_ng custom_id."));
   }
 
   return okResult({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });

@@ -30,6 +30,7 @@ import { settlePostponeVotingSession } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import type { PostponeCustomIdChoice } from "../../discord/shared/customId.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
+import { buildPostponeNgConfirmRow } from "./ngConfirm.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",
@@ -219,6 +220,7 @@ const handlePostponePipelineError = async (
  *
  * @remarks
  * cheap-first validation → DB-backed pipeline。再描画は常に DB から再構築。
+ * NG は不可逆なため確認 dialog を ephemeral で提示し、confirm ボタンで記録する。
  * @see ADR-0001
  */
 export const handlePostponeButton = async (
@@ -239,8 +241,40 @@ export const handlePostponeButton = async (
     context: deps.context
   };
 
-  const result = await toResultAsync(validatePostponePipeline(pipelineStart))
-    .andThen(loadSessionAndMemberStep)
+  const validation = validatePostponePipeline(pipelineStart);
+  if (validation.isErr()) {
+    await handlePostponePipelineError(interaction, validation.error);
+    return;
+  }
+
+  const parsed = validation.value;
+
+  if (parsed.choice === "ng") {
+    const result = await loadSessionAndMemberStep(parsed);
+    await result.match(
+      async (ctx) => {
+        await interaction.followUp({
+          content: postponeMessages.ngConfirm.prompt,
+          components: [buildPostponeNgConfirmRow(ctx.sessionId)],
+          flags: MessageFlags.Ephemeral
+        });
+        logger.info(
+          {
+            interactionId: interaction.id,
+            customId: interaction.customId,
+            sessionId: ctx.sessionId,
+            weekKey: ctx.session.weekKey,
+            userId: interaction.user.id
+          },
+          "Postpone NG confirmation dialog shown."
+        );
+      },
+      async (error) => handlePostponePipelineError(interaction, error)
+    );
+    return;
+  }
+
+  const result = await loadSessionAndMemberStep(parsed)
     .andThen(recordResponseStep)
     .andThen((context) => refreshPostponeMessageStep(context).map(() => context))
     .andThen((context) => settlePostponeStep(context).map(() => context));

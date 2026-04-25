@@ -64,5 +64,15 @@ export const postponeMessages = {
         return `順延投票を受け付けました: ${labels[choice]}`;
       }
     }
+  },
+
+  ngConfirm: {
+    prompt:
+      "⚠️ NG を送信します。1 名でも NG があれば今週はお流れになります。よろしいですか？",
+    confirmButtonLabel: "NG を送信する",
+    abortButtonLabel: "キャンセル",
+    confirmed: "NG を送信しました。",
+    aborted: "キャンセルしました。NG は送信されていません。",
+    failed: "エラーが発生しました。再度お試しください。"
   }
 } as const;
