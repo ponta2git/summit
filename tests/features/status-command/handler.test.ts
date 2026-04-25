@@ -1,9 +1,12 @@
-import { MessageFlags } from "discord.js";
+import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleStatusCommand } from "../../../src/features/status-command/handler.js";
 import { env } from "../../../src/env.js";
+import type { AppContext } from "../../../src/appContext.js";
+import type { InteractionHandlerDeps } from "../../../src/discord/shared/interactionHandlerDeps.js";
 import { callArg } from "../../helpers/assertions.js";
+import { createClientWithChannel } from "../../helpers/discord.js";
 import { memberUserId } from "../../helpers/env.js";
 import { makeSession } from "../../testing/fixtures.js";
 import { createTestAppContext } from "../../testing/ports.js";
@@ -26,13 +29,25 @@ const buildInteraction = (override: {
 const editReplyContent = (interaction: ReturnType<typeof buildInteraction>): string =>
   callArg<{ content: string }>(interaction.editReply).content;
 
+const buildDeps = (context: AppContext): InteractionHandlerDeps => ({
+  context,
+  client: createClientWithChannel(undefined),
+  sendAsk: vi.fn(async () => ({ status: "skipped" as const, weekKey: "2026-W17" }))
+});
+
+const handleStatus = (
+  interaction: ReturnType<typeof buildInteraction>,
+  context: AppContext
+): Promise<void> =>
+  handleStatusCommand(interaction as unknown as ChatInputCommandInteraction, buildDeps(context));
+
 describe("handleStatusCommand", () => {
   it("regression: returns promptly even when 0 non-terminal sessions exist (must not throw)", async () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction();
 
     await expect(
-      handleStatusCommand(interaction as never, { context: ctx } as never)
+      handleStatus(interaction, ctx)
     ).resolves.not.toThrow();
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
@@ -45,7 +60,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(editReplyContent(interaction)).toContain("[ASKING]");
   });
@@ -54,7 +69,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ userId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
@@ -66,7 +81,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ channelId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongChannel);
     expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
@@ -76,7 +91,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction({ guildId: "000000000000000001" });
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongGuild);
     expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
@@ -91,7 +106,7 @@ describe("handleStatusCommand", () => {
     });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.internalError);
   });
@@ -106,7 +121,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(editReplyContent(interaction)).toContain("⚠");
   });
@@ -115,7 +130,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: {} });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(editReplyContent(interaction)).not.toContain("宙づり CANCELLED");
   });
@@ -125,7 +140,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [strandedSession] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     const content = editReplyContent(interaction);
     expect(content).toContain("宙づり CANCELLED");
@@ -139,7 +154,7 @@ describe("handleStatusCommand", () => {
     const ctx = createTestAppContext({ seed: { sessions: [strandedSession1, strandedSession2] } });
     const interaction = buildInteraction();
 
-    await handleStatusCommand(interaction as never, { context: ctx } as never);
+    await handleStatus(interaction, ctx);
 
     expect(
       ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")

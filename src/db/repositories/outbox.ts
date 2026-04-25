@@ -15,6 +15,7 @@ import {
 } from "../schema.js";
 import type { DbLike } from "../rows.js";
 import { assertEnum } from "../rows.js";
+import { addMs } from "../../time/index.js";
 
 // invariant: worker が payload を rehydrate する際の schema。
 //   `kind="send_message"` は新規投稿、`kind="edit_message"` は既存 message の編集。
@@ -146,7 +147,7 @@ export const claimNextOutboxBatch = async (
   db: DbLike,
   options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number }
 ): Promise<readonly OutboxEntry[]> => {
-  const claimExpiresAt = new Date(options.now.getTime() + options.claimDurationMs);
+  const claimExpiresAt = addMs(options.now, options.claimDurationMs);
   return db.transaction(async (tx) => {
     const candidates = await tx
       .select({ id: discordOutbox.id })
@@ -389,7 +390,7 @@ export const getOutboxMetrics = async (
     .where(eq(discordOutbox.status, "FAILED"));
 
   const ageMs = (d: Date | null | undefined): number | null =>
-    d === null || d === undefined ? null : Math.max(0, now.getTime() - new Date(d).getTime());
+    d === null || d === undefined ? null : Math.max(0, now.getTime() - d.getTime());
 
   return {
     pending: counts.pending,

@@ -11,6 +11,7 @@ import type { OutboxEntry } from "../db/ports.js";
 import { logger } from "../logger.js";
 import { getTextChannel } from "../discord/shared/channels.js";
 import { cancelWeekMessages } from "../features/cancel-week/messages.js";
+import { addMs } from "../time/index.js";
 import {
   buildDecidedAnnouncementViewModel
 } from "../features/decided-announcement/viewModel.js";
@@ -33,7 +34,7 @@ export const computeOutboxBackoff = (
   }
   const idx = Math.max(0, Math.min(attemptCount - 1, OUTBOX_BACKOFF_MS_SEQUENCE.length - 1));
   const delayMs = OUTBOX_BACKOFF_MS_SEQUENCE[idx] ?? OUTBOX_BACKOFF_MS_SEQUENCE.at(-1) ?? 60_000;
-  return new Date(now.getTime() + delayMs);
+  return addMs(now, delayMs);
 };
 
 type RendererFn = (input: {

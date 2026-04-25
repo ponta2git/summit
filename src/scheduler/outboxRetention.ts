@@ -4,6 +4,7 @@ import {
   OUTBOX_RETENTION_FAILED_MS
 } from "../config.js";
 import { logger } from "../logger.js";
+import { subMs } from "../time/index.js";
 
 /**
  * Prune terminal outbox rows past their retention deadline.
@@ -15,8 +16,8 @@ import { logger } from "../logger.js";
  */
 export const runOutboxRetentionTick = async (ctx: AppContext): Promise<void> => {
   const now = ctx.clock.now();
-  const deliveredOlderThan = new Date(now.getTime() - OUTBOX_RETENTION_DELIVERED_MS);
-  const failedOlderThan = new Date(now.getTime() - OUTBOX_RETENTION_FAILED_MS);
+  const deliveredOlderThan = subMs(now, OUTBOX_RETENTION_DELIVERED_MS);
+  const failedOlderThan = subMs(now, OUTBOX_RETENTION_FAILED_MS);
   try {
     const result = await ctx.ports.outbox.prune({
       deliveredOlderThan,

@@ -1,4 +1,5 @@
 import type { HeldEventRow, OutboxEntry, SessionRow } from "../../db/ports.js";
+import { unixEpoch } from "../../time/index.js";
 
 export interface InvariantWarning {
   readonly kind: string;
@@ -65,7 +66,7 @@ export const checkAskingWithNullMessageId = (
   session: SessionRow
 ): InvariantWarning | undefined =>
   evaluate(SESSION_INVARIANTS.askingNullMessageId, session, {
-    now: new Date(0),
+    now: unixEpoch(),
     heldEvent: undefined
   });
 
@@ -73,7 +74,7 @@ export const checkDecidedStaleReminderClaim = (
   session: SessionRow,
   heldEvent: HeldEventRow | undefined
 ): InvariantWarning | undefined =>
-  evaluate(SESSION_INVARIANTS.decidedStaleReminderClaim, session, { now: new Date(0), heldEvent });
+  evaluate(SESSION_INVARIANTS.decidedStaleReminderClaim, session, { now: unixEpoch(), heldEvent });
 
 export const checkPostponeVotingWithPastDeadline = (
   session: SessionRow,

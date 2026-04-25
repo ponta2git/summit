@@ -139,5 +139,11 @@ export const reminderAtFor = (startAt: Date): Date =>
   addMinutes(startAt, REMINDER_LEAD_MINUTES);
 
 // why: `new Date()` を src/time/ 外で直接生成しないルールに従い、相対オフセット計算も time 層に集約する。
+export const addMs = (now: Date, ms: number): Date =>
+  new Date(now.getTime() + ms);
+
+// why: `new Date()` を src/time/ 外で直接生成しないルールに従い、相対オフセット計算も time 層に集約する。
 export const subMs = (now: Date, ms: number): Date =>
   new Date(now.getTime() - ms);
+
+export const unixEpoch = (): Date => new Date(0);
