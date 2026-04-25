@@ -8,7 +8,7 @@ import * as schema from "../../src/db/schema.js";
 //   INTEGRATION_DB=1 gate と LOCAL_HOSTS allowlist は呼び出し側で済ませる前提。
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
 
-export const isIntegration = process.env.INTEGRATION_DB === "1";
+export const isIntegration = process.env["INTEGRATION_DB"] === "1";
 
 export interface IntegrationDb {
   readonly db: ReturnType<typeof drizzle<typeof schema>>;
@@ -16,7 +16,7 @@ export interface IntegrationDb {
 }
 
 export const createIntegrationDb = (): IntegrationDb => {
-  const url = process.env.DATABASE_URL ?? "";
+  const url = process.env["DATABASE_URL"] ?? "";
   // secret: 本番誤爆防止。localhost / docker compose 内 hostname のみ許可。
   if (url && !LOCAL_HOSTS.has(new URL(url).hostname)) {
     throw new Error(

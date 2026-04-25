@@ -1,4 +1,4 @@
-process.env.TZ = "Asia/Tokyo";
+process.env["TZ"] = "Asia/Tokyo";
 import { randomUUID } from "node:crypto";
 
 import { desc, eq } from "drizzle-orm";

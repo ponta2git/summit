@@ -152,6 +152,7 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       if (didStart) {
         process.exit(0);
       }
+      return undefined;
     })
     .catch((error: unknown) => {
       logger.error({ error, signal }, "Fatal shutdown error.");
@@ -277,6 +278,7 @@ const run = async (): Promise<void> => {
             : { event: "healthcheck.boot_ping", ok: false, elapsedMs: result.elapsedMs, errorKind: result.errorKind };
         logger.warn(failFields, "Healthcheck boot ping failed.");
       }
+      return undefined;
     });
   }
 

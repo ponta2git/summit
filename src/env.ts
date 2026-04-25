@@ -4,7 +4,7 @@ import { z } from "zod";
 config({ path: ".env.local" });
 // jst: TZ を env.ts import 時点で固定し、後続 import (logger / time / drizzle) より先に反映。
 // @see ADR-0002
-process.env.TZ ??= "Asia/Tokyo";
+process.env["TZ"] ??= "Asia/Tokyo";
 
 // why: メンバー数 SSoT → ADR-0012。config.ts が env.ts に依存するため循環回避でここに置き re-export する。
 export const MEMBER_COUNT_EXPECTED = 4 as const;

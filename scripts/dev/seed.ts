@@ -1,6 +1,6 @@
 // jst: seed は env.ts より先に import される可能性があるため、明示的に TZ を固定する。
 //   env.ts 側は ??= だが、こちらは絶対値で上書きして CI / ローカル環境の揺れを防ぐ。
-process.env.TZ = "Asia/Tokyo";
+process.env["TZ"] = "Asia/Tokyo";
 
 import { sql } from "drizzle-orm";
 

@@ -3,7 +3,7 @@
 //   スクリプトとして集約する。本番 (Neon) の DATABASE_URL では絶対に動かない。
 // @see AGENTS.md "本番 DB 破壊禁止"
 // @see README.md 開発フロー
-process.env.TZ = "Asia/Tokyo";
+process.env["TZ"] = "Asia/Tokyo";
 
 import { sql } from "drizzle-orm";
 

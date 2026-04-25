@@ -1,4 +1,4 @@
-process.env.TZ = "Asia/Tokyo";
+process.env["TZ"] = "Asia/Tokyo";
 import { closeDb, db } from "../../src/db/client.js";
 import { members, responses } from "../../src/db/schema.js";
 

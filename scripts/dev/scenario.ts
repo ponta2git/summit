@@ -4,7 +4,7 @@
 // invariant: localhost 限定ガードを reset.ts と同じロジックで適用する。
 // @see AGENTS.md "開発中の DB 操作 (ローカル限定)"
 // @see scripts/dev/reset.ts
-process.env.TZ = "Asia/Tokyo";
+process.env["TZ"] = "Asia/Tokyo";
 
 import { and, desc, eq, inArray } from "drizzle-orm";
 
