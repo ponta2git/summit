@@ -15,8 +15,10 @@ export const updatePostponeMessage = async (
   footerText: string
 ): Promise<void> => {
   if (!session.postponeMessageId) {return;}
-  const channel = await getTextChannel(client, session.channelId);
-  const memberRows = await ctx.ports.members.listMembers();
+  const [channel, memberRows] = await Promise.all([
+    getTextChannel(client, session.channelId),
+    ctx.ports.members.listMembers()
+  ]);
   const vm = buildPostponeMessageViewModel(session, responses, memberRows, {
     disabled: true,
     footerText

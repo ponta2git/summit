@@ -14,9 +14,11 @@ export const updateAskMessage = async (
   session: SessionRow
 ): Promise<void> => {
   if (!session.askMessageId) {return;}
-  const channel = await getTextChannel(client, session.channelId);
-  const memberRows = await ctx.ports.members.listMembers();
-  const fresh = await ctx.ports.sessions.findSessionById(session.id);
+  const [channel, memberRows, fresh] = await Promise.all([
+    getTextChannel(client, session.channelId),
+    ctx.ports.members.listMembers(),
+    ctx.ports.sessions.findSessionById(session.id)
+  ]);
   if (!fresh) {return;}
   const responses = await ctx.ports.responses.listResponses(fresh.id);
   const vm = buildAskMessageViewModel(fresh, responses, memberRows);

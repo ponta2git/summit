@@ -121,12 +121,14 @@ const doSendAskMessage = async (
     };
   }
 
-  const channel = await client.channels.fetch(appConfig.discord.channelId);
+  const [channel, memberRows] = await Promise.all([
+    client.channels.fetch(appConfig.discord.channelId),
+    ports.members.listMembers()
+  ]);
   if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
     throw new Error("Configured channel is not sendable.");
   }
 
-  const memberRows = await ports.members.listMembers();
   const vm = buildInitialAskMessageViewModel(created.id, candidateDate, memberRows);
   const sentMessage = await channel.send(renderAskBody(vm));
   await ports.sessions.updateAskMessageId(created.id, sentMessage.id);
@@ -203,12 +205,14 @@ const doSendPostponedAskMessage = async (
     return;
   }
 
-  const channel = await client.channels.fetch(appConfig.discord.channelId);
+  const [channel, memberRows] = await Promise.all([
+    client.channels.fetch(appConfig.discord.channelId),
+    ctx.ports.members.listMembers()
+  ]);
   if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
     throw new Error("Configured channel is not sendable.");
   }
 
-  const memberRows = await ctx.ports.members.listMembers();
   const candidateDate = parseCandidateDateIso(saturdaySession.candidateDateIso);
   const vm = buildInitialAskMessageViewModel(saturdaySession.id, candidateDate, memberRows);
   const sentMessage = await channel.send(renderAskBody(vm));

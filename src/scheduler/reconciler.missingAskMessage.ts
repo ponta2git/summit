@@ -70,9 +70,11 @@ const resendAskMessage = async (
     return;
   }
 
-  const channel = await getTextChannel(client, session.channelId);
-  const memberRows = await ctx.ports.members.listMembers();
-  const responses = await ctx.ports.responses.listResponses(session.id);
+  const [channel, memberRows, responses] = await Promise.all([
+    getTextChannel(client, session.channelId),
+    ctx.ports.members.listMembers(),
+    ctx.ports.responses.listResponses(session.id)
+  ]);
   const vm = buildAskMessageViewModel(session, responses, memberRows);
   const sent = await channel.send(renderAskBody(vm));
   await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);

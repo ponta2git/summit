@@ -117,29 +117,29 @@ const deliverOne = async (
   const now = ctx.clock.now();
   const payload = entry.payload;
 
-  const body = await renderPayload(ctx, entry);
-  if (body === undefined) {
-    // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
-    await ctx.ports.outbox.markFailed(entry.id, {
-      error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.kind === "send_message" ? payload.renderer : "n/a"}`,
-      now,
-      nextAttemptAt: null
-    });
-    logger.error(
-      {
-        event: "outbox.unsupported_payload",
-        outboxId: entry.id,
-        sessionId: entry.sessionId,
-        kind: payload.kind,
-        renderer: payload.kind === "send_message" ? payload.renderer : undefined,
-        dedupeKey: entry.dedupeKey
-      },
-      "Outbox worker: unsupported payload; moved to FAILED."
-    );
-    return;
-  }
-
   try {
+    const body = await renderPayload(ctx, entry);
+    if (body === undefined) {
+      // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
+      await ctx.ports.outbox.markFailed(entry.id, {
+        error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.kind === "send_message" ? payload.renderer : "n/a"}`,
+        now,
+        nextAttemptAt: null
+      });
+      logger.error(
+        {
+          event: "outbox.unsupported_payload",
+          outboxId: entry.id,
+          sessionId: entry.sessionId,
+          kind: payload.kind,
+          renderer: payload.kind === "send_message" ? payload.renderer : undefined,
+          dedupeKey: entry.dedupeKey
+        },
+        "Outbox worker: unsupported payload; moved to FAILED."
+      );
+      return;
+    }
+
     // invariant: body !== undefined を通過した時点で payload.kind === "send_message" が確定する (renderPayload 契約)。
     if (payload.kind === "send_message") {
       const channel = await getTextChannel(client, payload.channelId);
@@ -225,7 +225,6 @@ export const runOutboxWorkerTick = async (
     claimDurationMs: OUTBOX_CLAIM_DURATION_MS
   });
   if (batch.length === 0) {return;}
-  for (const entry of batch) {
-    await deliverOne(client, ctx, entry);
-  }
+  // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
+  await Promise.all(batch.map((entry) => deliverOne(client, ctx, entry)));
 };

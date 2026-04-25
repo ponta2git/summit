@@ -48,11 +48,8 @@ interface PostponePipelineParsed extends PostponePipelineStart {
   readonly responseChoice: "POSTPONE_OK" | "POSTPONE_NG";
 }
 
-interface PostponePipelineWithSession extends PostponePipelineParsed {
+interface PostponePipelineReady extends PostponePipelineParsed {
   readonly session: SessionRow;
-}
-
-interface PostponePipelineReady extends PostponePipelineWithSession {
   readonly memberId: string;
 }
 
@@ -71,31 +68,35 @@ const validatePostponePipeline = (context: PostponePipelineStart): AppResult<Pos
       }))
     );
 
-const loadSessionStep = (context: PostponePipelineParsed): ResultAsync<PostponePipelineWithSession, AppError> =>
+const loadSessionAndMemberStep = (context: PostponePipelineParsed): ResultAsync<PostponePipelineReady, AppError> =>
   fromDatabasePromise(
-    context.context.ports.sessions.findSessionById(context.sessionId),
-    "Failed to load session while handling postpone button."
+    Promise.all([
+      context.context.ports.sessions.findSessionById(context.sessionId),
+      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
+    ]),
+    "Failed to load DB state while handling postpone button."
   )
-    .andThen((session) => toResultAsync(guardSessionExists(session)))
-    .andThen((session) => toResultAsync(guardSessionPostponeVoting(session)))
-    .andThen((session) =>
-      toResultAsync(guardSessionPostponeDeadlineOpen(session, context.context.clock.now()))
+    .andThen(([session, memberId]) =>
+      toResultAsync(guardSessionExists(session)).map((existingSession) => ({
+        session: existingSession,
+        memberId
+      }))
     )
-    .map((session) => ({
-      ...context,
-      session
-    }));
-
-const loadMemberStep = (context: PostponePipelineWithSession): ResultAsync<PostponePipelineReady, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
-    "Failed to resolve member while handling postpone button."
-  )
-    .andThen((memberId) => toResultAsync(guardRegisteredMemberId(memberId)))
-    .map((memberId) => ({
-      ...context,
-      memberId
-    }));
+    // invariant: DB reads are parallel, but guard result precedence remains session → member.
+    .andThen(({ session, memberId }) =>
+      toResultAsync(guardSessionPostponeVoting(session))
+        .andThen((postponeSession) =>
+          toResultAsync(guardSessionPostponeDeadlineOpen(postponeSession, context.context.clock.now()))
+        )
+        .map((postponeSession) => ({ session: postponeSession, memberId }))
+    )
+    .andThen(({ session, memberId }) =>
+      toResultAsync(guardRegisteredMemberId(memberId)).map((registeredMemberId) => ({
+        ...context,
+        session,
+        memberId: registeredMemberId
+      }))
+    );
 
 const recordResponseStep = (context: PostponePipelineReady): ResultAsync<PostponePipelineReady, AppError> =>
   fromDatabasePromise(
@@ -239,8 +240,7 @@ export const handlePostponeButton = async (
   };
 
   const result = await toResultAsync(validatePostponePipeline(pipelineStart))
-    .andThen(loadSessionStep)
-    .andThen(loadMemberStep)
+    .andThen(loadSessionAndMemberStep)
     .andThen(recordResponseStep)
     .andThen((context) => refreshPostponeMessageStep(context).map(() => context))
     .andThen((context) => settlePostponeStep(context).map(() => context));

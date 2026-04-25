@@ -44,11 +44,8 @@ interface AskPipelineParsed extends AskPipelineStart {
   readonly choice: AskDbChoice;
 }
 
-interface AskPipelineWithSession extends AskPipelineParsed {
+interface AskPipelineReady extends AskPipelineParsed {
   readonly session: SessionRow;
-}
-
-interface AskPipelineReady extends AskPipelineWithSession {
   readonly memberId: string;
 }
 
@@ -67,31 +64,35 @@ const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelinePa
       }))
     );
 
-const loadSessionStep = (context: AskPipelineParsed): ResultAsync<AskPipelineWithSession, AppError> =>
+const loadSessionAndMemberStep = (context: AskPipelineParsed): ResultAsync<AskPipelineReady, AppError> =>
   fromDatabasePromise(
-    context.context.ports.sessions.findSessionById(context.sessionId),
-    "Failed to load session while handling ask button."
+    Promise.all([
+      context.context.ports.sessions.findSessionById(context.sessionId),
+      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
+    ]),
+    "Failed to load DB state while handling ask button."
   )
-    .andThen((session) => toResultAsync(guardSessionExists(session)))
-    .andThen((session) => toResultAsync(guardSessionAsking(session)))
-    .andThen((session) =>
-      toResultAsync(guardSessionAskingDeadlineOpen(session, context.context.clock.now()))
+    .andThen(([session, memberId]) =>
+      toResultAsync(guardSessionExists(session)).map((existingSession) => ({
+        session: existingSession,
+        memberId
+      }))
     )
-    .map((session) => ({
-      ...context,
-      session
-    }));
-
-const loadMemberStep = (context: AskPipelineWithSession): ResultAsync<AskPipelineReady, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
-    "Failed to resolve member while handling ask button."
-  )
-    .andThen((memberId) => toResultAsync(guardRegisteredMemberId(memberId)))
-    .map((memberId) => ({
-      ...context,
-      memberId
-    }));
+    // invariant: DB reads are parallel, but guard result precedence remains session → member.
+    .andThen(({ session, memberId }) =>
+      toResultAsync(guardSessionAsking(session))
+        .andThen((askingSession) =>
+          toResultAsync(guardSessionAskingDeadlineOpen(askingSession, context.context.clock.now()))
+        )
+        .map((askingSession) => ({ session: askingSession, memberId }))
+    )
+    .andThen(({ session, memberId }) =>
+      toResultAsync(guardRegisteredMemberId(memberId)).map((registeredMemberId) => ({
+        ...context,
+        session,
+        memberId: registeredMemberId
+      }))
+    );
 
 const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> =>
   fromDatabasePromise(
@@ -237,8 +238,7 @@ export const handleAskButton = async (
   };
 
   const result = await toResultAsync(validateAskPipeline(pipelineStart))
-    .andThen(loadSessionStep)
-    .andThen(loadMemberStep)
+    .andThen(loadSessionAndMemberStep)
     .andThen(recordResponseStep)
     .andThen((context) =>
       refreshAskMessageStep(context).map(() => context)

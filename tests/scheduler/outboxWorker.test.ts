@@ -16,6 +16,7 @@ import {
 import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
 import { asDiscordClient } from "../helpers/discord.js";
+import { deferred } from "../helpers/deferred.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
@@ -100,6 +101,55 @@ describe("outbox port (fake): enqueue idempotency", () => {
 });
 
 describe("outbox worker: success path", () => {
+  it("starts claimed deliveries concurrently within one batch", async () => {
+    const session = buildSessionRow({ id: "s3-parallel" });
+    const ctx = createTestAppContext({
+      seed: { sessions: [session] },
+      now: new Date("2026-04-24T12:00:00Z")
+    });
+    for (const suffix of ["a", "b"]) {
+      await ctx.ports.outbox.enqueue({
+        kind: "send_message",
+        sessionId: session.id,
+        dedupeKey: `raw-${session.id}-${suffix}`,
+        payload: {
+          kind: "send_message",
+          channelId: session.channelId,
+          renderer: "raw_text",
+          extra: { content: suffix }
+        }
+      });
+    }
+
+    const firstSendDone = deferred<{ readonly id: string }>();
+    const secondSendStarted = deferred<void>();
+    let sendCount = 0;
+    const channel = {
+      type: ChannelType.GuildText,
+      isSendable: () => true,
+      send: vi.fn(() => {
+        sendCount += 1;
+        if (sendCount === 1) {
+          return firstSendDone.promise;
+        }
+        secondSendStarted.resolve();
+        return Promise.resolve({ id: "posted-2" });
+      })
+    };
+
+    const tick = runOutboxWorkerTick(stubClient(channel), ctx);
+    await secondSendStarted.promise;
+    expect(channel.send).toHaveBeenCalledTimes(2);
+
+    firstSendDone.resolve({ id: "posted-1" });
+    await tick;
+
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
+      "DELIVERED",
+      "DELIVERED"
+    ]);
+  });
+
   it("delivers PENDING row, marks DELIVERED, and back-fills askMessageId when target=askMessageId", async () => {
     const session = buildSessionRow({
       id: "s3",
