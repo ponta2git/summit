@@ -1,9 +1,4 @@
-// Barrel for the scheduler reconciler module.
-// Public surface: types + orchestrator + 6 invariants (re-exported by name for consumer
-// imports and unit tests). Internal helpers (EMPTY_REPORT / isFridayAskWindow / FRIDAY_JS_DAY /
-// resolveSettleCancelReason / emitCancelledUiCleanup / promoteStranded / resendAskMessage /
-// probeAndRecreateAskMessage / probeAndRecreatePostponeMessage) are intentionally NOT re-exported
-// to keep them file-local.
+// source-of-truth: reconciler public surface。実装 helper は各 submodule に閉じる。
 // @see ADR-0039
 
 export type { ReconcileReport, ReconcileScope } from "./reconciler.types.js";

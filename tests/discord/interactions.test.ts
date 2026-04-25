@@ -1,8 +1,13 @@
-import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
+import type { Interaction } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleInteraction, registerInteractionHandlers } from "../../src/discord/shared/dispatcher.js";
+import {
+  handleInteraction,
+  registerInteractionHandlers,
+  type InteractionHandlerDeps,
+  type SendAsk
+} from "../../src/discord/shared/dispatcher.js";
 import { appConfig } from "../../src/userConfig.js";
 import { logger } from "../../src/logger.js";
 import { askMessages } from "../../src/features/ask-session/messages.js";
@@ -10,27 +15,29 @@ import { cancelWeekMessages } from "../../src/features/cancel-week/messages.js";
 import { postponeMessages } from "../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../src/features/interaction-reject/messages.js";
 import { callArg } from "../helpers/assertions.js";
+import { asDiscordClient } from "../helpers/discord.js";
 import { memberUserId } from "../helpers/env.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
 
 import {
   buildAskInteraction,
+  asInteraction,
   buildButtonInteraction,
   buildCancelInteraction
 } from "../helpers/interaction.js";
 
 // why: render は pure builder (ADR-0028) なので stub 不要。Fake ports の state を直接検証する。
-const stubClient = {} as unknown as Client;
+const stubClient = asDiscordClient({});
 
 const defaultDeps = (
   sendAsk: ReturnType<typeof vi.fn>,
   context: TestAppContext = createTestAppContext()
-) => ({
-  sendAsk: sendAsk as unknown as (c: unknown) => Promise<unknown>,
+) : InteractionHandlerDeps => ({
+  sendAsk: sendAsk as SendAsk,
   client: stubClient,
   context
-}) as unknown as Parameters<typeof handleInteraction>[1];
+});
 
 describe("interaction router", () => {
   beforeEach(() => {
@@ -41,7 +48,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = buildAskInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.deferReply).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith("送信しました");
@@ -57,7 +64,7 @@ describe("interaction router", () => {
       user: { id: "999999999999999999" }
     });
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.notMember);
     expect(sendAsk).not.toHaveBeenCalled();
@@ -69,7 +76,7 @@ describe("interaction router", () => {
     });
     const interaction = buildAskInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.editReply).toHaveBeenCalledWith("送信に失敗しました");
   });
@@ -78,7 +85,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = buildCancelInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     const payload = callArg<{ content: string; components: readonly unknown[] }>(
@@ -92,7 +99,7 @@ describe("interaction router", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const interaction = buildButtonInteraction("ask:not-a-uuid:t2200");
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
@@ -124,7 +131,7 @@ describe("interaction router", () => {
     );
     const postponeMessageEdit = vi.fn(async () => undefined);
     const channelSend = vi.fn(async () => ({ id: "sent-id" }));
-    const client = {
+    const client = asDiscordClient({
       channels: {
         fetch: vi.fn(async () => ({
           type: 0,
@@ -135,7 +142,7 @@ describe("interaction router", () => {
           }
         }))
       }
-    } as unknown as Client;
+    });
     const messageEdit = vi.fn(async () => undefined);
     const interactionWithMessage = {
       ...interaction,
@@ -143,9 +150,9 @@ describe("interaction router", () => {
     };
 
     await handleInteraction(
-      interactionWithMessage as unknown as Interaction,
+      asInteraction(interactionWithMessage),
       {
-        sendAsk: sendAsk as unknown as Parameters<typeof handleInteraction>[1]["sendAsk"],
+        sendAsk: sendAsk as SendAsk,
         client,
         context: ctx
       }
@@ -164,7 +171,7 @@ describe("interaction router", () => {
     const loggerWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     const interaction = buildButtonInteraction("totally:unknown:id");
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(interaction.followUp).toHaveBeenCalledWith({
@@ -190,7 +197,7 @@ describe("interaction router", () => {
 
   it("logs and replies when interaction handler crashes in event listener", async () => {
     const on = vi.fn();
-    const client = { on } as unknown as Client;
+    const client = asDiscordClient({ on });
     const loggerErrorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
 
     registerInteractionHandlers(client, createTestAppContext());
@@ -211,9 +218,9 @@ describe("interaction router", () => {
       isMessageComponent: () => false,
       isRepliable: () => true,
       reply
-    } as unknown as Interaction;
+    };
 
-    listener(interaction);
+    listener(asInteraction(interaction));
     await new Promise((resolve) => setImmediate(resolve));
 
     const errorFields = callArg<Record<string, unknown>>(loggerErrorSpy);
@@ -243,7 +250,7 @@ describe("interaction router", () => {
         { channelId: "000000000000000000" }
       );
 
-      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+      await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
@@ -260,7 +267,7 @@ describe("interaction router", () => {
         { user: { id: "999999999999999999" } }
       );
 
-      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+      await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
@@ -277,7 +284,7 @@ describe("interaction router", () => {
         { guildId: "000000000000000000" }
       );
 
-      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+      await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
       expect(interaction.deferUpdate).toHaveBeenCalledOnce();
       expect(interaction.followUp).toHaveBeenCalledWith({
@@ -293,7 +300,7 @@ describe("interaction router", () => {
         user: { id: "999999999999999999" }
       });
 
-      await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk));
+      await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk));
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
       expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.notMember);
@@ -321,7 +328,7 @@ describe("interaction router", () => {
       message: { edit: vi.fn(async () => undefined) }
     };
 
-    await handleInteraction(interaction as unknown as Interaction, defaultDeps(sendAsk, ctx));
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk, ctx));
 
     // invariant: upsertResponse は ports 経由で呼ばれ responses に 1 件記録される。
     const responses = await ctx.ports.responses.listResponses(testSessionId);

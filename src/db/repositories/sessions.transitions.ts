@@ -19,6 +19,12 @@ import type {
   StartPostponeVotingInput
 } from "./sessions.types.js";
 
+/**
+ * Transition ASKING → CANCELLED via CAS.
+ *
+ * @remarks
+ * race: status が既に ASKING でなければ undefined。呼び出し側は DB 最新状態を正本として続行する。
+ */
 export const cancelAsking = async (
   db: DbLike,
   input: CancelAskingInput
@@ -33,7 +39,12 @@ export const cancelAsking = async (
     },
     outbox: input.outbox
   });
-
+/**
+ * Transition CANCELLED → POSTPONE_VOTING via CAS.
+ *
+ * @remarks
+ * race: 金曜中止後の順延投票開始だけを許可する。競合敗北時は undefined。
+ */
 export const startPostponeVoting = async (
   db: DbLike,
   input: StartPostponeVotingInput
@@ -48,7 +59,12 @@ export const startPostponeVoting = async (
     },
     outbox: input.outbox
   });
-
+/**
+ * Transition POSTPONE_VOTING to its terminal outcome via CAS.
+ *
+ * @remarks
+ * state: 全員 OK は POSTPONED、NG/未回答は COMPLETED。競合敗北時は undefined。
+ */
 export const completePostponeVoting = async (
   db: DbLike,
   input: CompletePostponeVotingInput
@@ -68,7 +84,12 @@ export const completePostponeVoting = async (
     outbox: input.outbox
   });
 };
-
+/**
+ * Transition ASKING → DECIDED via CAS.
+ *
+ * @remarks
+ * state: decidedStartAt と reminderAt を同じ DB edge で確定する。競合敗北時は undefined。
+ */
 export const decideAsking = async (
   db: DbLike,
   input: DecideAskingInput
@@ -84,7 +105,12 @@ export const decideAsking = async (
     },
     outbox: input.outbox
   });
-
+/**
+ * Transition CANCELLED → COMPLETED via CAS.
+ *
+ * @remarks
+ * state: 土曜回中止や順延 NG の短命 CANCELLED を終端へ収束させる。競合敗北時は undefined。
+ */
 export const completeCancelledSession = async (
   db: DbLike,
   input: CompleteCancelledSessionInput
@@ -98,7 +124,12 @@ export const completeCancelledSession = async (
     },
     outbox: input.outbox
   });
-
+/**
+ * Transition DECIDED → COMPLETED via CAS.
+ *
+ * @remarks
+ * state: reminderSentAt を記録して開催済み終端へ進める。競合敗北時は undefined。
+ */
 export const completeSession = async (
   db: DbLike,
   input: CompleteSessionInput

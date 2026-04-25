@@ -3,6 +3,8 @@
 import { ButtonStyle } from "discord.js";
 import { SLOT_TO_LABEL, type SlotKey } from "../../slot.js";
 
+export type AskResponseChoice = SlotKey | "ABSENT";
+
 export const BUTTON_LABEL_ASK_T2200 = SLOT_TO_LABEL.T2200;
 export const BUTTON_LABEL_ASK_T2230 = SLOT_TO_LABEL.T2230;
 export const BUTTON_LABEL_ASK_T2300 = SLOT_TO_LABEL.T2300;
@@ -12,7 +14,7 @@ export const BUTTON_LABEL_ASK_ABSENT = "欠席" as const;
 export const BUTTON_STYLE_ASK_TIME = ButtonStyle.Secondary;
 export const BUTTON_STYLE_ASK_ABSENT = ButtonStyle.Danger;
 
-export const ASK_BUTTON_LABELS = {
+export const SLOT_KEY_TO_ASK_BUTTON_LABEL = {
   T2200: BUTTON_LABEL_ASK_T2200,
   T2230: BUTTON_LABEL_ASK_T2230,
   T2300: BUTTON_LABEL_ASK_T2300,
@@ -20,13 +22,13 @@ export const ASK_BUTTON_LABELS = {
 } as const satisfies Record<SlotKey, string>;
 
 /**
- * Choice display label map keyed by DB choice value.
+ * Choice display label map keyed by ask-session DB choice value.
  *
  * @remarks
- * invariant: DB は SlotKey verbatim + `"ABSENT"`。`ASK_BUTTON_LABELS` を spread して ABSENT を追加し、
- *   DB enum ↔ ラベルの SSoT を一本化する。string index のため `Record<string, string>` で型付け。
+ * invariant: DB は SlotKey verbatim + `"ABSENT"`。`SLOT_KEY_TO_ASK_BUTTON_LABEL` を spread して
+ *   ABSENT を追加し、DB enum ↔ ラベルの SSoT を一本化する。
  */
-export const CHOICE_LABEL_FOR_RESPONSE: Readonly<Record<string, string>> = {
-  ...ASK_BUTTON_LABELS,
+export const ASK_RESPONSE_CHOICE_TO_LABEL = {
+  ...SLOT_KEY_TO_ASK_BUTTON_LABEL,
   ABSENT: BUTTON_LABEL_ASK_ABSENT
-};
+} as const satisfies Record<AskResponseChoice, string>;

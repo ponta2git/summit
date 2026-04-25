@@ -1,4 +1,3 @@
-import type { Client, Interaction } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -6,13 +5,14 @@ import { handleInteraction, type AppReadyState } from "../../src/discord/shared/
 import { appConfig } from "../../src/userConfig.js";
 import { logger } from "../../src/logger.js";
 import { callArg } from "../helpers/assertions.js";
-import { buildButtonInteraction, buildAskInteraction } from "../helpers/interaction.js";
+import { asInteraction, buildButtonInteraction, buildAskInteraction } from "../helpers/interaction.js";
+import { asDiscordClient } from "../helpers/discord.js";
 import { buildSessionRow } from "./factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
 
 const bootMessage = "起動処理中です。数秒待って再度お試しください。";
 
-const stubClient = {} as Client;
+const stubClient = asDiscordClient({});
 
 const buildDeps = (context: TestAppContext, readyState: AppReadyState) => ({
   context,
@@ -42,7 +42,7 @@ describe("startup interaction ready gate", () => {
     const loggerInfoSpy = vi.spyOn(logger, "info").mockImplementation(() => undefined);
 
     await handleInteraction(
-      interaction as unknown as Interaction,
+      asInteraction(interaction),
       buildDeps(context, { ready: false, reason: "startup" })
     );
 
@@ -80,7 +80,7 @@ describe("startup interaction ready gate", () => {
     const interaction = buildAskInteraction();
 
     await handleInteraction(
-      interaction as unknown as Interaction,
+      asInteraction(interaction),
       buildDeps(context, { ready: false, reason: "startup" })
     );
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DbLike } from "../../src/db/rows.js";
-import { reconcileMembers } from "../../src/members/reconcile.js";
+import { computeMemberReconcilePlan, reconcileMembers } from "../../src/members/reconcile.js";
 import type { MemberReconcileInput } from "../../src/members/inputs.js";
 
 // why: logger の副作用を抑止し、reconcile の DB 操作だけを検証対象に絞る。
@@ -167,5 +167,31 @@ describe("reconcileMembers", () => {
       },
       "Members reconciled with user config"
     );
+  });
+});
+
+describe("computeMemberReconcilePlan", () => {
+  it("builds an immutable diff for inserts, existing rows, and display name updates", () => {
+    const plan = computeMemberReconcilePlan(
+      [
+        { ...MEMBERS[0]!, syncDisplayName: true },
+        { ...MEMBERS[1]!, syncDisplayName: true },
+        MEMBERS[2]!
+      ],
+      [
+        { id: "member-1", userId: MEMBERS[0]!.userId, displayName: "旧名" },
+        { id: "member-2", userId: MEMBERS[1]!.userId, displayName: MEMBERS[1]!.displayName }
+      ]
+    );
+
+    expect(plan).toStrictEqual({
+      rowsToInsert: [
+        { id: "member-3", userId: MEMBERS[2]!.userId, displayName: MEMBERS[2]!.displayName }
+      ],
+      displayNameUpdates: [
+        { userId: MEMBERS[0]!.userId, displayName: MEMBERS[0]!.displayName }
+      ],
+      alreadyPresent: [MEMBERS[0]!.userId, MEMBERS[1]!.userId]
+    });
   });
 });

@@ -1,4 +1,9 @@
 import { vi } from "vitest";
+import type {
+  ButtonInteraction,
+  ChatInputCommandInteraction,
+  Interaction
+} from "discord.js";
 
 import { appConfig } from "../../src/userConfig.js";
 import { memberUserId } from "./env.js";
@@ -56,3 +61,14 @@ export const buildButtonInteraction = (customId: string, override: ButtonOverrid
   followUp: vi.fn(async () => undefined),
   reply: vi.fn(async () => undefined)
 });
+
+export const asInteraction = (interaction: unknown): Interaction =>
+  interaction as unknown as Interaction;
+
+export const asChatInputCommandInteraction = (
+  interaction: unknown
+): ChatInputCommandInteraction =>
+  interaction as unknown as ChatInputCommandInteraction;
+
+export const asButtonInteraction = (interaction: unknown): ButtonInteraction =>
+  interaction as unknown as ButtonInteraction;

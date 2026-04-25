@@ -1,4 +1,4 @@
-import { slotKeySchema } from "../../slot.js";
+import { isSlotKey, slotKeySchema } from "../../slot.js";
 import { appConfig } from "../../userConfig.js";
 import { askMessages, type SettleCancelReason } from "./messages.js";
 import {
@@ -12,13 +12,14 @@ import type {
   ViewModelResponseInput,
   ViewModelSessionInput
 } from "../../discord/shared/viewModelInputs.js";
+import type { AskResponseChoice } from "./constants.js";
 
 export interface AskMessageViewModel {
   readonly sessionId: string;
   readonly candidateDateIso: string;
   readonly disabled: boolean;
   readonly memberUserIds: readonly string[];
-  readonly responsesByUserId: ReadonlyMap<string, string>;
+  readonly responsesByUserId: ReadonlyMap<string, AskResponseChoice>;
   readonly displayNameByUserId: ReadonlyMap<string, string>;
   readonly suppressMentions: boolean;
   readonly footer: string | undefined;
@@ -57,10 +58,12 @@ const computeAskFooter = (
   //   確定は締切到達まで行わない。@see requirements/base.md §4.2 §4.3
   if (session.status === "ASKING") {
     const userIdByMemberId = new Map(members.map((m) => [m.id, m.userId]));
-    const choiceByUserId = new Map<string, string>();
+    const choiceByUserId = new Map<string, AskResponseChoice>();
     for (const r of responses) {
       const userId = userIdByMemberId.get(r.memberId);
-      if (userId) { choiceByUserId.set(userId, r.choice); }
+      if (userId && (r.choice === "ABSENT" || isSlotKey(r.choice))) {
+        choiceByUserId.set(userId, r.choice);
+      }
     }
     const timeChoices: AskTimeChoice[] = [];
     for (const userId of appConfig.memberUserIds) {
@@ -97,10 +100,12 @@ export const buildAskMessageViewModel = (
     members.map((m) => [m.userId, m.displayName])
   );
 
-  const responsesByUserId = new Map<string, string>();
+  const responsesByUserId = new Map<string, AskResponseChoice>();
   for (const response of responses) {
     const userId = memberLookup.get(response.memberId);
-    if (userId) { responsesByUserId.set(userId, response.choice); }
+    if (userId && (response.choice === "ABSENT" || isSlotKey(response.choice))) {
+      responsesByUserId.set(userId, response.choice);
+    }
   }
 
   return {

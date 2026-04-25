@@ -20,6 +20,7 @@ export const tryDecideIfAllTimeSlots = (
   decidedStart: Date
 ): ResultAsync<boolean, AppError> =>
   safeTry(async function* () {
+    // invariant: reminderAt は DECIDED 遷移時に一度だけ決め、送信側は reminderSentAt のみ更新する。
     const reminderAt = computeReminderAt(decidedStart);
     const result = yield* fromDatabasePromise(
       ctx.ports.sessions.decideAsking({

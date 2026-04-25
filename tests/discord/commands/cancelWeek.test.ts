@@ -1,4 +1,4 @@
-import { ChannelType, MessageFlags, type Client, type Interaction } from "discord.js";
+import { ChannelType, MessageFlags, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
@@ -7,7 +7,8 @@ import type { SessionRow } from "../../../src/db/rows.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.js";
 import { callArg } from "../../helpers/assertions.js";
-import { buildCancelInteraction } from "../../helpers/interaction.js";
+import { asInteraction, buildCancelInteraction } from "../../helpers/interaction.js";
+import { asDiscordClient } from "../../helpers/discord.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
@@ -43,11 +44,11 @@ const createDiscordClient = () => {
     }
   };
 
-  const client = {
+  const client = asDiscordClient({
     channels: {
       fetch: vi.fn(async () => channel)
     }
-  } as unknown as Client;
+  });
 
   return { client, askEdit, postponeEdit, channelSend };
 };
@@ -79,7 +80,7 @@ describe("/cancel_week command flow", () => {
     const { client } = createDiscordClient();
     const interaction = buildCancelInteraction();
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     const editCall = callArg<{
@@ -131,7 +132,7 @@ describe("cancel_week confirmation button", () => {
     const { client, channelSend } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(confirmCustomId());
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     const after1 = await ctx.ports.sessions.findSessionById(friSession.id);
     const after2 = await ctx.ports.sessions.findSessionById(satSession.id);
@@ -168,7 +169,7 @@ describe("cancel_week confirmation button", () => {
     const { client, channelSend } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(abortCustomId());
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     const after = await ctx.ports.sessions.findSessionById(session.id);
     expect(after?.status).toBe("ASKING");
@@ -188,7 +189,7 @@ describe("cancel_week confirmation button", () => {
     const { client, channelSend } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(confirmCustomId());
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
@@ -212,7 +213,7 @@ describe("cancel_week confirmation button", () => {
     const { client } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(confirmCustomId());
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(editReplyPayload(interaction)).toStrictEqual({
       content: cancelWeekMessages.cancelWeek.failed,
@@ -229,7 +230,7 @@ describe("cancel_week confirmation button", () => {
     const { client, channelSend } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(confirmCustomId());
 
-    await handleInteraction(interaction as unknown as Interaction, buildDeps(client, ctx));
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
     expect(editReplyPayload(interaction).content).toBe(

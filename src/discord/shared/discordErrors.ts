@@ -7,6 +7,6 @@ export const isUnknownMessageError = (error: unknown): boolean => {
   if (error === null || typeof error !== "object") {
     return false;
   }
-  const code = (error as { code?: unknown }).code;
+  const code = "code" in error ? error.code : undefined;
   return code === DISCORD_UNKNOWN_MESSAGE_CODE;
 };

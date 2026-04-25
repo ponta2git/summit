@@ -3,7 +3,7 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
-import type { SessionRow } from "../../db/rows.js";
+import type { ResponseChoice, SessionRow } from "../../db/rows.js";
 import {
   type AppError,
   type AppResult,
@@ -28,12 +28,13 @@ import {
 } from "../../discord/shared/guards.js";
 import { settlePostponeVotingSession } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+import type { PostponeCustomIdChoice } from "../../discord/shared/customId.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",
   ng: "POSTPONE_NG"
-} as const;
+} as const satisfies Record<PostponeCustomIdChoice, ResponseChoice>;
 
 interface PostponePipelineStart {
   readonly interaction: ButtonInteraction;

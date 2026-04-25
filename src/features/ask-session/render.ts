@@ -6,11 +6,11 @@ import {
 } from "discord.js";
 
 import {
-  ASK_BUTTON_LABELS,
+  ASK_RESPONSE_CHOICE_TO_LABEL,
   BUTTON_LABEL_ASK_ABSENT,
   BUTTON_STYLE_ASK_ABSENT,
   BUTTON_STYLE_ASK_TIME,
-  CHOICE_LABEL_FOR_RESPONSE
+  SLOT_KEY_TO_ASK_BUTTON_LABEL
 } from "./constants.js";
 import { askMessages } from "./messages.js";
 import {
@@ -33,7 +33,7 @@ export const buildAskRow = (
       .setLabel(
         choice === "absent"
           ? BUTTON_LABEL_ASK_ABSENT
-          : ASK_BUTTON_LABELS[slotKeyFromCustomIdChoice(choice)]
+          : SLOT_KEY_TO_ASK_BUTTON_LABEL[slotKeyFromCustomIdChoice(choice)]
       )
       .setStyle(choice === "absent" ? BUTTON_STYLE_ASK_ABSENT : BUTTON_STYLE_ASK_TIME)
       .setDisabled(Boolean(options.disabled))
@@ -43,13 +43,13 @@ export const buildAskRow = (
 
 const memberLinesFromState = (
   memberUserIds: readonly string[],
-  responsesByUserId: ReadonlyMap<string, string>,
+  responsesByUserId: AskMessageViewModel["responsesByUserId"],
   displayNameByUserId: ReadonlyMap<string, string>
 ): string =>
   memberUserIds
     .map((userId) => {
       const choice = responsesByUserId.get(userId);
-      const label = choice ? CHOICE_LABEL_FOR_RESPONSE[choice] ?? choice : askMessages.ask.unanswered;
+      const label = choice ? ASK_RESPONSE_CHOICE_TO_LABEL[choice] : askMessages.ask.unanswered;
       return `- ${displayNameByUserId.get(userId) ?? userId} : ${label}`;
     })
     .join("\n");

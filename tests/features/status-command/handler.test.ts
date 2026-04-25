@@ -1,4 +1,4 @@
-import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleStatusCommand } from "../../../src/features/status-command/handler.js";
@@ -7,6 +7,7 @@ import type { AppContext } from "../../../src/appContext.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/interactionHandlerDeps.js";
 import { callArg } from "../../helpers/assertions.js";
 import { createClientWithChannel } from "../../helpers/discord.js";
+import { asChatInputCommandInteraction } from "../../helpers/interaction.js";
 import { memberUserId } from "../../helpers/env.js";
 import { makeSession } from "../../testing/fixtures.js";
 import { createTestAppContext } from "../../testing/ports.js";
@@ -39,7 +40,7 @@ const handleStatus = (
   interaction: ReturnType<typeof buildInteraction>,
   context: AppContext
 ): Promise<void> =>
-  handleStatusCommand(interaction as unknown as ChatInputCommandInteraction, buildDeps(context));
+  handleStatusCommand(asChatInputCommandInteraction(interaction), buildDeps(context));
 
 describe("handleStatusCommand", () => {
   it("regression: returns promptly even when 0 non-terminal sessions exist (must not throw)", async () => {

@@ -2,7 +2,8 @@ import {
   ChannelType,
   type Client,
   type Message,
-  type MessagePayload
+  type MessagePayload,
+  type TextChannel
 } from "discord.js";
 import { vi } from "vitest";
 import { callArg } from "./assertions.js";
@@ -11,12 +12,21 @@ type SendResult = { readonly id: string };
 type SendImpl = (payload: unknown) => Promise<SendResult>;
 type EditImpl = (payload: unknown) => Promise<unknown>;
 
+export const asDiscordClient = (client: unknown): Client =>
+  client as unknown as Client;
+
+export const asDiscordMessage = (message: unknown): Message =>
+  message as unknown as Message;
+
+export const asTextChannel = (channel: unknown): TextChannel =>
+  channel as unknown as TextChannel;
+
 export const createEditableMessage = (
   id: string,
   editImpl: EditImpl = async () => undefined
 ): Message => {
   const edit = vi.fn(editImpl);
-  return { id, edit } as unknown as Message;
+  return asDiscordMessage({ id, edit });
 };
 
 export const createSendableTextChannel = (
@@ -37,11 +47,11 @@ export const createSendableTextChannel = (
 };
 
 export const createClientWithChannel = (channel: unknown): Client =>
-  ({
+  asDiscordClient({
     channels: {
       fetch: vi.fn(async () => channel)
     }
-  }) as unknown as Client;
+  });
 
 export const createDiscordTextFixture = (
   sendImpl?: SendImpl,

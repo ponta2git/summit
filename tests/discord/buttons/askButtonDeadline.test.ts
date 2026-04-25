@@ -1,11 +1,12 @@
-import { MessageFlags, type Client } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleAskButton } from "../../../src/features/ask-session/button.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
-import { buildButtonInteraction } from "../../helpers/interaction.js";
+import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
+import { asDiscordClient } from "../../helpers/discord.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";
 
@@ -19,7 +20,7 @@ const buildDeps = (
   context: ReturnType<typeof createTestAppContext>
 ): InteractionHandlerDeps => ({
   context,
-  client: {} as Client,
+  client: asDiscordClient({}),
   sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }))
 });
 
@@ -45,7 +46,7 @@ describe("handleAskButton deadline guard", () => {
     };
 
     await handleAskButton(
-      interaction as unknown as Parameters<typeof handleAskButton>[0],
+      asButtonInteraction(interaction),
       buildDeps(context)
     );
 

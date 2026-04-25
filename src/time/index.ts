@@ -108,6 +108,13 @@ const CHOICE_RANK: Record<AskTimeChoice, number> = {
   T2330: 3
 };
 
+/**
+ * Pick the latest time slot from a set of member choices.
+ *
+ * @remarks
+ * source-of-truth: 全員が選べる時刻のうち最も遅いスロットを採用する集約規則。
+ * 入力順に依存しないよう `CHOICE_RANK` で決定する。
+ */
 export const latestChoice = (
   choices: readonly AskTimeChoice[]
 ): AskTimeChoice | undefined => {

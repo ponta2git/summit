@@ -12,6 +12,9 @@ export const SLOT_KEYS: readonly SlotKey[] = ["T2200", "T2230", "T2300", "T2330"
 
 export const slotKeySchema = z.enum(SLOT_KEYS);
 
+export const isSlotKey = (value: unknown): value is SlotKey =>
+  slotKeySchema.safeParse(value).success;
+
 const toMinutes = (value: string): { hour: number; minute: number } => {
   const [hourText, minuteText] = value.split(":");
   if (hourText === undefined || minuteText === undefined) {

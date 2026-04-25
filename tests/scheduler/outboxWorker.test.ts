@@ -15,6 +15,7 @@ import {
 } from "../../src/scheduler/outboxWorker.js";
 import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
+import { asDiscordClient } from "../helpers/discord.js";
 
 import { buildSessionRow } from "./factories/session.js";
 
@@ -36,9 +37,9 @@ const stubChannel = (overrides?: { sendThrows?: boolean }) => {
 };
 
 const stubClient = (channel: unknown): Client =>
-  ({
+  asDiscordClient({
     channels: { fetch: vi.fn(async () => channel) }
-  }) as unknown as Client;
+  });
 
 describe("outbox port (fake): enqueue idempotency", () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import type { Client, Message, MessagePayload, TextChannel } from "discord.js";
+import type { Client, Message, MessagePayload } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionRow } from "../../src/db/rows.js";
@@ -18,6 +18,7 @@ import {
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.js";
 import { __resetSendStateForTest } from "../../src/features/ask-session/send.js";
 import { createTestAppContext } from "../testing/index.js";
+import { asDiscordClient, asDiscordMessage, asTextChannel } from "../helpers/discord.js";
 import { buildSessionRow } from "./factories/session.js";
 
 // why: reconciler は Discord side-effect を伴うため getTextChannel を fake 実装で差し替える。
@@ -35,7 +36,7 @@ let fetchImpl: (messageId: string) => Promise<Message> = async (messageId) => {
 let sendImpl: (payload: unknown) => Promise<Message> = async (payload) => {
   const id = `sent-${String(nextSentMessageId++)}`;
   sentMessages.push({ channelId: "fake-channel", payload });
-  return { id } as unknown as Message;
+  return asDiscordMessage({ id });
 };
 
 vi.mock("../../src/discord/shared/channels.js", () => ({
@@ -53,19 +54,19 @@ vi.mock("../../src/discord/shared/channels.js", () => ({
         })
       }
     };
-    return channel as unknown as TextChannel;
+    return asTextChannel(channel);
   })
 }));
 
 const makeMessage = (id: string): Message => {
   const edit = vi.fn(async (payload: unknown) => {
     editCalls.push({ messageId: id, payload });
-    return {} as Message;
+    return asDiscordMessage({});
   });
-  return { id, edit } as unknown as Message;
+  return asDiscordMessage({ id, edit });
 };
 
-const client = {} as unknown as Client;
+const client = asDiscordClient({});
 
 const makeSendableClient = (): Client => {
   // why: sendAskMessage は getTextChannel を経由せず client.channels.fetch を直接呼ぶため、
@@ -76,14 +77,14 @@ const makeSendableClient = (): Client => {
     send: async (payload: unknown) => {
       const id = `sent-${String(nextSentMessageId++)}`;
       sentMessages.push({ channelId: "fake-channel", payload });
-      return { id } as unknown as Message;
+      return asDiscordMessage({ id });
     }
   };
-  return {
+  return asDiscordClient({
     channels: {
       fetch: async () => channel
     }
-  } as unknown as Client;
+  });
 };
 
 beforeEach(() => {
@@ -97,7 +98,7 @@ beforeEach(() => {
   sendImpl = async (payload) => {
     const id = `sent-${String(nextSentMessageId++)}`;
     sentMessages.push({ channelId: "fake-channel", payload });
-    return { id } as unknown as Message;
+    return asDiscordMessage({ id });
   };
   __resetSendStateForTest();
 });

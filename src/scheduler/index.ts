@@ -15,12 +15,11 @@ import {
   CRON_POSTPONE_DEADLINE_SCHEDULE,
   CRON_REMINDER_SCHEDULE,
   HEALTHCHECK_PING_INTERVAL_CRON,
-  HEALTHCHECK_PING_TIMEOUT_MS,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
 import type { AppError } from "../errors/index.js";
-import { sendHealthcheckPing, type FetchFn } from "../healthcheck/ping.js";
+import type { FetchFn } from "../healthcheck/ping.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -33,7 +32,11 @@ import { runReconciler } from "./reconciler.js";
 import { runOutboxMetricsTick } from "./outboxMetrics.js";
 import { runOutboxRetentionTick } from "./outboxRetention.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";
+import { runHealthcheckTickPing } from "./healthcheckTick.js";
 import { runTickSafely } from "./tickRunner.js";
+
+export { runHealthcheckTickPing } from "./healthcheckTick.js";
+export { runStartupRecovery } from "./startupRecovery.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
@@ -170,110 +173,6 @@ export const runReminderTick = async (
         "Failed to dispatch reminder in reminder tick."
       );
     }
-  }
-};
-
-/**
- * Best-effort healthcheck ping on each cron tick.
- *
- * @remarks
- * `url` 未設定時は no-op (`HEALTHCHECK_PING_URL` 未設定)。
- * redact: URL はログに含めない。`event=healthcheck.tick_ping` でのみログ化。
- * @see ADR-0034
- */
-export const runHealthcheckTickPing = async (
-  url: string | undefined,
-  fetchFn?: FetchFn
-): Promise<void> => {
-  if (!url) { return; }
-  try {
-    const result = await sendHealthcheckPing(url, {
-      timeoutMs: HEALTHCHECK_PING_TIMEOUT_MS,
-      ...(fetchFn !== undefined ? { fetchFn } : {})
-    });
-    if (result.ok) {
-      logger.info(
-        { event: "healthcheck.tick_ping", ok: true, elapsedMs: result.elapsedMs, status: result.status },
-        "Healthcheck tick ping."
-      );
-    } else {
-      const failFields =
-        result.status !== undefined
-          ? { event: "healthcheck.tick_ping", ok: false, elapsedMs: result.elapsedMs, status: result.status }
-          : { event: "healthcheck.tick_ping", ok: false, elapsedMs: result.elapsedMs, errorKind: result.errorKind };
-      logger.warn(failFields, "Healthcheck tick ping failed.");
-    }
-  } catch (error: unknown) {
-    // why: sendHealthcheckPing は throw しない契約だが belt-and-suspenders でガードする。
-    logger.warn({ event: "healthcheck.tick_ping", ok: false, error }, "Healthcheck tick ping threw unexpectedly.");
-  }
-};
-
-/**
- * Re-settle overdue non-terminal sessions at process boot.
- *
- * @remarks
- * source-of-truth: DB の非終端 Session を走査し締切超過行を settle する。
- * idempotent: 各 settle は CAS 済みで再起動跨ぎの重複呼び出し安全。
- */
-export const runStartupRecovery = async (
-  client: Client,
-  ctx: AppContext
-): Promise<void> => {
-  try {
-    const sessions = await ctx.ports.sessions.findNonTerminalSessions();
-    const now = ctx.clock.now();
-    for (const session of sessions) {
-      if (session.status === "ASKING" && session.deadlineAt.getTime() <= now.getTime()) {
-        logger.info(
-          {
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            deadlineAt: session.deadlineAt.toISOString()
-          },
-          "Startup recovery: settling overdue ASKING session."
-        );
-        await settleDueAskingSession(client, ctx, session, now);
-      } else if (
-        session.status === "POSTPONE_VOTING" &&
-        session.deadlineAt.getTime() <= now.getTime()
-      ) {
-        logger.info(
-          {
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            deadlineAt: session.deadlineAt.toISOString()
-          },
-          "Startup recovery: settling overdue POSTPONE_VOTING session."
-        );
-        await settlePostponeVotingSession(client, ctx, session, now).match(
-          () => {},
-          (error) =>
-            logSessionResultError(
-              error,
-              session,
-              "Startup recovery: failed to settle POSTPONE_VOTING session."
-            )
-        );
-      } else if (
-        session.status === "DECIDED" &&
-        session.reminderAt !== null &&
-        session.reminderAt.getTime() <= now.getTime() &&
-        session.reminderSentAt === null
-      ) {
-        logger.info(
-          {
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            reminderAt: session.reminderAt.toISOString()
-          },
-          "Startup recovery: dispatching overdue reminder."
-        );
-        await sendReminderForSession(client, ctx, session.id, now);
-      }
-    }
-  } catch (error: unknown) {
-    logger.error({ error }, "Startup recovery failed.");
   }
 };
 

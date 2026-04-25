@@ -1,4 +1,5 @@
 import type { Client, MessageCreateOptions } from "discord.js";
+import { z } from "zod";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -42,21 +43,29 @@ type RendererFn = (input: {
   readonly entry: OutboxEntry;
 }) => Promise<MessageCreateOptions | undefined>;
 
-const extractString = (extra: Record<string, unknown> | undefined, key: string): string | undefined => {
-  const v = extra?.[key];
-  return typeof v === "string" ? v : undefined;
-};
+const rawTextExtraSchema = z.object({
+  content: z.string()
+});
 
-const extractBoolean = (extra: Record<string, unknown> | undefined, key: string): boolean => {
-  return extra?.[key] === true;
+const cancelWeekNoticeExtraSchema = z.object({
+  invokerUserId: z.string(),
+  suppressMentions: z.boolean().optional()
+});
+
+const parseExtra = <T extends z.ZodType>(
+  schema: T,
+  extra: Record<string, unknown> | undefined
+): z.output<T> | undefined => {
+  const result = schema.safeParse(extra ?? {});
+  return result.success ? result.data : undefined;
 };
 
 // why: renderer 名を型で固定し ADR-0035 のカバレッジを grep 可能にする。未登録 renderer は dead letter。
 const renderers: Readonly<Record<string, RendererFn>> = {
   raw_text: async ({ entry }) => {
     if (entry.payload.kind !== "send_message") {return undefined;}
-    const content = extractString(entry.payload.extra, "content");
-    return content === undefined ? undefined : { content };
+    const extra = parseExtra(rawTextExtraSchema, entry.payload.extra);
+    return extra === undefined ? undefined : { content: extra.content };
   },
   // source-of-truth: DECIDED Session を DB から再取得し VM から構築する (state mismatch は dead letter)。
   decided_announcement: async ({ ctx, entry }) => {
@@ -75,12 +84,11 @@ const renderers: Readonly<Record<string, RendererFn>> = {
 
   cancel_week_notice: async ({ entry }) => {
     if (entry.payload.kind !== "send_message") {return undefined;}
-    const invokerUserId = extractString(entry.payload.extra, "invokerUserId");
-    if (invokerUserId === undefined) {return undefined;}
-    const suppressMentions = extractBoolean(entry.payload.extra, "suppressMentions");
-    const content = suppressMentions
-      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId })
-      : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId });
+    const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
+    if (extra === undefined) {return undefined;}
+    const content = extra.suppressMentions === true
+      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId: extra.invokerUserId })
+      : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId: extra.invokerUserId });
     return { content };
   }
 };
@@ -97,8 +105,8 @@ const renderPayload = async (
     return fn({ ctx, entry });
   }
   // why: 未登録 renderer は extra.content を fallback で拾う (text-only 後方互換)。
-  const content = extractString(payload.extra, "content");
-  return content === undefined ? undefined : { content };
+  const extra = parseExtra(rawTextExtraSchema, payload.extra);
+  return extra === undefined ? undefined : { content: extra.content };
 };
 
 const deliverOne = async (

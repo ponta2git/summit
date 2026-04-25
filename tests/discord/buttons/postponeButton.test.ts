@@ -7,7 +7,8 @@ import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
-import { buildButtonInteraction } from "../../helpers/interaction.js";
+import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
+import { asDiscordClient } from "../../helpers/discord.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";
 
@@ -51,11 +52,11 @@ const createDiscordClient = () => {
     }
   };
 
-  const client = {
+  const client = asDiscordClient({
     channels: {
       fetch: vi.fn(async () => channel)
     }
-  } as unknown as Client;
+  });
 
   return { client, postponeMessageEdit, channelSend };
 };
@@ -86,7 +87,7 @@ describe("handlePostponeButton", () => {
     const interactionWithMessage = { ...interaction, message: { edit: messageEdit } };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
@@ -122,7 +123,7 @@ describe("handlePostponeButton", () => {
     const interactionWithMessage = { ...interaction, message: { edit: messageEdit } };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
@@ -154,7 +155,7 @@ describe("handlePostponeButton", () => {
     };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
@@ -203,7 +204,7 @@ describe("handlePostponeButton", () => {
     };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
@@ -228,7 +229,7 @@ describe("handlePostponeButton", () => {
     };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 
@@ -260,7 +261,7 @@ describe("handlePostponeButton", () => {
     };
 
     await handlePostponeButton(
-      interactionWithMessage as unknown as Parameters<typeof handlePostponeButton>[0],
+      asButtonInteraction(interactionWithMessage),
       buildDeps(context, client)
     );
 

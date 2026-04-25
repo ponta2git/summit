@@ -5,6 +5,63 @@ import { members } from "../db/schema.js";
 import { logger } from "../logger.js";
 import type { MemberReconcileInput } from "./inputs.js";
 
+interface ExistingMemberRow {
+  readonly id: string;
+  readonly userId: string;
+  readonly displayName: string;
+}
+
+interface MemberRowToInsert {
+  readonly id: string;
+  readonly userId: string;
+  readonly displayName: string;
+}
+
+interface MemberDisplayNameUpdate {
+  readonly userId: string;
+  readonly displayName: string;
+}
+
+export interface MemberReconcilePlan {
+  readonly rowsToInsert: readonly MemberRowToInsert[];
+  readonly displayNameUpdates: readonly MemberDisplayNameUpdate[];
+  readonly alreadyPresent: readonly string[];
+}
+
+export const computeMemberReconcilePlan = (
+  memberInputs: ReadonlyArray<MemberReconcileInput>,
+  existing: readonly ExistingMemberRow[]
+): MemberReconcilePlan => {
+  const existingByUserId = new Map(existing.map((row) => [row.userId, row]));
+
+  return {
+    rowsToInsert: memberInputs.flatMap((memberInput, index) => {
+      if (existingByUserId.has(memberInput.userId)) {
+        return [];
+      }
+      return [{
+        id: `member-${index + 1}`,
+        userId: memberInput.userId,
+        displayName: memberInput.displayName
+      }];
+    }),
+    displayNameUpdates: memberInputs.flatMap((memberInput) => {
+      const existingRow = existingByUserId.get(memberInput.userId);
+      if (
+        existingRow === undefined
+        || !memberInput.syncDisplayName
+        || existingRow.displayName === memberInput.displayName
+      ) {
+        return [];
+      }
+      return [{ userId: memberInput.userId, displayName: memberInput.displayName }];
+    }),
+    alreadyPresent: memberInputs.flatMap((memberInput) =>
+      existingByUserId.has(memberInput.userId) ? [memberInput.userId] : []
+    )
+  };
+};
+
 /**
  * Reconcile configured members into the DB members table idempotently.
  *
@@ -25,48 +82,29 @@ export const reconcileMembers = async (
     })
     .from(members);
 
-  const existingByUserId = new Map(existing.map((row) => [row.userId, row]));
+  const plan = computeMemberReconcilePlan(memberInputs, existing);
 
-  const inserted: string[] = [];
-  const displayNameUpdated: string[] = [];
-  const alreadyPresent: string[] = [];
-  const rowsToInsert: { id: string; userId: string; displayName: string }[] = [];
-
-  for (const [index, memberInput] of memberInputs.entries()) {
-    const existingRow = existingByUserId.get(memberInput.userId);
-    if (existingRow) {
-      alreadyPresent.push(memberInput.userId);
-      if (
-        memberInput.syncDisplayName
-        && existingRow.displayName !== memberInput.displayName
-      ) {
-        await db
-          .update(members)
-          .set({ displayName: memberInput.displayName })
-          .where(eq(members.userId, memberInput.userId));
-        displayNameUpdated.push(memberInput.userId);
-      }
-      continue;
-    }
-
-    rowsToInsert.push({
-      id: `member-${index + 1}`,
-      userId: memberInput.userId,
-      displayName: memberInput.displayName
-    });
-    inserted.push(memberInput.userId);
+  for (const update of plan.displayNameUpdates) {
+    await db
+      .update(members)
+      .set({ displayName: update.displayName })
+      .where(eq(members.userId, update.userId));
   }
 
-  if (rowsToInsert.length > 0) {
+  if (plan.rowsToInsert.length > 0) {
     // idempotent: userId unique + onConflictDoNothing で race / 再実行を吸収。
     await db
       .insert(members)
-      .values(rowsToInsert)
+      .values([...plan.rowsToInsert])
       .onConflictDoNothing({ target: members.userId });
   }
 
   logger.info(
-    { inserted, existing: alreadyPresent, displayNameUpdated },
+    {
+      inserted: plan.rowsToInsert.map((row) => row.userId),
+      existing: plan.alreadyPresent,
+      displayNameUpdated: plan.displayNameUpdates.map((update) => update.userId)
+    },
     "Members reconciled with user config"
   );
 };

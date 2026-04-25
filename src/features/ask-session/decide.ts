@@ -1,4 +1,5 @@
 import type { ResponseRow, SessionRow } from "../../db/rows.js";
+import { isSlotKey } from "../../slot.js";
 import {
   decidedStartAt,
   latestChoice,
@@ -19,7 +20,7 @@ export interface EvaluateDeadlineOptions {
 }
 
 const isAskTimeChoice = (choice: ResponseRow["choice"]): choice is AskTimeChoice =>
-  choice === "T2200" || choice === "T2230" || choice === "T2300" || choice === "T2330";
+  isSlotKey(choice);
 
 /**
  * Evaluate an ASKING session's deadline decision.

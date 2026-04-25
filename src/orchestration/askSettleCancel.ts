@@ -45,6 +45,7 @@ export const settleAskingSession = (
       return okAsync(undefined);
     }
 
+    // state: postponeCount=1 は土曜順延回。中止理由は土曜専用に正規化して COMPLETED へ収束させる。
     const resolvedReason: AskingCancelReason =
       current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
 
