@@ -151,6 +151,7 @@ export const registerInteractionHandlers = (
   options: {
     readonly getReadyState?: () => AppReadyState;
     readonly registry?: FeatureRegistry;
+    readonly wakeScheduler?: (reason: string) => void;
   } = {}
 ): void => {
   const registry = options.registry ?? defaultRegistry;
@@ -168,6 +169,7 @@ export const registerInteractionHandlers = (
             client,
             context,
             ...readyDeps,
+            ...(options.wakeScheduler ? { wakeScheduler: options.wakeScheduler } : {}),
             sendAsk: (args) => sendAskMessage(client, { ...args, context })
           },
           registry

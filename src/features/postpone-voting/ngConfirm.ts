@@ -230,11 +230,13 @@ export const handlePostponeNgConfirmButton = async (
   const result = await loadSessionAndMemberStep(parsed).andThen(recordNgAndApplyStep);
 
   await result.match(
-    async () =>
-      interaction.editReply({
+    async () => {
+      deps.wakeScheduler?.("postpone_ng_confirmed");
+      await interaction.editReply({
         content: postponeMessages.ngConfirm.confirmed,
         components: []
-      }),
+      });
+    },
     async (error) => handlePostponeNgConfirmError(interaction, error)
   );
 };

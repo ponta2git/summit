@@ -68,4 +68,36 @@ describe("tests/testing helpers", () => {
       expect(due).toHaveLength(1);
     });
   });
+
+  it("returns scheduler session hints from active DB state", async () => {
+    const sessions = createFakeSessionsPort([
+      makeSession({
+        id: "asking-late",
+        status: "ASKING",
+        deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+      }),
+      makeSession({
+        id: "asking-early",
+        status: "ASKING",
+        deadlineAt: new Date("2026-04-24T12:00:00.000Z")
+      }),
+      makeSession({
+        id: "postpone",
+        status: "POSTPONE_VOTING",
+        deadlineAt: new Date("2026-04-25T00:00:00.000Z")
+      }),
+      makeSession({
+        id: "decided",
+        status: "DECIDED",
+        reminderAt: new Date("2026-04-24T13:45:00.000Z"),
+        reminderSentAt: null
+      })
+    ]);
+
+    const hints = await sessions.getSchedulerSessionHints(new Date("2026-04-24T11:00:00.000Z"));
+
+    expect(hints.nextAskingDeadlineAt?.toISOString()).toBe("2026-04-24T12:00:00.000Z");
+    expect(hints.nextPostponeDeadlineAt?.toISOString()).toBe("2026-04-25T00:00:00.000Z");
+    expect(hints.nextReminderAt?.toISOString()).toBe("2026-04-24T13:45:00.000Z");
+  });
 });

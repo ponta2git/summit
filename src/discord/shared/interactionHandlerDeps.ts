@@ -18,4 +18,5 @@ export interface InteractionHandlerDeps {
   readonly client: Client;
   readonly context: AppContext;
   readonly getReadyState?: () => AppReadyState;
+  readonly wakeScheduler?: (reason: string) => void;
 }

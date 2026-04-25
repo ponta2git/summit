@@ -1,10 +1,11 @@
 // source-of-truth: sessions repository のクエリ群。write なし。
 // @see ADR-0038
 
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.js";
 import type { DbLike, SessionRow } from "../rows.js";
+import type { SchedulerSessionHints } from "../ports.js";
 import { NON_TERMINAL_STATUSES, mapSession } from "./sessions.internal.js";
 
 export const findSessionByWeekKeyAndPostponeCount = async (
@@ -83,6 +84,42 @@ export const findDueReminderSessions = async (
       )
     );
   return rows.map(mapSession);
+};
+
+/**
+ * Return the nearest session-driven scheduler wakeups.
+ *
+ * @remarks
+ * source-of-truth: DB state, not in-memory timers. Past timestamps are intentionally returned
+ * so the scheduler can immediately settle overdue work after a missed wake or reconnect.
+ */
+export const getSchedulerSessionHints = async (
+  db: DbLike,
+  _now: Date
+): Promise<SchedulerSessionHints> => {
+  const [asking] = await db
+    .select({ next: sql<Date | null>`min(${sessions.deadlineAt})` })
+    .from(sessions)
+    .where(eq(sessions.status, "ASKING"));
+  const [postpone] = await db
+    .select({ next: sql<Date | null>`min(${sessions.deadlineAt})` })
+    .from(sessions)
+    .where(eq(sessions.status, "POSTPONE_VOTING"));
+  const [reminder] = await db
+    .select({ next: sql<Date | null>`min(${sessions.reminderAt})` })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.status, "DECIDED"),
+        isNull(sessions.reminderSentAt)
+      )
+    );
+
+  return {
+    nextAskingDeadlineAt: asking?.next ?? null,
+    nextPostponeDeadlineAt: postpone?.next ?? null,
+    nextReminderAt: reminder?.next ?? null
+  };
 };
 
 export const findNonTerminalSessions = async (

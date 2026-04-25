@@ -280,8 +280,9 @@ export const handlePostponeButton = async (
     .andThen((context) => settlePostponeStep(context).map(() => context));
 
   await result.match(
-    async (context) =>
-      sendEphemeralConfirmFollowUp(
+    async (context) => {
+      deps.wakeScheduler?.("postpone_button_recorded");
+      await sendEphemeralConfirmFollowUp(
         interaction,
         postponeMessages.interaction.voteConfirmed.postpone(context.choice),
         {
@@ -294,7 +295,8 @@ export const handlePostponeButton = async (
         },
         "postponeVoteConfirmSent",
         "Failed to send postpone vote confirmation followUp."
-      ),
+      );
+    },
     async (error) => handlePostponePipelineError(interaction, error)
   );
 };

@@ -236,11 +236,13 @@ export const handleAbsentConfirmButton = async (
   const result = await loadSessionAndMemberStep(parsed).andThen(recordAbsentAndApplyStep);
 
   await result.match(
-    async () =>
-      interaction.editReply({
+    async () => {
+      deps.wakeScheduler?.("ask_absent_confirmed");
+      await interaction.editReply({
         content: askMessages.absentConfirm.confirmed,
         components: []
-      }),
+      });
+    },
     async (error) => handleAbsentConfirmError(interaction, error)
   );
 };

@@ -130,3 +130,31 @@ export const getOutboxMetrics = async (
     oldestFailedAgeMs: ageMs(oldestFailedRow?.oldest ?? null)
   };
 };
+
+/**
+ * Return the next timestamp at which an outbox row needs worker attention.
+ *
+ * @remarks
+ * source-of-truth: PENDING rows wake at `next_attempt_at`; IN_FLIGHT rows wake at
+ * `claim_expires_at` so a crashed worker can be reclaimed without empty polling.
+ */
+export const getNextOutboxDispatchAt = async (
+  db: DbLike,
+  _now: Date
+): Promise<Date | null> => {
+  const [row] = await db
+    .select({
+      next: sql<Date | null>`
+        min(
+          case
+            when ${discordOutbox.status} = 'PENDING' then ${discordOutbox.nextAttemptAt}
+            when ${discordOutbox.status} = 'IN_FLIGHT' then ${discordOutbox.claimExpiresAt}
+            else null
+          end
+        )
+      `
+    })
+    .from(discordOutbox)
+    .where(inArray(discordOutbox.status, ["PENDING", "IN_FLIGHT"]));
+  return row?.next ?? null;
+};

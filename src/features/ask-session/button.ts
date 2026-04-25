@@ -278,8 +278,9 @@ export const handleAskButton = async (
     );
 
   await result.match(
-    async (context) =>
-      sendEphemeralConfirmFollowUp(
+    async (context) => {
+      deps.wakeScheduler?.("ask_button_recorded");
+      await sendEphemeralConfirmFollowUp(
         interaction,
         askMessages.interaction.voteConfirmed.ask(context.choice),
         {
@@ -289,7 +290,8 @@ export const handleAskButton = async (
         },
         "voteConfirmSent",
         "Failed to send vote confirmation followUp."
-      ),
+      );
+    },
     async (error) => handleAskPipelineError(interaction, error)
   );
 };

@@ -14,6 +14,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | ファイル | 主題 | 主な参照 ADR |
 |---|---|---|
 | [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | 0001, 0024, 0033, 0035 |
+| [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | 0047 |
 | [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | 0035, 0042, 0043 |
 | [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | 0044 |
 | [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | 0008, 0019 |
@@ -27,6 +28,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | Discord 表示が更新されない | [recovery.md](./recovery.md) case 4 / 5 + [outbox.md](./outbox.md) |
 | `/status` の `now` が JST と数分以上ずれている | [time-skew.md](./time-skew.md) |
 | outbox metrics の `level=warn` が来た | [outbox.md](./outbox.md) §警告対応 |
+| scheduler wake / timer / worker の挙動を確認したい | [scheduler.md](./scheduler.md) |
 | 起動時に `reconciler` が連発 / 締切再計算が暴れる | [recovery.md](./recovery.md) case 1 / 7 |
 | `pnpm db:migrate` が途中で失敗した | [migration.md](./migration.md) §ロールバック |
 | Discord token / DATABASE_URL を rotate したい | [secrets-rotation.md](./secrets-rotation.md) |

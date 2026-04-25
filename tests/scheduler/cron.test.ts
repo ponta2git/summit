@@ -1,9 +1,9 @@
 import type { Client } from "discord.js";
 import type { ScheduledTask } from "node-cron";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
-import { CRON_REMINDER_SCHEDULE } from "../../src/config.js";
+import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
 import { callArgs } from "../helpers/assertions.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext } from "../testing/index.js";
@@ -21,6 +21,10 @@ const registeredSchedules = (schedule: ReturnType<typeof vi.fn>) =>
   });
 
 describe("ask scheduler", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("registers friday 08:00 JST ask cron as the first task with noOverlap", () => {
     const stop = vi.fn();
     const schedule = vi.fn(
@@ -33,22 +37,23 @@ describe("ask scheduler", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
-    const tasks = createAskScheduler({
+    const scheduler = createAskScheduler({
       client,
       context,
       sendAsk,
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(8);
-    expect(tasks[0]?.stop).toBe(stop);
+    expect(schedule).toHaveBeenCalledTimes(4);
     const [expression, tick, options] = callArgs<ScheduleCall>(schedule);
     expect(expression).toBe("0 8 * * 5");
     expect(tick).toBeTypeOf("function");
     expect(options).toStrictEqual({ timezone: "Asia/Tokyo", noOverlap: true });
+    scheduler.stop();
+    expect(stop).toHaveBeenCalledTimes(4);
   });
 
-  it("registers saturday 00:00 JST postpone-deadline cron with noOverlap", () => {
+  it("registers scheduler supervisor cron with noOverlap", () => {
     const stop = vi.fn();
     const schedule = vi.fn(
       () =>
@@ -60,18 +65,19 @@ describe("ask scheduler", () => {
     const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
-    const tasks = createAskScheduler({
+    const scheduler = createAskScheduler({
       client,
       context,
       sendAsk,
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(8);
+    expect(schedule).toHaveBeenCalledTimes(4);
     expect(registeredSchedules(schedule)).toContainEqual({
-      expression: "0 0 * * 6",
+      expression: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       options: { timezone: "Asia/Tokyo", noOverlap: true }
     });
+    scheduler.stop();
   });
 
   it("propagates errors to runTickSafely wrapper", async () => {
@@ -87,8 +93,7 @@ describe("ask scheduler", () => {
   });
 
   it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {
-    // invariant: ask/deadline/postpone/reminder/outbox の 5 tick は runTickSafely で隔離される。
-    //   healthcheck tick は内部で best-effort に握り潰すため runTickSafely 不要。
+    // invariant: static cron callbacks are wrapped except healthcheck, which is internally best-effort.
     //   登録 tick 関数を実際に呼び、throw する業務ロジックを食わせて「callback が resolves する」ことで
     //   runTickSafely が挟まっていることを間接的に検証する。
     const stop = vi.fn();
@@ -98,21 +103,15 @@ describe("ask scheduler", () => {
       return { stop } as unknown as ScheduledTask;
     });
     const context = createTestAppContext();
-    vi.spyOn(context.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("x"));
-    vi.spyOn(context.ports.sessions, "findDuePostponeVotingSessions").mockRejectedValue(
-      new Error("x")
-    );
-    vi.spyOn(context.ports.sessions, "findDueReminderSessions").mockRejectedValue(new Error("x"));
-    vi.spyOn(context.ports.sessions, "findNonTerminalSessions").mockRejectedValue(new Error("x"));
+    vi.spyOn(context.ports.sessions, "getSchedulerSessionHints").mockRejectedValue(new Error("x"));
+    vi.spyOn(context.ports.outbox, "prune").mockRejectedValue(new Error("x"));
     const sendAsk = vi.fn(async () => {
       throw new Error("x");
     });
 
-    createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
+    const scheduler = createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
 
-    // invariant: 登録順 ask/deadline/postpone/reminder/healthcheck/outbox のうち healthcheck は
-    //   内部で best-effort に握り潰すため runTickSafely の対象外。
-    const wrappedIndices = [0, 1, 2, 3, 5];
+    const wrappedIndices = [0, 2, 3];
     for (const i of wrappedIndices) {
       const tick = capturedTicks[i];
       if (!tick) {
@@ -121,23 +120,21 @@ describe("ask scheduler", () => {
       tick();
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
+    scheduler.stop();
   });
 
-  it("registers reminder cron with noOverlap on Asia/Tokyo", () => {
+  it("does not register always-on reminder cron", () => {
     const stop = vi.fn();
     const schedule = vi.fn(() => ({ stop }) as unknown as ScheduledTask);
-    const tasks = createAskScheduler({
+    const scheduler = createAskScheduler({
       client: {} as Client,
       context: createTestAppContext(),
       sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
       cronAdapter: { schedule }
     });
 
-    expect(tasks).toHaveLength(8);
-    expect(registeredSchedules(schedule)).toContainEqual({
-      expression: CRON_REMINDER_SCHEDULE,
-      options: { timezone: "Asia/Tokyo", noOverlap: true }
-    });
+    expect(registeredSchedules(schedule).map((s) => s.expression)).not.toContain("* * * * *");
+    scheduler.stop();
   });
 
   it("dispatches reminders only for DECIDED sessions whose reminderAt has passed", async () => {

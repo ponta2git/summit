@@ -13,6 +13,7 @@ import {
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
+  getSchedulerSessionHints,
   findNonTerminalSessions,
   findNonTerminalSessionsByWeekKey,
   findSessionById,
@@ -46,6 +47,7 @@ import {
   enqueueOutbox,
   findStrandedOutboxEntries,
   getOutboxMetrics,
+  getNextOutboxDispatchAt,
   markOutboxDelivered,
   markOutboxFailed,
   pruneOutbox,
@@ -80,6 +82,7 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
   findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findDueReminderSessions: (now) => findDueReminderSessions(db, now),
+  getSchedulerSessionHints: (now) => getSchedulerSessionHints(db, now),
   findNonTerminalSessions: () => findNonTerminalSessions(db),
   findNonTerminalSessionsByWeekKey: (weekKey) =>
     findNonTerminalSessionsByWeekKey(db, weekKey),
@@ -113,7 +116,8 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
   findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
   prune: (options) => pruneOutbox(db, options),
-  getMetrics: (now) => getOutboxMetrics(db, now)
+  getMetrics: (now) => getOutboxMetrics(db, now),
+  getNextDispatchAt: (now) => getNextOutboxDispatchAt(db, now)
 });
 
 export const makeRealPorts = (db: DbLike): AppPorts => ({

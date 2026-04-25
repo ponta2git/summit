@@ -29,6 +29,7 @@ export {
 } from "./outbox.types.js";
 export {
   findStrandedOutboxEntries,
+  getNextOutboxDispatchAt,
   getOutboxMetrics,
   pruneOutbox,
   type OutboxMetricsResult,

@@ -98,6 +98,43 @@ describe("outbox port (fake): enqueue idempotency", () => {
     expect(again.skipped).toBe(true);
     expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
   });
+
+  it("returns the next dispatch timestamp across pending and in-flight rows", async () => {
+    const session = buildSessionRow({ id: "s-dispatch-at" });
+    const ctx = createTestAppContext({
+      seed: { sessions: [session] },
+      now: new Date("2026-04-24T12:00:00.000Z")
+    });
+    await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: session.id,
+      dedupeKey: "pending-later",
+      payload: {
+        kind: "send_message",
+        channelId: session.channelId,
+        renderer: "raw_text",
+        extra: { content: "later" }
+      }
+    });
+    const [entry] = ctx.ports.outbox.listEntries();
+    if (!entry) {
+      throw new Error("expected seeded outbox entry");
+    }
+    ctx.ports.outbox.seedEntry({
+      ...entry,
+      id: "in-flight-earlier",
+      dedupeKey: "in-flight-earlier",
+      status: "IN_FLIGHT",
+      claimExpiresAt: new Date("2026-04-24T12:00:30.000Z"),
+      nextAttemptAt: new Date("2026-04-24T12:05:00.000Z")
+    });
+
+    const nextDispatchAt = await ctx.ports.outbox.getNextDispatchAt(
+      new Date("2026-04-24T12:00:00.000Z")
+    );
+
+    expect(nextDispatchAt?.toISOString()).toBe("2026-04-24T12:00:00.000Z");
+  });
 });
 
 describe("outbox worker: success path", () => {

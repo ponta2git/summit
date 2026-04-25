@@ -39,6 +39,7 @@ export {
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
+  getSchedulerSessionHints,
   findNonTerminalSessions,
   findNonTerminalSessionsByWeekKey,
   findSessionById,

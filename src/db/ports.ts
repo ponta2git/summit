@@ -59,6 +59,12 @@ export type {
 
 export type { ResponseChoice } from "./rows.js";
 
+export interface SchedulerSessionHints {
+  readonly nextAskingDeadlineAt: Date | null;
+  readonly nextPostponeDeadlineAt: Date | null;
+  readonly nextReminderAt: Date | null;
+}
+
 export const SESSION_ALLOWED_TRANSITIONS = {
   ASKING: ["CANCELLED", "DECIDED"],
   POSTPONE_VOTING: ["POSTPONED", "COMPLETED"],
@@ -140,6 +146,7 @@ export interface SessionsPort {
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;
+  getSchedulerSessionHints(now: Date): Promise<SchedulerSessionHints>;
   /**
    * Returns sessions currently in `CANCELLED` status (startup reconciler target).
    *
@@ -230,6 +237,7 @@ export interface OutboxPort {
     readonly oldestPendingAgeMs: number | null;
     readonly oldestFailedAgeMs: number | null;
   }>;
+  getNextDispatchAt(now: Date): Promise<Date | null>;
 }
 
 /**

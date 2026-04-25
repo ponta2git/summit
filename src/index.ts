@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import type { ScheduledTask } from "node-cron";
-
 import { createAppContext } from "./appContext.js";
 import { closeDb, db } from "./db/client.js";
 import { waitForInFlightSend } from "./features/ask-session/send.js";
@@ -12,7 +10,7 @@ import { logger } from "./logger.js";
 import { buildMemberReconcileInputs } from "./members/inputs.js";
 import { reconcileMembers } from "./members/reconcile.js";
 import { runReconciler } from "./scheduler/reconciler.js";
-import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
+import { createAskScheduler, runStartupRecovery, type AppScheduler } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
 import { appConfig } from "./userConfig.js";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.js";
@@ -26,13 +24,14 @@ const readiness = createAppReadiness();
 let startupCompleted = false;
 
 registerInteractionHandlers(client, appContext, {
-  getReadyState: () => readiness.state
+  getReadyState: () => readiness.state,
+  wakeScheduler: (reason) => scheduler?.wake(reason)
 });
 
 // race: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
 //   auto-start するため、top-level 生成すると startup recovery と reminder tick が並行し
 //   DECIDED セッションへの二重送信 race を作る → ADR-0024
-let scheduler: readonly ScheduledTask[] | undefined;
+let scheduler: AppScheduler | undefined;
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
@@ -41,9 +40,7 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       if (!scheduler) {
         return;
       }
-      for (const task of scheduler) {
-        task.stop();
-      }
+      scheduler.stop();
     },
     waitForInFlightSend,
     closeDb,
@@ -79,7 +76,8 @@ registerReconnectReplayHandlers({
   context: appContext,
   readiness,
   isStartupCompleted: () => startupCompleted,
-  bootId
+  bootId,
+  wakeScheduler: (reason) => scheduler?.wake(reason)
 });
 
 const run = async (): Promise<void> => {

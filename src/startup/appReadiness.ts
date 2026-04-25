@@ -38,6 +38,7 @@ export const registerReconnectReplayHandlers = (input: {
   readonly readiness: AppReadiness;
   readonly isStartupCompleted: () => boolean;
   readonly bootId: string;
+  readonly wakeScheduler?: (reason: string) => void;
 }): void => {
   const { client, context, readiness, isStartupCompleted, bootId } = input;
   // why: reconnect 時に reconciler + startupRecovery を replay し disconnect 中の cron 副作用漏れを収束させる。
@@ -78,6 +79,7 @@ export const registerReconnectReplayHandlers = (input: {
       try {
         const report = await runReconciler(client, context, { scope: "reconnect" });
         await runStartupRecovery(client, context);
+        input.wakeScheduler?.("reconnect_replay");
         lastReplaySucceededAt = Date.now();
         logger.info(
           {

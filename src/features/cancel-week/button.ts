@@ -126,11 +126,13 @@ export const handleCancelWeekButton = async (
   });
 
   await result.match(
-    async (outcome) =>
-      interaction.editReply({
+    async (outcome) => {
+      deps.wakeScheduler?.("cancel_week_confirmed");
+      await interaction.editReply({
         content: cancelWeekMessages.cancelWeek.done({ count: outcome.skippedCount }),
         components: []
-      }),
+      });
+    },
     async (error) => replyCancelWeekButtonError(interaction, error)
   );
 };

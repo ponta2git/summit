@@ -8,12 +8,8 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../appContext.js";
 import {
   CRON_ASK_SCHEDULE,
-  CRON_DEADLINE_SCHEDULE,
-  CRON_OUTBOX_METRICS_SCHEDULE,
   CRON_OUTBOX_RETENTION_SCHEDULE,
-  CRON_OUTBOX_WORKER_SCHEDULE,
-  CRON_POSTPONE_DEADLINE_SCHEDULE,
-  CRON_REMINDER_SCHEDULE,
+  CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
   HEALTHCHECK_PING_INTERVAL_CRON,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
@@ -26,12 +22,16 @@ import {
   type SendAskMessageResult
 } from "../features/ask-session/send.js";
 import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.js";
-import { sendReminderForSession } from "../features/reminder/send.js"
+import { sendReminderForSession } from "../features/reminder/send.js";
 import { logger } from "../logger.js";
 import { runReconciler } from "./reconciler.js";
 import { runOutboxMetricsTick } from "./outboxMetrics.js";
 import { runOutboxRetentionTick } from "./outboxRetention.js";
-import { runOutboxWorkerTick } from "./outboxWorker.js";
+import {
+  createSchedulerController,
+  runSchedulerSupervisorTick,
+  type SchedulerController
+} from "./controller.js";
 import { runHealthcheckTickPing } from "./healthcheckTick.js";
 import { runTickSafely } from "./tickRunner.js";
 
@@ -71,6 +71,12 @@ export interface AskSchedulerDeps {
   readonly cronAdapter?: CronAdapter;
   readonly healthcheckUrl?: string;
   readonly fetchFn?: FetchFn;
+}
+
+export interface AppScheduler {
+  readonly controller: SchedulerController;
+  stop(): void;
+  wake(reason: string): void;
 }
 
 export const runScheduledAskTick = async (
@@ -184,14 +190,21 @@ export const runReminderTick = async (
  *   二重駆動する (Discord 二重送信 / race)。
  * source-of-truth: 各 tick は DB から再計算する。in-memory 状態に依存しない。
  * idempotent: `noOverlap: true` で次 tick が現 tick と重なった場合は後続をスキップする。
- * 戻り値は shutdown 時に `for (const t of tasks) t.stop()` で停止する。
+ * 戻り値は shutdown 時に `stop()` で cron と in-memory timer をまとめて停止する。
  * @see ADR-0001
  */
-export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTask[] => {
+export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   const { context, client } = deps;
   const sendAsk =
     deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(client, sendContext));
   const cronModule = deps.cronAdapter ?? cron;
+  const controller = createSchedulerController({
+    client,
+    context,
+    runDeadlineTick: () => runDeadlineTick(client, context),
+    runPostponeDeadlineTick: () => runPostponeDeadlineTick(client, context),
+    runReminderTick: () => runReminderTick(client, context)
+  });
 
   // why: 新 feature の tick 追加箇所を registry に集約する。cron 式と JST 前提は src/config.ts の CRON_* に集約。
   const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
@@ -201,38 +214,14 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
       tick: () =>
         void runTickSafely({ name: "ask_dispatch", logger }, () =>
           runScheduledAskTick(sendAsk, context)
+            .then(() => controller.wake("ask_dispatch"))
         )
-    },
-    {
-      schedule: CRON_DEADLINE_SCHEDULE,
-      tick: () =>
-        void runTickSafely({ name: "deadline", logger }, () => runDeadlineTick(client, context))
-    },
-    {
-      schedule: CRON_POSTPONE_DEADLINE_SCHEDULE,
-      tick: () =>
-        void runTickSafely({ name: "postpone_deadline", logger }, () =>
-          runPostponeDeadlineTick(client, context)
-        )
-    },
-    {
-      schedule: CRON_REMINDER_SCHEDULE,
-      tick: () =>
-        void runTickSafely({ name: "reminder", logger }, () => runReminderTick(client, context))
     },
     // why: runHealthcheckTickPing は内部で失敗を握り潰す best-effort 実装のため runTickSafely で囲まない。
     // @see ADR-0034
     {
       schedule: HEALTHCHECK_PING_INTERVAL_CRON,
       tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
-    },
-    // @see ADR-0035
-    {
-      schedule: CRON_OUTBOX_WORKER_SCHEDULE,
-      tick: () =>
-        void runTickSafely({ name: "outbox_worker", logger }, () =>
-          runOutboxWorkerTick(client, context)
-        )
     },
     // @see ADR-0042
     {
@@ -242,17 +231,31 @@ export const createAskScheduler = (deps: AskSchedulerDeps): readonly ScheduledTa
           runOutboxRetentionTick(context)
         )
     },
-    // @see ADR-0043
+    // @see ADR-0047
     {
-      schedule: CRON_OUTBOX_METRICS_SCHEDULE,
+      schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       tick: () =>
-        void runTickSafely({ name: "outbox_metrics", logger }, () =>
-          runOutboxMetricsTick(context)
-        )
+        void runTickSafely({ name: "scheduler_supervisor", logger }, async () => {
+          await runOutboxMetricsTick(context);
+          await runSchedulerSupervisorTick(client, context, controller);
+        })
     }
   ];
 
-  return taskDefs.map((def) =>
+  const tasks = taskDefs.map((def) =>
     cronModule.schedule(def.schedule, def.tick, { timezone: "Asia/Tokyo", noOverlap: true })
   );
+
+  controller.wake("scheduler_created");
+
+  return {
+    controller,
+    stop: () => {
+      for (const task of tasks) {
+        task.stop();
+      }
+      controller.stop();
+    },
+    wake: (reason) => controller.wake(reason)
+  };
 };

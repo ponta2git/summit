@@ -4,7 +4,7 @@ import { TICK_DURATION_WARN_MS } from "../config.js";
 
 export interface RunTickSafelyOptions {
   readonly name: string;
-  readonly logger: Logger;
+  readonly logger: Pick<Logger, "error" | "info" | "warn">;
   readonly nowFn?: () => number;
 }
 
@@ -39,6 +39,6 @@ export const runTickSafely = async (
 };
 
 export const createTickSafetyWrap =
-  (logger: Logger) =>
+  (logger: Pick<Logger, "error" | "info" | "warn">) =>
   (name: string, fn: () => Promise<void>): Promise<void> =>
     runTickSafely({ name, logger }, fn);

@@ -364,6 +364,30 @@ export const createFakeSessionsPort = (
         .map(clone);
     },
 
+    getSchedulerSessionHints: async (now) => {
+      recordCall(calls, "getSchedulerSessionHints", { now });
+      const minDate = (dates: Date[]): Date | null =>
+        dates.length === 0
+          ? null
+          : dates.reduce((earliest, current) =>
+            current.getTime() < earliest.getTime() ? current : earliest
+          );
+      const sessions = Array.from(byId.values());
+      return {
+        nextAskingDeadlineAt: minDate(
+          sessions.filter((s) => s.status === "ASKING").map((s) => s.deadlineAt)
+        ),
+        nextPostponeDeadlineAt: minDate(
+          sessions.filter((s) => s.status === "POSTPONE_VOTING").map((s) => s.deadlineAt)
+        ),
+        nextReminderAt: minDate(
+          sessions
+            .filter((s) => s.status === "DECIDED" && s.reminderSentAt === null && s.reminderAt !== null)
+            .map((s) => s.reminderAt as Date)
+        )
+      };
+    },
+
     findNonTerminalSessions: async () => {
       recordCall(calls, "findNonTerminalSessions", {});
       return Array.from(byId.values())
@@ -805,6 +829,23 @@ export const createFakeOutboxPort = (
         oldestPendingAgeMs: ageMs(oldestPending),
         oldestFailedAgeMs: ageMs(oldestFailed)
       };
+    },
+
+    getNextDispatchAt: async (now) => {
+      recordCall(calls, "getNextDispatchAt", { now });
+      const candidates = Array.from(byId.values())
+        .map((entry) => {
+          if (entry.status === "PENDING") {return entry.nextAttemptAt;}
+          if (entry.status === "IN_FLIGHT") {return entry.claimExpiresAt;}
+          return null;
+        })
+        .filter((date): date is Date => date !== null);
+      if (candidates.length === 0) {
+        return null;
+      }
+      return candidates.reduce((earliest, current) =>
+        current.getTime() < earliest.getTime() ? current : earliest
+      );
     }
   };
   return port;
