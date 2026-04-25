@@ -96,5 +96,14 @@ export const askMessages = {
         return `回答を受け付けました: ${labels[choice]}`;
       }
     }
+  },
+
+  absentConfirm: {
+    prompt: "⚠️ 欠席を確定しますか？\n欠席が確定すると今週の開催は中止になります。",
+    confirmButtonLabel: "欠席を確定する",
+    abortButtonLabel: "キャンセル",
+    confirmed: "欠席を確定しました。今週の開催は中止です。",
+    aborted: "操作をキャンセルしました。",
+    failed: "処理に失敗しました。しばらく待って再試行してください。"
   }
 } as const;

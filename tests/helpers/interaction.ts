@@ -58,6 +58,7 @@ export const buildButtonInteraction = (customId: string, override: ButtonOverrid
   isChatInputCommand: () => false,
   isButton: () => true,
   deferUpdate: vi.fn(async () => undefined),
+  editReply: vi.fn(async () => undefined),
   followUp: vi.fn(async () => undefined),
   reply: vi.fn(async () => undefined)
 });

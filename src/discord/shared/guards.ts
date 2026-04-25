@@ -13,7 +13,9 @@ import {
 } from "../../errors/index.js";
 import {
   parseCancelWeekCustomId,
+  parseAbsentConfirmCustomId,
   parseCustomId,
+  type AbsentConfirmCustomIdChoice,
   type AskCustomIdChoice,
   type CancelWeekCustomIdChoice,
   type PostponeCustomIdChoice
@@ -131,6 +133,22 @@ export const guardCancelWeekCustomId = (
   }
 
   return okResult({ choice: parsed.data.choice });
+};
+
+export interface AbsentConfirmCustomIdGuardResult {
+  readonly sessionId: string;
+  readonly choice: AbsentConfirmCustomIdChoice;
+}
+
+export const guardAbsentConfirmCustomId = (
+  customId: string
+): AppResult<AbsentConfirmCustomIdGuardResult, ValidationError> => {
+  const parsed = parseAbsentConfirmCustomId(customId);
+  if (!parsed.success) {
+    return errResult(buildValidationError("invalid_custom_id", "Invalid ask_absent custom_id."));
+  }
+
+  return okResult({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
 };
 
 export const guardSessionExists = (

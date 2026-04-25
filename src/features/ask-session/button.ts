@@ -31,6 +31,7 @@ import {
 import { applyDeadlineDecision } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
+import { buildAbsentConfirmRow } from "./absentConfirm.js";
 import { appConfig } from "../../userConfig.js";
 
 interface AskPipelineStart {
@@ -225,6 +226,7 @@ const handleAskPipelineError = async (
  *
  * @remarks
  * ack: `deferUpdate()` は dispatcher 側で実行済み。ここでは検証 → 状態更新 → 再描画のみ。
+ * ABSENT 選択時は不可逆なため ephemeral 確認ダイアログを表示し、確定は ask_absent ハンドラに委譲する。
  */
 export const handleAskButton = async (
   interaction: ButtonInteraction,
@@ -237,8 +239,39 @@ export const handleAskButton = async (
     context: deps.context
   };
 
-  const result = await toResultAsync(validateAskPipeline(pipelineStart))
-    .andThen(loadSessionAndMemberStep)
+  const validation = validateAskPipeline(pipelineStart);
+  if (validation.isErr()) {
+    await handleAskPipelineError(interaction, validation.error);
+    return;
+  }
+
+  const parsed = validation.value;
+
+  // why: 欠席は確定後に即セッション中止となる不可逆操作。確認ダイアログを挟み誤押下を防ぐ。
+  if (parsed.choice === "ABSENT") {
+    const result = await loadSessionAndMemberStep(parsed);
+    await result.match(
+      async (ctx) => {
+        await interaction.followUp({
+          content: askMessages.absentConfirm.prompt,
+          components: [buildAbsentConfirmRow(ctx.sessionId)],
+          flags: MessageFlags.Ephemeral
+        });
+        logger.info(
+          {
+            sessionId: ctx.sessionId,
+            weekKey: ctx.session.weekKey,
+            userId: interaction.user.id
+          },
+          "Absent confirmation dialog shown."
+        );
+      },
+      async (error) => handleAskPipelineError(interaction, error)
+    );
+    return;
+  }
+
+  const result = await loadSessionAndMemberStep(parsed)
     .andThen(recordResponseStep)
     .andThen((context) =>
       refreshAskMessageStep(context).map(() => context)

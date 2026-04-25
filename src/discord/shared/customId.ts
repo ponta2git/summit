@@ -114,3 +114,40 @@ export const parseCancelWeekCustomId = (
 // invariant: buildCancelWeekCustomId ∘ parseCancelWeekCustomId = identity on valid inputs
 export const buildCancelWeekCustomId = (spec: CancelWeekCustomIdSpec): string =>
   `${spec.kind}:${spec.nonce}:${spec.choice}`;
+
+// why: ask_absent は欠席の不可逆性ゆえに確認 dialog が必要。nonce ではなく sessionId を使い、
+//   DB CAS と組み合わせて同時押下による二重確定を吸収する。
+const askAbsentCustomIdSpecSchema = z.object({
+  kind: z.literal("ask_absent"),
+  sessionId: z.uuid(),
+  choice: z.enum(["confirm", "abort"])
+});
+
+const askAbsentCodecSchema = z
+  .string()
+  .transform((raw, ctx) => {
+    const segments = raw.split(":");
+    if (segments.length !== 3) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ask_absent custom_id must have exactly 3 segments."
+      });
+      return z.NEVER;
+    }
+    const [kind, sessionId, choice] = segments;
+    return { kind, sessionId, choice };
+  })
+  .pipe(askAbsentCustomIdSpecSchema);
+
+export type AbsentConfirmCustomIdSpec = z.infer<typeof askAbsentCustomIdSpecSchema>;
+export type AbsentConfirmCustomIdChoice = AbsentConfirmCustomIdSpec["choice"];
+
+export const ASK_ABSENT_CUSTOM_ID_PREFIX = "ask_absent:" as const;
+
+export const parseAbsentConfirmCustomId = (
+  raw: string
+): z.ZodSafeParseResult<AbsentConfirmCustomIdSpec> => askAbsentCodecSchema.safeParse(raw);
+
+// invariant: buildAbsentConfirmCustomId ∘ parseAbsentConfirmCustomId = identity on valid inputs
+export const buildAbsentConfirmCustomId = (spec: AbsentConfirmCustomIdSpec): string =>
+  `${spec.kind}:${spec.sessionId}:${spec.choice}`;

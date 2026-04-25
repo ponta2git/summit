@@ -341,4 +341,35 @@ describe("interaction router", () => {
       flags: MessageFlags.Ephemeral
     });
   });
+
+  it("shows ephemeral absent confirmation dialog on absent button press (no response recorded)", async () => {
+    const testSessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
+    const session = buildSessionRow({ id: testSessionId, askMessageId: "test-msg-id" });
+    const mockMembers = appConfig.memberUserIds.map((userId, i) => ({
+      id: `member-${i}`,
+      userId,
+      displayName: `Member ${i}`
+    }));
+
+    const ctx = createTestAppContext({
+      now: new Date("2026-04-24T10:00:00.000Z"), // before deadlineAt 12:30Z
+      seed: { sessions: [session], members: mockMembers }
+    });
+
+    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const interaction = buildButtonInteraction(`ask:${testSessionId}:absent`);
+
+    await handleInteraction(asInteraction(interaction), defaultDeps(sendAsk, ctx));
+
+    // invariant: 欠席は確認ダイアログを経由するため、この時点では response は記録されない。
+    const responses = await ctx.ports.responses.listResponses(testSessionId);
+    expect(responses).toHaveLength(0);
+    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+    const followUpCall = callArg<{ content: string; components: readonly unknown[]; flags: unknown }>(
+      interaction.followUp
+    );
+    expect(followUpCall.content).toBe(askMessages.absentConfirm.prompt);
+    expect(followUpCall.components).toHaveLength(1);
+    expect(followUpCall.flags).toBe(MessageFlags.Ephemeral);
+  });
 });
