@@ -1,5 +1,5 @@
 import type { SessionRow } from "../../../src/db/rows.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 
 // why: scheduler テストは channelId を実挙動で使わない (settle* を mock するため) が、
 //   factory を discord 系と共有するとシグネチャ結合で将来の drift を誘発する。
@@ -10,7 +10,7 @@ export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow
   postponeCount: 0,
   candidateDateIso: "2026-04-24",
   status: "ASKING",
-  channelId: env.DISCORD_CHANNEL_ID,
+  channelId: appConfig.discord.channelId,
   askMessageId: null,
   postponeMessageId: null,
   deadlineAt: new Date("2026-04-24T12:30:00.000Z"),

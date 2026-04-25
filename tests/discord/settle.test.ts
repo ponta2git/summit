@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../src/db/rows.js";
 import { applyDeadlineDecision, settleAskingSession, settlePostponeVotingSession } from "../../src/orchestration/index.js";
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 import { callArg } from "../helpers/assertions.js";
 import { createTestAppContext } from "../testing/index.js";
 
@@ -17,7 +17,7 @@ const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
     ...overrides
   });
 
-const seededMembers = env.MEMBER_USER_IDS.map((userId, index) => ({
+const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index + 1}`,
   userId,
   displayName: `Member ${index + 1}`

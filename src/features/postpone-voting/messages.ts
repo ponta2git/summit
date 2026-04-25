@@ -1,4 +1,6 @@
 import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.js";
+import { POSTPONE_DEADLINE_HHMM } from "../../config.js";
+import { SLOT_TO_LABEL } from "../../slot.js";
 
 interface PostponeBodyParams {
   candidateDateIso: string;
@@ -17,6 +19,11 @@ interface PostponeCancelledParams {
 
 type PostponeVoteChoice = "ok" | "ng";
 
+const formatPostponeDeadline = (): string =>
+  POSTPONE_DEADLINE_HHMM.hour === 24 && POSTPONE_DEADLINE_HHMM.minute === 0
+    ? "候補日翌日 00:00 JST"
+    : `${String(POSTPONE_DEADLINE_HHMM.hour).padStart(2, "0")}:${String(POSTPONE_DEADLINE_HHMM.minute).padStart(2, "0")} JST`;
+
 export const postponeMessages = {
   postpone: {
     body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
@@ -24,8 +31,8 @@ export const postponeMessages = {
         "🔁 今週は中止になりました。翌日に順延しますか？",
         "",
         `元の候補日: ${formatCandidateJa(parseCandidateDateIso(candidateDateIso))}`,
-        "順延先: 翌日 22:00 以降",
-        "回答締切: 候補日翌日 00:00 JST（押さなければ NG 扱い）",
+        `順延先: 翌日 ${SLOT_TO_LABEL.T2200} 以降`,
+        `回答締切: ${formatPostponeDeadline()}（押さなければ NG 扱い）`,
         ""
       ];
       if (statusLines) {

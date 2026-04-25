@@ -1,21 +1,14 @@
 import { defineConfig } from "vitest/config";
+import { readFileSync } from "node:fs";
 
 // jst: env.ts import 前に TZ を確定させ、時刻依存テスト (ISO week / 締切) の再現性を担保する。
 process.env.NODE_ENV = "test";
 process.env.TZ = "Asia/Tokyo";
 // secret: テスト用ダミー値。env.ts の zod スキーマを通すための最小値で、実値ではない。
 process.env.DISCORD_TOKEN ??= "dummy-token";
-process.env.DISCORD_GUILD_ID ??= "123456789012345678";
-process.env.DISCORD_CHANNEL_ID ??= "223456789012345678";
-process.env.MEMBER_USER_IDS ??=
-  "323456789012345678,423456789012345678,523456789012345678,623456789012345678";
 process.env.DATABASE_URL ??= "postgres://summit:summit@localhost:5433/summit";
-process.env.POSTPONE_DEADLINE ??= "24:00";
+process.env.SUMMIT_CONFIG_YAML ??= readFileSync("summit.config.example.yml", "utf8");
 process.env.HEALTHCHECK_PING_URL ??= "";
-// why: vitest 4 / pnpm が .env.local を自動 inject するため、開発機の DEV_SUPPRESS_MENTIONS=true が
-//   render テスト等の既定挙動 (mention 行あり) を破壊する。テストでは常に false を強制し、
-//   フラグ ON 経路は dev-mention-suppression.test.ts が vi.stubEnv で個別に検証する。
-process.env.DEV_SUPPRESS_MENTIONS = "false";
 
 export default defineConfig({
   test: {

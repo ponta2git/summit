@@ -165,7 +165,7 @@ describe("reconcileMembers", () => {
         existing: [MEMBERS[0]!.userId],
         displayNameUpdated: []
       },
-      "Members reconciled with env"
+      "Members reconciled with user config"
     );
   });
 });

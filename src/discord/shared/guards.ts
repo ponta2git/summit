@@ -1,7 +1,7 @@
 import { MessageFlags } from "discord.js";
 
 import type { SessionRow } from "../../db/rows.js";
-import { env } from "../../env.js";
+import { appConfig } from "../../userConfig.js";
 import {
   InvariantViolationError,
   NotFoundError,
@@ -23,11 +23,11 @@ export const assertGuildAndChannel = (
   guildId: string | null,
   channelId: string | null
 ): boolean =>
-  guildId === env.DISCORD_GUILD_ID &&
-  channelId === env.DISCORD_CHANNEL_ID;
+  guildId === appConfig.discord.guildId &&
+  channelId === appConfig.discord.channelId;
 
 export const assertMember = (userId: string): boolean =>
-  env.MEMBER_USER_IDS.includes(userId);
+  appConfig.memberUserIds.includes(userId);
 
 export const buildEphemeralReject = (content: string) => ({
   content,
@@ -59,7 +59,7 @@ const buildValidationError = (reason: GuardFailureReason, message: string): Vali
   new ValidationError(message, { cause: buildGuardCause(reason) });
 
 export const guardGuildId = (guildId: string | null): AppResult<string, ValidationError> => {
-  if (guildId !== env.DISCORD_GUILD_ID) {
+  if (guildId !== appConfig.discord.guildId) {
     return errResult(buildValidationError("wrong_guild", "Guild is out of scope."));
   }
 
@@ -67,7 +67,7 @@ export const guardGuildId = (guildId: string | null): AppResult<string, Validati
 };
 
 export const guardChannelId = (channelId: string | null): AppResult<string, ValidationError> => {
-  if (channelId !== env.DISCORD_CHANNEL_ID) {
+  if (channelId !== appConfig.discord.channelId) {
     return errResult(buildValidationError("wrong_channel", "Channel is out of scope."));
   }
 
@@ -75,7 +75,7 @@ export const guardChannelId = (channelId: string | null): AppResult<string, Vali
 };
 
 export const guardMemberUserId = (userId: string): AppResult<string, ValidationError> => {
-  if (!env.MEMBER_USER_IDS.includes(userId)) {
+  if (!appConfig.memberUserIds.includes(userId)) {
     return errResult(buildValidationError("not_member", "User is not an in-scope member."));
   }
 
@@ -231,13 +231,13 @@ export const cheapFirstGuard = (
   channelId: string | null,
   userId: string
 ): GuardFailureReason | undefined => {
-  if (guildId !== env.DISCORD_GUILD_ID) {
+  if (guildId !== appConfig.discord.guildId) {
     return "wrong_guild";
   }
-  if (channelId !== env.DISCORD_CHANNEL_ID) {
+  if (channelId !== appConfig.discord.channelId) {
     return "wrong_channel";
   }
-  if (!env.MEMBER_USER_IDS.includes(userId)) {
+  if (!appConfig.memberUserIds.includes(userId)) {
     return "not_member";
   }
   return undefined;

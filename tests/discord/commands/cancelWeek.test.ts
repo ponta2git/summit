@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { SessionRow } from "../../../src/db/rows.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.js";
 import { callArg } from "../../helpers/assertions.js";
 import { buildCancelInteraction } from "../../helpers/interaction.js";
@@ -12,7 +12,7 @@ import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
 // why: render は pure builder (ADR-0028) なので stub 不要。Fake ports の state と outbox entries を直接検証する。
-const seededMembers = env.MEMBER_USER_IDS.map((userId, index) => ({
+const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index}`,
   userId,
   displayName: `Member ${index + 1}`
@@ -104,9 +104,9 @@ describe("cancel_week confirmation button", () => {
   const buildCancelButtonInteraction = (customId: string) => ({
     id: "interaction-cancel-btn",
     customId,
-    guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID,
-    user: { id: env.MEMBER_USER_IDS[0] },
+    guildId: appConfig.discord.guildId,
+    channelId: appConfig.discord.channelId,
+    user: { id: appConfig.memberUserIds[0] },
     isChatInputCommand: () => false,
     isButton: () => true,
     deferUpdate: vi.fn(async () => undefined),
@@ -147,7 +147,7 @@ describe("cancel_week confirmation button", () => {
     expect(notice?.dedupeKey).toMatch(/^cancel-week-notice-/);
     if (notice?.payload.kind === "send_message") {
       expect(notice.payload.renderer).toBe("cancel_week_notice");
-      expect(notice.payload.extra?.["invokerUserId"]).toBe(env.MEMBER_USER_IDS[0]);
+      expect(notice.payload.extra?.["invokerUserId"]).toBe(appConfig.memberUserIds[0]);
     } else {
       throw new Error("expected send_message payload");
     }

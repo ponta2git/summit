@@ -1,10 +1,10 @@
 ---
 adr: 0011
 title: 開発用 mention 抑止スイッチ（DEV_SUPPRESS_MENTIONS）
-status: accepted
+status: superseded
 date: 2026-04-20
 supersedes: []
-superseded-by: null
+superseded-by: 0046
 tags: [discord, ops, runtime]
 ---
 

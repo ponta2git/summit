@@ -6,11 +6,11 @@ import type {
   ViewModelResponseInput
 } from "../../../src/discord/shared/viewModelInputs.js";
 import { renderPostponeBody } from "../../../src/features/postpone-voting/render.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 
-// invariant: テスト内メンバー userId は env.MEMBER_USER_IDS と一致させる (viewModel が env.MEMBER_USER_IDS を走査するため)。
+// invariant: テスト内メンバー userId は appConfig.memberUserIds と一致させる (viewModel が appConfig.memberUserIds を走査するため)。
 const buildMembers = (): ViewModelMemberInput[] =>
-  env.MEMBER_USER_IDS.map((userId, i) => ({
+  appConfig.memberUserIds.map((userId, i) => ({
     id: `m${i + 1}`,
     userId,
     displayName: `メンバー${i + 1}`
@@ -34,7 +34,7 @@ describe("buildPostponeMessageViewModel", () => {
       [],
       members
     );
-    expect(vm.memberStatuses).toHaveLength(env.MEMBER_USER_IDS.length);
+    expect(vm.memberStatuses).toHaveLength(appConfig.memberUserIds.length);
     for (const ms of vm.memberStatuses) {
       expect(ms.state).toBe("unanswered");
     }
@@ -68,19 +68,19 @@ describe("buildPostponeMessageViewModel", () => {
   });
 
   it("falls back to userId as displayLabel when member not found in memberRows", () => {
-    // regression: env.MEMBER_USER_IDS にあるが memberRows にない userId のフォールバック
+    // regression: appConfig.memberUserIds にあるが memberRows にない userId のフォールバック
     const partialMembers: ViewModelMemberInput[] = [];
     const vm = buildPostponeMessageViewModel(
       { id: SESSION_ID, candidateDateIso: CANDIDATE_DATE },
       [],
       partialMembers
     );
-    expect(vm.memberStatuses[0]?.displayLabel).toBe(env.MEMBER_USER_IDS[0]);
+    expect(vm.memberStatuses[0]?.displayLabel).toBe(appConfig.memberUserIds[0]);
   });
 
   it("adopts last response for a member when duplicates exist (last-write-wins)", () => {
     const members = buildMembers();
-    const userId0 = env.MEMBER_USER_IDS[0];
+    const userId0 = appConfig.memberUserIds[0];
     // regression: 同一 memberId の複数回答は最後 (配列末尾) が採用される (last-write-wins)
     const responses: ViewModelResponseInput[] = [
       { memberId: "m1", choice: "POSTPONE_OK" },
@@ -202,7 +202,7 @@ describe("renderPostponeBody", () => {
   it("includes mention line when suppressMentions=false (default)", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    for (const userId of env.MEMBER_USER_IDS) {
+    for (const userId of appConfig.memberUserIds) {
       expect(rendered.content).toContain(`<@${userId}>`);
     }
   });

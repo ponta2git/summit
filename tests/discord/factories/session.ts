@@ -1,5 +1,5 @@
 import type { SessionRow } from "../../../src/db/rows.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 
 // why: discord 系テスト (render / settle / dev-mention-suppression) の SessionRow 組立重複を解消。scheduler 系は tests/scheduler/factories/session.ts を別建てにしてシグネチャ結合を避ける。
 export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow => ({
@@ -8,7 +8,7 @@ export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow
   postponeCount: 0,
   candidateDateIso: "2026-04-24",
   status: "ASKING",
-  channelId: env.DISCORD_CHANNEL_ID,
+  channelId: appConfig.discord.channelId,
   askMessageId: null,
   postponeMessageId: null,
   deadlineAt: new Date("2026-04-24T12:30:00.000Z"),

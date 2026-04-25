@@ -1,4 +1,4 @@
-import { env } from "../../env.js";
+import { appConfig } from "../../userConfig.js";
 import type {
   ViewModelMemberInput,
   ViewModelResponseInput,
@@ -26,7 +26,7 @@ export interface PostponeMessageViewModel {
  * Build a view model for the postpone voting message.
  *
  * @remarks
- * Pure. memberRows 省略時は memberStatuses=[]（初期投稿互換）。指定時は env.MEMBER_USER_IDS 順で
+ * Pure. memberRows 省略時は memberStatuses=[]（初期投稿互換）。指定時は user config の member 順で
  * 各メンバーの最新 response を反映。
  * @see ADR-0014
  */
@@ -38,7 +38,7 @@ export const buildPostponeMessageViewModel = (
 ): PostponeMessageViewModel => {
   const memberStatuses: PostponeMemberStatus[] =
     memberRows !== undefined
-      ? env.MEMBER_USER_IDS.map((userId) => {
+      ? appConfig.memberUserIds.map((userId) => {
           const member = memberRows.find((m) => m.userId === userId);
           if (!member) {
             return { userId, displayLabel: userId, state: "unanswered" as const };
@@ -59,8 +59,8 @@ export const buildPostponeMessageViewModel = (
   const base = {
     sessionId: session.id,
     candidateDateIso: session.candidateDateIso,
-    memberUserIds: env.MEMBER_USER_IDS,
-    suppressMentions: env.DEV_SUPPRESS_MENTIONS,
+    memberUserIds: appConfig.memberUserIds,
+    suppressMentions: appConfig.dev.suppressMentions,
     memberStatuses,
     disabled: options?.disabled ?? false
   };

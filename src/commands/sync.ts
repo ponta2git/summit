@@ -2,6 +2,7 @@ import { REST, Routes } from "discord.js";
 
 import { env } from "../env.js";
 import { logger } from "../logger.js";
+import { appConfig } from "../userConfig.js";
 import { slashCommands } from "./definitions.js";
 
 // why: Discord token の第一セグメント (base64url) がそのまま application ID を表す仕様。
@@ -27,13 +28,13 @@ const run = async (): Promise<void> => {
   // why: guild-scoped bulk overwrite で冪等に同期する。global 登録は伝播に最大 1 時間かかるため使わない。
   // @see docs/adr/0004-discord-interaction-architecture.md
   await rest.put(
-    Routes.applicationGuildCommands(applicationId, env.DISCORD_GUILD_ID),
+    Routes.applicationGuildCommands(applicationId, appConfig.discord.guildId),
     { body: slashCommands }
   );
 
   logger.info(
     {
-      guildId: env.DISCORD_GUILD_ID,
+      guildId: appConfig.discord.guildId,
       commandCount: slashCommands.length
     },
     "Slash commands synced."

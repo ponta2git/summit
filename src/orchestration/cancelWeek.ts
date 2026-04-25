@@ -3,13 +3,13 @@ import { type ResultAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import type { SessionRow } from "../db/rows.js";
-import { env } from "../env.js";
 import { type AppError, okResult } from "../errors/index.js";
 import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
 import { askMessages } from "../features/ask-session/messages.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
 import { logger } from "../logger.js";
+import { appConfig } from "../userConfig.js";
 import { isoWeekKey } from "../time/index.js";
 
 export interface SkipWeekOutcome {
@@ -111,11 +111,11 @@ export const applyManualSkip = (
           dedupeKey: `cancel-week-notice-${weekKey}-${params.invokerUserId}`,
           payload: {
             kind: "send_message",
-            channelId: env.DISCORD_CHANNEL_ID,
+            channelId: appConfig.discord.channelId,
             renderer: "cancel_week_notice",
             extra: {
               invokerUserId: params.invokerUserId,
-              suppressMentions: env.DEV_SUPPRESS_MENTIONS
+              suppressMentions: appConfig.dev.suppressMentions
             }
           }
         }),

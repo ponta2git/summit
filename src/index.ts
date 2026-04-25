@@ -18,6 +18,7 @@ import { runReconciler } from "./scheduler/reconciler.js";
 import { createAskScheduler, runStartupRecovery } from "./scheduler/index.js";
 import { shutdownGracefully } from "./shutdown.js";
 import { HEALTHCHECK_PING_TIMEOUT_MS, RECONNECT_REPLAY_DEBOUNCE_MS } from "./config.js";
+import { appConfig } from "./userConfig.js";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
@@ -189,9 +190,9 @@ const logBootPhase = (
 const run = async (): Promise<void> => {
   logBootPhase("boot_start");
 
-  // why: env SSoT を起動時に DB へ反映。cron 登録・login より前に完了させる → ADR-0012
+  // why: user config の member SSoT を起動時に DB へ反映。cron 登録・login より前に完了させる。
   await reconcileMembers(
-    buildMemberReconcileInputs(env.MEMBER_USER_IDS, env.MEMBER_DISPLAY_NAMES),
+    buildMemberReconcileInputs(appConfig.memberUserIds, appConfig.memberDisplayNames),
     db
   );
   logBootPhase("db_connect");
@@ -218,7 +219,7 @@ const run = async (): Promise<void> => {
   });
 
   // why: 本番 invariant (OFF) を覆している状態を起動時 1 回だけ warn で明示する → ADR-0011
-  if (env.DEV_SUPPRESS_MENTIONS) {
+  if (appConfig.dev.suppressMentions) {
     logger.warn(
       { devMentionSuppression: true, mentionSuppression: "client-default" },
       "Dev mention suppression is ON. Push mentions are suppressed and `<@id>` lines are omitted from message bodies."
@@ -254,9 +255,9 @@ const run = async (): Promise<void> => {
   logBootPhase("ready", {
     event: "startup.ready",
     commitSha,
-    discordGuildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_CHANNEL_ID,
-    memberCount: env.MEMBER_USER_IDS.length,
+    discordGuildId: appConfig.discord.guildId,
+    channelId: appConfig.discord.channelId,
+    memberCount: appConfig.memberUserIds.length,
     nodeVersion: process.version
   });
 
@@ -281,8 +282,8 @@ const run = async (): Promise<void> => {
 
   logger.info(
     {
-      guildId: env.DISCORD_GUILD_ID,
-      channelId: env.DISCORD_CHANNEL_ID
+      guildId: appConfig.discord.guildId,
+      channelId: appConfig.discord.channelId
     },
     "Discord bot started."
   );

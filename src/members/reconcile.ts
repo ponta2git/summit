@@ -6,10 +6,10 @@ import { logger } from "../logger.js";
 import type { MemberReconcileInput } from "./inputs.js";
 
 /**
- * Reconcile env.MEMBER_USER_IDS into the DB members table idempotently.
+ * Reconcile configured members into the DB members table idempotently.
  *
  * @remarks
- * env は identity (userId) の SSoT、DB は display_name の正本。env から消えた行は DELETE しない
+ * user config は identity (userId) の SSoT、DB は display_name の正本。config から消えた行は DELETE しない
  * （履歴保全）。起動時に cron 登録・login より前に呼び、失敗時は起動中止。
  * @see ADR-0012
  */
@@ -67,6 +67,6 @@ export const reconcileMembers = async (
 
   logger.info(
     { inserted, existing: alreadyPresent, displayNameUpdated },
-    "Members reconciled with env"
+    "Members reconciled with user config"
   );
 };

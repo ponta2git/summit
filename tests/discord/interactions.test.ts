@@ -3,7 +3,7 @@ import { MessageFlags } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInteraction, registerInteractionHandlers } from "../../src/discord/shared/dispatcher.js";
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 import { logger } from "../../src/logger.js";
 import { askMessages } from "../../src/features/ask-session/messages.js";
 import { cancelWeekMessages } from "../../src/features/cancel-week/messages.js";
@@ -110,7 +110,7 @@ describe("interaction router", () => {
       postponeMessageId: "postpone-msg-1",
       deadlineAt: new Date("2026-04-25T15:00:00.000Z")
     });
-    const members = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const members = appConfig.memberUserIds.map((userId, i) => ({
       id: `member-${i}`,
       userId,
       displayName: `Member ${i}`
@@ -303,7 +303,7 @@ describe("interaction router", () => {
   it("sends ephemeral vote confirmation on successful ask button press", async () => {
     const testSessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
     const session = buildSessionRow({ id: testSessionId, askMessageId: "test-msg-id" });
-    const mockMembers = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const mockMembers = appConfig.memberUserIds.map((userId, i) => ({
       id: `member-${i}`,
       userId,
       displayName: `Member ${i}`

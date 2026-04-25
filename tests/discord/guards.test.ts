@@ -7,7 +7,7 @@ import {
   GUARD_FAILURE_REASONS,
   GUARD_REASON_TO_MESSAGE
 } from "../../src/discord/shared/guards.js";
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 import { memberUserId } from "../helpers/env.js";
 
 describe("interaction guards", () => {
@@ -20,9 +20,9 @@ describe("interaction guards", () => {
 
   it("checks cheap-first guard failures in guild, channel, member order", () => {
     expect(cheapFirstGuard("wrong-guild", "wrong-channel", "not-member")).toBe("wrong_guild");
-    expect(cheapFirstGuard(env.DISCORD_GUILD_ID, "wrong-channel", "not-member")).toBe("wrong_channel");
-    expect(cheapFirstGuard(env.DISCORD_GUILD_ID, env.DISCORD_CHANNEL_ID, "not-member")).toBe("not_member");
-    expect(cheapFirstGuard(env.DISCORD_GUILD_ID, env.DISCORD_CHANNEL_ID, memberUserId)).toBeUndefined();
+    expect(cheapFirstGuard(appConfig.discord.guildId, "wrong-channel", "not-member")).toBe("wrong_channel");
+    expect(cheapFirstGuard(appConfig.discord.guildId, appConfig.discord.channelId, "not-member")).toBe("not_member");
+    expect(cheapFirstGuard(appConfig.discord.guildId, appConfig.discord.channelId, memberUserId)).toBeUndefined();
   });
 
   it("builds ephemeral reject payloads", () => {

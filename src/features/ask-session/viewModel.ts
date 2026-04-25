@@ -1,5 +1,5 @@
 import { slotKeySchema } from "../../slot.js";
-import { env } from "../../env.js";
+import { appConfig } from "../../userConfig.js";
 import { askMessages, type SettleCancelReason } from "./messages.js";
 import {
   decidedStartAt,
@@ -63,7 +63,7 @@ const computeAskFooter = (
       if (userId) { choiceByUserId.set(userId, r.choice); }
     }
     const timeChoices: AskTimeChoice[] = [];
-    for (const userId of env.MEMBER_USER_IDS) {
+    for (const userId of appConfig.memberUserIds) {
       const choice = choiceByUserId.get(userId);
       const parsed = choice ? slotKeySchema.safeParse(choice) : undefined;
       if (!parsed?.success) { return undefined; }
@@ -107,10 +107,10 @@ export const buildAskMessageViewModel = (
     sessionId: session.id,
     candidateDateIso: session.candidateDateIso,
     disabled: session.status !== "ASKING",
-    memberUserIds: env.MEMBER_USER_IDS,
+    memberUserIds: appConfig.memberUserIds,
     responsesByUserId,
     displayNameByUserId,
-    suppressMentions: env.DEV_SUPPRESS_MENTIONS,
+    suppressMentions: appConfig.dev.suppressMentions,
     footer: computeAskFooter(session, responses, members)
   };
 };
@@ -129,10 +129,10 @@ export const buildInitialAskMessageViewModel = (
   sessionId,
   candidateDateIso: formatCandidateDateIso(candidateDate),
   disabled: false,
-  memberUserIds: env.MEMBER_USER_IDS,
+  memberUserIds: appConfig.memberUserIds,
   responsesByUserId: new Map(),
   displayNameByUserId: new Map(members.map((m) => [m.userId, m.displayName])),
-  suppressMentions: env.DEV_SUPPRESS_MENTIONS,
+  suppressMentions: appConfig.dev.suppressMentions,
   footer: undefined
 });
 
@@ -140,8 +140,8 @@ export const buildSettleNoticeViewModel = (
   reason: SettleCancelReason
 ): SettleNoticeViewModel => ({
   cancelText: askMessages.settle.cancelled(reason),
-  memberUserIds: env.MEMBER_USER_IDS,
-  suppressMentions: env.DEV_SUPPRESS_MENTIONS
+  memberUserIds: appConfig.memberUserIds,
+  suppressMentions: appConfig.dev.suppressMentions
 });
 
 export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string } => {

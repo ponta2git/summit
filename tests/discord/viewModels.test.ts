@@ -11,7 +11,7 @@ import type {
   ViewModelResponseInput,
   ViewModelSessionInput
 } from "../../src/discord/shared/viewModelInputs.js";
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 
 const session: ViewModelSessionInput = {
   id: "session-1",
@@ -90,7 +90,7 @@ describe("buildAskMessageViewModel", () => {
 
   it("shows tentative footer when ASKING and all 4 members answered with time choices", () => {
     // regression: §4.3 暫定状態の表示 (@see requirements/base.md)
-    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const allMembers: ViewModelMemberInput[] = appConfig.memberUserIds.map((userId, i) => ({
       id: `m${i + 1}`,
       userId,
       displayName: `User${i + 1}`
@@ -105,7 +105,7 @@ describe("buildAskMessageViewModel", () => {
   });
 
   it("does not show tentative footer when any member answered ABSENT", () => {
-    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const allMembers: ViewModelMemberInput[] = appConfig.memberUserIds.map((userId, i) => ({
       id: `m${i + 1}`,
       userId,
       displayName: `User${i + 1}`
@@ -119,7 +119,7 @@ describe("buildAskMessageViewModel", () => {
   });
 
   it("does not show tentative footer when a member has not answered yet", () => {
-    const allMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const allMembers: ViewModelMemberInput[] = appConfig.memberUserIds.map((userId, i) => ({
       id: `m${i + 1}`,
       userId,
       displayName: `User${i + 1}`
@@ -131,9 +131,9 @@ describe("buildAskMessageViewModel", () => {
     expect(vm.footer).toBeUndefined();
   });
 
-  it("uses env.MEMBER_USER_IDS", () => {
+  it("uses appConfig.memberUserIds", () => {
     const vm = buildAskMessageViewModel(session, responses, members);
-    expect(vm.memberUserIds).toEqual(env.MEMBER_USER_IDS);
+    expect(vm.memberUserIds).toEqual(appConfig.memberUserIds);
   });
 
   it("ignores responses whose memberId is not in members list", () => {
@@ -180,7 +180,7 @@ describe("buildPostponeMessageViewModel", () => {
     const vm = buildPostponeMessageViewModel({ id: "s1", candidateDateIso: "2026-04-24" });
     expect(vm.sessionId).toBe("s1");
     expect(vm.candidateDateIso).toBe("2026-04-24");
-    expect(vm.memberUserIds).toEqual(env.MEMBER_USER_IDS);
+    expect(vm.memberUserIds).toEqual(appConfig.memberUserIds);
   });
 
   it("is pure: same inputs produce identical output", () => {
@@ -198,7 +198,7 @@ describe("buildPostponeMessageViewModel", () => {
   });
 
   it("computes member statuses from responses and memberRows", () => {
-    const testMembers: ViewModelMemberInput[] = env.MEMBER_USER_IDS.map((userId, i) => ({
+    const testMembers: ViewModelMemberInput[] = appConfig.memberUserIds.map((userId, i) => ({
       id: `tm${i + 1}`,
       userId,
       displayName: `テスト${i + 1}`
@@ -212,7 +212,7 @@ describe("buildPostponeMessageViewModel", () => {
       testResponses,
       testMembers
     );
-    expect(vm.memberStatuses).toHaveLength(env.MEMBER_USER_IDS.length);
+    expect(vm.memberStatuses).toHaveLength(appConfig.memberUserIds.length);
     expect(vm.memberStatuses[0]?.state).toBe("ok");
     expect(vm.memberStatuses[1]?.state).toBe("ng");
     expect(vm.memberStatuses[2]?.state).toBe("unanswered");
@@ -247,8 +247,8 @@ describe("buildSettleNoticeViewModel", () => {
     expect(a).toEqual(b);
   });
 
-  it("uses env.MEMBER_USER_IDS", () => {
+  it("uses appConfig.memberUserIds", () => {
     const vm = buildSettleNoticeViewModel("absent");
-    expect(vm.memberUserIds).toEqual(env.MEMBER_USER_IDS);
+    expect(vm.memberUserIds).toEqual(appConfig.memberUserIds);
   });
 });

@@ -1,4 +1,5 @@
 import { ChannelType, type Client } from "discord.js";
+import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { SessionRow } from "../../src/db/rows.js";
@@ -7,7 +8,7 @@ import type * as PostponeModule from "../../src/features/postpone-voting/render.
 import type * as SettleModule from "../../src/orchestration/askSettleCancel.js";
 import type * as AskViewModelModule from "../../src/features/ask-session/viewModel.js";
 import type * as PostponeViewModelModule from "../../src/features/postpone-voting/viewModel.js";
-import type * as EnvModule from "../../src/env.js";
+import type * as UserConfigModule from "../../src/userConfig.js";
 import type * as TestingModule from "../testing/index.js";
 
 import { callArg } from "../helpers/assertions.js";
@@ -18,7 +19,7 @@ type RenderPostpone = typeof PostponeModule;
 type Settle = typeof SettleModule;
 type AskViewModel = typeof AskViewModelModule;
 type PostponeViewModel = typeof PostponeViewModelModule;
-type Env = typeof EnvModule;
+type UserConfig = typeof UserConfigModule;
 type Testing = typeof TestingModule;
 
 let askRender: RenderAsk;
@@ -26,15 +27,18 @@ let postponeRender: RenderPostpone;
 let settle: Settle;
 let askViewModel: AskViewModel;
 let postponeViewModel: PostponeViewModel;
-let envModule: Env;
+let userConfigModule: UserConfig;
 let testing: Testing;
 
-// why: 対象モジュール群は env をモジュール読込時定数として参照するため、DEV_SUPPRESS_MENTIONS=true 下での再 import が必要。cold load (~1.5s) を償却するため beforeAll で 1 度だけ行う (beforeEach だと 4 倍コスト)。
-// invariant: 本 describe の assertion は全て DEV_SUPPRESS_MENTIONS=true 前提。env=false 側は client.test.ts / render.test.ts でカバー。
+const suppressMentionsConfigYaml = readFileSync("summit.config.example.yml", "utf8")
+  .replace("suppressMentions: false", "suppressMentions: true");
+
+// why: 対象モジュール群は user config をモジュール読込時定数として参照するため、suppressMentions=true 下での再 import が必要。cold load (~1.5s) を償却するため beforeAll で 1 度だけ行う (beforeEach だと 4 倍コスト)。
+// invariant: 本 describe の assertion は全て dev.suppressMentions=true 前提。false 側は client.test.ts / render.test.ts でカバー。
 beforeAll(async () => {
-  vi.stubEnv("DEV_SUPPRESS_MENTIONS", "true");
+  vi.stubEnv("SUMMIT_CONFIG_YAML", suppressMentionsConfigYaml);
   vi.resetModules();
-  envModule = await import("../../src/env.js");
+  userConfigModule = await import("../../src/userConfig.js");
   askRender = await import("../../src/features/ask-session/render.js");
   postponeRender = await import("../../src/features/postpone-voting/render.js");
   settle = await import("../../src/orchestration/askSettleCancel.js");
@@ -55,9 +59,9 @@ afterAll(() => {
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-suppress", askMessageId: "ask-msg-1", ...overrides });
 
-describe("DEV_SUPPRESS_MENTIONS=true", () => {
+describe("dev.suppressMentions=true", () => {
   it("renderAskBody content contains no <@ mentions", () => {
-    expect(envModule.env.DEV_SUPPRESS_MENTIONS).toBe(true);
+    expect(userConfigModule.appConfig.dev.suppressMentions).toBe(true);
     const vm = askViewModel.buildAskMessageViewModel(sessionRow(), [], []);
     const rendered = askRender.renderAskBody(vm);
     expect(rendered.content).not.toContain("<@");

@@ -149,7 +149,7 @@ export const heldEvents = pgTable("held_events", {
 });
 
 // source-of-truth: 開催ごとの参加メンバースナップショット (§8.3)。
-//   env.MEMBER_USER_IDS は「今の設定」であり「その開催の実参加」ではないため、
+//   user config の members は「今の設定」であり「その開催の実参加」ではないため、
 //   開催時点の responses から派生させた snapshot を保持する。
 export const heldEventParticipants = pgTable(
   "held_event_participants",

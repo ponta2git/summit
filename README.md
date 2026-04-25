@@ -32,7 +32,7 @@ Summit は、固定 4 名で毎週金曜深夜に遊ぶ「桃鉄1年勝負」の
 | ロギング | **pino**（構造化 JSON、stdout → `fly logs`） | 外部ログ SaaS は不採用 |
 | バリデーション | **zod v4**（env / interaction payload） | DB 連携は `drizzle-zod >= 0.8.0` |
 | テスト | Vitest など TypeScript 対応ランナー + DB 統合 | E2E は実施しない |
-| 設定管理 | 環境変数（本番: Fly secrets / ローカル: `.env.local`） | `.env.example` のみコミット |
+| 設定管理 | YAML user config + 環境変数 | 非 secret は `summit.config.yml`、secret は `.env.local` / Fly secrets |
 
 **月額費用の目安**: 約 $2〜3（300〜450円）。
 
@@ -58,11 +58,12 @@ Summit は、固定 4 名で毎週金曜深夜に遊ぶ「桃鉄1年勝負」の
 3. Guild ID / 投稿先 Channel ID / 固定 4 名の User ID を控える（開発者モードで右クリック → ID コピー）。
 4. リポジトリを clone する。
 5. `mise install` で Node / pnpm をそろえる。
-6. `.env.local` を作る:
+6. `.env.local` と `summit.config.yml` を作る:
    ```bash
    cp .env.example .env.local
+   cp summit.config.example.yml summit.config.yml
    ```
-   Discord / DB / 運用設定の値を埋める。ローカルでは `DATABASE_URL` と `DIRECT_URL` は同一値で構わない。
+   `.env.local` には token / DB URL などの secret を、`summit.config.yml` には Discord guild / channel / member / 時刻設定を埋める。ローカルでは `DATABASE_URL` と `DIRECT_URL` は同一値で構わない。
 7. 依存インストール + DB 起動 + migration + seed を一括で実行:
    ```bash
    pnpm run setup   # pnpm install -> db:up -> db:migrate -> db:seed
@@ -96,9 +97,13 @@ pnpm db:check       # Drizzle の履歴整合検証
 pnpm db:seed        # 開発用 seed 投入
 pnpm db:reset       # 開発用: sessions / responses を TRUNCATE（localhost 限定。`--all` で members も削除）
 pnpm commands:sync  # Discord slash commands を guild-scoped で同期
+pnpm config:fly:stage  # summit.config.production.yml を Fly secret として次回 deploy 用に stage
+pnpm deploy:production # production config を stage して fly deploy --remote-only
 ```
 
 schema を変えたら `pnpm db:generate` → 生成 SQL をレビュー → `pnpm db:migrate` → `pnpm db:check` の順。`drizzle-kit push` は使いません。slash command の定義を変えたら `pnpm commands:sync` を忘れないでください。
+
+本番 deploy 時は Fly VM 上に `summit.config.production.yml` は存在しません。deploy 前に `pnpm config:fly:stage` で `summit.config.production.yml` の本文を `SUMMIT_CONFIG_YAML` secret として stage し、`fly deploy --remote-only` で反映します。
 
 ---
 
@@ -122,45 +127,53 @@ schema を変えたら `pnpm db:generate` → 生成 SQL をレビュー → `pn
 
 ---
 
-## 環境変数
+## 設定
 
-アプリコードは `process.env` を直接読まず、`src/env.ts` で validate 済みの値を使う前提です。`.env*` や token / DB URL / ping URL の実値は絶対に commit しないでください（雛形の `.env.example` のみ可）。
+ユーザーが編集する非 secret 設定は `summit.config.yml` に置きます。`summit.config.example.yml` はコメント付きの雛形で、Discord ID の取得方法、各時刻の意味、変更時の注意を近傍に書いています。
+
+`summit.config.yml` は Git 管理しません。token / DB URL / ping URL などの secret は引き続き `.env.local`（本番は Fly secrets）で管理します。
+
+### ユーザー設定ファイル
+
+| 項目 | 例 | 説明 |
+|---|---|---|
+| `discord.guildId` | `12345...` | 運用 Discord サーバー（Guild）ID |
+| `discord.channelId` | `12345...` | 投稿先チャンネル ID |
+| `members[].userId` | `12345...` | 固定 4 名の Discord User ID。4 件ちょうど |
+| `members[].displayName` | `ぽんた` | Bot 表示名。起動時に DB `members.display_name` へ同期 |
+| `schedule.askTime` | `08:00` | 自動送信時刻（JST） |
+| `schedule.answerDeadline` | `21:30` | 回答締切（JST） |
+| `schedule.postponeDeadline` | `24:00` | 順延確認期限。`24:00` は「候補日翌日 00:00 JST」を示す唯一サポート表記 |
+| `schedule.reminderLeadMinutes` | `15` | 開始前リマインド分数 |
+| `slots.*` | `22:00` など | 回答ボタンの時刻。現行 DB/custom_id 互換のため雛形どおり |
+| `dev.suppressMentions` | `false` | 開発用 mention 抑止スイッチ。本番は `false` |
+
+### 環境変数
+
+アプリコードは `process.env` を直接読まず、`src/env.ts` / `src/userConfig.ts` で validate 済みの値を使う前提です。`.env*` や token / DB URL / ping URL の実値は絶対に commit しないでください（雛形の `.env.example` のみ可）。
 
 | 名前 | 例 | 説明 |
 |---|---|---|
 | `DISCORD_TOKEN` | `xxx` | Bot トークン（Fly secrets 管理） |
-| `DISCORD_GUILD_ID` | `12345...` | 運用 Discord サーバー（Guild）ID |
-| `DISCORD_CHANNEL_ID` | `12345...` | 投稿先チャンネル ID |
-| `MEMBER_USER_IDS` | `id1,id2,id3,id4` | 固定 4 名の User ID（カンマ区切り、4 件ちょうど） |
-| `MEMBER_DISPLAY_NAMES` | `name1,name2,name3,name4` | 任意。指定時は `MEMBER_USER_IDS` と同順で `members.display_name` を起動時に上書き |
-| `CANDIDATE_TIMES` | `22:00,22:30,23:00,23:30` | 開催候補時刻 |
-| `ASK_TIME` | `08:00` | 自動送信時刻（金 / 土の当日） |
-| `ANSWER_DEADLINE` | `21:30` | 回答締切 |
-| `POSTPONE_DEADLINE` | `24:00` | 順延確認の回答期限。`"24:00"` は「候補日翌日 00:00 JST」を示す慣習表記として**唯一サポートする**。`25:00` 等は非対応 |
-| `REMIND_BEFORE_MINUTES` | `15` | 開始前リマインド分数 |
 | `DATABASE_URL` | `postgres://...-pooler.../neondb?sslmode=require` | Neon 接続文字列（**アプリ用・pooled**） |
 | `DIRECT_URL` | `postgres://.../neondb?sslmode=require` | Neon 接続文字列（**migration 用・direct**。`drizzle.config.ts` のみで参照し、アプリコードから参照しない） |
 | `TZ` | `Asia/Tokyo` | タイムゾーン固定 |
+| `SUMMIT_CONFIG_YAML` | YAML 本文 | アプリ本体が読む唯一の user config 入力。本番は `summit.config.production.yml` の本文を Fly secret として設定 |
 | `HEALTHCHECK_PING_URL` | `https://hc-ping.com/...` | 死活監視用 ping URL（healthchecks.io 等）。未設定なら ping は no-op |
-| `DEV_SUPPRESS_MENTIONS` | `false` | 開発用 mention 抑止スイッチ。`true` で本文から `<@id>` を除去し Client に `allowedMentions: { parse: [] }` を付与。本番は未設定（= false）維持。詳細は [ADR-0011](./docs/adr/0011-dev-mention-suppression.md) |
 
 ### env 検証（zod v4 / 起動時 Fail Fast）
 
 ```ts
 const Env = z.object({
   DISCORD_TOKEN: z.string().min(50),
-  DISCORD_GUILD_ID: z.string().regex(/^\d{17,20}$/),
-  DISCORD_CHANNEL_ID: z.string().regex(/^\d{17,20}$/),
-  MEMBER_USER_IDS: z.string()
-    .transform(s => s.split(',').map(x => x.trim()))
-    .pipe(z.array(z.string().regex(/^\d{17,20}$/)).length(4)),  // 4件ちょうど
   DATABASE_URL: z.string().url(),
   TZ: z.literal('Asia/Tokyo'),
-  // ... 他の時刻系
+  SUMMIT_CONFIG_YAML: z.string().min(1),
+  // ... optional runtime metadata / healthcheck
 });
 ```
 
-`DIRECT_URL` は **アプリ実行時 env には含めない**（`drizzle.config.ts` 専用）。parse 失敗時は stderr に人間可読な内容を出して `process.exit(1)` で停止します。
+`DIRECT_URL` は **アプリ実行時 env には含めない**（`drizzle.config.ts` 専用）。env / user config の parse 失敗時は stderr に人間可読な内容を出して `process.exit(1)` で停止します。
 
 ---
 
@@ -240,7 +253,7 @@ pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:se
 ### 初回セットアップ（本番）
 
 1. **Neon**: プロジェクトを作成し、production branch の pooled 接続文字列（`DATABASE_URL`）と direct 接続文字列（`DIRECT_URL`）を控える。
-2. **Discord**: Developer Portal で Application / Bot を作成し、token（`DISCORD_TOKEN`）と Application ID（`DISCORD_CLIENT_ID`）を控える。運用 Guild ID（`DISCORD_GUILD_ID`）、運用チャンネル ID（`DISCORD_CHANNEL_ID`）、メンバー user ID 4 名（`MEMBER_USER_IDS`）を収集。OAuth2 scopes は `bot` / `applications.commands`、Bot Permissions は `View Channel` / `Send Messages` / `Embed Links` のみで招待 URL を生成して Guild へ追加。
+2. **Discord**: Developer Portal で Application / Bot を作成し、token（`DISCORD_TOKEN`）と Application ID を控える。運用 Guild ID、運用チャンネル ID、メンバー user ID 4 名は `summit.config.production.yml` に設定し、Fly へは `SUMMIT_CONFIG_YAML` secret として注入する。OAuth2 scopes は `bot` / `applications.commands`、Bot Permissions は `View Channel` / `Send Messages` / `Embed Links` のみで招待 URL を生成して Guild へ追加。
 3. **Fly.io**:
    ```bash
    fly auth login
@@ -251,13 +264,10 @@ pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:se
    fly scale count 1                   # 単一インスタンス固定
    fly secrets set \
      DISCORD_TOKEN=... \
-     DISCORD_CLIENT_ID=... \
-     DISCORD_GUILD_ID=... \
-     DISCORD_CHANNEL_ID=... \
-     MEMBER_USER_IDS=... \
      DATABASE_URL=... \
      DIRECT_URL=... \
      HEALTHCHECK_PING_URL=...          # 任意
+   pnpm config:fly:stage               # SUMMIT_CONFIG_YAML を次回 deploy 用に stage
    fly tokens create deploy            # app-scoped deploy token → GitHub secrets の FLY_API_TOKEN に登録
    fly deploy --remote-only            # 初回 deploy。release_command で migrate 実行
    pnpm commands:sync                  # guild-scoped で slash command を同期
@@ -279,7 +289,7 @@ pnpm db:reset --all    # members も含めて TRUNCATE（この後は pnpm db:se
 
 ### メンバー追加・削除
 
-- `MEMBER_USER_IDS` 変更は Fly secrets 更新 → 再デプロイが必要（ダウンが生じる）。
+- member / guild / channel 変更は `summit.config.production.yml` の更新 → `SUMMIT_CONFIG_YAML` secret 更新 → 再デプロイが必要（ダウンが生じる）。
 - 変更はデプロイ禁止窓外で実施してください。
 
 ---

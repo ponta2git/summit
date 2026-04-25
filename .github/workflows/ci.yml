@@ -32,7 +32,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Prepare CI env
-        run: cp .env.example .env.local
+        run: cp .env.example .env.local && cp summit.config.example.yml summit.config.yml
 
       - name: Typecheck
         run: pnpm typecheck
@@ -74,7 +74,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare CI env
-        run: cp .env.example .env.local
+        run: cp .env.example .env.local && cp summit.config.example.yml summit.config.yml
 
       - name: Migration drift check
         run: pnpm verify:drift
@@ -119,7 +119,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prepare CI env
-        run: cp .env.example .env.local
+        run: cp .env.example .env.local && cp summit.config.example.yml summit.config.yml
 
       - name: Apply migrations
         run: pnpm db:migrate

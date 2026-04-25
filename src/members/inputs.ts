@@ -18,7 +18,7 @@ export interface MemberReconcileInput {
 const toLegacyDisplayNamePosition = (index: number): LegacyDisplayNamePosition => {
   const position = index + 1;
   if (!(position in LEGACY_DISPLAY_NAME_BY_POSITION)) {
-    throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
+    throw new Error(`members must contain exactly ${MEMBER_COUNT_EXPECTED} entries.`);
   }
   return position as LegacyDisplayNamePosition;
 };
@@ -28,17 +28,17 @@ export const buildMemberReconcileInputs = (
   memberDisplayNames?: readonly string[]
 ): ReadonlyArray<MemberReconcileInput> => {
   if (memberUserIds.length !== MEMBER_COUNT_EXPECTED) {
-    throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
+    throw new Error(`members must contain exactly ${MEMBER_COUNT_EXPECTED} entries.`);
   }
 
   if (memberDisplayNames && memberDisplayNames.length !== MEMBER_COUNT_EXPECTED) {
-    throw new Error(`MEMBER_DISPLAY_NAMES must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
+    throw new Error(`member display names must contain exactly ${MEMBER_COUNT_EXPECTED} entries.`);
   }
 
-  // invariant: env は identity (userId)、DB が display_name の正本 → ADR-0012
+  // invariant: user config は identity (userId)、DB が display_name の正本。
   return memberUserIds.map((userId, index) => {
     if (!userId) {
-      throw new Error(`MEMBER_USER_IDS must contain exactly ${MEMBER_COUNT_EXPECTED} members.`);
+      throw new Error(`members must contain exactly ${MEMBER_COUNT_EXPECTED} entries.`);
     }
 
     const displayName = memberDisplayNames?.[index]

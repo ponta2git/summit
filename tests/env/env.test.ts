@@ -6,13 +6,9 @@ import { expectParseFailure, expectParseSuccess } from "../helpers/assertions.js
 
 const validEnvInput = {
   DISCORD_TOKEN: "dummy-token",
-  DISCORD_GUILD_ID: "123456789012345678",
-  DISCORD_CHANNEL_ID: "223456789012345678",
-  MEMBER_USER_IDS:
-    "323456789012345678,423456789012345678,523456789012345678,623456789012345678",
   DATABASE_URL: "postgres://summit:summit@localhost:5433/summit",
   TZ: "Asia/Tokyo",
-  POSTPONE_DEADLINE: "24:00"
+  SUMMIT_CONFIG_YAML: "discord: {}"
 } as const;
 
 describe("envSchema", () => {
@@ -42,30 +38,10 @@ describe("envSchema", () => {
     );
   });
 
-  it("accepts valid required fields and preserves the 4-member contract", () => {
+  it("accepts valid required fields and preserves the injected config YAML", () => {
     const parsed = envSchema.parse(validEnvInput);
 
-    expect(parsed.MEMBER_USER_IDS).toHaveLength(4);
-    expect(parsed.MEMBER_USER_IDS).toEqual([
-      "323456789012345678",
-      "423456789012345678",
-      "523456789012345678",
-      "623456789012345678"
-    ]);
-  });
-
-  it("parses optional MEMBER_DISPLAY_NAMES as a 4-member array", () => {
-    const parsed = envSchema.parse({
-      ...validEnvInput,
-      MEMBER_DISPLAY_NAMES: "いーゆー,おーたか,あかねまみ,ぽんた"
-    });
-
-    expect(parsed.MEMBER_DISPLAY_NAMES).toEqual([
-      "いーゆー",
-      "おーたか",
-      "あかねまみ",
-      "ぽんた"
-    ]);
+    expect(parsed.SUMMIT_CONFIG_YAML).toBe("discord: {}");
   });
 
   it("rejects invalid inputs", () => {
@@ -75,58 +51,8 @@ describe("envSchema", () => {
         input: { ...validEnvInput, DISCORD_TOKEN: "" }
       },
       {
-        name: "DISCORD_GUILD_ID is 16 digits",
-        input: { ...validEnvInput, DISCORD_GUILD_ID: "1234567890123456" }
-      },
-      {
-        name: "DISCORD_GUILD_ID is 21 digits",
-        input: { ...validEnvInput, DISCORD_GUILD_ID: "123456789012345678901" }
-      },
-      {
-        name: "DISCORD_GUILD_ID includes letters",
-        input: { ...validEnvInput, DISCORD_GUILD_ID: "1234567890abc45678" }
-      },
-      {
-        name: "MEMBER_USER_IDS has 3 entries",
-        input: {
-          ...validEnvInput,
-          MEMBER_USER_IDS: "323456789012345678,423456789012345678,523456789012345678"
-        }
-      },
-      {
-        name: "MEMBER_USER_IDS has 5 entries",
-        input: {
-          ...validEnvInput,
-          MEMBER_USER_IDS:
-            "323456789012345678,423456789012345678,523456789012345678,623456789012345678,723456789012345678"
-        }
-      },
-      {
-        name: "MEMBER_USER_IDS contains an empty entry",
-        input: {
-          ...validEnvInput,
-          MEMBER_USER_IDS:
-            "323456789012345678,423456789012345678,,623456789012345678"
-        }
-      },
-      {
-        name: "MEMBER_DISPLAY_NAMES has 3 entries",
-        input: {
-          ...validEnvInput,
-          MEMBER_DISPLAY_NAMES: "いーゆー,おーたか,あかねまみ"
-        }
-      },
-      {
         name: "TZ is not Asia/Tokyo",
         input: { ...validEnvInput, TZ: "UTC" }
-      },
-      {
-        name: "POSTPONE_DEADLINE is 25:00",
-        input: { ...validEnvInput, POSTPONE_DEADLINE: "25:00" }
-      },
-      {
-        name: "POSTPONE_DEADLINE is 23:59",
-        input: { ...validEnvInput, POSTPONE_DEADLINE: "23:59" }
       },
       {
         name: "DATABASE_URL is not URL",
@@ -148,8 +74,7 @@ describe("envSchema", () => {
     const parsed = envSchema.parse(validEnvInput);
 
     expectTypeOf(parsed.TZ).toEqualTypeOf<"Asia/Tokyo">();
-    expectTypeOf(parsed.MEMBER_USER_IDS).toEqualTypeOf<string[]>();
-    expect(parsed.MEMBER_USER_IDS.length).toBe(4);
+    expectTypeOf(parsed.SUMMIT_CONFIG_YAML).toEqualTypeOf<string>();
   });
 
   it("does not expose DIRECT_URL in env type", () => {
@@ -158,37 +83,5 @@ describe("envSchema", () => {
     const hasDirectUrl: HasDirectUrl = false;
 
     expect(hasDirectUrl).toBe(false);
-  });
-
-  describe("DEV_SUPPRESS_MENTIONS", () => {
-    it("defaults to false when missing", () => {
-      const parsed = envSchema.parse(validEnvInput);
-      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(false);
-    });
-
-    it("defaults to false when empty string", () => {
-      const parsed = envSchema.parse({ ...validEnvInput, DEV_SUPPRESS_MENTIONS: "" });
-      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(false);
-    });
-
-    it.each([
-      ["true", true],
-      ["false", false],
-      ["1", true],
-      ["0", false],
-      ["yes", true],
-      ["no", false]
-    ])("parses %s as %s", (input, expected) => {
-      const parsed = envSchema.parse({ ...validEnvInput, DEV_SUPPRESS_MENTIONS: input });
-      expect(parsed.DEV_SUPPRESS_MENTIONS).toBe(expected);
-    });
-
-    it("rejects invalid boolean-like strings", () => {
-      const result = envSchema.safeParse({
-        ...validEnvInput,
-        DEV_SUPPRESS_MENTIONS: "maybe"
-      });
-      expectParseFailure(result);
-    });
   });
 });

@@ -6,7 +6,7 @@ import {
   skipReminderAndComplete
 } from "../../../src/features/reminder/send.js";
 import { computeReminderAt, shouldSkipReminder } from "../../../src/features/reminder/time.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import { createDiscordTextFixture, sentPayload } from "../../helpers/discord.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
@@ -78,7 +78,7 @@ describe("sendReminderForSession", () => {
     expect(send).toHaveBeenCalledTimes(1);
     const payload = sentPayload(send);
     expect(payload).toContain("15分後に開始");
-    for (const userId of env.MEMBER_USER_IDS) {
+    for (const userId of appConfig.memberUserIds) {
       expect(payload).toContain(`<@${userId}>`);
     }
 
@@ -144,9 +144,9 @@ describe("sendReminderForSession", () => {
     expect(persisted?.reminderSentAt?.toISOString()).toBe(now.toISOString());
   });
 
-  it("omits mention line when DEV_SUPPRESS_MENTIONS is true", async () => {
-    const originalFlag = env.DEV_SUPPRESS_MENTIONS;
-    (env as unknown as { DEV_SUPPRESS_MENTIONS: boolean }).DEV_SUPPRESS_MENTIONS = true;
+  it("omits mention line when dev.suppressMentions is true", async () => {
+    const originalFlag = appConfig.dev.suppressMentions;
+    (appConfig.dev as { suppressMentions: boolean }).suppressMentions = true;
     try {
       const session = decidedSession();
       const ctx = createTestAppContext({ seed: { sessions: [session] } });
@@ -155,11 +155,11 @@ describe("sendReminderForSession", () => {
       await sendReminderForSession(client, ctx, session.id, new Date("2026-04-24T12:45:00.000Z"));
 
       const payload = sentPayload(send);
-      for (const userId of env.MEMBER_USER_IDS) {
+      for (const userId of appConfig.memberUserIds) {
         expect(payload).not.toContain(`<@${userId}>`);
       }
     } finally {
-      (env as unknown as { DEV_SUPPRESS_MENTIONS: boolean }).DEV_SUPPRESS_MENTIONS = originalFlag;
+      (appConfig.dev as { suppressMentions: boolean }).suppressMentions = originalFlag;
     }
   });
 });

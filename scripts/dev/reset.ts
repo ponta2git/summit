@@ -42,7 +42,7 @@ const run = async (): Promise<void> => {
 
   // why: responses / held_event_participants / held_events / sessions を消す。
   //   FK 順序は CASCADE で吸収される (sessions→held_events→participants は cascade delete)。
-  //   members は env.MEMBER_USER_IDS で seed 済み前提のため既定では残す。
+  //   members は user config の members で seed 済み前提のため既定では残す。
   // idempotent: TRUNCATE は冪等。複数回実行しても結果は同じ。
   // @see ADR-0031 HeldEvent 永続化
   await db.execute(

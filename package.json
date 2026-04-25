@@ -9,9 +9,9 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "dotenv -e .env.local -- tsx watch src/index.ts",
+    "dev": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx watch src/index.ts'",
     "build": "tsc -p tsconfig.build.json",
-    "start": "dotenv -e .env.local -- node dist/index.js",
+    "start": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node dist/index.js'",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint . --tsconfig tsconfig.json --deny-warnings",
     "lint:fix": "oxlint . --tsconfig tsconfig.json --fix",
@@ -26,10 +26,13 @@
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
     "verify:drift": "bash scripts/verify/migration-drift.sh",
-    "db:seed": "dotenv -e .env.local -- tsx scripts/dev/seed.ts",
+    "config:fly:stage": "sh -c 'fly secrets set --stage SUMMIT_CONFIG_YAML=\"$(cat summit.config.production.yml)\" -a \"${FLY_APP_NAME:-summit}\"'",
+    "config:fly:set": "sh -c 'fly secrets set SUMMIT_CONFIG_YAML=\"$(cat summit.config.production.yml)\" -a \"${FLY_APP_NAME:-summit}\"'",
+    "deploy:production": "sh -c 'pnpm config:fly:stage && fly deploy --remote-only -a \"${FLY_APP_NAME:-summit}\"'",
+    "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- tsx scripts/dev/reset.ts",
-    "dev:scenario": "dotenv -e .env.local -- tsx scripts/dev/scenario.ts",
-    "commands:sync": "dotenv -e .env.local -- tsx src/commands/sync.ts",
+    "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/scenario.ts'",
+    "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx src/commands/sync.ts'",
     "setup": "pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed"
   },
   "pnpm": {
@@ -47,6 +50,7 @@
     "node-cron": "^4.2.1",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
+    "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {

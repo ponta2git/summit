@@ -1,20 +1,45 @@
-import { env } from "./env.js";
+import { appConfig } from "./userConfig.js";
 
 export type Hhmm = Readonly<{ hour: number; minute: number }>;
 
 // why: runtime tunables 集約 → ADR-0013
 
-// why: cron 送信スケジュールは暫定 → ADR-0007
-export const CRON_ASK_SCHEDULE = "0 8 * * 5" as const;
-// invariant: CRON_ASK_SCHEDULE と同じ時刻を HH:MM で保持し reconciler の ask 窓判定が参照する。
-export const ASK_START_HHMM = { hour: 8, minute: 0 } as const satisfies Hhmm;
-export const CRON_DEADLINE_SCHEDULE = "30 21 * * 5" as const;
-// jst: POSTPONE_DEADLINE="24:00" = 候補日翌日 00:00 JST に対応する土曜境界 tick。
+const parseHhmm = (value: string): Hhmm => {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error(`Invalid HH:MM format: ${value}`);
+  }
+  const [, hourText, minuteText] = match;
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (minute < 0 || minute > 59) {
+    throw new Error(`Invalid HH:MM minute: ${value}`);
+  }
+  // jst: "24:00" のみ境界表記として許可、他の 24 超え表記は userConfig schema で排除済み。
+  if (hour === 24 && minute === 0) {
+    return { hour, minute };
+  }
+  if (hour < 0 || hour > 23) {
+    throw new Error(`Invalid HH:MM hour: ${value}`);
+  }
+  return { hour, minute };
+};
+
+const buildWeeklyCron = (hhmm: Hhmm, dayOfWeek: number): string =>
+  `${hhmm.minute} ${hhmm.hour} * * ${dayOfWeek}`;
+
+export const ASK_START_HHMM = parseHhmm(appConfig.schedule.askTime);
+export const ASK_DEADLINE_HHMM = parseHhmm(appConfig.schedule.answerDeadline);
+export const POSTPONE_DEADLINE_HHMM = parseHhmm(appConfig.schedule.postponeDeadline);
+
+// why: cron 送信スケジュールは user config の askTime から派生させる。
+export const CRON_ASK_SCHEDULE = buildWeeklyCron(ASK_START_HHMM, 5);
+export const CRON_DEADLINE_SCHEDULE = buildWeeklyCron(ASK_DEADLINE_HHMM, 5);
+// jst: POSTPONE_DEADLINE_HHMM="24:00" = 候補日翌日 00:00 JST に対応する土曜境界 tick。
 export const CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6" as const;
 // why: reminder 到達判定を毎 tick で行う → ADR-0024
 export const CRON_REMINDER_SCHEDULE = "* * * * *" as const;
-export const ASK_DEADLINE_HHMM = { hour: 21, minute: 30 } as const satisfies Hhmm;
-export const REMINDER_LEAD_MINUTES = -15 as const;
+export const REMINDER_LEAD_MINUTES = -appConfig.schedule.reminderLeadMinutes;
 // why: 開催確定からリマインド予定まで余裕がない場合は送信をスキップする（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 // why: reminder claim が長時間戻らない場合に保持プロセス crash とみなして reclaim する閾値。
@@ -65,27 +90,3 @@ export const OUTBOX_METRICS_PENDING_AGE_WARN_MS = 5 * 60 * 1_000;
 // why: shardReady 再接続時の replay debounce。in-flight lock + 時刻 debounce 併用。
 // @see ADR-0036
 export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;
-
-const parseHhmm = (value: string): Hhmm => {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) {
-    throw new Error(`Invalid HH:MM format: ${value}`);
-  }
-  const [, hourText, minuteText] = match;
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  if (minute < 0 || minute > 59) {
-    throw new Error(`Invalid HH:MM minute: ${value}`);
-  }
-  // jst: "24:00" のみ境界表記として許可、他の 24 超え表記は env schema で既に排除済み。
-  if (hour === 24 && minute === 0) {
-    return { hour, minute };
-  }
-  if (hour < 0 || hour > 23) {
-    throw new Error(`Invalid HH:MM hour: ${value}`);
-  }
-  return { hour, minute };
-};
-
-// invariant: POSTPONE_DEADLINE は env schema で literal 固定済み。ここでは runtime tunable 形式へ正規化する。
-export const POSTPONE_DEADLINE_HHMM = parseHhmm(env.POSTPONE_DEADLINE);

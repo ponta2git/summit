@@ -9,7 +9,7 @@ import {
 import {
   buildDecidedAnnouncementViewModel
 } from "../../../src/features/decided-announcement/viewModel.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
 
@@ -25,7 +25,7 @@ const decidedSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
     ...overrides
   });
 
-const seededMembers = env.MEMBER_USER_IDS.map((userId, index) => ({
+const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index + 1}`,
   userId,
   displayName: `表示名${index + 1}`
@@ -73,7 +73,7 @@ describe("buildDecidedAnnouncementViewModel", () => {
     );
     expect(vm).toBeDefined();
     expect(vm?.startTimeLabel).toBe("23:00");
-    expect(vm?.memberLines).toHaveLength(env.MEMBER_USER_IDS.length);
+    expect(vm?.memberLines).toHaveLength(appConfig.memberUserIds.length);
     expect(vm?.memberLines.map((l) => l.slotLabel)).toEqual([
       "22:00",
       "22:30",

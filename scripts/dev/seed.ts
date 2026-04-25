@@ -5,17 +5,17 @@ process.env.TZ = "Asia/Tokyo";
 import { sql } from "drizzle-orm";
 
 import { db, closeDb } from "../../src/db/client.js";
-import { env } from "../../src/env.js";
 import { logger } from "../../src/logger.js";
 import { buildMemberReconcileInputs } from "../../src/members/inputs.js";
 import { members } from "../../src/db/schema.js";
+import { appConfig } from "../../src/userConfig.js";
 
 const run = async (): Promise<void> => {
-  // invariant: member.id = "member-{index+1}" は固定順序。userId 側は env.MEMBER_USER_IDS の順に追従。
+  // invariant: member.id = "member-{index+1}" は固定順序。userId 側は user config の members 順に追従。
   //   id 不変性を保つことで responses.memberId の整合を保つ。
   const values = buildMemberReconcileInputs(
-    env.MEMBER_USER_IDS,
-    env.MEMBER_DISPLAY_NAMES
+    appConfig.memberUserIds,
+    appConfig.memberDisplayNames
   ).map((member, index) => ({
     id: `member-${index + 1}`,
     userId: member.userId,

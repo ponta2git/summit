@@ -1,10 +1,10 @@
 ---
 adr: 0012
 title: member SSoT を env+DB ハイブリッドに統合する
-status: accepted
+status: superseded
 date: 2026-04-23
 supersedes: []
-superseded-by: null
+superseded-by: 0046
 tags: [runtime, db, ops]
 ---
 

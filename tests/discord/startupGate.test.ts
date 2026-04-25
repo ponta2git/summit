@@ -3,7 +3,7 @@ import { MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction, type AppReadyState } from "../../src/discord/shared/dispatcher.js";
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 import { logger } from "../../src/logger.js";
 import { callArg } from "../helpers/assertions.js";
 import { buildButtonInteraction, buildAskInteraction } from "../helpers/interaction.js";
@@ -31,7 +31,7 @@ describe("startup interaction ready gate", () => {
       seed: {
         sessions: [session],
         members: [
-          { id: "member-0", userId: env.MEMBER_USER_IDS[0]!, displayName: "Member 0" }
+          { id: "member-0", userId: appConfig.memberUserIds[0]!, displayName: "Member 0" }
         ]
       }
     });

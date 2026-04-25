@@ -22,12 +22,12 @@ kill_timeout = "30s"
   app = "node dist/index.js"
 
 [env]
-  # secret: DISCORD_TOKEN / DATABASE_URL / DIRECT_URL / HEALTHCHECK_PING_URL /
-  #   MEMBER_USER_IDS / DISCORD_GUILD_ID / DISCORD_CHANNEL_ID は
+  # secret: DISCORD_TOKEN / DATABASE_URL / DIRECT_URL / HEALTHCHECK_PING_URL は
   #   Fly secrets に登録し、ここには載せない (`fly secrets set KEY=...`)。
+  # config: Fly は本番専用。Discord guild/channel/members は
+  #   SUMMIT_CONFIG_YAML secret (summit.config.production.yml の内容) で注入する。
   NODE_ENV = "production"
   TZ = "Asia/Tokyo"
-  POSTPONE_DEADLINE = "24:00"
 
 # No [http_service] or [[services]]:
 #   この Bot は HTTP エンドポイントを持たない。Fly の TCP/HTTP ヘルスチェックは

@@ -4,14 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handlePostponeButton } from "../../../src/features/postpone-voting/button.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { buildButtonInteraction } from "../../helpers/interaction.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";
 
-const seededMembers = env.MEMBER_USER_IDS.map((userId, index) => ({
+const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index}`,
   userId,
   displayName: `Member ${index + 1}`

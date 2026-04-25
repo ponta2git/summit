@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
+import { readFileSync } from "node:fs";
 
 // jst: 時刻依存の統合テスト (candidate_date / deadline_at 等) の再現性を担保する。
 process.env.NODE_ENV = "test";
 process.env.TZ = "Asia/Tokyo";
+process.env.SUMMIT_CONFIG_YAML ??= readFileSync("summit.config.example.yml", "utf8");
 
 // invariant: 統合テストは実 DB (localhost 想定) を前提にする。
 //   vitest.config.ts のようなダミー DATABASE_URL 注入は行わない。

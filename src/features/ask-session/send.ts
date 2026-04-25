@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { ChannelType, type Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.js";
-import { env } from "../../env.js";
 import { logger } from "../../logger.js";
 import type { SessionRow } from "../../db/ports.js";
 import { isShuttingDown } from "../../shutdown.js";
@@ -16,6 +15,7 @@ import {
 } from "../../time/index.js";
 import { renderAskBody } from "./render.js";
 import { buildInitialAskMessageViewModel } from "./viewModel.js";
+import { appConfig } from "../../userConfig.js";
 
 export interface SendAskMessageContext {
   readonly trigger: "cron" | "command";
@@ -97,7 +97,7 @@ const doSendAskMessage = async (
     weekKey,
     postponeCount: 0,
     candidateDateIso: candidateIso,
-    channelId: env.DISCORD_CHANNEL_ID,
+    channelId: appConfig.discord.channelId,
     deadlineAt: deadline
   });
 
@@ -121,7 +121,7 @@ const doSendAskMessage = async (
     };
   }
 
-  const channel = await client.channels.fetch(env.DISCORD_CHANNEL_ID);
+  const channel = await client.channels.fetch(appConfig.discord.channelId);
   if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
     throw new Error("Configured channel is not sendable.");
   }
@@ -136,7 +136,7 @@ const doSendAskMessage = async (
       sessionId: created.id,
       weekKey,
       messageId: sentMessage.id,
-      channelId: env.DISCORD_CHANNEL_ID,
+      channelId: appConfig.discord.channelId,
       trigger: context.trigger,
       userId: context.invokerId
     },
@@ -203,7 +203,7 @@ const doSendPostponedAskMessage = async (
     return;
   }
 
-  const channel = await client.channels.fetch(env.DISCORD_CHANNEL_ID);
+  const channel = await client.channels.fetch(appConfig.discord.channelId);
   if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
     throw new Error("Configured channel is not sendable.");
   }
@@ -219,7 +219,7 @@ const doSendPostponedAskMessage = async (
       sessionId: saturdaySession.id,
       weekKey: saturdaySession.weekKey,
       messageId: sentMessage.id,
-      channelId: env.DISCORD_CHANNEL_ID,
+      channelId: appConfig.discord.channelId,
       postponeCount: saturdaySession.postponeCount
     },
     "Postponed ask message sent."

@@ -1,11 +1,10 @@
-import { slotKeySchema } from "../../slot.js";
-import { env } from "../../env.js";
+import { SLOT_TO_LABEL, slotKeySchema } from "../../slot.js";
+import { appConfig } from "../../userConfig.js";
 import type {
   ViewModelMemberInput,
   ViewModelResponseInput,
   ViewModelSessionInput
 } from "../../discord/shared/viewModelInputs.js";
-import type { AskTimeChoice } from "../../time/index.js";
 
 export interface DecidedAnnouncementViewModel {
   readonly startTimeLabel: string;
@@ -17,19 +16,11 @@ export interface DecidedAnnouncementViewModel {
   }>;
 }
 
-// invariant: SLOT → 表示ラベル @see requirements/base.md §5.1
-const SLOT_TO_LABEL: Record<AskTimeChoice, string> = {
-  T2200: "22:00",
-  T2230: "22:30",
-  T2300: "23:00",
-  T2330: "23:30"
-};
-
 /**
  * Build the decided announcement view model from DB rows.
  *
  * @remarks
- * Pure. session.decidedStartAt と env.MEMBER_USER_IDS 順で memberLines を組む。
+ * Pure. session.decidedStartAt と user config の member 順で memberLines を組む。
  * DECIDED セッションは全員が時間回答済み (ABSENT 不在) を ask-session/decide で保証するが、
  * 直前 race 防御として未回答/ABSENT は "-" に fallback する。
  * @see requirements/base.md §5.1
@@ -53,7 +44,7 @@ export const buildDecidedAnnouncementViewModel = (
     if (member) {choiceByUserId.set(member.userId, response.choice);}
   }
 
-  const memberLines = env.MEMBER_USER_IDS.map((userId) => {
+  const memberLines = appConfig.memberUserIds.map((userId) => {
     const displayName = userIdToMember.get(userId)?.displayName ?? userId;
     const choice = choiceByUserId.get(userId);
     const parsed = choice === undefined ? undefined : slotKeySchema.safeParse(choice);
@@ -66,8 +57,8 @@ export const buildDecidedAnnouncementViewModel = (
 
   return {
     startTimeLabel: `${hh}:${mm}`,
-    memberUserIds: env.MEMBER_USER_IDS,
-    suppressMentions: env.DEV_SUPPRESS_MENTIONS,
+    memberUserIds: appConfig.memberUserIds,
+    suppressMentions: appConfig.dev.suppressMentions,
     memberLines
   };
 };

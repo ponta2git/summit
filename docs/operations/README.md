@@ -46,6 +46,6 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 - 死活監視: healthchecks.io (`HEALTHCHECK_PING_URL`)
 - ログ: `fly logs -a summit` (構造化 JSON、`event` で grep)
 - DB console: Neon dashboard
-- Discord guild / channel: `env.DISCORD_GUILD_ID` / `env.DISCORD_CHANNEL_ID`
+- Discord guild / channel: `SUMMIT_CONFIG_YAML` (from `summit.config.production.yml`)
 
 > 個人開発 Bot のため on-call ローテーション・PagerDuty 等は不要。alert 手段は healthchecks.io のメール通知のみ。

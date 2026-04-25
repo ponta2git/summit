@@ -2,7 +2,7 @@ import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleStatusCommand } from "../../../src/features/status-command/handler.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import type { AppContext } from "../../../src/appContext.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/interactionHandlerDeps.js";
 import { callArg } from "../../helpers/assertions.js";
@@ -19,8 +19,8 @@ const buildInteraction = (override: {
 } = {}) => ({
   id: "interaction-status",
   commandName: "status",
-  guildId: override.guildId ?? env.DISCORD_GUILD_ID,
-  channelId: override.channelId ?? env.DISCORD_CHANNEL_ID,
+  guildId: override.guildId ?? appConfig.discord.guildId,
+  channelId: override.channelId ?? appConfig.discord.channelId,
   user: { id: override.userId ?? memberUserId },
   deferReply: vi.fn(async () => undefined),
   editReply: vi.fn(async () => undefined)

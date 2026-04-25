@@ -37,7 +37,7 @@ tags: [discord, runtime, db, ops]
 - **条件付き UPDATE で CAS**: `findNonTerminalSessionsByWeekKey(weekKey)` + `NON_TERMINAL_STATUSES` を WHERE に含め、同時押下・多重実行で冪等。既終端は no-op。
 - **`cancelReason = "manual_skip"`**（DB free-text）。UI 用 `CancelReason` enum（`src/messages/settle.ts`）とは別概念、UI には乗せない。
 - **終端 status は `SKIPPED`**。
-- **mention**: `env.DEV_SUPPRESS_MENTIONS=true` は plain 文字列化（ADR-0011）。
+- **mention**: `dev.suppressMentions=true` は plain 文字列化（ADR-0046）。
 
 ### Handler 分離（ADR-0020）
 - slash entry: `src/discord/commands/cancelWeek.ts`

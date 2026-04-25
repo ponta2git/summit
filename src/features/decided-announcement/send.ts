@@ -11,7 +11,7 @@ import { type DecidedAnnouncementViewModel } from "./viewModel.js";
  *
  * @remarks
  * Pure. ask footer (footerDecided) とは別の独立投稿なので mention 行を含める。
- * `DEV_SUPPRESS_MENTIONS=true` 時は省略。
+ * `dev.suppressMentions=true` 時は省略。
  * @see requirements/base.md §5.1
  * @see ADR-0011
  */

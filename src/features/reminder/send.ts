@@ -2,8 +2,8 @@ import type { Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.js";
 import type { ResponseChoice, ResponseRow, SessionRow } from "../../db/rows.js";
-import { env } from "../../env.js";
 import { logger } from "../../logger.js";
+import { appConfig } from "../../userConfig.js";
 import { reminderMessages } from "./messages.js";
 
 import { getTextChannel } from "../../discord/shared/channels.js";
@@ -22,7 +22,7 @@ const TIME_CHOICES: ReadonlySet<ResponseChoice> = new Set([
   "T2330"
 ]);
 
-// why: 参加メンバー一覧は responses の時刻選択から派生する。env.MEMBER_USER_IDS は「今の設定値」で
+// why: 参加メンバー一覧は responses の時刻選択から派生する。user config の members は「今の設定値」で
 //   開催スナップショットではない。DECIDED 到達時点で ABSENT は存在しない (ask-session/decide) ため
 //   TIME_CHOICES のみで十分 @see requirements/base.md §8.3
 const extractHeldParticipantMemberIds = (
@@ -34,11 +34,11 @@ const extractHeldParticipantMemberIds = (
 
 const buildReminderContent = (startAt: Date): string => {
   const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
-  // why: DEV_SUPPRESS_MENTIONS=true なら mention 行を省く @see ADR-0011
-  if (env.DEV_SUPPRESS_MENTIONS) {
+  // why: dev.suppressMentions=true なら mention 行を省く @see ADR-0011
+  if (appConfig.dev.suppressMentions) {
     return body;
   }
-  const mentions = env.MEMBER_USER_IDS.map((id) => `<@${id}>`).join(" ");
+  const mentions = appConfig.memberUserIds.map((id) => `<@${id}>`).join(" ");
   return `${mentions}\n${body}`;
 };
 

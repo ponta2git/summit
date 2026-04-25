@@ -29,9 +29,9 @@ import {
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.js";
 import { applyDeadlineDecision } from "../../orchestration/index.js";
-import { env } from "../../env.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { sendEphemeralConfirmFollowUp } from "../../discord/shared/followUp.js";
+import { appConfig } from "../../userConfig.js";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -139,7 +139,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
   )
     .andThen(([responses, memberRows]) => {
       const activeMembers = memberRows.filter((member) =>
-        env.MEMBER_USER_IDS.includes(member.userId)
+        appConfig.memberUserIds.includes(member.userId)
       );
       // source-of-truth: 判定ロジックは ./decide.ts。
       const decision = evaluateDeadline(context.session, responses, {

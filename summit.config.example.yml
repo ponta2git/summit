@@ -1,0 +1,57 @@
+# summit — user configuration
+#
+# Copy this file to `summit.config.yml` and edit the copied file:
+#   cp summit.config.example.yml summit.config.yml
+#
+# `summit.config.yml` is ignored by Git. Do not put Discord tokens or database
+# URLs in this file; secrets stay in `.env.local` locally and Fly secrets in
+# production.
+
+discord:
+  # Discord server (Guild) where slash commands and interactions are accepted.
+  # How to get it: Discord developer mode -> right-click server -> Copy ID.
+  guildId: "123456789012345678"
+
+  # Dedicated channel where the bot posts attendance messages.
+  # How to get it: right-click channel -> Copy ID.
+  channelId: "223456789012345678"
+
+# Fixed 4 members. Order controls message display order.
+# Each `userId` is a Discord User ID. `displayName` is the label shown in bot
+# messages and is also reconciled into the local members table at startup.
+members:
+  - userId: "323456789012345678"
+    displayName: "いーゆー"
+  - userId: "423456789012345678"
+    displayName: "おーたか"
+  - userId: "523456789012345678"
+    displayName: "あかねまみ"
+  - userId: "623456789012345678"
+    displayName: "ぽんた"
+
+schedule:
+  # Timezone is fixed to Asia/Tokyo by the application; write these times as JST.
+  # The bot creates the weekly attendance post at this time on Friday.
+  askTime: "08:00"
+
+  # Members can change answers until this time on the candidate date.
+  answerDeadline: "21:30"
+
+  # Only "24:00" is supported. It means candidate-date next day 00:00 JST.
+  postponeDeadline: "24:00"
+
+  # Minutes before the decided start time to send the reminder.
+  reminderLeadMinutes: 15
+
+# Current attendance slots. These keys are part of DB/custom_id compatibility,
+# so the current application accepts these exact values.
+slots:
+  T2200: "22:00"
+  T2230: "22:30"
+  T2300: "23:00"
+  T2330: "23:30"
+
+dev:
+  # When true, bot messages omit <@userId> mention lines and the Discord client
+  # suppresses allowed mentions. Keep false in production.
+  suppressMentions: false

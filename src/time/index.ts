@@ -14,6 +14,7 @@ import {
 } from "../config.js";
 import {
   SLOT_KEYS,
+  SLOT_TO_LABEL,
   SLOT_TO_MINUTES,
   type SlotKey
 } from "../slot.js";
@@ -44,7 +45,7 @@ export const isoWeekKey = (value: Date): string => {
 export const candidateDateForAsk = (now: Date): Date => now;
 
 export const formatCandidateJa = (value: Date): string =>
-  `${format(value, "yyyy-MM-dd(E)", { locale: ja })} 22:00 以降`;
+  `${format(value, "yyyy-MM-dd(E)", { locale: ja })} ${SLOT_TO_LABEL.T2200} 以降`;
 
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
@@ -91,7 +92,7 @@ export const deadlineFor = (candidateDate: Date): Date =>
  * Computes the postpone-vote deadline for a candidate date.
  *
  * @remarks
- * jst: `POSTPONE_DEADLINE` の "翌日 00:00 JST" 表記に対応する (src/config.ts / src/env.ts)。
+ * jst: user config の postponeDeadline 表記に対応する (src/config.ts / src/userConfig.ts)。
  * @see requirements/base.md §6
  */
 export const postponeDeadlineFor = (candidateDate: Date): Date =>

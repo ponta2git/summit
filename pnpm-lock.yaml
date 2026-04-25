@@ -35,6 +35,9 @@ importers:
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -59,7 +62,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.4
-        version: 4.1.4(@types/node@24.12.2)(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0))
+        version: 4.1.4(@types/node@24.12.2)(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3))
 
 packages:
 
@@ -1356,6 +1359,11 @@ packages:
       utf-8-validate:
         optional: true
 
+  yaml@2.8.3:
+    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
@@ -1819,13 +1827,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.4(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0))':
+  '@vitest/mocker@4.1.4(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3))':
     dependencies:
       '@vitest/spy': 4.1.4
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.2(@types/node@24.12.2)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3)
 
   '@vitest/pretty-format@4.1.4':
     dependencies:
@@ -2211,7 +2219,7 @@ snapshots:
 
   undici@6.24.1: {}
 
-  vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0):
+  vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -2223,11 +2231,12 @@ snapshots:
       '@types/node': 24.12.2
       fsevents: 2.3.3
       tsx: 4.21.0
+      yaml: 2.8.3
 
-  vitest@4.1.4(@types/node@24.12.2)(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)):
+  vitest@4.1.4(@types/node@24.12.2)(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
       '@vitest/expect': 4.1.4
-      '@vitest/mocker': 4.1.4(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0))
+      '@vitest/mocker': 4.1.4(vite@7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3))
       '@vitest/pretty-format': 4.1.4
       '@vitest/runner': 4.1.4
       '@vitest/snapshot': 4.1.4
@@ -2244,7 +2253,7 @@ snapshots:
       tinyexec: 1.1.1
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 7.3.2(@types/node@24.12.2)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@24.12.2)(tsx@4.21.0)(yaml@2.8.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.12.2
@@ -2261,5 +2270,7 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.20.0: {}
+
+  yaml@2.8.3: {}
 
   zod@4.3.6: {}

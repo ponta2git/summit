@@ -1,5 +1,8 @@
 .env.local
 .env
+summit.config.yml
+summit.config.*.yml
+!summit.config.example.yml
 node_modules/
 dist/
 .pnpm-store/

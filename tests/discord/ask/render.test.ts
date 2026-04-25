@@ -7,7 +7,7 @@ import {
 import { buildAskMessageViewModel } from "../../../src/features/ask-session/viewModel.js";
 import type { ViewModelResponseInput } from "../../../src/discord/shared/viewModelInputs.js";
 import { __resetSendStateForTest } from "../../../src/features/ask-session/send.js";
-import { env } from "../../../src/env.js";
+import { appConfig } from "../../../src/userConfig.js";
 import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { memberUserId } from "../../helpers/env.js";
 import { buildSessionRow } from "../factories/session.js";
@@ -45,7 +45,7 @@ describe("askMessage", () => {
     const vm = buildAskMessageViewModel(session, responses, members);
     const rendered = renderAskBody(vm);
 
-    for (const memberId of env.MEMBER_USER_IDS) {
+    for (const memberId of appConfig.memberUserIds) {
       expect(rendered.content).toContain(`<@${memberId}>`);
     }
     expect(rendered.content).toContain("開催候補日: 2026-04-24(金) 22:00 以降");

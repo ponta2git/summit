@@ -1,10 +1,10 @@
 ---
 adr: 0013
 title: config 階層（messages / config / constants / domain slots SSoT）
-status: accepted
+status: superseded
 date: 2026-04-23
 supersedes: []
-superseded-by: null
+superseded-by: 0046
 tags: [runtime, docs]
 ---
 

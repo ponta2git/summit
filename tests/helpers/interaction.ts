@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import { env } from "../../src/env.js";
+import { appConfig } from "../../src/userConfig.js";
 import { memberUserId } from "./env.js";
 
 // why: interaction factory を narrow override 型で束ねることで
@@ -21,8 +21,8 @@ type ButtonOverride = AskOverride;
 export const buildAskInteraction = (override: AskOverride = {}) => ({
   id: "interaction-ask",
   commandName: "ask",
-  guildId: override.guildId ?? env.DISCORD_GUILD_ID,
-  channelId: override.channelId ?? env.DISCORD_CHANNEL_ID,
+  guildId: override.guildId ?? appConfig.discord.guildId,
+  channelId: override.channelId ?? appConfig.discord.channelId,
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => true,
   isButton: () => false,
@@ -34,8 +34,8 @@ export const buildAskInteraction = (override: AskOverride = {}) => ({
 export const buildCancelInteraction = (override: CancelOverride = {}) => ({
   id: "interaction-cancel",
   commandName: "cancel_week",
-  guildId: override.guildId ?? env.DISCORD_GUILD_ID,
-  channelId: override.channelId ?? env.DISCORD_CHANNEL_ID,
+  guildId: override.guildId ?? appConfig.discord.guildId,
+  channelId: override.channelId ?? appConfig.discord.channelId,
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => true,
   isButton: () => false,
@@ -47,8 +47,8 @@ export const buildCancelInteraction = (override: CancelOverride = {}) => ({
 export const buildButtonInteraction = (customId: string, override: ButtonOverride = {}) => ({
   id: "interaction-button",
   customId,
-  guildId: override.guildId ?? env.DISCORD_GUILD_ID,
-  channelId: override.channelId ?? env.DISCORD_CHANNEL_ID,
+  guildId: override.guildId ?? appConfig.discord.guildId,
+  channelId: override.channelId ?? appConfig.discord.channelId,
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => false,
   isButton: () => true,
