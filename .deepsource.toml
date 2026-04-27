@@ -18,4 +18,3 @@ enabled = true
 
   [analyzers.meta]
   dialect = "typescript"
-  ecma_version = 2022
