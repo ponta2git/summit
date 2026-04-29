@@ -17,23 +17,20 @@
     "lint:fix": "oxlint . --tsconfig tsconfig.json --fix",
     "test": "vitest run --passWithNoTests",
     "test:integration": "INTEGRATION_DB=1 dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec vitest run --config vitest.integration.config.ts'",
-    "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm db:check && pnpm verify:forbidden && pnpm verify:file-size",
+    "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm verify:forbidden && pnpm verify:file-size",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
-    "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
-    "db:check": "dotenv -e .env.local -- drizzle-kit check",
+    "db:migrate": "dotenv -e .env.local -- sh -c '(cd ../momo-db && DIRECT_URL=\"$DIRECT_URL\" pnpm db:migrate)'",
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
-    "verify:drift": "bash scripts/verify/migration-drift.sh",
     "config:fly:stage": "sh -c 'fly secrets set --stage SUMMIT_CONFIG_YAML=\"$(cat summit.config.production.yml)\" -a \"${FLY_APP_NAME:-summit-momotetsu}\"'",
     "config:fly:set": "sh -c 'fly secrets set SUMMIT_CONFIG_YAML=\"$(cat summit.config.production.yml)\" -a \"${FLY_APP_NAME:-summit-momotetsu}\"'",
-    "deploy:production": "sh -c 'pnpm config:fly:stage && fly deploy --remote-only -a \"${FLY_APP_NAME:-summit-momotetsu}\"'",
+    "deploy:production": "sh -c 'pnpm config:fly:stage && cd .. && fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only -a \"${FLY_APP_NAME:-summit-momotetsu}\"'",
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- tsx scripts/dev/reset.ts",
     "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/scenario.ts'",
     "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx src/commands/sync.ts'",
-    "setup": "pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed"
+    "setup": "cd ../momo-db && pnpm install && pnpm build && cd ../summit && pnpm install && pnpm db:up && pnpm db:migrate && pnpm db:seed"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -41,11 +38,11 @@
     ]
   },
   "dependencies": {
+    "@momo/db": "file:../momo-db",
     "date-fns": "^4.1.0",
     "discord.js": "^14.26.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "drizzle-zod": "^0.8.3",
     "neverthrow": "^8.2.0",
     "node-cron": "^4.2.1",
     "pino": "^10.3.1",
@@ -56,7 +53,6 @@
   "devDependencies": {
     "@types/node": "^24.12.2",
     "dotenv-cli": "^11.0.0",
-    "drizzle-kit": "^0.31.10",
     "oxlint": "^1.60.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

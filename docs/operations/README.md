@@ -30,7 +30,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | outbox metrics の `level=warn` が来た | [outbox.md](./outbox.md) §警告対応 |
 | scheduler wake / timer / worker の挙動を確認したい | [scheduler.md](./scheduler.md) |
 | 起動時に `reconciler` が連発 / 締切再計算が暴れる | [recovery.md](./recovery.md) case 1 / 7 |
-| `pnpm db:migrate` が途中で失敗した | [migration.md](./migration.md) §ロールバック |
+| `pnpm db:migrate` が途中で失敗した | [migration.md](./migration.md) §ロールバック (`momo-db` リポジトリで対応) |
 | Discord token / DATABASE_URL を rotate したい | [secrets-rotation.md](./secrets-rotation.md) |
 | Neon インスタンスを restore したい | [backup.md](./backup.md) |
 | healthchecks.io が ping 切れの通知を出した | [recovery.md](./recovery.md) case 1 + [secrets-rotation.md](./secrets-rotation.md) |

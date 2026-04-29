@@ -1,47 +1,74 @@
 # Migration Operations
 
-drizzle-kit を用いた schema migration の生成・適用・ロールバック手順。関連 ADR: 0008 (Drizzle 採用) / 0019 (DIRECT_URL 分離)。
+drizzle-kit を用いた schema migration の生成・適用・ロールバック手順。
+
+> **重要**: schema 定義・migration ファイル・drizzle.config.ts は `../momo-db` リポジトリで管理する。
+> summit の `src/db/schema.ts` は `momo-db` の re-export shim になった。
+
+関連 ADR: 0008 (Drizzle 採用) / 0019 (DIRECT_URL 分離)。
 
 ## 原則 (常時ルール再掲)
 
 - migration は `drizzle-kit generate` + `drizzle-kit migrate` のみ。**`drizzle-kit push` は禁止** (`.github/instructions/db-review.instructions.md`)。
 - `DIRECT_URL` は `drizzle.config.ts` 専用 (アプリ code から参照禁止、ADR-0019)。
 - 金 17:30〜土 01:00 JST は migration 禁止 (AGENTS.md deploy 禁止窓)。
-- CI `drift-check` ジョブで schema.ts と migration 履歴の drift を自動検出 (`.github/workflows/ci.yml`)。
+- `momo-db` CI の `db:check` ジョブで migration 履歴の整合性を自動検出する。
 
 ## 新規 migration の作り方
 
 ```bash
-# 1. src/db/schema.ts を編集
-vim src/db/schema.ts
+# 1. ../momo-db/src/schema.ts を編集
+vim ../momo-db/src/schema.ts
 
-# 2. SQL を生成 (drizzle/ に出力)
+# 2. SQL を生成 (momo-db/drizzle/ に出力)
+cd ../momo-db
 pnpm db:generate
 
 # 3. 生成 SQL をレビュー
 git diff drizzle/
 
-# 4. ローカル DB で適用テスト
+# 4. ローカル DB で適用テスト (momo-db の .env.local に DIRECT_URL が必要)
 pnpm db:migrate
 
-# 5. 整合性チェック
-pnpm db:check
+# 5. momo-db を再ビルド (summit が dist/ を参照するため)
+pnpm build
 
-# 6. typecheck / lint / test / build
+# 6. summit 側で typecheck / lint / test / build
+cd ../summit
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-生成された SQL ファイルと `drizzle/meta/` の両方を commit する。
+生成された SQL ファイルと `momo-db/drizzle/meta/` の両方を `momo-db` リポジトリに commit する。
 
 ## 本番への適用
 
-Fly deploy 時に自動で走る (Dockerfile / release_command 参照) のが基本。手動で走らせる場合:
+> **注意**: Fly.toml の `release_command` は削除済み。migration は summit deploy とは独立して手動で適用する。
 
 ```bash
-fly ssh console -a summit-momotetsu -C "pnpm db:migrate"
+# 本番の DIRECT_URL (Neon unpooled) で実行
+DIRECT_URL=<本番 unpooled URL> pnpm db:migrate
+# ↑ momo-db ディレクトリで実行
+```
+
+または momo-db の `.env.local` に本番 DIRECT_URL を設定してから:
+```bash
+cd ../momo-db
+pnpm db:migrate  # momo-db の .env.local から DIRECT_URL を読む
 ```
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (AGENTS.md `prohibited_actions`)。
+
+## ローカル開発 (setup 経由)
+
+`summit` の `setup` スクリプトが momo-db の migration も含めて実行する:
+
+```bash
+# summit ディレクトリで
+pnpm setup
+# = momo-db install+build → summit install → db:up → db:migrate (momo-db委譲) → db:seed
+```
+
+`db:migrate` は summit の `.env.local` から `DIRECT_URL` を読んで momo-db の migrate を呼ぶ。
 
 ## ロールバック
 
@@ -53,10 +80,10 @@ drizzle-kit は **down migration を自動生成しない**。ロールバック
 
 手順:
 
-1. `src/db/schema.ts` を直前版に戻す (git revert 相当)
-2. `pnpm db:generate` で打ち消し migration を生成
-3. `pnpm db:check` / test / build
-4. Fly deploy で本番適用
+1. `../momo-db/src/schema.ts` を直前版に戻す (git revert 相当)
+2. `pnpm db:generate` で打ち消し migration を生成 (momo-db で)
+3. `pnpm db:migrate` (momo-db で)
+4. `pnpm build` (momo-db で) → summit deploy
 
 ### B. Neon PITR で時点復元 (B は A が困難な場合のみ)
 
@@ -68,20 +95,19 @@ drizzle-kit は **down migration を自動生成しない**。ロールバック
 
 **SOP**:
 
-1. **焦らない**。Fly deploy の release_command 失敗で新 instance は立ち上がらない (旧 instance が生き残る場合もあれば downtime になる場合もある — Fly 設定次第)
+1. **焦らない**。Fly.toml に `release_command` はないため migration 失敗で deploy は止まらないが、schema 不整合が残る
 2. Neon dashboard で schema 実体と `__drizzle_migrations` の状態を確認
 3. 中断地点が明確なら:
    - 中断より前の部分のみが適用された → 残りの SQL を手動で流す (Neon SQL Editor) → `__drizzle_migrations` に該当行を手 INSERT して整合を取る
    - 中断より後の部分まで壊れている → Neon PITR で migration 直前に戻し、migration を修正して再度 `pnpm db:migrate`
-4. 整合後、`pnpm db:check` で確認
+4. 整合後、`pnpm db:check` で確認 (momo-db で)
 5. 事後に ADR 候補として経緯を記録 (AGENTS.md ADR プロトコル)
 
 **原則**: 本番 migration 失敗は **事故案件**。事後に必ず ADR か PR 説明で再発防止を記録する。
 
 ## CI での検査
 
-- `static-baseline` ジョブ: `pnpm db:check` で migration 履歴の整合性検証
-- `drift-check` ジョブ: `pnpm verify:drift` で schema.ts と最新 migration の drift 検出
-- `integration-db` ジョブ: 実 postgres service に `pnpm db:migrate` を流して integration テスト実行
+- `momo-db` CI: `db:check` で migration 履歴の整合性検証
+- `summit` CI `integration-db` ジョブ: 実 postgres service に `momo-db` の `pnpm db:migrate` を流して integration テスト実行
 
 これらが全 green になってから本番 deploy する。
