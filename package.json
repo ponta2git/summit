@@ -17,6 +17,8 @@
     "lint:fix": "oxlint . --tsconfig tsconfig.json --fix",
     "test": "vitest run --passWithNoTests",
     "test:integration": "INTEGRATION_DB=1 dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec vitest run --config vitest.integration.config.ts'",
+    "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
+    "verify:file-size": "bash scripts/verify/file-size.sh",
     "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm verify:forbidden && pnpm verify:file-size",
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- tsx scripts/dev/reset.ts",

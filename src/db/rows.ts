@@ -10,6 +10,7 @@ import {
   type ResponseChoice,
   type SessionStatus
 } from "./schema.js";
+import { parseTimestamp } from "../time/index.js";
 
 export type DbLike = typeof defaultDb;
 
@@ -63,8 +64,8 @@ export const parseDbTimestamp = (
   if (value === null || value === undefined) { return null; }
   if (value instanceof Date) { return value; }
   if (typeof value === "string") {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) { return parsed; }
+    const parsed = parseTimestamp(value);
+    if (parsed) { return parsed; }
   }
   throw new Error(`Invalid ${label}: expected timestamp-compatible value`);
 };

@@ -44,10 +44,6 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: summit
 
-      - name: Hydrate @momo/db dist
-        run: mkdir -p node_modules/@momo/db/dist && cp ../momo-db/dist/schema.js ../momo-db/dist/schema.d.ts node_modules/@momo/db/dist/
-        working-directory: summit
-
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
@@ -134,17 +130,9 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: summit
 
-      - name: Hydrate @momo/db dist
-        run: mkdir -p node_modules/@momo/db/dist && cp ../momo-db/dist/schema.js ../momo-db/dist/schema.d.ts node_modules/@momo/db/dist/
-        working-directory: summit
-
       - name: Prepare CI env
         run: cp .env.example .env.local && cp summit.config.example.yml summit.config.yml
         working-directory: summit
-
-      - name: Install migration driver
-        run: pnpm add --save-dev postgres@3.4.9
-        working-directory: momo-db
 
       - name: Apply migrations
         run: pnpm db:migrate

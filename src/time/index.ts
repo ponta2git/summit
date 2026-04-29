@@ -154,4 +154,10 @@ export const addMs = (now: Date, ms: number): Date =>
 export const subMs = (now: Date, ms: number): Date =>
   new Date(now.getTime() - ms);
 
+export const parseTimestamp = (value: string): Date | null => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) { return null; }
+  return parsed;
+};
+
 export const unixEpoch = (): Date => new Date(0);
