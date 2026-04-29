@@ -60,15 +60,15 @@ pnpm db:migrate  # momo-db の .env.local から DIRECT_URL を読む
 
 ## ローカル開発 (setup 経由)
 
-`summit` の `setup` スクリプトが momo-db の migration も含めて実行する:
+`summit` の `setup` スクリプトがプロジェクト全体を一括セットアップする:
 
 ```bash
 # summit ディレクトリで
 pnpm setup
-# = momo-db install+build → summit install → db:up → db:migrate (momo-db委譲) → db:seed
+# = momo-db install+build+db:up+db:migrate → summit install → db:seed
 ```
 
-`db:migrate` は summit の `.env.local` から `DIRECT_URL` を読んで momo-db の migrate を呼ぶ。
+postgres コンテナ（`compose.yaml`）は momo-db で管理する。`db:up`/`db:down` は momo-db で実行。
 
 ## ロールバック
 
