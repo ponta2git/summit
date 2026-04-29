@@ -19,4 +19,4 @@
 - [ ] `TODO(ai): spec clarification needed - ...` の残置有無を明示した
 - [ ] `requirements/base.md` の該当 § を本文に明記した
 - [ ] `pnpm verify:forbidden` が pass した
-- [ ] `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm db:check` が pass した
+- [ ] `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` が pass した

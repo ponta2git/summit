@@ -21,4 +21,4 @@ Discord Bot token / Neon 接続文字列 / 死活監視 ping URL 等の秘匿値
 - SQL bind 値を生出力しない。
 
 ## DIRECT_URL
-- 実行時に参照・ログ出力しない（`drizzle.config.ts` 専用）。
+- 実行時に参照・ログ出力しない（`momo-db` の `drizzle.config.ts` 専用。summit では使用しない）。

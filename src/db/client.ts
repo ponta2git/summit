@@ -10,7 +10,7 @@ import * as schema from "./schema.js";
  * @remarks
  * invariant: Neon の PgBouncer (transaction pooling) は prepared statement を共有できないため
  *   `prepare: false` 必須。外す / 上書きしない。
- * source-of-truth: アプリは `DATABASE_URL` (pooled) のみ。`DIRECT_URL` は drizzle.config.ts 専用。
+ * source-of-truth: アプリは `DATABASE_URL` (pooled) のみ。`DIRECT_URL` は momo-db の drizzle.config.ts 専用。
  * why: `connect_timeout` は接続不良時のハングを抑え、`idle_timeout` / `max_lifetime` で stale
  *   接続を定期更新。`max` は単一インスタンス + cron + interaction の並走上限に十分で pooler への
  *   過剰接続を避ける閾値。

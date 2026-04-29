@@ -21,7 +21,7 @@ TypeScript/Node 24 実装作法。対象 `{src,tests}/**/*.ts`。時刻・Intera
 ## 環境変数（zod v4 で起動時 validate）
 - `src/env.ts` に zod スキーマを定義し起動時に 1 度 `parse()`。失敗時は stderr に人間可読な内容を出し `process.exit(1)`。
 - アプリコードは `env.XXX` のみ参照。`process.env` 直接参照禁止。
-- `DIRECT_URL` はアプリ env に含めない（`drizzle.config.ts` 専用）。`HEALTHCHECK_PING_URL` 未設定時は ping を no-op。
+- `DIRECT_URL` はアプリ env に含めない（momo-db の `drizzle.config.ts` 専用）。`HEALTHCHECK_PING_URL` 未設定時は ping を no-op。
 - カンマ区切り・時刻文字列・整数分数も zod で parse 済みの型として export。呼び出し側で split/`parseInt` を繰り返すな。`Number('')`/radix 未指定 `parseInt` 禁止。
 
 ## エラー処理

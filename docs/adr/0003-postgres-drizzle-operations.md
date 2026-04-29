@@ -1,10 +1,10 @@
 ---
 adr: 0003
 title: Postgres データストアと Drizzle マイグレーション運用
-status: accepted
+status: superseded
 date: 2026-04-19
 supersedes: []
-superseded-by: null
+superseded-by: 0049
 tags: [db, runtime, ops]
 ---
 
