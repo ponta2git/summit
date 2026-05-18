@@ -57,7 +57,7 @@ export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 // why: Discord send outbox worker → ADR-0035。state transitions が同 tx で enqueue し worker が非同期送信。
 export const CRON_OUTBOX_WORKER_SCHEDULE = "*/10 * * * * *" as const;
 // why: DB-driven scheduler supervisor is the fallback for missed wake/timer events.
-export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/15 * * * *" as const;
+export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/30 * * * *" as const;
 export const SCHEDULER_WAKE_DEBOUNCE_MS = 250 as const;
 export const SCHEDULER_MIN_TIMER_DELAY_MS = 1_000 as const;
 export const OUTBOX_WORKER_ACTIVE_INTERVAL_MS = 10_000 as const;

@@ -23,7 +23,7 @@
 | JST / ISO week / 締切の扱い | [0002](./0002-jst-fixed-time-handling.md), [0019](./0019-postpone-voting-and-saturday-reask-flow.md), [0024](./0024-reminder-dispatch.md) |
 | Deploy / secrets / 運用権限 | [0005](./0005-operations-policy.md), [0011](./0011-dev-mention-suppression.md), [0034](./0034-healthcheck-ping.md) |
 | Discord 送信の整合性（crash / transient failure） | [0033](./0033-startup-invariant-reconciler.md), [0035](./0035-discord-send-outbox.md), [0036](./0036-reconnect-replay.md), [0042](./0042-outbox-retention-prune.md), [0043](./0043-outbox-observability-metrics.md) |
-| Neon compute cost を抑える scheduler 設計は？ | [0047](./0047-db-driven-conditional-scheduler.md) |
+| Neon compute cost を抑える scheduler 設計は？ | [0047](./0047-db-driven-conditional-scheduler.md), [0050](./0050-scheduler-supervisor-cadence-extension.md) |
 | 代替案は既に却下されているか | [0017](./0017-rejected-architecture-alternatives.md), [0021](./0021-neverthrow-scope-reaffirmed.md), [0045](./0045-neverthrow-boundary-scope.md) |
 
 長尾の探索は [By tag](#by-tag) か [Index](#index) へ。
@@ -34,10 +34,10 @@
 
 | Tag | ADR |
 |---|---|
-| db | 0001, 0003, 0008, 0009, 0012, 0019, 0023, 0024, 0026, 0031, 0033, 0035, 0038, 0042, 0043, 0047 |
+| db | 0001, 0003, 0008, 0009, 0012, 0019, 0023, 0024, 0026, 0031, 0033, 0035, 0038, 0042, 0043, 0047, 0050 |
 | discord | 0004, 0007, 0009, 0011, 0016, 0017, 0019, 0020, 0023, 0024, 0025, 0026, 0027, 0028, 0030, 0032, 0033, 0035, 0036, 0037, 0040, 0041, 0045, 0047, 0048 |
 | time | 0002, 0007, 0019, 0024, 0044 |
-| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047 |
+| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050 |
 | docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038, 0039, 0040, 0041, 0046, 0048 |
 | testing | 0018 |
 | dev-tools | 0029 |
@@ -215,3 +215,4 @@ feature 相互依存は避ける。共通化が必要なら `discord/shared/` �
 | [0047](./0047-db-driven-conditional-scheduler.md) | DB-driven conditional scheduler for Neon scale-to-zero | accepted | 2026-04-25 | runtime, db, discord, ops |
 | [0048](./0048-user-facing-copy-and-notification-policy.md) | ユーザー向け文言と通知方針 | accepted | 2026-04-25 | discord, docs |
 | [0049](./0049-extract-db-management-to-momo-db.md) | DB スキーマ・migration 管理を @momo/db に分離 | accepted | 2026-04-29 | db, ops, runtime |
+| [0050](./0050-scheduler-supervisor-cadence-extension.md) | Scheduler supervisor cadence extension | accepted | 2026-05-19 | runtime, db, ops |
