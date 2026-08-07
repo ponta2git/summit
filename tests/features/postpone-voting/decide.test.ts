@@ -30,7 +30,7 @@ describe("evaluatePostponeVote", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T14:59:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "all_ok" });
+    expect(result).toStrictEqual({ kind: "all_ok" });
   });
 
   it("returns cancelled/postpone_ng when at least one latest response is POSTPONE_NG", () => {
@@ -45,7 +45,7 @@ describe("evaluatePostponeVote", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T14:59:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "cancelled", reason: "postpone_ng" });
+    expect(result).toStrictEqual({ kind: "cancelled", reason: "postpone_ng" });
   });
 
   it("returns cancelled/postpone_unanswered after deadline when answers are still incomplete", () => {
@@ -60,7 +60,7 @@ describe("evaluatePostponeVote", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T15:00:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "cancelled", reason: "postpone_unanswered" });
+    expect(result).toStrictEqual({ kind: "cancelled", reason: "postpone_unanswered" });
   });
 
   it("returns pending before deadline when ng is absent and ok responses are still insufficient", () => {
@@ -74,7 +74,7 @@ describe("evaluatePostponeVote", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T14:59:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "pending" });
+    expect(result).toStrictEqual({ kind: "pending" });
   });
 
   it.each([
@@ -128,5 +128,27 @@ describe("evaluatePostponeVote", () => {
     );
 
     expect(result).toStrictEqual({ kind: "pending" });
+  });
+
+  it("uses answeredAt rather than input order to select the latest response", () => {
+    const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
+    const result = evaluatePostponeVote(
+      session,
+      [
+        responseRow({
+          id: "latest",
+          choice: "POSTPONE_NG",
+          answeredAt: new Date("2026-04-24T12:05:00.000Z")
+        }),
+        responseRow({
+          id: "earlier",
+          choice: "POSTPONE_OK",
+          answeredAt: new Date("2026-04-24T12:00:00.000Z")
+        })
+      ],
+      { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
+    );
+
+    expect(result).toStrictEqual({ kind: "cancelled", reason: "postpone_ng" });
   });
 });
