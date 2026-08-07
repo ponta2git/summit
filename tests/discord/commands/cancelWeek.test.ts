@@ -117,32 +117,60 @@ describe("cancel_week confirmation button", () => {
       postponeMessageId: "postpone-msg-2",
       askMessageId: "ask-msg-2"
     });
+    const now = new Date("2026-04-24T10:00:00.000Z");
     const ctx = createTestAppContext({
       seed: { sessions: [friSession, satSession], members: seededMembers },
-      now: new Date("2026-04-24T10:00:00.000Z")
+      now
     });
     const { client, channelSend } = createDiscordClient();
     const interaction = buildCancelButtonInteraction(confirmCustomId());
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const after1 = await ctx.ports.sessions.findSessionById(friSession.id);
-    const after2 = await ctx.ports.sessions.findSessionById(satSession.id);
-    expect(after1?.status).toBe("SKIPPED");
-    expect(after1?.cancelReason).toBe("manual_skip");
-    expect(after2?.status).toBe("SKIPPED");
-    expect(after2?.cancelReason).toBe("manual_skip");
+    expect(ctx.ports.sessions.listSessions().map((session) => ({
+      id: session.id,
+      status: session.status,
+      cancelReason: session.cancelReason,
+      updatedAt: session.updatedAt
+    }))).toStrictEqual([
+      {
+        id: friSession.id,
+        status: "SKIPPED",
+        cancelReason: "manual_skip",
+        updatedAt: now
+      },
+      {
+        id: satSession.id,
+        status: "SKIPPED",
+        cancelReason: "manual_skip",
+        updatedAt: now
+      }
+    ]);
 
     expect(channelSend).not.toHaveBeenCalled();
-    const outboxEntries = ctx.ports.outbox.listEntries();
-    expect(outboxEntries).toHaveLength(1);
-    const [notice] = outboxEntries;
-    expect(notice?.dedupeKey).toMatch(/^cancel-week-notice-/);
-    expect(notice?.payload).toMatchObject({
+    expect(ctx.ports.outbox.listEntries().map((notice) => ({
+      kind: notice.kind,
+      sessionId: notice.sessionId,
+      dedupeKey: notice.dedupeKey,
+      payload: notice.payload,
+      status: notice.status,
+      attemptCount: notice.attemptCount
+    }))).toStrictEqual([{
       kind: "send_message",
-      renderer: "cancel_week_notice",
-      extra: { invokerUserId: appConfig.memberUserIds[0] }
-    });
+      sessionId: friSession.id,
+      dedupeKey: `cancel-week-notice-${friSession.weekKey}-${appConfig.memberUserIds[0]}`,
+      payload: {
+        kind: "send_message",
+        channelId: appConfig.discord.channelId,
+        renderer: "cancel_week_notice",
+        extra: {
+          invokerUserId: appConfig.memberUserIds[0],
+          suppressMentions: appConfig.dev.suppressMentions
+        }
+      },
+      status: "PENDING",
+      attemptCount: 0
+    }]);
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(editReplyPayload(interaction)).toStrictEqual({
@@ -162,10 +190,9 @@ describe("cancel_week confirmation button", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const after = await ctx.ports.sessions.findSessionById(session.id);
-    expect(after?.status).toBe("ASKING");
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     expect(channelSend).not.toHaveBeenCalled();
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
     expect(editReplyPayload(interaction)).toStrictEqual({
       content: cancelWeekMessages.cancelWeek.aborted,
       components: []
@@ -183,7 +210,8 @@ describe("cancel_week confirmation button", () => {
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
     expect(editReplyPayload(interaction)).toStrictEqual({
       content: cancelWeekMessages.cancelWeek.done({ count: 0 }),
       components: []
@@ -192,9 +220,10 @@ describe("cancel_week confirmation button", () => {
 
   it("confirm: reports failure when orchestration cannot enqueue the notice", async () => {
     const session = currentWeekSession({ id: "11111111-aaaa-4bbb-8ccc-000000000003" });
+    const now = new Date("2026-04-24T10:00:00.000Z");
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-24T10:00:00.000Z")
+      now
     });
     Object.assign(ctx.ports.outbox, {
       enqueue: vi.fn(async () => {
@@ -210,6 +239,18 @@ describe("cancel_week confirmation button", () => {
       content: cancelWeekMessages.cancelWeek.failed,
       components: []
     });
+    expect(ctx.ports.sessions.listSessions().map((persisted) => ({
+      id: persisted.id,
+      status: persisted.status,
+      cancelReason: persisted.cancelReason,
+      updatedAt: persisted.updatedAt
+    }))).toStrictEqual([{
+      id: session.id,
+      status: "SKIPPED",
+      cancelReason: "manual_skip",
+      updatedAt: now
+    }]);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
   });
 
   it("idempotent: confirm on already-SKIPPED sessions does not send notice again", async () => {
@@ -224,8 +265,11 @@ describe("cancel_week confirmation button", () => {
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     expect(channelSend).not.toHaveBeenCalled();
-    expect(editReplyPayload(interaction).content).toBe(
-      cancelWeekMessages.cancelWeek.done({ count: 0 })
-    );
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: cancelWeekMessages.cancelWeek.done({ count: 0 }),
+      components: []
+    });
   });
 });
