@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { collectInvariantWarnings } from "../../../src/features/status-command/invariantChecks.js";
-import { makeSession } from "../../testing/fixtures.js";
+import {
+  checkStrandedOutboxEntries,
+  collectInvariantWarnings
+} from "../../../src/features/status-command/invariantChecks.js";
+import { makeOutboxEntry, makeSession } from "../../testing/fixtures.js";
 
 const NOW = new Date("2026-04-25T12:30:00.000Z"); // 21:30 JST
 
@@ -51,5 +54,26 @@ describe("collectInvariantWarnings", () => {
     expect(decidedWarnings.map((warning) => warning.kind)).toContain(
       "decided_stale_reminder_claim"
     );
+  });
+
+  it("reports stranded outbox rows with the oldest dedupe key", () => {
+    const warning = checkStrandedOutboxEntries([
+      makeOutboxEntry({
+        id: "outbox-new",
+        dedupeKey: "newest",
+        createdAt: new Date("2026-04-25T12:20:00.000Z")
+      }),
+      makeOutboxEntry({
+        id: "outbox-old",
+        dedupeKey: "oldest",
+        createdAt: new Date("2026-04-25T12:10:00.000Z")
+      })
+    ]);
+
+    expect(warning).toStrictEqual({
+      kind: "outbox_stranded",
+      message:
+        '2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="oldest"'
+    });
   });
 });

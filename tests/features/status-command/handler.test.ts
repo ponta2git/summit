@@ -9,7 +9,7 @@ import { callArg } from "../../helpers/assertions.js";
 import { createClientWithChannel } from "../../helpers/discord.js";
 import { asChatInputCommandInteraction } from "../../helpers/interaction.js";
 import { memberUserId } from "../../helpers/env.js";
-import { makeSession } from "../../testing/fixtures.js";
+import { makeOutboxEntry, makeSession } from "../../testing/fixtures.js";
 import { createTestAppContext } from "../../testing/ports.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 
@@ -161,5 +161,26 @@ describe("handleStatusCommand", () => {
       ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")
     ).toBe(true);
     expect(editReplyContent(interaction)).toContain("2");
+  });
+
+  it("renders stranded outbox rows returned by the status snapshot", async () => {
+    const session = makeSession({ id: "outbox-session-1a", status: "DECIDED" });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    ctx.ports.outbox.seedEntry(
+      makeOutboxEntry({
+        id: "outbox-failed-1a",
+        sessionId: session.id,
+        dedupeKey: "settle-failed-1a"
+      })
+    );
+    const interaction = buildInteraction();
+
+    await handleStatus(interaction, ctx);
+
+    const content = editReplyContent(interaction);
+    expect(content).toContain(
+      '1 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-failed-1a"'
+    );
+    expect(content).toContain("⚠ 合計 1 件の invariant 警告");
   });
 });
