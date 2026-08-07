@@ -5,84 +5,31 @@ import {
   claimNextOutboxBatch,
   enqueueOutbox,
   findStrandedOutboxEntries,
-  getOutboxMetrics,
   markOutboxDelivered,
   markOutboxFailed,
-  pruneOutbox,
-  releaseExpiredOutboxClaims,
-  type OutboxPayload
+  releaseExpiredOutboxClaims
 } from "../../src/db/repositories/outbox.js";
-import { createAskSession } from "../../src/db/repositories/sessions.js";
 import { discordOutbox } from "../../src/db/schema.js";
 
-import {
-  assertSchemaReady,
-  createIntegrationDb,
-  isIntegration,
-  seedBaseMembers,
-  truncatePerTestTables
-} from "./_support.js";
+import { createOutboxContractHarness } from "./_outboxContract.js";
+import { isIntegration } from "./_support.js";
 
 const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("discord_outbox repository contract (integration)", () => {
-  const { db, client } = createIntegrationDb();
-
-  const baseSession = {
-    id: "sess-outbox",
-    weekKey: "2026-W17",
-    postponeCount: 0,
-    candidateDateIso: "2026-04-24",
-    channelId: "channel-1",
-    deadlineAt: new Date("2026-04-24T12:30:00.000Z")
-  } as const;
-
-  const basePayload: OutboxPayload = {
-    kind: "send_message",
-    renderer: "ask_body",
-    channelId: "channel-1",
-    target: "askMessageId"
-  };
-
-  // why: enqueueOutbox は next_attempt_at = DEFAULT now() (wall-clock) で挿入する。
-  //   integration test は決定論的時刻で claim/backoff を検証したいので、挿入直後に
-  //   固定時刻まで後戻しして「test clock で claim 可能」な状態を作る。
-  const forceNextAttemptAt = async (
-    dedupeKey: string,
-    at: Date
-  ): Promise<void> => {
-    await db
-      .update(discordOutbox)
-      .set({ nextAttemptAt: at })
-      .where(sql`${discordOutbox.dedupeKey} = ${dedupeKey}`);
-  };
-
-  const enqueueWithNextAttempt = async (
-    dedupeKey: string,
-    nextAttemptAt: Date
-  ): Promise<{ id: string }> => {
-    const result = await enqueueOutbox(db, {
-      kind: "send_message",
-      sessionId: baseSession.id,
-      payload: basePayload,
-      dedupeKey
-    });
-    await forceNextAttemptAt(dedupeKey, nextAttemptAt);
-    return { id: result.id };
-  };
+  const harness = createOutboxContractHarness();
+  const { db, baseSession, basePayload, enqueueWithNextAttempt } = harness;
 
   beforeAll(async () => {
-    await assertSchemaReady(db);
-    await seedBaseMembers(db);
+    await harness.initialize();
   });
 
   beforeEach(async () => {
-    await truncatePerTestTables(db);
-    await createAskSession(db, { ...baseSession });
+    await harness.reset();
   });
 
   afterAll(async () => {
-    await client.end({ timeout: 5 });
+    await harness.close();
   });
 
   // idempotent: dedupe_key partial unique index により 2 回目以降は skipped=true。
@@ -265,153 +212,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
 
     const stranded = await findStrandedOutboxEntries(db, 5);
     const strandedIds = new Set(stranded.map((r) => r.id));
-    expect(strandedIds.has(failedId)).toBe(true);
-    expect(strandedIds.has(highAttemptId)).toBe(true);
-  });
-
-  // invariant: pruneOutbox は DELIVERED / FAILED のみ削除し、PENDING / IN_FLIGHT には触れない。
-  // @see ADR-0042
-  it("pruneOutbox: deletes only DELIVERED past delivered_at and FAILED past updated_at", async () => {
-    const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
-    const recent = new Date("2026-04-23T00:00:00.000Z");
-    const now = new Date("2026-04-24T00:00:00.000Z");
-
-    // DELIVERED past retention -> pruned
-    const { id: oldDelId } = await enqueueWithNextAttempt(
-      "prune-old-delivered",
-      new Date("2026-03-30T00:00:00.000Z")
-    );
-    await claimNextOutboxBatch(db, {
-      limit: 1,
-      now: oldDelivered,
-      claimDurationMs: 30_000
-    });
-    await markOutboxDelivered(db, oldDelId, {
-      deliveredMessageId: "msg-1",
-      now: oldDelivered
-    });
-    await db
-      .update(discordOutbox)
-      .set({ deliveredAt: oldDelivered })
-      .where(sql`${discordOutbox.id} = ${oldDelId}`);
-
-    // DELIVERED recent -> kept
-    const { id: recentDelId } = await enqueueWithNextAttempt(
-      "prune-recent-delivered",
-      new Date("2026-04-22T00:00:00.000Z")
-    );
-    await claimNextOutboxBatch(db, {
-      limit: 1,
-      now: recent,
-      claimDurationMs: 30_000
-    });
-    await markOutboxDelivered(db, recentDelId, {
-      deliveredMessageId: "msg-2",
-      now: recent
-    });
-    await db
-      .update(discordOutbox)
-      .set({ deliveredAt: recent })
-      .where(sql`${discordOutbox.id} = ${recentDelId}`);
-
-    // FAILED past retention -> pruned
-    const { id: oldFailedId } = await enqueueWithNextAttempt(
-      "prune-old-failed",
-      new Date("2026-03-20T00:00:00.000Z")
-    );
-    await claimNextOutboxBatch(db, {
-      limit: 1,
-      now: new Date("2026-03-20T00:00:00.000Z"),
-      claimDurationMs: 30_000
-    });
-    await markOutboxFailed(db, oldFailedId, {
-      error: "boom",
-      now: new Date("2026-03-20T00:00:00.000Z"),
-      nextAttemptAt: null
-    });
-    await db
-      .update(discordOutbox)
-      .set({ updatedAt: new Date("2026-03-20T00:00:00.000Z") })
-      .where(sql`${discordOutbox.id} = ${oldFailedId}`);
-
-    // PENDING regardless of age -> kept
-    const { id: pendingId } = await enqueueWithNextAttempt(
-      "prune-pending",
-      new Date("2026-03-30T00:00:00.000Z")
-    );
-
-    const result = await pruneOutbox(db, {
-      deliveredOlderThan: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000),
-      failedOlderThan: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000)
-    });
-
-    expect(result.deliveredPruned).toBe(1);
-    expect(result.failedPruned).toBe(1);
-
-    const remainingIds = (
-      await db.select({ id: discordOutbox.id }).from(discordOutbox)
-    ).map((r) => r.id);
-    expect(remainingIds).toContain(recentDelId);
-    expect(remainingIds).toContain(pendingId);
-    expect(remainingIds).not.toContain(oldDelId);
-    expect(remainingIds).not.toContain(oldFailedId);
-  });
-
-  // invariant: getOutboxMetrics は PENDING / IN_FLIGHT / FAILED を独立カウントし、
-  //   oldest age は createdAt(PENDING) / updatedAt(FAILED) を基準に算出する。@see ADR-0043
-  it("getOutboxMetrics: counts non-DELIVERED status and reports oldest age", async () => {
-    const now = new Date("2026-04-25T01:00:00.000Z");
-    const oldPendingTs = new Date(now.getTime() - 10 * 60_000);
-    const recentPendingTs = new Date(now.getTime() - 30_000);
-    const failedTs = new Date(now.getTime() - 5 * 60_000);
-
-    const { id: oldPendingId } = await enqueueWithNextAttempt(
-      "metrics-pending-old",
-      oldPendingTs
-    );
-    await db
-      .update(discordOutbox)
-      .set({ createdAt: oldPendingTs })
-      .where(sql`${discordOutbox.id} = ${oldPendingId}`);
-
-    const { id: recentPendingId } = await enqueueWithNextAttempt(
-      "metrics-pending-recent",
-      recentPendingTs
-    );
-    await db
-      .update(discordOutbox)
-      .set({ createdAt: recentPendingTs })
-      .where(sql`${discordOutbox.id} = ${recentPendingId}`);
-
-    // FAILED row: enqueue then transition via raw SQL (claim ordering picks oldest first,
-    //   not necessarily this one). updatedAt stays at failedTs to assert oldestFailedAgeMs.
-    const { id: failedId } = await enqueueWithNextAttempt(
-      "metrics-failed",
-      failedTs
-    );
-    await db
-      .update(discordOutbox)
-      .set({ status: "FAILED", updatedAt: failedTs })
-      .where(sql`${discordOutbox.id} = ${failedId}`);
-
-    // DELIVERED row should NOT count: enqueue then mark via raw SQL update
-    //   (claimNextOutboxBatch picks oldest next_attempt_at first, so we can't easily
-    //    target a specific row through the normal claim → markDelivered flow).
-    const { id: deliveredId } = await enqueueWithNextAttempt(
-      "metrics-delivered",
-      now
-    );
-    await db
-      .update(discordOutbox)
-      .set({ status: "DELIVERED", deliveredAt: now })
-      .where(sql`${discordOutbox.id} = ${deliveredId}`);
-
-    const metrics = await getOutboxMetrics(db, now);
-
-    expect(metrics.pending).toBe(2);
-    expect(metrics.inFlight).toBe(0);
-    expect(metrics.failed).toBe(1);
-    expect(metrics.oldestPendingAgeMs).toBe(10 * 60_000);
-    expect(metrics.oldestFailedAgeMs).toBe(5 * 60_000);
+    expect(strandedIds).toStrictEqual(new Set([failedId, highAttemptId]));
   });
 });
