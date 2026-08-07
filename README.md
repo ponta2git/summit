@@ -82,11 +82,7 @@ Summit は secret とユーザー向け設定を分離します。
 | `summit.config.production.yml` | 本番用ユーザー設定ソース | secret を含めず commit する |
 | `SUMMIT_CONFIG_YAML` | アプリが読む YAML 本文 | 本番では Fly secret |
 
-ローカルの package script は `summit.config.yml` を `SUMMIT_CONFIG_YAML` に詰めて起動します。本番では deploy 前に production config を stage します。
-
-```bash
-pnpm config:fly:stage
-```
+ローカルの package script は `summit.config.yml` を `SUMMIT_CONFIG_YAML` に詰めて起動します。本番では deploy 前に production config の本文を `SUMMIT_CONFIG_YAML` Fly secret として stage します。
 
 Discord token、DB URL、healthcheck ping URL の実値は commit しないでください。
 
@@ -106,7 +102,6 @@ Discord token、DB URL、healthcheck ping URL の実値は commit しないで�
 | `pnpm db:seed` | 設定からローカル members を seed |
 | `pnpm db:reset` | ローカル sessions / responses をリセット |
 | `pnpm commands:sync` | guild-scoped slash commands を同期 |
-| `pnpm deploy:production` | production config を stage して Fly.io へ deploy |
 
 > スキーマ変更・migration は [`momo-db`](../momo-db/) リポジトリで管理します（`pnpm db:generate` / `pnpm db:migrate` / `pnpm db:check`）。`drizzle-kit push` は使いません。
 
@@ -140,9 +135,10 @@ deploy 前の基本手順:
 
 1. Fly secrets に `DISCORD_TOKEN` / `DATABASE_URL` / optional `HEALTHCHECK_PING_URL` を設定する。
 2. ユーザー設定を変えた場合は `summit.config.production.yml` を更新する。
-3. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
-4. デプロイ禁止窓外で `pnpm deploy:production` を実行する。
-5. slash command 定義を変えた場合は `pnpm commands:sync` を実行する。
+3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu` を実行する。
+4. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
+5. デプロイ禁止窓外で、リポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only` を実行する。
+6. slash command 定義を変えた場合は `pnpm commands:sync` を実行する。
 
 本番 migration は deploy とは独立したオペレーションです（`release_command` なし）。スキーマ変更を伴う deploy は必ず migration を先行適用してください。
 本番 deploy は `Dockerfile` を Fly の remote builder で build する前提です。

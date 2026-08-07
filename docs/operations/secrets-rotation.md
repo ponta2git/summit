@@ -8,7 +8,7 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 |---|---|---|
 | `DISCORD_TOKEN` | Bot ログイン | Gateway 再接続、cmd 再登録は不要 |
 | `DATABASE_URL` | アプリの DB 接続 (Neon pooled) | 再起動で再接続、cron tick 数回スキップあり |
-| `DIRECT_URL` | migration 専用 (`drizzle.config.ts`) | 本番アプリへの影響なし。次回 migration で使用 |
+| `DIRECT_URL` | migration 専用 (`drizzle.config.ts`) | `momo-db` の migration 実行環境でのみ管理。Fly secrets には設定しない |
 | `SUMMIT_CONFIG_YAML` | 本番 user config 本文 | guild/channel/member/時刻設定。次回 deploy 前に stage 推奨 |
 | `HEALTHCHECK_PING_URL` | healthchecks.io の ping URL | 未設定時は no-op。誤設定で alert が鳴らない点に注意 |
 | `FLY_API_TOKEN` (CI) | GitHub Actions から Fly deploy | app-scoped deploy token のみ。Personal Auth Token 禁止 |
@@ -27,8 +27,8 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 - `DISCORD_TOKEN`: Discord Developer Portal → Bot → Reset Token
 - `DATABASE_URL` / `DIRECT_URL`: Neon dashboard → Connection string (pooled / direct)
 - `HEALTHCHECK_PING_URL`: healthchecks.io → Check → Ping URL
-- `SUMMIT_CONFIG_YAML`: `summit.config.production.yml` を編集し、`pnpm config:fly:stage` で次回 deploy 用に stage
-- `FLY_API_TOKEN`: `fly tokens create deploy --app summit`
+- `SUMMIT_CONFIG_YAML`: `summit.config.production.yml` を編集し、Fly secrets の `--stage` で次回 deploy 用に stage
+- `FLY_API_TOKEN`: `fly tokens create deploy --app summit-momotetsu`
 
 ### 2. Fly secrets に反映
 
@@ -39,14 +39,16 @@ fly secrets set DISCORD_TOKEN="<new>" -a summit-momotetsu
 複数同時に入れ替える場合は 1 コマンドで:
 
 ```bash
-fly secrets set DATABASE_URL="<new>" DIRECT_URL="<new>" -a summit-momotetsu
+fly secrets set DATABASE_URL="<new>" -a summit-momotetsu
 ```
 
 本番 user config は通常 stage して次回 deploy で反映:
 
 ```bash
-pnpm config:fly:stage
-fly deploy --remote-only -a summit-momotetsu
+fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu
+cd ..
+fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only
+cd summit
 ```
 
 通常の `fly secrets set` は自動 redeploy する。反映タイミングを deploy に合わせたい secret は `--stage` + `fly deploy` を使う。
