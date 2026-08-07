@@ -1,5 +1,4 @@
 import type { HeldEventRow, OutboxEntry, SessionRow } from "../../db/ports.js";
-import { unixEpoch } from "../../time/index.js";
 
 export interface InvariantWarning {
   readonly kind: string;
@@ -54,36 +53,6 @@ const evaluate = (
   ctx: CheckCtx
 ): InvariantWarning | undefined =>
   inv.predicate(session, ctx) ? { kind: inv.kind, message: inv.message(session) } : undefined;
-
-// why: 既存テスト/呼び出し側との後方互換のため、per-session check は名前付き wrapper として残す。
-export const checkAskingWithPastDeadline = (
-  session: SessionRow,
-  now: Date
-): InvariantWarning | undefined =>
-  evaluate(SESSION_INVARIANTS.askingPastDeadline, session, { now, heldEvent: undefined });
-
-export const checkAskingWithNullMessageId = (
-  session: SessionRow
-): InvariantWarning | undefined =>
-  evaluate(SESSION_INVARIANTS.askingNullMessageId, session, {
-    now: unixEpoch(),
-    heldEvent: undefined
-  });
-
-export const checkDecidedStaleReminderClaim = (
-  session: SessionRow,
-  heldEvent: HeldEventRow | undefined
-): InvariantWarning | undefined =>
-  evaluate(SESSION_INVARIANTS.decidedStaleReminderClaim, session, { now: unixEpoch(), heldEvent });
-
-export const checkPostponeVotingWithPastDeadline = (
-  session: SessionRow,
-  now: Date
-): InvariantWarning | undefined =>
-  evaluate(SESSION_INVARIANTS.postponeVotingPastDeadline, session, {
-    now,
-    heldEvent: undefined
-  });
 
 /**
  * Aggregate 警告: 宙づり CANCELLED セッション。
