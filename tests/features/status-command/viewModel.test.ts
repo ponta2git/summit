@@ -160,16 +160,32 @@ describe("buildStatusViewModel", () => {
       ]
     });
 
-    expect(vm.strandedOutboxCount).toBe(2);
-    expect(vm.strandedOutboxWarning).toStrictEqual({
-      kind: "outbox_stranded",
-      message:
-        '2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-old"'
+    expect(vm).toStrictEqual({
+      nowJst: "2026-04-25 21:30",
+      currentWeekKey: "2026-W17",
+      sessions: [],
+      nextEventAt: null,
+      totalWarnings: 1,
+      strandedCancelled: [],
+      strandedCancelledWarning: null,
+      strandedOutboxCount: 2,
+      strandedOutboxWarning: {
+        kind: "outbox_stranded",
+        message:
+          '2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-old"'
+      }
     });
-    expect(renderStatusText(vm)).toContain(
-      '⚠ 2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-old"'
+    expect(renderStatusText(vm)).toBe(
+      "```\n" +
+      "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "非終端セッション: なし\n" +
+      "\n" +
+      '⚠ 2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-old"\n' +
+      "\n" +
+      "次のイベント予定: なし\n" +
+      "⚠ 合計 1 件の invariant 警告\n" +
+      "```"
     );
-    expect(vm.totalWarnings).toBe(1);
   });
 
   it("generates a warning for ASKING session with past deadline and null messageId", () => {
