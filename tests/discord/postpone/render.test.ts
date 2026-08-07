@@ -18,13 +18,47 @@ const buildMembers = (): ViewModelMemberInput[] =>
 
 const SESSION_ID = "session-postpone-test";
 const CANDIDATE_DATE = "2026-04-24";
+const mentionLine = appConfig.memberUserIds.map((userId) => `<@${userId}>`).join(" ");
+const initialContent = [
+  mentionLine,
+  "🔁 今回はお流れです。明日も募集しますか？",
+  "",
+  "元の候補日: 2026-04-24(金) 22:00 以降",
+  "順延先: 翌日 22:00 以降",
+  "回答締切: 候補日翌日 00:00 JST",
+  "",
+  "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
+  "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+].join("\n");
+
+const renderedButtons = (rendered: ReturnType<typeof renderPostponeBody>) => {
+  const row = rendered.components?.[0];
+  if (!row) {throw new Error("expected one postpone action row");}
+  return (row as unknown as {
+    toJSON: () => {
+      components: Array<{
+        type: number;
+        custom_id?: string;
+        label?: string;
+        style: number;
+        disabled?: boolean;
+        emoji?: unknown;
+      }>;
+    };
+  }).toJSON().components;
+};
 
 describe("buildPostponeMessageViewModel", () => {
   it("returns memberStatuses=[] when memberRows is omitted (initial-post backward compat)", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
-    expect(vm.memberStatuses).toEqual([]);
-    expect(vm.disabled).toBe(false);
-    expect(vm.footerText).toBeUndefined();
+    expect(vm).toStrictEqual({
+      sessionId: SESSION_ID,
+      candidateDateIso: CANDIDATE_DATE,
+      memberUserIds: appConfig.memberUserIds,
+      suppressMentions: appConfig.dev.suppressMentions,
+      memberStatuses: [],
+      disabled: false
+    });
   });
 
   it("returns all-unanswered statuses when memberRows provided but responses empty", () => {
@@ -34,10 +68,11 @@ describe("buildPostponeMessageViewModel", () => {
       [],
       members
     );
-    expect(vm.memberStatuses).toHaveLength(appConfig.memberUserIds.length);
-    for (const ms of vm.memberStatuses) {
-      expect(ms.state).toBe("unanswered");
-    }
+    expect(vm.memberStatuses).toStrictEqual(members.map((member) => ({
+      userId: member.userId,
+      displayLabel: member.displayName,
+      state: "unanswered"
+    })));
   });
 
   it("maps POSTPONE_OK → 'ok' and POSTPONE_NG → 'ng'", () => {
@@ -51,20 +86,12 @@ describe("buildPostponeMessageViewModel", () => {
       responses,
       members
     );
-    expect(vm.memberStatuses[0]?.state).toBe("ok");
-    expect(vm.memberStatuses[1]?.state).toBe("ng");
-    expect(vm.memberStatuses[2]?.state).toBe("unanswered");
-    expect(vm.memberStatuses[3]?.state).toBe("unanswered");
-  });
-
-  it("uses displayName from member as displayLabel", () => {
-    const members = buildMembers();
-    const vm = buildPostponeMessageViewModel(
-      { id: SESSION_ID, candidateDateIso: CANDIDATE_DATE },
-      [],
-      members
-    );
-    expect(vm.memberStatuses[0]?.displayLabel).toBe("メンバー1");
+    expect(vm.memberStatuses).toStrictEqual([
+      { userId: appConfig.memberUserIds[0], displayLabel: "メンバー1", state: "ok" },
+      { userId: appConfig.memberUserIds[1], displayLabel: "メンバー2", state: "ng" },
+      { userId: appConfig.memberUserIds[2], displayLabel: "メンバー3", state: "unanswered" },
+      { userId: appConfig.memberUserIds[3], displayLabel: "メンバー4", state: "unanswered" }
+    ]);
   });
 
   it("falls back to userId as displayLabel when member not found in memberRows", () => {
@@ -115,32 +142,13 @@ describe("buildPostponeMessageViewModel", () => {
     expect(vm.footerText).toBe("✅ 順延確定");
   });
 
-  it("is pure: same inputs produce identical output", () => {
-    const members = buildMembers();
-    const responses: ViewModelResponseInput[] = [{ memberId: "m1", choice: "POSTPONE_OK" }];
-    const a = buildPostponeMessageViewModel(
-      { id: SESSION_ID, candidateDateIso: CANDIDATE_DATE },
-      responses,
-      members,
-      { disabled: false }
-    );
-    const b = buildPostponeMessageViewModel(
-      { id: SESSION_ID, candidateDateIso: CANDIDATE_DATE },
-      responses,
-      members,
-      { disabled: false }
-    );
-    expect(a).toEqual(b);
-  });
 });
 
 describe("renderPostponeBody", () => {
   it("omits 【順延投票】 section when memberStatuses is empty (initial-post)", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    expect(rendered.content).not.toContain("【順延投票】");
-    expect(rendered.content).toContain("🔁");
-    expect(rendered.content).toContain("全員分そろえば明日の出欠確認へ進みます");
+    expect(rendered.content).toBe(initialContent);
   });
 
   it("includes 【順延投票】 section with member state lines when memberRows provided", () => {
@@ -155,11 +163,23 @@ describe("renderPostponeBody", () => {
       members
     );
     const rendered = renderPostponeBody(vm);
-    expect(rendered.content).toContain("【順延投票】");
-    expect(rendered.content).toContain("- メンバー1: 明日も募集OK");
-    expect(rendered.content).toContain("- メンバー2: 今週はお流れ");
-    expect(rendered.content).toContain("- メンバー3: 未回答");
-    expect(rendered.content).toContain("- メンバー4: 未回答");
+    expect(rendered.content).toBe([
+      mentionLine,
+      "🔁 今回はお流れです。明日も募集しますか？",
+      "",
+      "元の候補日: 2026-04-24(金) 22:00 以降",
+      "順延先: 翌日 22:00 以降",
+      "回答締切: 候補日翌日 00:00 JST",
+      "",
+      "【順延投票】",
+      "- メンバー1: 明日も募集OK",
+      "- メンバー2: 今週はお流れ",
+      "- メンバー3: 未回答",
+      "- メンバー4: 未回答",
+      "",
+      "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
+      "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+    ].join("\n"));
   });
 
   it("disables buttons when vm.disabled=true", () => {
@@ -170,23 +190,7 @@ describe("renderPostponeBody", () => {
       { disabled: true }
     );
     const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0];
-    expect(row).toBeDefined();
-    const json = (row as unknown as {
-      toJSON: () => { components: { disabled?: boolean }[] };
-    }).toJSON();
-    expect(json.components.map((component) => component.disabled)).toStrictEqual([true, true]);
-  });
-
-  it("leaves buttons enabled when vm.disabled=false (default)", () => {
-    const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
-    const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0];
-    expect(row).toBeDefined();
-    const json = (row as unknown as {
-      toJSON: () => { components: { disabled?: boolean }[] };
-    }).toJSON();
-    expect(json.components.map((component) => component.disabled)).toStrictEqual([false, false]);
+    expect(renderedButtons(rendered).map((button) => button.disabled)).toStrictEqual([true, true]);
   });
 
   it("appends footerText after 1 blank line at the end of content", () => {
@@ -197,37 +201,30 @@ describe("renderPostponeBody", () => {
       { footerText: "✅ 順延確定" }
     );
     const rendered = renderPostponeBody(vm);
-    // invariant: footerText は本文末尾 (全員〜行) の後に 1 空行を挟んで追加される
-    expect(rendered.content).toContain("全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。\n\n✅ 順延確定");
-  });
-
-  it("includes mention line when suppressMentions=false (default)", () => {
-    const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
-    const rendered = renderPostponeBody(vm);
-    for (const userId of appConfig.memberUserIds) {
-      expect(rendered.content).toContain(`<@${userId}>`);
-    }
-  });
-
-  it("has exactly one ActionRow component", () => {
-    const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
-    const rendered = renderPostponeBody(vm);
-    expect(rendered.components).toHaveLength(1);
+    expect(rendered.content).toBe(`${initialContent}\n\n✅ 順延確定`);
   });
 
   it("builds postpone custom ids for ok and ng buttons", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0];
-    expect(row).toBeDefined();
-    const buttons = (row as unknown as {
-      toJSON: () => {
-        components: { custom_id?: string; label?: string; disabled?: boolean }[];
-      };
-    }).toJSON().components;
-    expect(buttons.map(({ custom_id, label, disabled }) => ({ custom_id, label, disabled }))).toStrictEqual([
-      { custom_id: `postpone:${SESSION_ID}:ok`, label: "明日も募集OK", disabled: false },
-      { custom_id: `postpone:${SESSION_ID}:ng`, label: "今週はお流れ", disabled: false }
+    expect(rendered.components).toHaveLength(1);
+    expect(renderedButtons(rendered)).toStrictEqual([
+      {
+        type: 2,
+        custom_id: `postpone:${SESSION_ID}:ok`,
+        label: "明日も募集OK",
+        style: 1,
+        disabled: false,
+        emoji: undefined
+      },
+      {
+        type: 2,
+        custom_id: `postpone:${SESSION_ID}:ng`,
+        label: "今週はお流れ",
+        style: 2,
+        disabled: false,
+        emoji: undefined
+      }
     ]);
   });
 });

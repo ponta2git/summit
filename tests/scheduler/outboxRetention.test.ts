@@ -129,16 +129,9 @@ describe("runOutboxRetentionTick", () => {
 
     await runOutboxRetentionTick(ctx);
 
-    const remaining = ctx.ports.outbox.listEntries().map((e) => e.id);
-    expect(remaining).not.toContain("old-del");
-    expect(remaining).not.toContain("boundary-del");
-    expect(remaining).not.toContain("old-failed");
-    expect(remaining).not.toContain("boundary-failed");
-    expect(remaining).toContain("recent-del");
-    expect(remaining).toContain("recent-failed");
-    // invariant: PENDING / IN_FLIGHT は経過時間に関わらず絶対に prune しない (ADR-0042)。
-    expect(remaining).toContain("ancient-pending");
-    expect(remaining).toContain("ancient-inflight");
+    expect(new Set(ctx.ports.outbox.listEntries().map((entry) => entry.id))).toStrictEqual(
+      new Set(["recent-del", "recent-failed", "ancient-pending", "ancient-inflight"])
+    );
   });
 
   it("is a no-op when no terminal rows exceed retention", async () => {
@@ -159,6 +152,9 @@ describe("runOutboxRetentionTick", () => {
 
     await runOutboxRetentionTick(ctx);
 
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
+    expect(ctx.ports.outbox.listEntries().map((entry) => ({
+      id: entry.id,
+      status: entry.status
+    }))).toStrictEqual([{ id: "p1", status: "PENDING" }]);
   });
 });

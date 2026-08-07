@@ -18,10 +18,17 @@ describe("buildStatusViewModel", () => {
       heldEventBySessionId: new Map()
     });
 
-    expect(vm.sessions).toHaveLength(0);
-    expect(vm.totalWarnings).toBe(0);
-    expect(vm.currentWeekKey).toMatch(/^\d{4}-W\d{2}$/);
-    expect(vm.nextEventAt).toBeNull();
+    expect(vm).toStrictEqual({
+      nowJst: "2026-04-25 21:30",
+      currentWeekKey: "2026-W17",
+      sessions: [],
+      nextEventAt: null,
+      totalWarnings: 0,
+      strandedCancelled: [],
+      strandedCancelledWarning: null,
+      strandedOutboxCount: 0,
+      strandedOutboxWarning: null
+    });
   });
 
   it("includes session details for an ASKING session", () => {
@@ -31,7 +38,7 @@ describe("buildStatusViewModel", () => {
       weekKey: "2026-W17",
       postponeCount: 0,
       candidateDateIso: "2026-04-25",
-      deadlineAt: new Date("2026-04-25T12:30:00.000Z"),
+      deadlineAt: new Date("2026-04-25T13:00:00.000Z"),
       askMessageId: "msg-1"
     });
     const response = makeResponse({ sessionId: session.id });
@@ -43,16 +50,32 @@ describe("buildStatusViewModel", () => {
       heldEventBySessionId: new Map()
     });
 
-    expect(vm.sessions).toHaveLength(1);
-    const s = vm.sessions[0];
-    expect(s).toBeDefined();
-    expect(s!.status).toBe("ASKING");
-    expect(s!.weekKey).toBe("2026-W17");
-    expect(s!.postponeCount).toBe(0);
-    expect(s!.responseCount).toBe(1);
-    expect(s!.memberCountExpected).toBe(4);
-    expect(s!.sessionId).toBe("session-");
-    expect(s!.heldEventExists).toBeNull();
+    expect(vm).toStrictEqual({
+      nowJst: "2026-04-25 21:30",
+      currentWeekKey: "2026-W17",
+      sessions: [{
+        sessionId: "session-",
+        weekKey: "2026-W17",
+        postponeCount: 0,
+        status: "ASKING",
+        candidateDateIso: "2026-04-25",
+        deadlineAt: "04-25 22:00",
+        postponeDeadlineAt: "04-26 00:00",
+        decidedStartAt: null,
+        reminderAt: null,
+        reminderSentAt: null,
+        responseCount: 1,
+        memberCountExpected: 4,
+        heldEventExists: null,
+        warnings: []
+      }],
+      nextEventAt: "2026-04-25 22:00",
+      totalWarnings: 0,
+      strandedCancelled: [],
+      strandedCancelledWarning: null,
+      strandedOutboxCount: 0,
+      strandedOutboxWarning: null
+    });
   });
 
   it("marks DECIDED session heldEventExists as false when no HeldEvent", () => {
@@ -163,6 +186,17 @@ describe("buildStatusViewModel", () => {
       heldEventBySessionId: new Map()
     });
 
+    expect(vm.sessions[0]?.warnings).toStrictEqual([
+      {
+        kind: "asking_past_deadline",
+        message: "ASKING session session- has passed deadline but is not yet settled."
+      },
+      {
+        kind: "asking_null_message_id",
+        message:
+          "ASKING session session- has no askMessageId (Discord send may have failed)."
+      }
+    ]);
     expect(vm.totalWarnings).toBe(2);
   });
 });
@@ -175,13 +209,23 @@ describe("renderStatusText", () => {
       responsesBySessionId: new Map(),
       heldEventBySessionId: new Map()
     });
-    const text = renderStatusText(vm);
-    expect(text).toContain("非終端セッション: なし");
-    expect(text).toContain("```");
+    expect(renderStatusText(vm)).toBe(
+      "```\n" +
+      "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "非終端セッション: なし\n" +
+      "\n" +
+      "次のイベント予定: なし\n" +
+      "```"
+    );
   });
 
   it("renders session info for ASKING session", () => {
-    const session = makeSession({ status: "ASKING", askMessageId: "msg-1" });
+    const session = makeSession({
+      status: "ASKING",
+      candidateDateIso: "2026-04-25",
+      deadlineAt: new Date("2026-04-25T13:00:00.000Z"),
+      askMessageId: "msg-1"
+    });
 
     const vm = buildStatusViewModel({
       now: NOW,
@@ -190,9 +234,17 @@ describe("renderStatusText", () => {
       heldEventBySessionId: new Map()
     });
 
-    const text = renderStatusText(vm);
-    expect(text).toContain("[ASKING]");
-    expect(text).toContain("回答: 0/4");
+    expect(renderStatusText(vm)).toBe(
+      "```\n" +
+      "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "\n" +
+      "[ASKING] session-  week: 2026-W17  postpone: 0\n" +
+      "  候補日: 2026-04-25  締切: 04-25 22:00  順延期限: 04-26 00:00\n" +
+      "  回答: 0/4\n" +
+      "\n" +
+      "次のイベント予定: 2026-04-25 22:00\n" +
+      "```"
+    );
   });
 
   it("includes warning marker in rendered text", () => {
@@ -209,7 +261,19 @@ describe("renderStatusText", () => {
       heldEventBySessionId: new Map()
     });
 
-    const text = renderStatusText(vm);
-    expect(text).toContain("⚠");
+    expect(renderStatusText(vm)).toBe(
+      "```\n" +
+      "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "\n" +
+      "[ASKING] session-  week: 2026-W17  postpone: 0\n" +
+      "  候補日: 2026-04-24  締切: 04-25 21:00  順延期限: 04-25 00:00\n" +
+      "  回答: 0/4\n" +
+      "  ⚠ ASKING session session- has passed deadline but is not yet settled.\n" +
+      "  ⚠ ASKING session session- has no askMessageId (Discord send may have failed).\n" +
+      "\n" +
+      "次のイベント予定: なし\n" +
+      "⚠ 合計 2 件の invariant 警告\n" +
+      "```"
+    );
   });
 });
