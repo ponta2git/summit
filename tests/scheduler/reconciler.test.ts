@@ -16,7 +16,7 @@ import {
   runReconciler
 } from "../../src/scheduler/reconciler.js";
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.js";
-import { __resetSendStateForTest } from "../../src/features/ask-session/send.js";
+import { resetSendStateForTest } from "../../src/features/ask-session/send.js";
 import { createTestAppContext } from "../testing/index.js";
 import { asDiscordClient, asDiscordMessage, asTextChannel } from "../helpers/discord.js";
 import { buildSessionRow } from "./factories/session.js";
@@ -100,7 +100,7 @@ beforeEach(() => {
     sentMessages.push({ channelId: "fake-channel", payload });
     return asDiscordMessage({ id });
   };
-  __resetSendStateForTest();
+  resetSendStateForTest();
 });
 
 describe("isUnknownMessageError", () => {

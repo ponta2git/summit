@@ -138,9 +138,10 @@ describe("settleAskingSession", () => {
     const outboxEntries = ctx.ports.outbox.listEntries();
     const announce = outboxEntries.find((e) => e.dedupeKey === `decided-announcement-${session.id}`);
     expect(announce).toBeDefined();
-    if (announce?.payload.kind === "send_message") {
-      expect(announce.payload.renderer).toBe("decided_announcement");
-    }
+    expect(announce?.payload).toMatchObject({
+      kind: "send_message",
+      renderer: "decided_announcement"
+    });
   });
 });
 

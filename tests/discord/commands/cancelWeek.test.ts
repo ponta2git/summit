@@ -146,12 +146,11 @@ describe("cancel_week confirmation button", () => {
     expect(outboxEntries).toHaveLength(1);
     const [notice] = outboxEntries;
     expect(notice?.dedupeKey).toMatch(/^cancel-week-notice-/);
-    if (notice?.payload.kind === "send_message") {
-      expect(notice.payload.renderer).toBe("cancel_week_notice");
-      expect(notice.payload.extra?.["invokerUserId"]).toBe(appConfig.memberUserIds[0]);
-    } else {
-      throw new Error("expected send_message payload");
-    }
+    expect(notice?.payload).toMatchObject({
+      kind: "send_message",
+      renderer: "cancel_week_notice",
+      extra: { invokerUserId: appConfig.memberUserIds[0] }
+    });
 
     expect(interaction.deferUpdate).toHaveBeenCalledOnce();
     expect(editReplyPayload(interaction)).toStrictEqual({

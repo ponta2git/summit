@@ -18,10 +18,6 @@ export const expectParseSuccess = <T>(result: ParseResult<T>): T => {
   return result.data;
 };
 
-export const expectParseFailure = (result: ParseResult<unknown>, label?: string): void => {
-  expect(result.success, label).toBe(false);
-};
-
 export const expectKind = <
   T extends { readonly kind: string },
   K extends T["kind"]

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  __resetSendStateForTest,
+  resetSendStateForTest,
   sendAskMessage,
   sendPostponedAskMessage
 } from "../../../src/features/ask-session/send.js";
-import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
+import { resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import {
   createClientWithChannel,
@@ -33,8 +33,8 @@ const saturdaySession = makeSession({
 
 describe("sendPostponedAskMessage", () => {
   beforeEach(() => {
-    __resetSendStateForTest();
-    __resetShutdownStateForTest();
+    resetSendStateForTest();
+    resetShutdownStateForTest();
   });
 
   it("sends the Discord message and saves ask_message_id", async () => {

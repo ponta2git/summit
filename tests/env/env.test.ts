@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
 
 import { envSchema } from "../../src/env.js";
-import { expectParseFailure, expectParseSuccess } from "../helpers/assertions.js";
+import { expectParseSuccess } from "../helpers/assertions.js";
 
 const validEnvInput = {
   DISCORD_TOKEN: "dummy-token",
@@ -66,7 +66,7 @@ describe("envSchema", () => {
 
     for (const testCase of cases) {
       const result = envSchema.safeParse(testCase.input);
-      expectParseFailure(result, testCase.name);
+      expect(result.success).toBe(false);
     }
   });
 

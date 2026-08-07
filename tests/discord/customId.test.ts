@@ -10,7 +10,7 @@ import {
   slotKeyFromCustomIdChoice
 } from "../../src/discord/shared/customId.js";
 import { SLOT_KEYS } from "../../src/slot.js";
-import { expectParseFailure, expectParseSuccess } from "../helpers/assertions.js";
+import { expectParseSuccess } from "../helpers/assertions.js";
 
 describe("customId codec", () => {
   const sessionId = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
@@ -37,17 +37,17 @@ describe("customId codec", () => {
 
   it("rejects invalid prefix", () => {
     const parsed = parseCustomId(`vote:${sessionId}:ok`);
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects invalid uuid", () => {
     const parsed = parseCustomId("ask:not-a-uuid:t2200");
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects invalid choice", () => {
     const parsed = parseCustomId(`postpone:${sessionId}:maybe`);
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("keeps round-trip identity on valid inputs", () => {
@@ -83,22 +83,22 @@ describe("cancel_week customId codec", () => {
 
   it("rejects wrong prefix", () => {
     const parsed = parseCancelWeekCustomId(`cancel:${nonce}:confirm`);
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects invalid uuid nonce", () => {
     const parsed = parseCancelWeekCustomId("cancel_week:not-a-uuid:confirm");
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects unknown choice", () => {
     const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:maybe`);
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects wrong segment count", () => {
     const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:confirm:extra`);
-    expectParseFailure(parsed);
+    expect(parsed.success).toBe(false);
   });
 
   it("keeps round-trip identity on valid inputs", () => {

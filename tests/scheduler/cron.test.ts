@@ -112,6 +112,7 @@ describe("ask scheduler", () => {
     const scheduler = createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
 
     const wrappedIndices = [0, 2, 3];
+    expect(capturedTicks).toHaveLength(4);
     for (const i of wrappedIndices) {
       const tick = capturedTicks[i];
       if (!tick) {

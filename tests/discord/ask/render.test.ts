@@ -6,16 +6,16 @@ import {
 } from "../../../src/features/ask-session/render.js";
 import { buildAskMessageViewModel } from "../../../src/features/ask-session/viewModel.js";
 import type { ViewModelResponseInput } from "../../../src/discord/shared/viewModelInputs.js";
-import { __resetSendStateForTest } from "../../../src/features/ask-session/send.js";
+import { resetSendStateForTest } from "../../../src/features/ask-session/send.js";
 import { appConfig } from "../../../src/userConfig.js";
-import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
+import { resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { memberUserId } from "../../helpers/env.js";
 import { buildSessionRow } from "../factories/session.js";
 
 describe("askMessage", () => {
   beforeEach(() => {
-    __resetSendStateForTest();
-    __resetShutdownStateForTest();
+    resetSendStateForTest();
+    resetShutdownStateForTest();
   });
 
   it("builds ask buttons with expected custom ids", () => {

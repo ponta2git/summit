@@ -62,6 +62,6 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
   return true;
 };
 
-export const __resetShutdownStateForTest = (): void => {
+export const resetShutdownStateForTest = (): void => {
   shuttingDown = false;
 };

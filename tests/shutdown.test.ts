@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  __resetShutdownStateForTest,
   isShuttingDown,
+  resetShutdownStateForTest,
   shutdownGracefully
 } from "../src/shutdown.js";
 
 describe("shutdown", () => {
   beforeEach(() => {
-    __resetShutdownStateForTest();
+    resetShutdownStateForTest();
   });
 
   it("runs shutdown sequence once and ignores duplicate signals", async () => {

@@ -1,8 +1,8 @@
 import { ChannelType, type Client } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { __resetSendStateForTest, sendAskMessage } from "../../../src/features/ask-session/send.js";
-import { __resetShutdownStateForTest } from "../../../src/shutdown.js";
+import { resetSendStateForTest, sendAskMessage } from "../../../src/features/ask-session/send.js";
+import { resetShutdownStateForTest } from "../../../src/shutdown.js";
 import { deferred } from "../../helpers/deferred.js";
 import { memberUserId } from "../../helpers/env.js";
 import { createTestAppContext } from "../../testing/index.js";
@@ -23,8 +23,8 @@ const seedMembers = [
 
 describe("askMessage race handling", () => {
   beforeEach(() => {
-    __resetSendStateForTest();
-    __resetShutdownStateForTest();
+    resetSendStateForTest();
+    resetShutdownStateForTest();
   });
 
   it("serializes concurrent sends and avoids duplicate posts", async () => {

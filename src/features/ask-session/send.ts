@@ -263,6 +263,6 @@ export const waitForInFlightSend = async (): Promise<void> => {
   await Promise.allSettled(inflight);
 };
 
-export const __resetSendStateForTest = (): void => {
+export const resetSendStateForTest = (): void => {
   inFlightSends.clear();
 };

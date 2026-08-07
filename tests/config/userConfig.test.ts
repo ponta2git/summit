@@ -6,7 +6,6 @@ import {
   parseUserConfigInput,
   userConfigSchema
 } from "../../src/userConfig.js";
-import { expectParseFailure } from "../helpers/assertions.js";
 
 const validConfigInput = {
   discord: {
@@ -145,7 +144,7 @@ describe("userConfigSchema", () => {
     ] as const;
 
     for (const testCase of cases) {
-      expectParseFailure(userConfigSchema.safeParse(testCase.input), testCase.name);
+      expect(userConfigSchema.safeParse(testCase.input).success).toBe(false);
     }
   });
 });

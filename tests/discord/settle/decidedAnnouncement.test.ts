@@ -144,11 +144,10 @@ describe("sendDecidedAnnouncement", () => {
     const [entry] = entries;
     expect(entry?.sessionId).toBe(session.id);
     expect(entry?.dedupeKey).toBe(`decided-announcement-${session.id}`);
-    if (entry?.payload.kind === "send_message") {
-      expect(entry.payload.renderer).toBe("decided_announcement");
-    } else {
-      throw new Error("expected send_message payload");
-    }
+    expect(entry?.payload).toMatchObject({
+      kind: "send_message",
+      renderer: "decided_announcement"
+    });
   });
 
   it("does not enqueue when session is not DECIDED", async () => {
