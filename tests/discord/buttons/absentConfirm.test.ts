@@ -1,10 +1,11 @@
-import { ChannelType } from "discord.js";
+import { ChannelType, MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { askMessages } from "../../../src/features/ask-session/messages.js";
+import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { buildAbsentConfirmCustomId } from "../../../src/discord/shared/customId.js";
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
@@ -81,7 +82,8 @@ describe("ask_absent confirmation button — abort", () => {
 
     // invariant: abort は response を記録しない。
     const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
+    expect(responses).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     expect(editReplyPayload(interaction)).toStrictEqual({
       content: askMessages.absentConfirm.aborted,
       components: []
@@ -93,9 +95,10 @@ describe("ask_absent confirmation button — confirm", () => {
   it("confirm: records ABSENT, cancels session, and confirms with editReply", async () => {
     // why: postponeCount: 1 (土曜) で順延不可とし、ABSENT 後に CANCELLED 確定で止まることを検証する。
     const session = buildSessionRow({ id: testSessionId, askMessageId: "ask-msg-1", postponeCount: 1 });
+    const now = new Date("2026-04-24T10:00:00.000Z");
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-24T10:00:00.000Z")
+      now
     });
     const { client, askEdit } = createDiscordClient();
     const interaction = buildButtonInteraction(confirmCustomId);
@@ -104,12 +107,31 @@ describe("ask_absent confirmation button — confirm", () => {
 
     // invariant: ABSENT が記録され、セッションが CANCELLED に遷移する。
     const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(1);
-    expect(responses[0]?.choice).toBe("ABSENT");
+    expect(responses.map((response) => ({
+      sessionId: response.sessionId,
+      memberId: response.memberId,
+      choice: response.choice,
+      answeredAt: response.answeredAt
+    }))).toStrictEqual([{
+      sessionId: session.id,
+      memberId: seededMembers[0]!.id,
+      choice: "ABSENT",
+      answeredAt: now
+    }]);
 
     // invariant: 欠席が記録されセッションは ASKING から脱出する（土曜回なので COMPLETED に収束）。
-    const updated = await ctx.ports.sessions.findSessionById(testSessionId);
-    expect(updated?.status).not.toBe("ASKING");
+    expect(ctx.ports.sessions.listSessions().map((updated) => ({
+      id: updated.id,
+      status: updated.status,
+      cancelReason: updated.cancelReason,
+      updatedAt: updated.updatedAt
+    }))).toStrictEqual([{
+      id: session.id,
+      status: "COMPLETED",
+      cancelReason: "saturday_cancelled",
+      updatedAt: now
+    }]);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
 
     // invariant: 募集メッセージが更新される。
     expect(askEdit).toHaveBeenCalledOnce();
@@ -131,17 +153,19 @@ describe("ask_absent confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
-    expect(editReplyPayload(interaction).components).toStrictEqual([]);
-    expect(typeof editReplyPayload(interaction).content).toBe("string");
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: rejectMessages.reject.askingClosed,
+      components: []
+    });
   });
 
   it("confirm: session not in ASKING state → guard rejects with ephemeral", async () => {
     const session = buildSessionRow({
       id: testSessionId,
       status: "CANCELLED",
-      cancelReason: "all_absent",
+      cancelReason: "absent",
       askMessageId: "ask-msg-1"
     });
     const ctx = createTestAppContext({
@@ -153,9 +177,12 @@ describe("ask_absent confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const after = await ctx.ports.sessions.findSessionById(testSessionId);
-    expect(after?.status).toBe("CANCELLED"); // unchanged
-    expect(editReplyPayload(interaction).components).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: rejectMessages.reject.staleSession,
+      components: []
+    });
   });
 
   it("confirm: non-member user → dispatcher cheapFirstGuard rejects with followUp", async () => {
@@ -171,11 +198,14 @@ describe("ask_absent confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     // invariant: non-member は dispatcher の cheapFirstGuard で弾かれ followUp で通知される。
     //   deferUpdate 後の followUp で ephemeral 拒否。editReply は呼ばれない。
-    expect(interaction.followUp).toHaveBeenCalledOnce();
+    expect(interaction.followUp).toHaveBeenCalledWith({
+      content: rejectMessages.reject.notMember,
+      flags: MessageFlags.Ephemeral
+    });
     expect(interaction.editReply).not.toHaveBeenCalled();
   });
 });
