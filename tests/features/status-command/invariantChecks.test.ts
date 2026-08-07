@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { HeldEventRow } from "../../../src/db/ports.js";
 import {
   checkStrandedCancelledSessions,
   checkStrandedOutboxEntries,
@@ -10,14 +9,6 @@ import { makeOutboxEntry, makeSession } from "../../testing/fixtures.js";
 
 const NOW = new Date("2026-04-25T12:30:00.000Z"); // 21:30 JST
 
-const heldEventFor = (sessionId: string): HeldEventRow => ({
-  id: "held-1",
-  sessionId,
-  heldDateIso: "2026-04-25",
-  startAt: NOW,
-  createdAt: NOW
-});
-
 describe("collectInvariantWarnings", () => {
   it("returns every ASKING warning at the exact deadline boundary", () => {
     const session = makeSession({
@@ -26,7 +17,7 @@ describe("collectInvariantWarnings", () => {
       askMessageId: null
     });
 
-    expect(collectInvariantWarnings(session, NOW, undefined)).toStrictEqual([
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([
       {
         kind: "asking_past_deadline",
         message: "ASKING session session- has passed deadline but is not yet settled."
@@ -57,13 +48,13 @@ describe("collectInvariantWarnings", () => {
       })
     }
   ])("does not report ASKING warnings when $label", ({ session }) => {
-    expect(collectInvariantWarnings(session, NOW, undefined)).toStrictEqual([]);
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([]);
   });
 
   it("reports an overdue postpone vote at the exact deadline boundary", () => {
     const session = makeSession({ status: "POSTPONE_VOTING", deadlineAt: NOW });
 
-    expect(collectInvariantWarnings(session, NOW, undefined)).toStrictEqual([
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([
       {
         kind: "postpone_voting_past_deadline",
         message:
@@ -85,39 +76,32 @@ describe("collectInvariantWarnings", () => {
       session: makeSession({ status: "COMPLETED", deadlineAt: NOW })
     }
   ])("does not report postpone warnings when $label", ({ session }) => {
-    expect(collectInvariantWarnings(session, NOW, undefined)).toStrictEqual([]);
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([]);
   });
 
-  it("reports a DECIDED reminder claim without a matching held event", () => {
+  it("reports a DECIDED session carrying a completion-only reminder marker", () => {
     const session = makeSession({ status: "DECIDED", reminderSentAt: NOW });
 
-    expect(collectInvariantWarnings(session, NOW, undefined)).toStrictEqual([
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([
       {
-        kind: "decided_stale_reminder_claim",
+        kind: "decided_reminder_completion_mismatch",
         message:
-          "DECIDED session session- has reminderSentAt set but no HeldEvent (stale claim?)."
+          "DECIDED session session- has reminderSentAt set before completion."
       }
     ]);
   });
 
   it.each([
     {
-      label: "the held event exists",
-      session: makeSession({ status: "DECIDED", reminderSentAt: NOW }),
-      heldEvent: heldEventFor("session-1")
-    },
-    {
-      label: "the reminder is unclaimed",
+      label: "the reminder has not completed",
       session: makeSession({ status: "DECIDED", reminderSentAt: null }),
-      heldEvent: undefined
     },
     {
       label: "the session is not DECIDED",
       session: makeSession({ status: "COMPLETED", reminderSentAt: NOW }),
-      heldEvent: undefined
     }
-  ])("does not report a stale reminder claim when $label", ({ session, heldEvent }) => {
-    expect(collectInvariantWarnings(session, NOW, heldEvent)).toStrictEqual([]);
+  ])("does not report a reminder completion mismatch when $label", ({ session }) => {
+    expect(collectInvariantWarnings(session, NOW)).toStrictEqual([]);
   });
 });
 

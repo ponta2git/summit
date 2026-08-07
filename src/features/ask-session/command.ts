@@ -77,9 +77,9 @@ export const handleAskCommand = async (
 
   await result.match(
     async (sendResult) => {
-      if (sendResult.status === "sent") {
-        deps.wakeScheduler?.("ask_command_sent");
-        await interaction.editReply(askMessages.interaction.ask.sent);
+      if (sendResult.status === "queued") {
+        deps.wakeScheduler?.("ask_command_queued");
+        await interaction.editReply(askMessages.interaction.ask.queued);
         return;
       }
 

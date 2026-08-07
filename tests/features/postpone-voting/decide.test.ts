@@ -13,6 +13,7 @@ const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
   memberId: "m1",
   choice: "POSTPONE_OK",
   answeredAt: new Date("2026-04-24T12:00:00.000Z"),
+  sourceInteractionId: null,
   ...overrides
 });
 

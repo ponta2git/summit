@@ -1,9 +1,11 @@
 // source-of-truth: sessions repository の生成・message id 書き戻し。
-// @see ADR-0038
+// @see ADR-0051
+
+import { randomUUID } from "node:crypto";
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 
-import { sessions } from "../schema.js";
+import { discordOutbox, sessions } from "../schema.js";
 import type { DbLike, SessionRow } from "../rows.js";
 import { mapSession } from "./sessions.internal.js";
 import type { CreateAskSessionInput } from "./sessions.types.js";
@@ -18,25 +20,41 @@ import type { CreateAskSessionInput } from "./sessions.types.js";
 export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
-): Promise<SessionRow | undefined> => {
-  const rows = await db
-    .insert(sessions)
-    .values({
-      id: input.id,
-      weekKey: input.weekKey,
-      postponeCount: input.postponeCount,
-      candidateDateIso: input.candidateDateIso,
-      status: "ASKING",
-      channelId: input.channelId,
-      deadlineAt: input.deadlineAt
-    })
-    .onConflictDoNothing({
-      target: [sessions.weekKey, sessions.postponeCount]
-    })
-    .returning();
-  const row = rows[0];
-  return row ? mapSession(row) : undefined;
-};
+): Promise<SessionRow | undefined> =>
+  db.transaction(async (tx) => {
+    const rows = await tx
+      .insert(sessions)
+      .values({
+        id: input.id,
+        weekKey: input.weekKey,
+        postponeCount: input.postponeCount,
+        candidateDateIso: input.candidateDateIso,
+        status: "ASKING",
+        channelId: input.channelId,
+        deadlineAt: input.deadlineAt
+      })
+      .onConflictDoNothing({
+        target: [sessions.weekKey, sessions.postponeCount]
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) {return undefined;}
+    for (const entry of input.outbox ?? []) {
+      await tx
+        .insert(discordOutbox)
+        .values({
+          id: randomUUID(),
+          kind: entry.kind,
+          sessionId: entry.sessionId,
+          payload: entry.payload,
+          dedupeKey: entry.dedupeKey,
+          aggregateRevision: entry.aggregateRevision,
+          ordinal: entry.ordinal
+        })
+        .onConflictDoNothing({ target: discordOutbox.dedupeKey });
+    }
+    return mapSession(row);
+  });
 
 export const updateAskMessageId = async (
   db: DbLike,
@@ -64,9 +82,9 @@ export const updatePostponeMessageId = async (
  * Back-fill `ask_message_id` only if currently NULL (CAS-on-NULL).
  *
  * @remarks
- * idempotent: outbox 配送成功後に呼ばれる。reconciler 再投稿が別 id をセット済みなら上書きせず、
- *   config drift を防ぐ。CAS 勝で `true`。
- * @see ADR-0035
+ * idempotent: outbox 配送成功後に呼ばれる。expired claim の競合配送や recovery が別 id を
+ *   セット済みなら上書きせず、canonical message の drift を防ぐ。CAS 勝で `true`。
+ * @see ADR-0051
  */
 export const backfillAskMessageId = async (
   db: DbLike,

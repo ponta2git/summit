@@ -14,6 +14,8 @@ superseded-by: null
 
 `discord_outbox` の終端行（DELIVERED / FAILED）を**ステータス別に定期 prune** する。SSoT は `src/config.ts`（ADR-0022）。`OUTBOX_RETENTION_DELIVERED_MS` 経過の DELIVERED と `OUTBOX_RETENTION_FAILED_MS` 経過の FAILED を `CRON_OUTBOX_RETENTION_SCHEDULE` の専用 cron で削除し、テーブルの無制限成長と index 肥大化を防ぐ。FAILED は dead letter としての保持期間を DELIVERED より長く取り、運用調査の余地を残す。
 
+> **ADR-0051 による補足:** dedupe 一意性と dead-letter 復帰は ADR-0051 に従う。本 ADR は retention の schedule と prune 方針について引き続き有効。
+
 ## Context
 
 ADR-0035 で導入した `discord_outbox` には終端行の retention / prune ポリシーが無く、永久に積み上がる:

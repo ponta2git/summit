@@ -23,12 +23,17 @@ export const runOutboxRetentionTick = async (ctx: AppContext): Promise<void> => 
       deliveredOlderThan,
       failedOlderThan
     });
-    if (result.deliveredPruned > 0 || result.failedPruned > 0) {
+    if (
+      result.deliveredPruned > 0 ||
+      result.failedPruned > 0 ||
+      result.cancelledPruned > 0
+    ) {
       logger.info(
         {
           event: "outbox.retention_pruned",
           deliveredPruned: result.deliveredPruned,
-          failedPruned: result.failedPruned
+          failedPruned: result.failedPruned,
+          cancelledPruned: result.cancelledPruned
         },
         "Outbox retention: pruned terminal rows."
       );

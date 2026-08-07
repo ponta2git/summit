@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  computeReminderAt,
-  shouldSkipReminder
-} from "../../../src/features/reminder/time.js";
+import { shouldSkipReminder } from "../../../src/features/reminder/time.js";
+import { reminderAtFor } from "../../../src/time/index.js";
 
 describe("shouldSkipReminder", () => {
   const reminderAt = new Date("2026-04-24T12:45:00.000Z");
@@ -34,9 +32,9 @@ describe("shouldSkipReminder", () => {
   });
 });
 
-describe("computeReminderAt", () => {
+describe("reminderAtFor", () => {
   it("returns the start time minus fifteen minutes", () => {
-    expect(computeReminderAt(new Date("2026-04-24T13:00:00.000Z"))).toStrictEqual(
+    expect(reminderAtFor(new Date("2026-04-24T13:00:00.000Z"))).toStrictEqual(
       new Date("2026-04-24T12:45:00.000Z")
     );
   });

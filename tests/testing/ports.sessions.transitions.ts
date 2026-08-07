@@ -1,24 +1,42 @@
-import type { SessionsPort } from "../../src/db/ports.js";
+import type { EnqueueOutboxInput, SessionRow } from "../../src/db/ports.js";
 import { makeSession } from "./fixtures.js";
 import { NON_TERMINAL_STATUSES, recordCall } from "./ports.shared.js";
 import type { FakeSessionsState } from "./ports.sessions.state.js";
 
-type SessionTransitionMethods = Pick<
-  SessionsPort,
-  | "cancelAsking"
-  | "startPostponeVoting"
-  | "completePostponeVoting"
-  | "decideAsking"
-  | "completeCancelledSession"
-  | "completeSession"
-  | "claimReminderDispatch"
-  | "revertReminderClaim"
-  | "skipSession"
->;
+interface EdgeInput {
+  readonly id: string;
+  readonly now: Date;
+  readonly outbox?: readonly EnqueueOutboxInput[];
+}
+
+export interface FakeSessionTransitionMethods {
+  cancelAsking(input: EdgeInput & {
+    readonly reason: "absent" | "deadline_unanswered" | "saturday_cancelled";
+  }): Promise<SessionRow | undefined>;
+  startPostponeVoting(input: EdgeInput & {
+    readonly postponeDeadlineAt: Date;
+  }): Promise<SessionRow | undefined>;
+  completePostponeVoting(input: EdgeInput & (
+    | { readonly outcome: "decided" }
+    | {
+        readonly outcome: "cancelled_full";
+        readonly cancelReason: "postpone_ng" | "postpone_unanswered";
+      }
+  )): Promise<SessionRow | undefined>;
+  decideAsking(input: EdgeInput & {
+    readonly decidedStartAt: Date;
+    readonly reminderAt: Date;
+  }): Promise<SessionRow | undefined>;
+  completeCancelledSession(input: EdgeInput): Promise<SessionRow | undefined>;
+  skipSession(input: {
+    readonly id: string;
+    readonly cancelReason: string;
+  }): Promise<SessionRow | undefined>;
+}
 
 export const createFakeSessionTransitionMethods = (
   state: FakeSessionsState
-): SessionTransitionMethods => ({
+): FakeSessionTransitionMethods => ({
   cancelAsking: async (input) => {
     recordCall(state.calls, "cancelAsking", { input });
     const found = state.byId.get(input.id);
@@ -27,6 +45,7 @@ export const createFakeSessionTransitionMethods = (
       ...found,
       status: "CANCELLED",
       cancelReason: input.reason,
+      revision: found.revision + 1,
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
@@ -42,6 +61,7 @@ export const createFakeSessionTransitionMethods = (
       ...found,
       status: "POSTPONE_VOTING",
       deadlineAt: input.postponeDeadlineAt,
+      revision: found.revision + 1,
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
@@ -58,6 +78,7 @@ export const createFakeSessionTransitionMethods = (
       status: input.outcome === "decided" ? "POSTPONED" : "COMPLETED",
       cancelReason:
         input.outcome === "cancelled_full" ? input.cancelReason : found.cancelReason,
+      revision: found.revision + 1,
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
@@ -74,6 +95,7 @@ export const createFakeSessionTransitionMethods = (
       status: "DECIDED",
       decidedStartAt: input.decidedStartAt,
       reminderAt: input.reminderAt,
+      revision: found.revision + 1,
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
@@ -85,60 +107,15 @@ export const createFakeSessionTransitionMethods = (
     recordCall(state.calls, "completeCancelledSession", { input });
     const found = state.byId.get(input.id);
     if (!found || found.status !== "CANCELLED") {return undefined;}
-    const next = makeSession({ ...found, status: "COMPLETED", updatedAt: input.now });
-    state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
-    return state.clone(next);
-  },
-
-  completeSession: async (input) => {
-    recordCall(state.calls, "completeSession", { input });
-    const found = state.byId.get(input.id);
-    if (!found || found.status !== "DECIDED") {return undefined;}
     const next = makeSession({
       ...found,
       status: "COMPLETED",
-      reminderSentAt: input.reminderSentAt,
+      revision: found.revision + 1,
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
     state.enqueueOutbox(input.outbox);
     return state.clone(next);
-  },
-
-  claimReminderDispatch: async (id, now) => {
-    recordCall(state.calls, "claimReminderDispatch", { id, now });
-    const found = state.byId.get(id);
-    if (!found || found.status !== "DECIDED" || found.reminderSentAt !== null) {
-      return undefined;
-    }
-    const next = makeSession({
-      ...found,
-      reminderSentAt: now,
-      updatedAt: state.clock.now()
-    });
-    state.byId.set(next.id, next);
-    return state.clone(next);
-  },
-
-  revertReminderClaim: async (id, claimedAt) => {
-    recordCall(state.calls, "revertReminderClaim", { id, claimedAt });
-    const found = state.byId.get(id);
-    if (
-      !found ||
-      found.status !== "DECIDED" ||
-      found.reminderSentAt === null ||
-      found.reminderSentAt.getTime() !== claimedAt.getTime()
-    ) {
-      return false;
-    }
-    const next = makeSession({
-      ...found,
-      reminderSentAt: null,
-      updatedAt: state.clock.now()
-    });
-    state.byId.set(next.id, next);
-    return true;
   },
 
   skipSession: async (input) => {
@@ -149,6 +126,7 @@ export const createFakeSessionTransitionMethods = (
       ...found,
       status: "SKIPPED",
       cancelReason: input.cancelReason,
+      revision: found.revision + 1,
       updatedAt: state.clock.now()
     });
     state.byId.set(next.id, next);

@@ -170,7 +170,7 @@ export const registerInteractionHandlers = (
             context,
             ...readyDeps,
             ...(options.wakeScheduler ? { wakeScheduler: options.wakeScheduler } : {}),
-            sendAsk: (args) => sendAskMessage(client, { ...args, context })
+            sendAsk: (args) => sendAskMessage({ ...args, context })
           },
           registry
         );

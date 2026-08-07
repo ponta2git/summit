@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { settlePostponeVotingSession } from "../../../src/orchestration/index.js";
+import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
 import { callArg } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {
@@ -48,6 +49,13 @@ describe("settlePostponeVotingSession", () => {
 
     await settlePostponeVotingSession(discord.client, ctx, session, settlementAt);
 
+    expect(discord.send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries().map((entry) => ({
+      renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
+      status: entry.status
+    }))).toStrictEqual([{ renderer: "ask_body", status: "PENDING" }]);
+    await runOutboxWorkerTick(discord.client, ctx);
+
     const persisted = ctx.ports.sessions.listSessions();
     expect(persisted).toHaveLength(2);
     const parent = persisted.find((candidate) => candidate.id === session.id)!;
@@ -90,7 +98,9 @@ describe("settlePostponeVotingSession", () => {
     const saturdayPost = asMessagePayload(discord.sentPayloads[0]);
     expect(saturdayPost.content).toContain("開催候補日: 2026-04-25(土) 22:00 以降");
     expect(renderedComponentData(saturdayPost)).toHaveLength(1);
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
+      "DELIVERED"
+    ]);
   });
 
   it("completes with postpone_ng without creating or publishing Saturday", async () => {
@@ -180,6 +190,7 @@ describe("settlePostponeVotingSession", () => {
     const discord = createSettleDiscordFixture();
 
     await settlePostponeVotingSession(discord.client, ctx, session, settlementAt);
+    await runOutboxWorkerTick(discord.client, ctx);
     await settlePostponeVotingSession(
       discord.client,
       ctx,
@@ -196,6 +207,8 @@ describe("settlePostponeVotingSession", () => {
     ]);
     expect(discord.edit).toHaveBeenCalledTimes(1);
     expect(discord.send).toHaveBeenCalledTimes(1);
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
+      "DELIVERED"
+    ]);
   });
 });

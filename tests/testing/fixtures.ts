@@ -21,6 +21,7 @@ export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => 
   cancelReason: null,
   reminderAt: null,
   reminderSentAt: null,
+  revision: 0,
   createdAt: new Date("2026-04-24T09:00:00.000Z"),
   updatedAt: new Date("2026-04-24T09:00:00.000Z"),
   ...overrides
@@ -39,6 +40,7 @@ export const makeResponse = (overrides: Partial<ResponseRow> = {}): ResponseRow 
   memberId: "member-1",
   choice: "T2200" satisfies ResponseChoice,
   answeredAt: new Date("2026-04-24T12:00:00.000Z"),
+  sourceInteractionId: null,
   ...overrides
 });
 
@@ -49,17 +51,20 @@ export const makeOutboxEntry = (overrides: Partial<OutboxEntry> = {}): OutboxEnt
   payload: {
     kind: "send_message",
     channelId: "channel-1",
-    renderer: "raw_text",
-    extra: { content: "hello" }
+    renderer: "settle_notice",
+    extra: { reason: "absent", forceSuppressMentions: true }
   },
   dedupeKey: "settle-1",
   status: "FAILED",
   attemptCount: 1,
   lastError: "delivery failed",
   claimExpiresAt: null,
+  claimToken: null,
   nextAttemptAt: new Date("2026-04-25T12:30:00.000Z"),
   deliveredAt: null,
   deliveredMessageId: null,
+  aggregateRevision: 0,
+  ordinal: 0,
   createdAt: new Date("2026-04-25T12:30:00.000Z"),
   updatedAt: new Date("2026-04-25T12:30:00.000Z"),
   ...overrides

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createFakeResponsesPort,
   createFakeSessionsPort,
   createTestAppContext,
   makeSession
@@ -27,6 +26,7 @@ describe("tests/testing helpers", () => {
       status: "DECIDED",
       decidedStartAt,
       reminderAt,
+      revision: initial.revision + 1,
       updatedAt: now
     }));
     expect(sessions.calls.map((call) => call.name)).toStrictEqual(["decideAsking"]);
@@ -43,32 +43,6 @@ describe("tests/testing helpers", () => {
     });
     expect(result).toBeUndefined();
     expect(await sessions.findSessionById("s1")).toStrictEqual(initial);
-  });
-
-  it("upserts responses by (sessionId, memberId)", async () => {
-    const responses = createFakeResponsesPort();
-    await responses.upsertResponse({
-      id: "r1",
-      sessionId: "s1",
-      memberId: "m1",
-      choice: "T2200",
-      answeredAt: new Date("2026-04-24T12:00:00.000Z")
-    });
-    const updated = await responses.upsertResponse({
-      id: "r2",
-      sessionId: "s1",
-      memberId: "m1",
-      choice: "T2330",
-      answeredAt: new Date("2026-04-24T12:05:00.000Z")
-    });
-
-    expect({ id: updated.id, choice: updated.choice, answeredAt: updated.answeredAt })
-      .toStrictEqual({
-        id: "r1",
-        choice: "T2330",
-        answeredAt: new Date("2026-04-24T12:05:00.000Z")
-      });
-    expect(responses.listAllResponses()).toStrictEqual([updated]);
   });
 
   it("uses the AppContext clock for fake mutation timestamps", async () => {
@@ -140,6 +114,7 @@ describe("tests/testing helpers", () => {
       ...initial,
       status: "POSTPONE_VOTING",
       deadlineAt: postponeDeadlineAt,
+      revision: initial.revision + 1,
       updatedAt: now
     }));
   });
@@ -162,6 +137,7 @@ describe("tests/testing helpers", () => {
       ...initial,
       status: "COMPLETED",
       cancelReason: "postpone_ng",
+      revision: initial.revision + 1,
       updatedAt: now
     }));
   });

@@ -78,7 +78,7 @@ export const askMessages = {
 
   interaction: {
     ask: {
-      sent: "出欠確認を送信しました",
+      queued: "出欠確認を受け付けました。投稿処理を開始します。",
       skippedAlreadySent: "今週分はすでに出欠確認を送信済みです",
       failed: "出欠確認の送信に失敗しました。少し待ってもう一度お試しください。"
     }

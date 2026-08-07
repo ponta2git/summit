@@ -1,6 +1,6 @@
 // Scheduler entry: register all cron tasks once per process (Fly single-instance).
 // Each tick is wrapped by `runTickSafely` for failure isolation; literal schedules
-// live in src/config.ts (CRON_*). @see ADR-0001, ADR-0007, ADR-0033.
+// live in src/config.ts (CRON_*). @see ADR-0001, ADR-0007, ADR-0051.
 
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
@@ -24,7 +24,6 @@ import {
 import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.js";
 import { sendReminderForSession } from "../features/reminder/send.js";
 import { logger } from "../logger.js";
-import { runReconciler } from "./reconciler.js";
 import { runOutboxMetricsTick } from "./outboxMetrics.js";
 import { runOutboxRetentionTick } from "./outboxRetention.js";
 import {
@@ -92,8 +91,7 @@ const settleDueAskingSession = async (
   session: SessionRow,
   now: Date
 ): Promise<void> => {
-  const responses = await ctx.ports.responses.listResponses(session.id);
-  await evaluateAndApplyDeadlineDecision(client, ctx, session, responses, {
+  await evaluateAndApplyDeadlineDecision(client, ctx, session, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
   }).match(
@@ -158,16 +156,14 @@ export const runPostponeDeadlineTick = async (
  * Dispatch the pre-start reminder for DECIDED sessions whose `reminderAt` has passed.
  *
  * @remarks
- * source-of-truth: 送信後 DECIDED→COMPLETED へ遷移。送信失敗時は DECIDED 据え置きで次 tick で再試行。
- * invariant: 毎 tick 境界で stale reminder claim を回収する (H1 only; 他 invariant は起動時のみ)。
- * @see ADR-0024
- * @see ADR-0033
+ * source-of-truth: reminder intent を outbox に積み、配送成功後に DECIDED→COMPLETED へ遷移する。
+ * 送信失敗時は outbox backoff で再試行する。
+ * @see ADR-0051
  */
 export const runReminderTick = async (
   client: Client,
   ctx: AppContext
 ): Promise<void> => {
-  await runReconciler(client, ctx, { scope: "tick" });
   const now = ctx.clock.now();
   const due = await ctx.ports.sessions.findDueReminderSessions(now);
   for (const session of due) {
@@ -196,7 +192,7 @@ export const runReminderTick = async (
 export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   const { context, client } = deps;
   const sendAsk =
-    deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(client, sendContext));
+    deps.sendAsk ?? ((sendContext: SendAskMessageContext) => sendAskMessage(sendContext));
   const cronModule = deps.cronAdapter ?? cron;
   const controller = createSchedulerController({
     client,
@@ -237,7 +233,7 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
       tick: () =>
         void runTickSafely({ name: "scheduler_supervisor", logger }, async () => {
           await runOutboxMetricsTick(context);
-          await runSchedulerSupervisorTick(client, context, controller);
+          await runSchedulerSupervisorTick(context, controller);
         })
     }
   ];

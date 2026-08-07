@@ -6,23 +6,40 @@ import type { AppError } from "../errors/index.js";
 import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
 import type { CancelReason } from "../features/ask-session/cancelReason.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import { buildSettleNoticeViewModel, renderSettleNotice } from "../features/ask-session/viewModel.js";
-import { renderPostponeBody } from "../features/postpone-voting/render.js";
-import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.js";
-import { getTextChannel } from "../discord/shared/channels.js";
 import { logger } from "../logger.js";
-import { parseCandidateDateIso, postponeDeadlineFor } from "../time/index.js";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
+
+export const reflectAskingCancellation = (
+  client: Client,
+  ctx: AppContext,
+  settled: Parameters<typeof updateAskMessage>[2]
+): ResultAsync<void, AppError> =>
+  fromDiscordPromise(
+    updateAskMessage(client, ctx, settled),
+    "Failed to update ask message after cancel."
+  ).andTee(() => {
+    logger.info(
+      {
+        sessionId: settled.id,
+        weekKey: settled.weekKey,
+        from: "ASKING",
+        to: settled.status,
+        reason: settled.cancelReason,
+        delivery: "outbox"
+      },
+      "Asking cancellation settled."
+    );
+  });
 
 /**
  * Settles an ASKING session into the cancelled path, including saturday completion
  * or postpone-voting initialization.
  *
  * @remarks
- * state: 金曜回は CANCELLED → POSTPONE_VOTING。土曜回は `saturday_cancelled` を記録し COMPLETED へ収束。
- * race: race-lost（CAS が undefined）は無害として `Ok(void)` で終了。
- * source-of-truth: settle 通知と postpone message は直接送信で順序を保証する（ADR-0035 未完のため）。
+ * state: ASKING → CANCELLED → canonical state を一つの aggregate transaction で収束させる。
+ * source-of-truth: settle / postpone の新規投稿は同 transaction の ordered outbox intent。
+ *   この関数は既存 ask message の再描画だけを best-effort で行う。
  * @see ADR-0040
  */
 export const settleAskingSession = (
@@ -32,107 +49,34 @@ export const settleAskingSession = (
   reason: CancelReason
 ): ResultAsync<void, AppError> =>
   safeTry(async function* () {
-    const current = yield* fromDatabasePromise(
-      ctx.ports.sessions.findSessionById(sessionId),
-      "Failed to load session for ask settle."
-    );
-    if (!current) {return okAsync(undefined);}
-    if (current.status !== "ASKING") {
-      logger.info(
-        { sessionId, weekKey: current.weekKey, status: current.status, reason: "non-asking status, skip settle" },
-        "settleAskingSession called on non-ASKING session; skipping."
-      );
-      return okAsync(undefined);
-    }
-
-    // state: postponeCount=1 は土曜順延回。中止理由は土曜専用に正規化して COMPLETED へ収束させる。
     const resolvedReason: AskingCancelReason =
-      current.postponeCount === 1 ? "saturday_cancelled" : reason === "absent" ? "absent" : "deadline_unanswered";
-
-    const now = ctx.clock.now();
-    const cancelled = yield* fromDatabasePromise(
-      ctx.ports.sessions.cancelAsking({ id: sessionId, now, reason: resolvedReason }),
-      "Failed to cancel ASKING session."
-    );
-    if (!cancelled) {
-      logger.info(
-        { sessionId, weekKey: current.weekKey, from: "ASKING", to: "CANCELLED", reason: "race lost at transition" },
-        "ASKING→CANCELLED race; another path settled first."
-      );
-      return okAsync(undefined);
-    }
-
-    logger.info(
-      { sessionId, weekKey: cancelled.weekKey, from: "ASKING", to: "CANCELLED", reason: resolvedReason },
-      "Session cancelled."
-    );
-    yield* fromDiscordPromise(
-      updateAskMessage(client, ctx, cancelled),
-      "Failed to update ask message after cancel."
-    );
-    const channel = yield* fromDiscordPromise(
-      getTextChannel(client, cancelled.channelId),
-      "Failed to resolve text channel for settle notice."
-    );
-    const settleVm = buildSettleNoticeViewModel(resolvedReason, {
-      forceSuppressMentions: cancelled.postponeCount === 0
-    });
-    yield* fromDiscordPromise(
-      channel.send(renderSettleNotice(settleVm)),
-      "Failed to send settle notice."
-    );
-
-    if (cancelled.postponeCount === 1) {
-      // regression: 土曜回中止は CANCELLED に滞留させず短命中間を経由して COMPLETED へ収束させる。
-      const completed = yield* fromDatabasePromise(
-        ctx.ports.sessions.completeCancelledSession({ id: cancelled.id, now: ctx.clock.now() }),
-        "Failed to complete cancelled Saturday session."
-      );
-      if (completed) {
-        logger.info(
-          {
-            sessionId: completed.id,
-            weekKey: completed.weekKey,
-            from: "CANCELLED",
-            to: "COMPLETED",
-            reason: resolvedReason
-          },
-          "Cancelled Saturday session completed."
-        );
-      }
-      return okAsync(undefined);
-    }
-
-    const postponeVm = buildPostponeMessageViewModel(cancelled);
-    const postponeSent = yield* fromDiscordPromise(
-      channel.send(renderPostponeBody(postponeVm)),
-      "Failed to send postpone vote message."
-    );
-    yield* fromDatabasePromise(
-      ctx.ports.sessions.updatePostponeMessageId(cancelled.id, postponeSent.id),
-      "Failed to record postpone message id."
-    );
-
-    const transitioned = yield* fromDatabasePromise(
-      ctx.ports.sessions.startPostponeVoting({
-        id: sessionId,
+      reason === "absent"
+        ? "absent"
+        : reason === "saturday_cancelled"
+          ? "saturday_cancelled"
+          : "deadline_unanswered";
+    const result = yield* fromDatabasePromise(
+      ctx.ports.sessionCommands.settleAskingCancellation({
+        sessionId,
         now: ctx.clock.now(),
-        postponeDeadlineAt: postponeDeadlineFor(parseCandidateDateIso(cancelled.candidateDateIso))
+        reason: resolvedReason
       }),
-      "Failed to start postpone voting."
+      "Failed to settle cancelled ASKING aggregate."
     );
-    if (transitioned) {
+    if (result.kind === "session_not_found") {return okAsync(undefined);}
+
+    if (result.kind === "closed") {
       logger.info(
         {
           sessionId,
-          weekKey: cancelled.weekKey,
-          from: "CANCELLED",
-          to: "POSTPONE_VOTING",
-          reason: "postpone vote requested after cancel",
-          postponeMessageId: postponeSent.id
+          weekKey: result.session.weekKey,
+          status: result.session.status,
+          reason: "closed status, skip settle"
         },
-        "Postpone voting started."
+        "settleAskingSession called on an already settled session; skipping."
       );
+      return okAsync(undefined);
     }
+    yield* reflectAskingCancellation(client, ctx, result.session);
     return okAsync(undefined);
   });

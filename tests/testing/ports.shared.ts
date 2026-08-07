@@ -7,7 +7,8 @@ export const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",
   "POSTPONE_VOTING",
   "POSTPONED",
-  "DECIDED"
+  "DECIDED",
+  "CANCELLED"
 ];
 
 export type AnyCall = { readonly name: string; readonly args: unknown };

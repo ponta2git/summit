@@ -12,9 +12,6 @@ type SessionQueryMethods = Pick<
   | "getSchedulerSessionHints"
   | "findNonTerminalSessions"
   | "findStrandedCancelledSessions"
-  | "findStaleReminderClaims"
-  | "findNonTerminalSessionsByWeekKey"
-  | "isNonTerminal"
 >;
 
 export const createFakeSessionQueryMethods = (
@@ -110,29 +107,5 @@ export const createFakeSessionQueryMethods = (
     return Array.from(state.byId.values())
       .filter((session) => session.status === "CANCELLED")
       .map(state.clone);
-  },
-
-  findStaleReminderClaims: async (olderThan) => {
-    recordCall(state.calls, "findStaleReminderClaims", { olderThan });
-    return Array.from(state.byId.values())
-      .filter(
-        (session) =>
-          session.status === "DECIDED" &&
-          session.reminderSentAt !== null &&
-          session.reminderSentAt.getTime() <= olderThan.getTime()
-      )
-      .map(state.clone);
-  },
-
-  findNonTerminalSessionsByWeekKey: async (weekKey) => {
-    recordCall(state.calls, "findNonTerminalSessionsByWeekKey", { weekKey });
-    return Array.from(state.byId.values())
-      .filter(
-        (session) =>
-          session.weekKey === weekKey && NON_TERMINAL_STATUSES.includes(session.status)
-      )
-      .map(state.clone);
-  },
-
-  isNonTerminal: (status) => NON_TERMINAL_STATUSES.includes(status)
+  }
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { sendReminderForSession } from "../../../src/features/reminder/send.js";
+import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { sentPayload } from "../../helpers/discord.js";
 import { createTestAppContext } from "../../testing/index.js";
@@ -28,9 +29,10 @@ describe("sendReminderForSession", () => {
     const { client, send } = createReminderDiscord();
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
+    await runOutboxWorkerTick(client, ctx);
 
     expect(send).toHaveBeenCalledOnce();
-    expect(sentPayload(send)).toBe(expectedReminderContent());
+    expect(sentPayload(send)).toStrictEqual({ content: expectedReminderContent() });
     const [persisted] = ctx.ports.sessions.listSessions();
     expect({
       status: persisted?.status,
@@ -43,9 +45,9 @@ describe("sendReminderForSession", () => {
     });
   });
 
-  it("does nothing when a reminder claim is already present", async () => {
-    const claimedAt = new Date("2026-04-24T12:44:00.000Z");
-    const session = decidedSession({ reminderSentAt: claimedAt });
+  it("does nothing when the reminder completion marker is already present", async () => {
+    const completedAt = new Date("2026-04-24T12:44:00.000Z");
+    const session = decidedSession({ reminderSentAt: completedAt });
     const ctx = createTestAppContext({
       now: TEST_NOW,
       seed: { sessions: [session], responses: timeResponses(session.id) }
@@ -71,6 +73,7 @@ describe("sendReminderForSession", () => {
       sendReminderForSession(client, ctx, session.id, TEST_NOW),
       sendReminderForSession(client, ctx, session.id, TEST_NOW)
     ]);
+    await runOutboxWorkerTick(client, ctx);
 
     expect(send).toHaveBeenCalledOnce();
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
@@ -98,8 +101,9 @@ describe("sendReminderForSession", () => {
       const { client, send } = createReminderDiscord();
 
       await sendReminderForSession(client, ctx, session.id, TEST_NOW);
+      await runOutboxWorkerTick(client, ctx);
 
-      expect(sentPayload(send)).toBe(reminderBody);
+      expect(sentPayload(send)).toStrictEqual({ content: reminderBody });
     } finally {
       (appConfig.dev as { suppressMentions: boolean }).suppressMentions = originalFlag;
     }

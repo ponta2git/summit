@@ -32,7 +32,7 @@ describe("interaction command routing", () => {
 
     expect(interaction.deferReply).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledOnce();
-    expect(interaction.editReply).toHaveBeenCalledWith(askMessages.interaction.ask.sent);
+    expect(interaction.editReply).toHaveBeenCalledWith(askMessages.interaction.ask.queued);
     expect(sendAsk).toHaveBeenCalledOnce();
     expect(sendAsk).toHaveBeenCalledWith({ trigger: "command", invokerId: memberUserId });
   });

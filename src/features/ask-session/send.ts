@@ -1,20 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import { ChannelType, type Client } from "discord.js";
-
 import type { AppContext } from "../../appContext.js";
 import { logger } from "../../logger.js";
-import type { SessionRow } from "../../db/ports.js";
+import { buildAskBodyIntent } from "../../db/repositories/sessionOutboxIntents.js";
 import { isShuttingDown } from "../../shutdown.js";
 import {
   candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
-  isoWeekKey,
-  parseCandidateDateIso
+  isoWeekKey
 } from "../../time/index.js";
-import { renderAskBody } from "./render.js";
-import { buildInitialAskMessageViewModel } from "./viewModel.js";
 import { appConfig } from "../../userConfig.js";
 
 export interface SendAskMessageContext {
@@ -24,9 +19,8 @@ export interface SendAskMessageContext {
 }
 
 export interface SendAskMessageResult {
-  status: "sent" | "skipped";
+  status: "queued" | "skipped";
   weekKey: string;
-  messageId?: string;
   sessionId?: string;
 }
 
@@ -57,7 +51,6 @@ const withInFlight = <T>(
 };
 
 const doSendAskMessage = async (
-  client: Client,
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
   if (isShuttingDown()) {
@@ -86,8 +79,7 @@ const doSendAskMessage = async (
     return {
       status: "skipped",
       weekKey,
-      sessionId: existing.id,
-      ...(existing.askMessageId ? { messageId: existing.askMessageId } : {})
+      sessionId: existing.id
     };
   }
 
@@ -98,7 +90,14 @@ const doSendAskMessage = async (
     postponeCount: 0,
     candidateDateIso: candidateIso,
     channelId: appConfig.discord.channelId,
-    deadlineAt: deadline
+    deadlineAt: deadline,
+    outbox: [
+      buildAskBodyIntent({
+        id: sessionId,
+        channelId: appConfig.discord.channelId,
+        revision: 0
+      })
+    ]
   });
 
   if (!created) {
@@ -116,59 +115,42 @@ const doSendAskMessage = async (
     return {
       status: "skipped",
       weekKey,
-      ...(raced?.id ? { sessionId: raced.id } : {}),
-      ...(raced?.askMessageId ? { messageId: raced.askMessageId } : {})
+      ...(raced?.id ? { sessionId: raced.id } : {})
     };
   }
-
-  const [channel, memberRows] = await Promise.all([
-    client.channels.fetch(appConfig.discord.channelId),
-    ports.members.listMembers()
-  ]);
-  if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
-    throw new Error("Configured channel is not sendable.");
-  }
-
-  const vm = buildInitialAskMessageViewModel(created.id, candidateDate, memberRows);
-  const sentMessage = await channel.send(renderAskBody(vm));
-  await ports.sessions.updateAskMessageId(created.id, sentMessage.id);
 
   logger.info(
     {
       sessionId: created.id,
       weekKey,
-      messageId: sentMessage.id,
       channelId: appConfig.discord.channelId,
       trigger: context.trigger,
       userId: context.invokerId
     },
-    "Ask message sent."
+    "Ask message queued."
   );
 
   return {
-    status: "sent",
+    status: "queued",
     weekKey,
-    sessionId: created.id,
-    messageId: sentMessage.id
+    sessionId: created.id
   };
 };
 
 /**
- * Sends (or reuses) the weekly ask message for `isoWeekKey(now)` with the initial `postponeCount`.
+ * Creates the weekly ASKING Session and its delivery intent atomically.
  *
  * @remarks
  * race / idempotent: in-flight マップ + DB の `(weekKey, postponeCount)` unique 制約の二段構えで
- *   cron × /ask の並走・プロセス内並走・想定外の多重インスタンスでも二重投稿を避ける。
- *   source-of-truth: Discord 投稿失敗時も DB を正本として保持する。
+ *   cron × /ask の並走を吸収する。Session と outbox intent は同一 transaction で作成する。
  * @see ADR-0001
  */
 export const sendAskMessage = async (
-  client: Client,
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
   const weekKey = isoWeekKey(context.context.clock.now());
   const { promise, reused } = withInFlight(`${weekKey}:0`, () =>
-    doSendAskMessage(client, context)
+    doSendAskMessage(context)
   );
   const settled = await promise;
   if (!reused) {
@@ -177,84 +159,8 @@ export const sendAskMessage = async (
   return {
     status: "skipped",
     weekKey: settled.weekKey,
-    ...(settled.sessionId ? { sessionId: settled.sessionId } : {}),
-    ...(settled.messageId ? { messageId: settled.messageId } : {})
+    ...(settled.sessionId ? { sessionId: settled.sessionId } : {})
   };
-};
-
-const doSendPostponedAskMessage = async (
-  client: Client,
-  ctx: AppContext,
-  saturdaySession: SessionRow
-): Promise<void> => {
-  if (isShuttingDown()) {
-    throw new Error("Shutdown in progress.");
-  }
-
-  // idempotent: askMessageId が既に設定済みなら再送しない（再起動後 / 重複 tick 吸収）。
-  if (saturdaySession.askMessageId) {
-    logger.info(
-      {
-        sessionId: saturdaySession.id,
-        weekKey: saturdaySession.weekKey,
-        messageId: saturdaySession.askMessageId,
-        postponeCount: saturdaySession.postponeCount
-      },
-      "Postponed ask message already sent; skipping."
-    );
-    return;
-  }
-
-  const [channel, memberRows] = await Promise.all([
-    client.channels.fetch(appConfig.discord.channelId),
-    ctx.ports.members.listMembers()
-  ]);
-  if (!channel || channel.type !== ChannelType.GuildText || !channel.isSendable()) {
-    throw new Error("Configured channel is not sendable.");
-  }
-
-  const candidateDate = parseCandidateDateIso(saturdaySession.candidateDateIso);
-  const vm = buildInitialAskMessageViewModel(saturdaySession.id, candidateDate, memberRows);
-  const sentMessage = await channel.send(renderAskBody(vm));
-  await ctx.ports.sessions.updateAskMessageId(saturdaySession.id, sentMessage.id);
-
-  logger.info(
-    {
-      sessionId: saturdaySession.id,
-      weekKey: saturdaySession.weekKey,
-      messageId: sentMessage.id,
-      channelId: appConfig.discord.channelId,
-      postponeCount: saturdaySession.postponeCount
-    },
-    "Postponed ask message sent."
-  );
-};
-
-/**
- * Sends the Saturday ASKING message for a postponed session.
- *
- * @remarks
- * idempotent: 土曜 Session は `settlePostponeVotingSession` が既に作成済み。本関数は Discord 投稿と
- *   `askMessageId` 保存のみ。`askMessageId` 設定済みなら no-op。
- * race: in-flight キーは金曜送信と別なので同一 weekKey 内でも並走する。
- */
-export const sendPostponedAskMessage = async (
-  client: Client,
-  ctx: AppContext,
-  saturdaySession: SessionRow
-): Promise<void> => {
-  // invariant: `settlePostponeVotingSession` が作成した順延 Session のみを受け取る。
-  if (saturdaySession.postponeCount !== 1) {
-    throw new Error(
-      `sendPostponedAskMessage: expected postponeCount=1, got ${saturdaySession.postponeCount}`
-    );
-  }
-
-  const { weekKey, postponeCount } = saturdaySession;
-  const { promise } = withInFlight(`${weekKey}:${postponeCount}`, () =>
-    doSendPostponedAskMessage(client, ctx, saturdaySession)
-  );
-  await promise;
 };
 
 export const waitForInFlightSend = async (): Promise<void> => {

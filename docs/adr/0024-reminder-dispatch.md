@@ -1,10 +1,10 @@
 ---
 adr: 0024
 title: 15 分前リマインド送信と DECIDED → COMPLETED の遷移タイミング
-status: accepted
+status: superseded
 date: 2026-04-25
 supersedes: []
-superseded-by: null
+superseded-by: 0051
 tags: [runtime, discord, db, time]
 ---
 

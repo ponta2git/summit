@@ -9,10 +9,9 @@ import {
 } from "../schema.js";
 import { assertEnum } from "../rows.js";
 
-// invariant: worker が payload を rehydrate する際の schema。
-//   `kind="send_message"` は新規投稿、`kind="edit_message"` は既存 message の編集。
-//   `target` は配送成功時に sessions の対応列へ書き戻す対象。
-export const OUTBOX_PAYLOAD_TARGETS = ["askMessageId", "postponeMessageId"] as const;
+// invariant: worker が新規投稿 payload を rehydrate する際の schema。
+//   既存 message の編集は DB 正本からの best-effort 経路であり outbox へ混在させない。
+const OUTBOX_PAYLOAD_TARGETS = ["askMessageId", "postponeMessageId"] as const;
 export type OutboxPayloadTarget = (typeof OUTBOX_PAYLOAD_TARGETS)[number];
 
 const outboxPayloadExtraSchema = z.record(z.string(), z.unknown());
@@ -28,16 +27,7 @@ const outboxSendMessagePayloadSchema = outboxPayloadBaseSchema.extend({
   renderer: z.string()
 });
 
-const outboxEditMessagePayloadSchema = outboxPayloadBaseSchema.extend({
-  kind: z.literal("edit_message"),
-  renderer: z.string(),
-  messageId: z.string()
-});
-
-export const outboxPayloadSchema = z.discriminatedUnion("kind", [
-  outboxSendMessagePayloadSchema,
-  outboxEditMessagePayloadSchema
-]);
+export const outboxPayloadSchema = outboxSendMessagePayloadSchema;
 
 export type OutboxPayload = z.infer<typeof outboxPayloadSchema>;
 
@@ -51,9 +41,12 @@ export interface OutboxEntry {
   readonly attemptCount: number;
   readonly lastError: string | null;
   readonly claimExpiresAt: Date | null;
+  readonly claimToken: string | null;
   readonly nextAttemptAt: Date;
   readonly deliveredAt: Date | null;
   readonly deliveredMessageId: string | null;
+  readonly aggregateRevision: number;
+  readonly ordinal: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -63,6 +56,8 @@ export interface EnqueueOutboxInput {
   readonly sessionId: string;
   readonly payload: OutboxPayload;
   readonly dedupeKey: string;
+  readonly aggregateRevision: number;
+  readonly ordinal: number;
 }
 
 export interface EnqueueResult {
@@ -80,9 +75,12 @@ export const mapOutboxRow = (row: typeof discordOutbox.$inferSelect): OutboxEntr
   attemptCount: row.attemptCount,
   lastError: row.lastError,
   claimExpiresAt: row.claimExpiresAt,
+  claimToken: row.claimToken,
   nextAttemptAt: row.nextAttemptAt,
   deliveredAt: row.deliveredAt,
   deliveredMessageId: row.deliveredMessageId,
+  aggregateRevision: row.aggregateRevision,
+  ordinal: row.ordinal,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });

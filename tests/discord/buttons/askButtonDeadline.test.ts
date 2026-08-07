@@ -21,7 +21,7 @@ const buildDeps = (
 ): InteractionHandlerDeps => ({
   context,
   client: asDiscordClient({}),
-  sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }))
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }))
 });
 
 describe("handleAskButton deadline guard", () => {
@@ -43,21 +43,24 @@ describe("handleAskButton deadline guard", () => {
             sessionId: session.id,
             memberId: "member-1",
             choice: "T2230",
-            answeredAt: new Date("2026-04-24T12:20:00.000Z")
+            answeredAt: new Date("2026-04-24T12:20:00.000Z"),
+            sourceInteractionId: null
           },
           {
             id: "response-2",
             sessionId: session.id,
             memberId: "member-2",
             choice: "T2300",
-            answeredAt: new Date("2026-04-24T12:21:00.000Z")
+            answeredAt: new Date("2026-04-24T12:21:00.000Z"),
+            sourceInteractionId: null
           },
           {
             id: "response-3",
             sessionId: session.id,
             memberId: "member-3",
             choice: "T2330",
-            answeredAt: new Date("2026-04-24T12:22:00.000Z")
+            answeredAt: new Date("2026-04-24T12:22:00.000Z"),
+            sourceInteractionId: null
           }
         ]
       }
@@ -97,9 +100,6 @@ describe("handleAskButton deadline guard", () => {
     );
 
     expect(await context.ports.responses.listResponses(session.id)).toHaveLength(0);
-    expect(
-      context.ports.responses.calls.some((call) => call.name === "upsertResponse")
-    ).toBe(false);
     expect(interaction.followUp).toHaveBeenCalledWith({
       content: rejectMessages.reject.askingClosed,
       flags: MessageFlags.Ephemeral

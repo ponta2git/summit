@@ -7,8 +7,7 @@ import {
   listHeldEventParticipants
 } from "../../src/db/repositories/heldEvents.js";
 import {
-  createAskSession,
-  decideAsking
+  createAskSession
 } from "../../src/db/repositories/sessions.js";
 import { sessions } from "../../src/db/schema.js";
 
@@ -49,15 +48,16 @@ describeDb("heldEvents repository contract (integration)", () => {
   });
 
   const decide = async (): Promise<void> => {
-    const decided = await decideAsking(db, {
-      id: baseSession.id,
-      now: new Date("2026-04-24T12:31:00.000Z"),
-      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
-      reminderAt: new Date("2026-04-24T13:45:00.000Z")
-    });
-    if (!decided) {
-      throw new Error("decide setup failed");
-    }
+    await db
+      .update(sessions)
+      .set({
+        status: "DECIDED",
+        decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+        reminderAt: new Date("2026-04-24T13:45:00.000Z"),
+        revision: 1,
+        updatedAt: new Date("2026-04-24T12:31:00.000Z")
+      })
+      .where(eq(sessions.id, baseSession.id));
   };
 
   // tx: DECIDED→COMPLETED と held_events / held_event_participants 挿入を 1 tx で束ねる。

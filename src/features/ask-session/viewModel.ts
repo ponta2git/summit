@@ -3,7 +3,6 @@ import { appConfig } from "../../userConfig.js";
 import { askMessages, type SettleCancelReason } from "./messages.js";
 import {
   decidedStartAt,
-  formatCandidateDateIso,
   parseCandidateDateIso,
   type AskTimeChoice
 } from "../../time/index.js";
@@ -42,7 +41,12 @@ const computeAskFooter = (
     const mm = String(session.decidedStartAt.getMinutes()).padStart(2, "0");
     return askMessages.ask.footerDecided({ startTimeLabel: `${hh}:${mm}` });
   }
-  if (session.status === "CANCELLED") {
+  if (
+    session.status === "CANCELLED" ||
+    session.cancelReason === "absent" ||
+    session.cancelReason === "deadline_unanswered" ||
+    session.cancelReason === "saturday_cancelled"
+  ) {
     return askMessages.ask.footerCancelled;
   }
   if (session.status === "SKIPPED") {
@@ -113,27 +117,6 @@ export const buildAskMessageViewModel = (
     footer: computeAskFooter(session, responses, members)
   };
 };
-
-/**
- * Build the initial ask message view model (no responses yet).
- *
- * @remarks
- * Pure. 初回投稿用のため responses 空・disabled false 固定。
- */
-export const buildInitialAskMessageViewModel = (
-  sessionId: string,
-  candidateDate: Date,
-  members: ReadonlyArray<ViewModelMemberInput>
-): AskMessageViewModel => ({
-  sessionId,
-  candidateDateIso: formatCandidateDateIso(candidateDate),
-  disabled: false,
-  memberUserIds: appConfig.memberUserIds,
-  responsesByUserId: new Map(),
-  displayNameByUserId: new Map(members.map((m) => [m.userId, m.displayName])),
-  suppressMentions: appConfig.dev.suppressMentions,
-  footer: undefined
-});
 
 export const buildSettleNoticeViewModel = (
   reason: SettleCancelReason,

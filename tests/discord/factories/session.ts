@@ -16,6 +16,7 @@ export const buildSessionRow = (overrides: Partial<SessionRow> = {}): SessionRow
   cancelReason: null,
   reminderAt: null,
   reminderSentAt: null,
+  revision: 0,
   createdAt: new Date(0),
   updatedAt: new Date(0),
   ...overrides

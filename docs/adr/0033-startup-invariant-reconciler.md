@@ -1,10 +1,10 @@
 ---
 adr: 0033
 title: 起動時および tick 境界での invariant 収束 (startup / tick reconciler)
-status: accepted
+status: superseded
 date: 2026-04-28
 supersedes: []
-superseded-by: null
+superseded-by: 0051
 tags: [runtime, db, discord, ops]
 ---
 

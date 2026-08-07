@@ -49,9 +49,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
       clock: fixedClock
     };
 
-    // seed (a): DECIDED session with stale reminder claim (> REMINDER_CLAIM_STALENESS_MS=5min).
-    //   reminder_sent_at = bootNow - 10min → invariant E (staleReminderClaims) で reclaim 対象。
-    const staleReminderAt = new Date(bootNow.getTime() - 10 * 60 * 1000);
+    // seed (a): DECIDED session used as the outbox foreign-key parent.
     const decidedStartAt = new Date(bootNow.getTime() + 60 * 60 * 1000);
     await integrationDb.db.execute(sql`
       INSERT INTO sessions (
@@ -60,13 +58,13 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
         deadline_at, decided_start_at, reminder_at, reminder_sent_at,
         created_at, updated_at
       ) VALUES (
-        'sess-stale-reminder',
+        'sess-outbox-parent',
         '2026-W17', 0, '2026-04-24', 'DECIDED', '999000000000000001',
         NULL, NULL,
         ${new Date(bootNow.getTime() - 24 * 60 * 60 * 1000).toISOString()},
         ${decidedStartAt.toISOString()},
         ${new Date(bootNow.getTime() - 30 * 60 * 1000).toISOString()},
-        ${staleReminderAt.toISOString()},
+        NULL,
         ${bootNow.toISOString()}, ${bootNow.toISOString()}
       )
     `);
@@ -77,48 +75,69 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
       INSERT INTO discord_outbox (
         id, kind, session_id, payload, dedupe_key,
         status, attempt_count, claim_expires_at, next_attempt_at,
+        aggregate_revision, ordinal,
         created_at, updated_at
       ) VALUES (
         'outbox-stuck',
         'send_message',
-        'sess-stale-reminder',
+        'sess-outbox-parent',
         '{}'::jsonb,
-        'sess-stale-reminder:ask-send',
+        'sess-outbox-parent:ask-send',
         'IN_FLIGHT',
         1,
         ${expiredClaimAt.toISOString()},
         ${expiredClaimAt.toISOString()},
+        0, 0,
         ${bootNow.toISOString()}, ${bootNow.toISOString()}
       )
     `);
+    await integrationDb.db.execute(sql`
+      INSERT INTO discord_outbox (
+        id, kind, session_id, payload, dedupe_key,
+        status, attempt_count, last_error, next_attempt_at,
+        aggregate_revision, ordinal, created_at, updated_at
+      ) VALUES
+        (
+          'outbox-dead-letter', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
+          'sess-outbox-parent:dead-letter', 'FAILED', 10, 'fixed by deployment',
+          ${bootNow.toISOString()}, 1, 0, ${bootNow.toISOString()}, ${bootNow.toISOString()}
+        ),
+        (
+          'outbox-cancelled-successor', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
+          'sess-outbox-parent:cancelled-successor', 'CANCELLED', 0, NULL,
+          ${bootNow.toISOString()}, 1, 1, ${bootNow.toISOString()}, ${bootNow.toISOString()}
+        )
+    `);
 
-    // boot-1: 初回 startup reconcile。両 invariant が 1 件ずつ収束する。
+    // boot-1: 初回 startup reconcile。expired outbox claim が収束する。
     const boot1 = await runReconciler(fakeClient, ctx, { scope: "startup" });
     expect(boot1).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
-      messageResent: 0,
-      staleClaimReclaimed: 1,
-      outboxClaimReleased: 1
+      messageIntentsQueued: 0,
+      outboxClaimReleased: 1,
+      outboxDeadLettersRequeued: 1,
+      outboxSuccessorsRequeued: 1
     });
 
     // boot-2: 別 boot を模した再実行。DB は前回の収束結果を保持しているので全 invariant は no-op。
     //   regression: bootId 跨ぎで CAS-on-NULL / claim release が二重発火しないことを保証する
-    //   (ADR-0033 startup recovery の冪等性契約)。
+    //   (ADR-0051 startup recovery の冪等性契約)。
     const boot2 = await runReconciler(fakeClient, ctx, { scope: "startup" });
     expect(boot2).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
-      messageResent: 0,
-      staleClaimReclaimed: 0,
-      outboxClaimReleased: 0
+      messageIntentsQueued: 0,
+      outboxClaimReleased: 0,
+      outboxDeadLettersRequeued: 0,
+      outboxSuccessorsRequeued: 0
     });
 
-    // 状態遷移結果も DB レベルで確認: reminder_sent_at は NULL に戻り、outbox は PENDING に復帰。
+    // 状態遷移結果も DB レベルで確認: Session は不変、outbox は PENDING に復帰。
     const session = await integrationDb.db.execute<{
       reminder_sent_at: Date | null;
       status: string;
-    }>(sql`SELECT status, reminder_sent_at FROM sessions WHERE id='sess-stale-reminder'`);
+    }>(sql`SELECT status, reminder_sent_at FROM sessions WHERE id='sess-outbox-parent'`);
     expect(session[0]?.status).toBe("DECIDED");
     expect(session[0]?.reminder_sent_at).toBeNull();
 
@@ -128,40 +147,5 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     }>(sql`SELECT status, claim_expires_at FROM discord_outbox WHERE id='outbox-stuck'`);
     expect(outbox[0]?.status).toBe("PENDING");
     expect(outbox[0]?.claim_expires_at).toBeNull();
-  });
-
-  it("interleaved boots (boot-1 partial → boot-2 completes residual) remain idempotent", async () => {
-    const ctx = {
-      ports: makeRealPorts(integrationDb.db),
-      clock: fixedClock
-    };
-
-    // 同時刻に 2 件 stale reminder を seed。boot-1 で revert 後に新たな stale が発生していない
-    // 状況をシミュレートするのではなく、複数件で count が正しく集計され、再実行で 0 になることを確認。
-    const staleAt = new Date(bootNow.getTime() - 10 * 60 * 1000);
-    const decidedAt = new Date(bootNow.getTime() + 60 * 60 * 1000);
-    await integrationDb.db.execute(sql`
-      INSERT INTO sessions (
-        id, week_key, postpone_count, candidate_date_iso, status, channel_id,
-        deadline_at, decided_start_at, reminder_at, reminder_sent_at,
-        created_at, updated_at
-      ) VALUES
-        ('sess-a', '2026-W16', 0, '2026-04-17', 'DECIDED', '999000000000000001',
-         ${new Date(bootNow.getTime() - 86400000).toISOString()}, ${decidedAt.toISOString()},
-         ${new Date(bootNow.getTime() - 1800000).toISOString()}, ${staleAt.toISOString()},
-         ${bootNow.toISOString()}, ${bootNow.toISOString()}),
-        ('sess-b', '2026-W17', 0, '2026-04-24', 'DECIDED', '999000000000000001',
-         ${new Date(bootNow.getTime() - 86400000).toISOString()}, ${decidedAt.toISOString()},
-         ${new Date(bootNow.getTime() - 1800000).toISOString()}, ${staleAt.toISOString()},
-         ${bootNow.toISOString()}, ${bootNow.toISOString()})
-    `);
-
-    const boot1 = await runReconciler(fakeClient, ctx, { scope: "startup" });
-    expect(boot1.staleClaimReclaimed).toBe(2);
-
-    const boot2 = await runReconciler(fakeClient, ctx, { scope: "startup" });
-    expect(boot2.staleClaimReclaimed).toBe(0);
-    expect(boot2.outboxClaimReleased).toBe(0);
-    expect(boot2.cancelledPromoted).toBe(0);
   });
 });

@@ -5,9 +5,11 @@ import {
   ButtonStyle,
   type ButtonInteraction
 } from "discord.js";
-import { type ResultAsync } from "neverthrow";
+import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
+import { MEMBER_COUNT_EXPECTED } from "../../config.js";
+import type { SubmitPostponeVoteResult } from "../../db/ports.js";
 import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
@@ -34,7 +36,10 @@ import {
 } from "../../discord/shared/customId.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { postponeMessages } from "./messages.js";
-import { settlePostponeVotingSession } from "../../orchestration/index.js";
+import {
+  applyPostponeTransitionResult,
+  buildSaturdaySessionInput
+} from "../../orchestration/postponeVoting.js";
 
 interface PostponeNgConfirmPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -105,16 +110,20 @@ const loadSessionAndMemberStep = (
 
 const recordNgAndApplyStep = (
   context: PostponeNgConfirmPipelineReady
-): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.responses.upsertResponse({
-      id: randomUUID(),
+): ResultAsync<void, AppError> => {
+  const now = context.context.clock.now();
+  return fromDatabasePromise(
+    context.context.ports.sessionCommands.submitPostponeVote({
+      responseId: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,
       choice: "POSTPONE_NG",
-      answeredAt: context.context.clock.now()
+      sourceInteractionId: context.interaction.id,
+      now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED,
+      saturday: buildSaturdaySessionInput(context.session)
     }),
-    "Failed to record postpone NG response."
+    "Failed to record postpone NG response atomically."
   )
     .andTee(() => {
       logger.info(
@@ -128,14 +137,32 @@ const recordNgAndApplyStep = (
         "Postpone NG response recorded via confirmation."
       );
     })
-    .andThen(() =>
-      settlePostponeVotingSession(
-        context.deps.client,
-        context.context,
-        context.session,
-        context.context.clock.now()
-      )
-    );
+    .andThen((result: SubmitPostponeVoteResult) => {
+      switch (result.kind) {
+        case "transitioned":
+          return applyPostponeTransitionResult(
+            context.deps.client,
+            context.context,
+            result
+          );
+        case "accepted_pending":
+        case "stale_interaction":
+          return okAsync(undefined);
+        case "closed":
+          return toResultAsync(guardSessionPostponeVoting(result.session)).map(
+            () => undefined
+          );
+        case "session_not_found":
+          return toResultAsync(guardSessionExists(undefined)).map(() => undefined);
+        case "member_not_found":
+          return toResultAsync(guardRegisteredMemberId(undefined)).map(() => undefined);
+        case "deadline_passed":
+          return toResultAsync(
+            guardSessionPostponeDeadlineOpen(result.session, now)
+          ).map(() => undefined);
+      }
+    });
+};
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。

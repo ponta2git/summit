@@ -14,6 +14,7 @@ const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
   memberId: "m1",
   choice: "T2200",
   answeredAt: new Date(0),
+  sourceInteractionId: null,
   ...overrides
 });
 

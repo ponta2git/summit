@@ -7,7 +7,7 @@ export { runReconciler } from "./reconciler.run.js";
 
 export { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.js";
 export { reconcileMissingAsk } from "./reconciler.missingAsk.js";
-export { reconcileMissingAskMessage } from "./reconciler.missingAskMessage.js";
+export { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.js";
 export { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.js";
-export { reconcileStaleReminderClaims } from "./reconciler.staleReminderClaims.js";
 export { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
+export { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.js";

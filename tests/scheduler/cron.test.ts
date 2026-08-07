@@ -3,6 +3,7 @@ import type { ScheduledTask } from "node-cron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
+import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
 import { logger } from "../../src/logger.js";
 import { callArgs } from "../helpers/assertions.js";
@@ -36,7 +37,7 @@ describe("ask scheduler", () => {
         }) as unknown as ScheduledTask
     );
     const client = {} as Client;
-    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
     const scheduler = createAskScheduler({
@@ -64,7 +65,7 @@ describe("ask scheduler", () => {
         }) as unknown as ScheduledTask
     );
     const client = {} as Client;
-    const sendAsk = vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
     const context = createTestAppContext();
 
     const scheduler = createAskScheduler({
@@ -152,7 +153,7 @@ describe("ask scheduler", () => {
     const scheduler = createAskScheduler({
       client: {} as Client,
       context: createTestAppContext(),
-      sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
+      sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" })),
       cronAdapter: { schedule }
     });
 
@@ -200,6 +201,12 @@ describe("ask scheduler", () => {
     const client = { channels: { fetch: vi.fn(async () => channel) } } as unknown as Client;
 
     await runReminderTick(client, ctx);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.dedupeKey)).toStrictEqual([
+      `reminder-${dueSession.id}`
+    ]);
+    await runOutboxWorkerTick(client, ctx);
 
     expect(send).toHaveBeenCalledTimes(1);
     const persistedDue = ctx.ports.sessions.listSessions().find((s) => s.id === dueSession.id);

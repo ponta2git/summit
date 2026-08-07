@@ -28,9 +28,12 @@ const baseEntry = (
   attemptCount: 0,
   lastError: null,
   claimExpiresAt: null,
+  claimToken: null,
   nextAttemptAt: new Date("2026-04-25T00:00:00Z"),
   deliveredAt: null,
   deliveredMessageId: null,
+  aggregateRevision: 0,
+  ordinal: 0,
   createdAt: new Date("2026-04-25T00:00:00Z"),
   updatedAt: new Date("2026-04-25T00:00:00Z"),
   ...overrides

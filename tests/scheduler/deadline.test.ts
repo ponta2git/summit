@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ResponseRow, SessionRow } from "../../src/db/rows.js";
+import type { SessionRow } from "../../src/db/rows.js";
 import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "./factories/session.js";
@@ -26,15 +26,6 @@ const settle = { ...askSettle, ...postponeSettle };
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
   "../../src/scheduler/index.js"
 );
-
-const responseRow = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
-  id: "r1",
-  sessionId: "session-1",
-  memberId: "m1",
-  choice: "T2200",
-  answeredAt: new Date(0),
-  ...overrides
-});
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-1", ...overrides });
@@ -75,30 +66,23 @@ describe("runDeadlineTick", () => {
     expect(firstCall[0]).toBe(client);
     expect(firstCall[1]).toBe(ctx);
     expect(firstCall[2].id).toBe("a");
-    expect(firstCall[3]).toStrictEqual([]);
-    expect(firstCall[4]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(firstCall[3]).toStrictEqual({ memberCountExpected: 4, now });
     expect(secondCall[0]).toBe(client);
     expect(secondCall[1]).toBe(ctx);
     expect(secondCall[2].id).toBe("b");
-    expect(secondCall[3]).toStrictEqual([]);
-    expect(secondCall[4]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(secondCall[3]).toStrictEqual({ memberCountExpected: 4, now });
   });
 
-  it("passes full responses to deadline evaluator", async () => {
+  it("does not prefetch responses outside the aggregate command", async () => {
     const s = sessionRow({
       id: "a",
       weekKey: "2026-W17",
       postponeCount: 0,
       deadlineAt: new Date("2026-04-24T12:30:00.000Z")
     });
-    const responses = [
-      responseRow({ id: "r1", sessionId: "a", memberId: "m1", choice: "T2200" }),
-      responseRow({ id: "r2", sessionId: "a", memberId: "m2", choice: "T2230" }),
-      responseRow({ id: "r3", sessionId: "a", memberId: "m3", choice: "T2300" }),
-      responseRow({ id: "r4", sessionId: "a", memberId: "m4", choice: "T2330" })
-    ];
     const now = new Date("2026-04-24T12:31:00.000Z");
-    const ctx = createTestAppContext({ now, seed: { sessions: [s], responses } });
+    const ctx = createTestAppContext({ now, seed: { sessions: [s] } });
+    const listResponses = vi.spyOn(ctx.ports.responses, "listResponses");
 
     await runDeadlineTick(client, ctx);
 
@@ -107,8 +91,8 @@ describe("runDeadlineTick", () => {
     expect(call[0]).toBe(client);
     expect(call[1]).toBe(ctx);
     expect(call[2].id).toBe("a");
-    expect(call[3]).toStrictEqual(responses);
-    expect(call[4]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(call[3]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(listResponses).not.toHaveBeenCalled();
   });
 
   it("propagates port errors to runTickSafely wrapper", async () => {
@@ -152,8 +136,7 @@ describe("runStartupRecovery", () => {
     expect(call[0]).toBe(client);
     expect(call[1]).toBe(ctx);
     expect(call[2].id).toBe("overdue");
-    expect(call[3]).toStrictEqual([]);
-    expect(call[4]).toStrictEqual({ memberCountExpected: 4, now });
+    expect(call[3]).toStrictEqual({ memberCountExpected: 4, now });
   });
 
   it("settles overdue POSTPONE_VOTING sessions on startup", async () => {

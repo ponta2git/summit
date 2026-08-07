@@ -8,7 +8,6 @@ import {
   SCHEDULER_WAKE_DEBOUNCE_MS
 } from "../config.js";
 import { logger as defaultLogger } from "../logger.js";
-import { runReconciler } from "./reconciler.js";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";
 import { runTickSafely } from "./tickRunner.js";
@@ -267,11 +266,9 @@ export const createSchedulerController = (
 };
 
 export const runSchedulerSupervisorTick = async (
-  client: Client,
   ctx: AppContext,
   controller: SchedulerController
 ): Promise<void> => {
-  await runReconciler(client, ctx, { scope: "tick" });
   await reconcileOutboxClaims(ctx);
   await controller.recompute("supervisor");
 };

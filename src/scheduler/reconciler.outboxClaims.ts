@@ -7,7 +7,7 @@ import { logger } from "../logger.js";
  * @remarks
  * race: worker が claim 中に crash すると IN_FLIGHT で stuck する。startup/reconnect で
  * PENDING に戻し次 worker tick で再配送させる。
- * @see ADR-0035
+ * @see ADR-0051
  */
 export const reconcileOutboxClaims = async (
   ctx: AppContext

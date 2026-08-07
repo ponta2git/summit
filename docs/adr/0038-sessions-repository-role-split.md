@@ -1,10 +1,10 @@
 ---
 adr: 0038
 title: sessions repository を role-based で分割する
-status: accepted
+status: superseded
 date: 2026-04-24
 supersedes: []
-superseded-by: null
+superseded-by: 0051
 tags: [db, docs]
 ---
 

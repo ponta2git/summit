@@ -50,7 +50,7 @@ export const buildCancelInteraction = (override: CancelOverride = {}) => ({
 });
 
 export const buildButtonInteraction = (customId: string, override: ButtonOverride = {}) => ({
-  id: "interaction-button",
+  id: "323456789012345679",
   customId,
   guildId: override.guildId ?? appConfig.discord.guildId,
   channelId: override.channelId ?? appConfig.discord.channelId,

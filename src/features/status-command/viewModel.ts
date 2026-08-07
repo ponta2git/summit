@@ -60,7 +60,7 @@ const buildSessionStatusViewModel = (
   now: Date
 ): SessionStatusViewModel => {
   const candidateDate = parseCandidateDateIso(session.candidateDateIso);
-  const warnings = collectInvariantWarnings(session, now, heldEvent);
+  const warnings = collectInvariantWarnings(session, now);
 
   return {
     sessionId: session.id.slice(0, 8),

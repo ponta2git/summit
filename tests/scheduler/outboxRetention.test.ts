@@ -26,16 +26,19 @@ const baseEntry = (
   attemptCount: 0,
   lastError: null,
   claimExpiresAt: null,
+  claimToken: null,
   nextAttemptAt: new Date("2026-04-01T00:00:00Z"),
   deliveredAt: null,
   deliveredMessageId: null,
+  aggregateRevision: 0,
+  ordinal: 0,
   createdAt: new Date("2026-04-01T00:00:00Z"),
   updatedAt: new Date("2026-04-01T00:00:00Z"),
   ...overrides
 });
 
 describe("runOutboxRetentionTick", () => {
-  it("prunes DELIVERED past retention and FAILED past retention; keeps PENDING/IN_FLIGHT and recent terminals", async () => {
+  it("prunes old terminal rows; keeps PENDING/IN_FLIGHT and recent terminals", async () => {
     const session = buildSessionRow({ id: "sret" });
     const now = new Date("2026-05-01T04:00:00Z");
     const ctx = createTestAppContext({
@@ -109,6 +112,33 @@ describe("runOutboxRetentionTick", () => {
     );
     ctx.ports.outbox.seedEntry(
       baseEntry({
+        id: "old-cancelled",
+        sessionId: session.id,
+        dedupeKey: "old-cancelled",
+        status: "CANCELLED",
+        updatedAt: oldFailed
+      })
+    );
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
+        id: "recent-cancelled",
+        sessionId: session.id,
+        dedupeKey: "recent-cancelled",
+        status: "CANCELLED",
+        updatedAt: recentFailed
+      })
+    );
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
+        id: "boundary-cancelled",
+        sessionId: session.id,
+        dedupeKey: "boundary-cancelled",
+        status: "CANCELLED",
+        updatedAt: boundaryFailed
+      })
+    );
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
         id: "ancient-pending",
         sessionId: session.id,
         dedupeKey: "ancient-pending",
@@ -130,7 +160,13 @@ describe("runOutboxRetentionTick", () => {
     await runOutboxRetentionTick(ctx);
 
     expect(new Set(ctx.ports.outbox.listEntries().map((entry) => entry.id))).toStrictEqual(
-      new Set(["recent-del", "recent-failed", "ancient-pending", "ancient-inflight"])
+      new Set([
+        "recent-del",
+        "recent-failed",
+        "recent-cancelled",
+        "ancient-pending",
+        "ancient-inflight"
+      ])
     );
   });
 

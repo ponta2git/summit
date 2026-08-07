@@ -30,6 +30,8 @@ describe("outbox worker renderers", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `decided-announcement-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
@@ -79,6 +81,8 @@ describe("outbox worker renderers", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `cancel-week-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
@@ -104,6 +108,8 @@ describe("outbox worker renderers", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `unsupported-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,

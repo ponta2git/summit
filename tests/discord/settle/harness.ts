@@ -35,7 +35,8 @@ export const postponeResponses = (
     sessionId: "session-1",
     memberId: seededMembers[index]!.id,
     choice,
-    answeredAt: new Date(`2026-04-24T11:${String(index).padStart(2, "0")}:00.000Z`)
+    answeredAt: new Date(`2026-04-24T11:${String(index).padStart(2, "0")}:00.000Z`),
+    sourceInteractionId: null
   }));
 
 export const createSettleDiscordFixture = () => {

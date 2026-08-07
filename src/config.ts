@@ -37,9 +37,6 @@ export const CRON_ASK_SCHEDULE = buildWeeklyCron(ASK_START_HHMM, 5);
 export const REMINDER_LEAD_MINUTES = -appConfig.schedule.reminderLeadMinutes;
 // why: 開催確定からリマインド予定まで余裕がない場合は送信をスキップする（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
-// why: reminder claim が長時間戻らない場合に保持プロセス crash とみなして reclaim する閾値。
-// @see ADR-0024, ADR-0033
-export const REMINDER_CLAIM_STALENESS_MS = 5 * 60 * 1000;
 // why: 1 分 tick 周期を超える tick を warn で早期検知し noOverlap の健全性を観測する。
 export const TICK_DURATION_WARN_MS = 10_000;
 // why: メンバー数 SSoT → ADR-0012。循環参照回避のため定義は env.ts、消費側は config 経由で import。

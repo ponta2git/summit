@@ -18,7 +18,7 @@ const buildDeps = (context: TestAppContext, readyState: AppReadyState) => ({
   context,
   client: stubClient,
   getReadyState: () => readyState,
-  sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }))
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }))
 }) as Parameters<typeof handleInteraction>[1];
 
 describe("startup interaction ready gate", () => {
@@ -51,9 +51,7 @@ describe("startup interaction ready gate", () => {
       content: bootMessage,
       flags: MessageFlags.Ephemeral
     });
-    expect(
-      context.ports.responses.calls.some((call) => call.name === "upsertResponse")
-    ).toBe(false);
+    expect(context.ports.sessionCommands.calls).toStrictEqual([]);
     const [fields, message] = [
       callArg<Record<string, unknown>>(loggerInfoSpy),
       callArg<string>(loggerInfoSpy, 0, 1)
@@ -67,7 +65,7 @@ describe("startup interaction ready gate", () => {
       message
     }).toStrictEqual({
       event: "interaction.rejected_not_ready",
-      interactionId: "interaction-button",
+      interactionId: "323456789012345679",
       userId: interaction.user.id,
       customId: interaction.customId,
       reason: "startup",

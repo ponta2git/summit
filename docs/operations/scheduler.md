@@ -42,9 +42,10 @@ Summit は Fly の Bot process を常時起動し、Neon DB への idle polling 
 ### reminder が送られない
 
 1. `event=scheduler.timer_scheduled` の `timer=reminder` が出ているか確認する。
-2. `tick=scheduler_supervisor` が出ているか確認する。
-3. stale claim の可能性があれば `event=reconciler.reminder_claim_reclaimed` を確認する。
-4. 手動 DB `UPDATE` はしない。再起動または redeploy で startup recovery に収束させる。
+2. `event=reminder.enqueued` または `event=reminder.enqueue_skipped` を確認する。
+3. `event=outbox.retry_scheduled` / `event=outbox.dead_letter` / `event=outbox.claim_lost` を確認する。
+4. 同じ Session の先行 intent が FAILED なら後続 reminder は意図的に CANCELLED になる。[outbox.md](./outbox.md) の手順で原因を直して deploy し、startup recovery でチェーンを再開する。
+5. 手動 DB `UPDATE` はしない。再起動または修正 commit の deploy で startup recovery に収束させる。
 
 ## 注意
 

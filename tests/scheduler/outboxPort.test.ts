@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
-import { makeOutboxEntry } from "../testing/fixtures.js";
 import { buildSessionRow } from "./factories/session.js";
 
 describe("outbox port fake", () => {
-  it("deduplicates a non-FAILED dedupe key", async () => {
+  const requireClaimToken = (entry: { readonly claimToken: string | null }): string => {
+    if (entry.claimToken === null) {
+      throw new Error("expected claimed outbox entry");
+    }
+    return entry.claimToken;
+  };
+
+  it("deduplicates a key regardless of terminal status", async () => {
     const session = buildSessionRow({ id: "s1" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     const input = {
       kind: "send_message" as const,
       sessionId: session.id,
       dedupeKey: "settle-notice-s1-absent",
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message" as const,
         channelId: session.channelId,
@@ -38,6 +45,8 @@ describe("outbox port fake", () => {
       kind: "send_message" as const,
       sessionId: session.id,
       dedupeKey: `settle-notice-${session.id}-absent`,
+      aggregateRevision: 1,
+      ordinal: 0,
       payload: {
         kind: "send_message" as const,
         channelId: session.channelId,
@@ -67,11 +76,13 @@ describe("outbox port fake", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: "pending-later",
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
-        renderer: "raw_text",
-        extra: { content: "later" }
+        renderer: "settle_notice",
+        extra: { reason: "absent", forceSuppressMentions: true }
       }
     });
     const [pending] = ctx.ports.outbox.listEntries();
@@ -104,6 +115,8 @@ describe("outbox port fake", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `ask-msg-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
@@ -136,46 +149,121 @@ describe("outbox port fake", () => {
       .toStrictEqual([{ status: "IN_FLIGHT", attemptCount: 2 }]);
   });
 
-  it("releases expired claims back to PENDING", async () => {
-    const session = buildSessionRow({ id: "s6" });
-    const now = new Date("2026-04-24T12:00:00Z");
-    const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
-    ctx.ports.outbox.seedEntry(makeOutboxEntry({
-      id: "stale-1",
-      sessionId: session.id,
-      dedupeKey: "stale-1",
-      status: "IN_FLIGHT",
-      attemptCount: 1,
-      claimExpiresAt: new Date("2026-04-24T11:00:00Z"),
-      nextAttemptAt: new Date("2026-04-24T11:00:00Z")
-    }));
-
-    expect(await reconcileOutboxClaims(ctx)).toBe(1);
-    const [entry] = ctx.ports.outbox.listEntries();
-    expect({ status: entry?.status, claimExpiresAt: entry?.claimExpiresAt, nextAttemptAt: entry?.nextAttemptAt })
-      .toStrictEqual({ status: "PENDING", claimExpiresAt: null, nextAttemptAt: now });
-  });
-
-  it("returns exactly FAILED and high-attempt active rows as stranded", async () => {
-    const session = buildSessionRow({ id: "s7" });
+  it("claims one session's entries in aggregate revision and ordinal order", async () => {
+    const session = buildSessionRow({ id: "s-ordered" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    ctx.ports.outbox.seedEntry(makeOutboxEntry({ id: "failed", status: "FAILED", attemptCount: 1 }));
-    ctx.ports.outbox.seedEntry(makeOutboxEntry({
-      id: "pending-high",
-      dedupeKey: "pending-high",
-      status: "PENDING",
-      attemptCount: 5
-    }));
-    ctx.ports.outbox.seedEntry(makeOutboxEntry({
-      id: "pending-low",
-      dedupeKey: "pending-low",
-      status: "PENDING",
-      attemptCount: 4
-    }));
+    const payload = {
+      kind: "send_message" as const,
+      channelId: session.channelId,
+      renderer: "settle_notice",
+      extra: { reason: "absent", forceSuppressMentions: true }
+    };
+    await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: session.id,
+      dedupeKey: "ordered-second",
+      payload,
+      aggregateRevision: 2,
+      ordinal: 1
+    });
+    await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: session.id,
+      dedupeKey: "ordered-first",
+      payload,
+      aggregateRevision: 2,
+      ordinal: 0
+    });
 
-    expect((await ctx.ports.outbox.findStranded(5)).map((entry) => entry.id)).toStrictEqual([
-      "failed",
-      "pending-high"
-    ]);
+    const firstBatch = await ctx.ports.outbox.claimNextBatch({
+      limit: 10,
+      now: ctx.clock.now(),
+      claimDurationMs: 30_000
+    });
+    expect(firstBatch.map((entry) => entry.dedupeKey)).toStrictEqual(["ordered-first"]);
+
+    const first = firstBatch[0];
+    if (!first) {
+      throw new Error("expected first ordered entry");
+    }
+    await ctx.ports.outbox.markDelivered(first.id, {
+      claimToken: requireClaimToken(first),
+      deliveredMessageId: null,
+      now: ctx.clock.now()
+    });
+
+    const secondBatch = await ctx.ports.outbox.claimNextBatch({
+      limit: 10,
+      now: ctx.clock.now(),
+      claimDurationMs: 30_000
+    });
+    expect(secondBatch.map((entry) => entry.dedupeKey)).toStrictEqual(["ordered-second"]);
   });
+
+  it("rejects two intents assigned to the same Session order", async () => {
+    const session = buildSessionRow({ id: "s-order-conflict" });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    const base = {
+      kind: "send_message" as const,
+      sessionId: session.id,
+      aggregateRevision: 2,
+      ordinal: 0,
+      payload: {
+        kind: "send_message" as const,
+        channelId: session.channelId,
+        renderer: "settle_notice",
+        extra: { reason: "absent", forceSuppressMentions: true }
+      }
+    };
+    await ctx.ports.outbox.enqueue({ ...base, dedupeKey: "order-owner" });
+
+    await expect(ctx.ports.outbox.enqueue({ ...base, dedupeKey: "order-conflict" }))
+      .rejects.toThrow("duplicate outbox Session order");
+  });
+
+  it("rejects completion from an expired claim after the row is reclaimed", async () => {
+    const session = buildSessionRow({ id: "s-fenced" });
+    const now = new Date("2026-04-24T12:00:00.000Z");
+    const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
+    await ctx.ports.outbox.enqueue({
+      kind: "send_message",
+      sessionId: session.id,
+      dedupeKey: "claim-fenced",
+      aggregateRevision: 0,
+      ordinal: 0,
+      payload: {
+        kind: "send_message",
+        channelId: session.channelId,
+        renderer: "settle_notice",
+        extra: { reason: "absent", forceSuppressMentions: true }
+      }
+    });
+
+    const [expiredClaim] = await ctx.ports.outbox.claimNextBatch({
+      limit: 1,
+      now,
+      claimDurationMs: 30_000
+    });
+    const [currentClaim] = await ctx.ports.outbox.claimNextBatch({
+      limit: 1,
+      now: new Date(now.getTime() + 30_000),
+      claimDurationMs: 30_000
+    });
+    if (!expiredClaim || !currentClaim) {
+      throw new Error("expected reclaimed outbox entry");
+    }
+
+    expect(requireClaimToken(currentClaim)).not.toBe(requireClaimToken(expiredClaim));
+    expect(await ctx.ports.outbox.markDelivered(expiredClaim.id, {
+      claimToken: requireClaimToken(expiredClaim),
+      deliveredMessageId: null,
+      now: new Date(now.getTime() + 30_001)
+    })).toBe(false);
+    expect(await ctx.ports.outbox.markDelivered(currentClaim.id, {
+      claimToken: requireClaimToken(currentClaim),
+      deliveredMessageId: null,
+      now: new Date(now.getTime() + 30_001)
+    })).toBe(true);
+  });
+
 });

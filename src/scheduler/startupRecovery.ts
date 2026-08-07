@@ -30,8 +30,7 @@ const settleStartupAskingSession = async (
   session: SessionRow,
   now: Date
 ): Promise<void> => {
-  const responses = await ctx.ports.responses.listResponses(session.id);
-  await evaluateAndApplyDeadlineDecision(client, ctx, session, responses, {
+  await evaluateAndApplyDeadlineDecision(client, ctx, session, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
   }).match(

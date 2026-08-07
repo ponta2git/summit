@@ -30,7 +30,7 @@ registerInteractionHandlers(client, appContext, {
 
 // race: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
 //   auto-start するため、top-level 生成すると startup recovery と reminder tick が並行し
-//   DECIDED セッションへの二重送信 race を作る → ADR-0024
+//   recovery と scheduler の重複 enqueue を増やす → ADR-0051
 let scheduler: AppScheduler | undefined;
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
@@ -66,7 +66,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 // why: 起動フェーズごとの構造化ログで「どこで止まったか」を診断可能にする。bootId はプロセス単位。
-// @see ADR-0033
+// @see ADR-0051
 const bootId = randomUUID();
 const bootStartedAt = Date.now();
 const logBootPhase = createBootPhaseLogger(bootId, bootStartedAt);
@@ -103,19 +103,20 @@ const run = async (): Promise<void> => {
     );
   }
 
-  // source-of-truth: DB と Discord の invariant を収束させる (C1/N1/H1)。CAS 冪等のため scheduler との競合は race lost として扱う。
-  // race: scheduler は本呼び出しの完了**後**に生成する（reminder claim revert 中の reminder tick は no-op 設計）。
-  // @see ADR-0033
+  // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
+  // @see ADR-0051
   const report = await runReconciler(client, appContext, { scope: "startup" });
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,
     askCreated: report.askCreated,
-    messageResent: report.messageResent,
-    staleClaimReclaimed: report.staleClaimReclaimed
+    messageIntentsQueued: report.messageIntentsQueued,
+    outboxClaimReleased: report.outboxClaimReleased,
+    outboxDeadLettersRequeued: report.outboxDeadLettersRequeued,
+    outboxSuccessorsRequeued: report.outboxSuccessorsRequeued
   });
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
-  // race: scheduler は本呼び出しの完了**後**に生成する。先に生成すると reminder tick と recovery が並行し二重送信 race → ADR-0024
+  // race: scheduler は本呼び出しの完了**後**に生成し、startup recovery との重複処理を避ける。
   await runStartupRecovery(client, appContext);
   startupCompleted = true;
   readiness.markReady();

@@ -36,15 +36,15 @@ fly machine list -a summit-momotetsu
 fly machine restart <machine_id> -a summit-momotetsu
 ```
 
-**禁止窓チェック**: 金 17:30〜土 01:00 JST に該当する場合は原則実施しない。ただし **週キー破綻リスクが高い大 skew 発生時は例外的に実施** (AGENTS.md の deploy 禁止窓は「deploy / restart / schema 変更を提案・実行しない」とあるが、skew が業務影響を出しているなら放置するほうがリスクが高い)。実施した場合は事後に PR で経緯を記録する。
+**禁止窓チェック**: 金 17:30〜土 01:00 JST に該当する場合は restart しない。`/status` と logs で影響を記録し、禁止窓終了後に再確認して実施する。禁止窓中の例外判断が必要なインシデントは、この runbook では権限を拡張せず運用責任者へ escalation する。
 
 ## 取りこぼし防止の設計 (参考)
 
 自動復旧が効く理由 (詳細は ADR-0044):
 
-- **reconciler invariant B/E**: 未投稿の金曜募集 / 締切超過の session を次 tick で再収束 (ADR-0033)
-- **CAS-on-NULL**: 締切書き込みは CAS のため、skew 中に誤った時刻で書かれても実時刻復旧後に上書きされない (ADR-0024)
-- **outbox at-least-once**: 表示遅延はあっても喪失なし (ADR-0035)
+- **reconciler invariants**: 未投稿の金曜募集 / 締切超過の session を次の回復経路で再収束 (ADR-0051)
+- **Session aggregate command**: Session lock 後の同一 snapshot で締切判定と遷移を確定する (ADR-0051)
+- **ordered outbox at-least-once**: 表示遅延や重複はあり得るが、必須投稿の欠落と順序逆転を抑止する (ADR-0051)
 - **`(weekKey, postpone_count)` unique**: 週キーが誤算定されても同一週キーで重複 session が作れない (ADR-0009)
 
 ## 自動検知を実装しない理由

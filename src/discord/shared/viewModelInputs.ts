@@ -17,4 +17,5 @@ export interface ViewModelSessionInput {
   readonly candidateDateIso: string;
   readonly status: SessionStatus;
   readonly decidedStartAt: Date | null;
+  readonly cancelReason?: string | null;
 }

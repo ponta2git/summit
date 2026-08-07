@@ -1,8 +1,8 @@
 # Outbox Operations
 
-outbox は Discord への副作用 (send / edit) を at-least-once で配送する仕組み (ADR-0035)。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
+outbox は Discord への副作用を at-least-once で配送し、Session 内の意味順序を守る仕組み (ADR-0051、起点は ADR-0035)。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
 
-関連 ADR: 0035 (outbox 設計) / 0042 (retention) / 0043 (observability metrics) / 0047 (DB-driven scheduler)
+関連 ADR: 0051 (現行 outbox・順序・claim fencing) / 0042 (retention) / 0043 (observability metrics) / 0047 (DB-driven scheduler) / 0035 (superseded origin)
 関連定数 SSoT: `src/config.ts` (定数名のみ参照、実値は SSoT 側で確認)
 
 ## 観測値 (ADR-0043)
@@ -31,13 +31,13 @@ outbox は Discord への副作用 (send / edit) を at-least-once で配送す�
 
 ### `failed > 0`
 
-**意味**: `OUTBOX_MAX_ATTEMPTS` を使い切って FAILED に落ちた行がある。再試行されない。
+**意味**: `OUTBOX_MAX_ATTEMPTS` を使い切って FAILED に落ちた行がある。稼働中の定期 tick では再試行されず、同じ Session の後続は CANCELLED へ収束する。
 
 **SOP**:
 
-1. `fly logs` で `event=outbox.dispatch.error` を遡り、原因を特定 (rate limit / 権限 / 不正 payload)
-2. payload 不正 (例: `custom_id` 形式変更で旧形式が残った) なら、**FAILED 行は意図的に放置でよい** — `OUTBOX_RETENTION_FAILED_MS` (30 日) 経過で自動 prune される (ADR-0042)
-3. Discord 表示が壊れているなら、reconciler invariant が次 tick で新規 outbox を積む。手動再投入は不要
+1. `fly logs` で `event=outbox.retry_scheduled` / `event=outbox.dead_letter` / `event=outbox.unsupported_payload` を遡り、原因を特定する (rate limit / 権限 / 不正 payload)
+2. 原因を直した修正を deploy する。startup reconciler が FAILED 行とそれにより CANCELLED になった後続を同一 transaction で PENDING に戻し、試行回数を初期化する
+3. `event=reconciler.outbox_dead_letters_requeued` の件数を確認し、その後 `outbox.delivered` へ収束することを確認する。不正 payload を直さず再起動した場合も retry は起動ごとの 1 cycle に限定される
 
 **禁止**: FAILED 行を手動で PENDING に戻す `UPDATE` を本番 DB に流さないこと。冪等性が壊れる。
 
@@ -48,7 +48,7 @@ outbox は Discord への副作用 (send / edit) を at-least-once で配送す�
 **SOP**:
 
 1. `event=rate.limited` の頻度を確認
-2. `event=outbox.dispatch.error` の有無を確認
+2. `event=outbox.retry_scheduled` / `event=outbox.dead_letter` の有無を確認
 3. scheduler supervisor と outbox worker が走っているか (`tick=scheduler_supervisor` / `tick=outbox_worker`) 確認
 4. tick が止まっていれば case 1 (再起動) へ
 
@@ -56,18 +56,18 @@ outbox は Discord への副作用 (send / edit) を at-least-once で配送す�
 
 **意味**: 1 行が長時間 dispatch されていない。
 
-**SOP**: pending depth と同じ flow。一行だけ古い場合は payload 不正の可能性が高いので `event=outbox.dispatch.error` で特定。
+**SOP**: pending depth と同じ flow。一行だけ古い場合は、payload 不正または FAILED 先行 intent による順序 block を構造化ログで特定する。
 
 ## Retention (ADR-0042)
 
-専用 cron `outbox_retention` (`CRON_OUTBOX_RETENTION_SCHEDULE`、4:00 JST) が以下を prune:
+専用 cron `outbox_retention` (`CRON_OUTBOX_RETENTION_SCHEDULE`) が以下を prune:
 
-- DELIVERED 行: `OUTBOX_RETENTION_DELIVERED_MS` (7d) 超過
-- FAILED 行: `OUTBOX_RETENTION_FAILED_MS` (30d) 超過
+- DELIVERED 行: `OUTBOX_RETENTION_DELIVERED_MS` 超過
+- FAILED / CANCELLED 行: `OUTBOX_RETENTION_FAILED_MS` 超過
 
-**PENDING / IN_FLIGHT は経過時間に関わらず絶対に削除しない** (at-least-once と CAS-on-NULL back-fill の正本性を保護)。
+**PENDING / IN_FLIGHT は経過時間に関わらず絶対に削除しない** (at-least-once と message-id back-fill の正本性を保護)。
 
-スケジュールを 4:00 JST にしているのは deploy 禁止窓 (金 17:30〜土 01:00) を回避するため。
+現在の cron が deploy 禁止窓を避けていることは、変更時に `src/config.ts` と運用ポリシーを突き合わせて確認する。
 
 ## Stranded outbox 対応
 
@@ -76,6 +76,8 @@ outbox は Discord への副作用 (send / edit) を at-least-once で配送す�
 **自動復旧**:
 
 - IN_FLIGHT の claim が stale なら scheduler / worker / reconciler が release → 再 dispatch
-- PENDING は backoff で retry されるので待つ
+- PENDING は backoff で retry される。claim token により reclaim 前の owner は結果を確定できない
+- 同じ Session に FAILED の先行 intent がある PENDING は配送せず CANCELLED へ収束する
+- process 起動時は FAILED とその CANCELLED 後続を一度だけ PENDING へ戻す。reconnect だけでは dead letter を復帰させない
 
-**人手介入が必要なケース**: ない。**手動 UPDATE / DELETE は禁止**。どうしても消したいときは Fly redeploy で reconciler を再走させ、それでも残るなら原因 (payload 不正 / Discord 側削除) を特定して修正コミットを入れる。
+**人手介入が必要なケース**: 原因修正が必要な FAILED のみ。**手動 UPDATE / DELETE は禁止**。修正 commit を deploy して startup recovery を走らせ、それでも残るなら payload と renderer の互換性、Discord 権限を再確認する。

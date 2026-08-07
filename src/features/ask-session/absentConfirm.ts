@@ -8,6 +8,8 @@ import {
 import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
+import { MEMBER_COUNT_EXPECTED } from "../../config.js";
+import type { SubmitAskResponseResult } from "../../db/ports.js";
 import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
@@ -33,10 +35,11 @@ import {
   type AbsentConfirmCustomIdChoice
 } from "../../discord/shared/customId.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { evaluateDeadline } from "./decide.js";
 import { askMessages } from "./messages.js";
-import { applyDeadlineDecision } from "../../orchestration/index.js";
-import { appConfig } from "../../userConfig.js";
+import {
+  reflectAskingCancellation,
+  settleAskingSession
+} from "../../orchestration/askSettleCancel.js";
 
 interface AbsentConfirmPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -105,16 +108,19 @@ const loadSessionAndMemberStep = (
 
 const recordAbsentAndApplyStep = (
   context: AbsentConfirmPipelineReady
-): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.responses.upsertResponse({
-      id: randomUUID(),
+): ResultAsync<void, AppError> => {
+  const now = context.context.clock.now();
+  return fromDatabasePromise(
+    context.context.ports.sessionCommands.submitAskResponse({
+      responseId: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,
       choice: "ABSENT",
-      answeredAt: context.context.clock.now()
+      sourceInteractionId: context.interaction.id,
+      now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED
     }),
-    "Failed to record absent response."
+    "Failed to record absent response atomically."
   )
     .andTee(() => {
       logger.info(
@@ -128,29 +134,40 @@ const recordAbsentAndApplyStep = (
         "Absent response recorded via confirmation."
       );
     })
-    .andThen(() =>
-      fromDatabasePromise(
-        Promise.all([
-          context.context.ports.responses.listResponses(context.sessionId),
-          context.context.ports.members.listMembers()
-        ]),
-        "Failed to load snapshot for absent decision."
-      )
-    )
-    .andThen(([responses, memberRows]) => {
-      const activeMembers = memberRows.filter((member) =>
-        appConfig.memberUserIds.includes(member.userId)
-      );
-      // source-of-truth: 判定ロジックは ./decide.ts。欠席が 1 件でも含まれれば cancelled。
-      const decision = evaluateDeadline(context.session, responses, {
-        memberCountExpected: activeMembers.length,
-        now: context.context.clock.now()
-      });
-      if (decision.kind === "pending") {
-        return okAsync(undefined);
+    .andThen((result: SubmitAskResponseResult) => {
+      switch (result.kind) {
+        case "transitioned":
+          return reflectAskingCancellation(
+            context.deps.client,
+            context.context,
+            result.session
+          );
+        case "stale_interaction":
+        case "accepted_pending":
+          return okAsync(undefined);
+        case "closed":
+          if (result.session.status === "CANCELLED") {
+            return settleAskingSession(
+              context.deps.client,
+              context.context,
+              result.session.id,
+              result.session.cancelReason === "saturday_cancelled"
+                ? "saturday_cancelled"
+                : "absent"
+            );
+          }
+          return toResultAsync(guardSessionAsking(result.session)).map(() => undefined);
+        case "session_not_found":
+          return toResultAsync(guardSessionExists(undefined)).map(() => undefined);
+        case "member_not_found":
+          return toResultAsync(guardRegisteredMemberId(undefined)).map(() => undefined);
+        case "deadline_passed":
+          return toResultAsync(
+            guardSessionAskingDeadlineOpen(result.session, now)
+          ).map(() => undefined);
       }
-      return applyDeadlineDecision(context.deps.client, context.context, context.session, decision);
     });
+};
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。

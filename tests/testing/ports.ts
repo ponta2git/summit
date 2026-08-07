@@ -18,11 +18,16 @@ import {
 import { createFakeMembersPort, type FakeMembersPort } from "./ports.members.js";
 import { createFakeOutboxPort, type FakeOutboxPort } from "./ports.outbox.js";
 import { createFakeResponsesPort, type FakeResponsesPort } from "./ports.responses.js";
+import {
+  createFakeSessionCommandsPort,
+  type FakeSessionCommandsPort
+} from "./ports.sessionCommands.js";
 import { DEFAULT_CLOCK, type FakeClock } from "./ports.shared.js";
 import { createFakeSessionsPort, type FakeSessionsPort } from "./ports.sessions.js";
 
 export interface FakePorts extends AppPorts {
   readonly sessions: FakeSessionsPort;
+  readonly sessionCommands: FakeSessionCommandsPort;
   readonly responses: FakeResponsesPort;
   readonly members: FakeMembersPort;
   readonly heldEvents: FakeHeldEventsPort;
@@ -60,7 +65,14 @@ const createFakePorts = (
     },
     clock
   );
-  return { sessions, responses, members, heldEvents, outbox };
+  const sessionCommands = createFakeSessionCommandsPort(
+    sessions,
+    responses,
+    members,
+    heldEvents,
+    outbox
+  );
+  return { sessions, sessionCommands, responses, members, heldEvents, outbox };
 };
 
 export interface TestAppContext {

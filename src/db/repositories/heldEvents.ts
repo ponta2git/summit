@@ -35,6 +35,7 @@ const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   cancelReason: row.cancelReason,
   reminderAt: row.reminderAt,
   reminderSentAt: row.reminderSentAt,
+  revision: row.revision,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
@@ -74,6 +75,7 @@ export const completeDecidedSessionAsHeld = async (
       .set({
         status: "COMPLETED",
         reminderSentAt: input.reminderSentAt,
+        revision: sql`${sessions.revision} + 1`,
         updatedAt: sql`now()` as unknown as Date
       })
       .where(

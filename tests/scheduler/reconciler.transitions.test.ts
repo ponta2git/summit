@@ -11,6 +11,7 @@ import {
   setFetchImpl
 } from "./reconciler.harness.js";
 import { reconcileStrandedCancelled } from "../../src/scheduler/reconciler.js";
+import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "./factories/session.js";
 
@@ -32,6 +33,8 @@ describe("reconcileStrandedCancelled", () => {
     const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
 
     expect(await reconcileStrandedCancelled(client, ctx)).toBe(1);
+    await runOutboxWorkerTick(client, ctx);
+    await runOutboxWorkerTick(client, ctx);
     const after = await ctx.ports.sessions.findSessionById("c-friday");
     expect({ status: after?.status, postponeMessageId: after?.postponeMessageId }).toStrictEqual({
       status: "POSTPONE_VOTING",
@@ -104,6 +107,8 @@ describe("stranded CANCELLED Discord cleanup", () => {
     expect(await reconcileStrandedCancelled(client, ctx)).toBe(1);
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("ask-fri");
+    await runOutboxWorkerTick(client, ctx);
+    await runOutboxWorkerTick(client, ctx);
     expect(sentMessages).toHaveLength(2);
     expect(extractContent(sentMessages[0]?.payload)).toContain("21:30 までに4人分の回答");
     expect(extractContent(sentMessages[0]?.payload)).not.toContain("<@");
@@ -134,6 +139,7 @@ describe("stranded CANCELLED Discord cleanup", () => {
     expect(await reconcileStrandedCancelled(client, ctx)).toBe(1);
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("ask-sat");
+    await runOutboxWorkerTick(client, ctx);
     expect(sentMessages).toHaveLength(1);
     expect(extractContent(sentMessages[0]?.payload)).toContain("土曜回も予定がそろわなかった");
     expect((await ctx.ports.sessions.findSessionById("c-sat-ui"))?.status).toBe("COMPLETED");
@@ -156,6 +162,7 @@ describe("stranded CANCELLED Discord cleanup", () => {
     setFetchImpl(async (id) => makeMessage(id));
 
     expect(await reconcileStrandedCancelled(client, ctx)).toBe(1);
+    await runOutboxWorkerTick(client, ctx);
     expect(sentMessages).toHaveLength(1);
     expect(extractContent(sentMessages[0]?.payload)).toContain("予定がそろわなかった");
     expect((await ctx.ports.sessions.findSessionById("c-late-ui"))?.status).toBe("COMPLETED");

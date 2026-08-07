@@ -35,6 +35,7 @@ export const createFakeSessionMessageMethods = (
       updatedAt: new Date(input.deadlineAt)
     });
     state.byId.set(created.id, created);
+    state.enqueueOutbox(input.outbox);
     return state.clone(created);
   },
 

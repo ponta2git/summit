@@ -1,5 +1,3 @@
-import type { Client } from "discord.js";
-
 import type { AppContext } from "../appContext.js";
 import { ASK_DEADLINE_HHMM, ASK_START_HHMM } from "../config.js";
 import { sendAskMessage } from "../features/ask-session/send.js";
@@ -30,10 +28,9 @@ const isFridayAskWindow = (now: Date): boolean => {
  * @remarks
  * 金曜の ASK 窓 (src/config.ts ASK_START_HHMM / ASK_DEADLINE_HHMM) 内で
  * `(weekKey, postponeCount=0)` Session が無い場合のみ通常経路で作成する。窓外では no-op。
- * @see ADR-0033
+ * @see ADR-0051
  */
 export const reconcileMissingAsk = async (
-  client: Client,
   ctx: AppContext
 ): Promise<number> => {
   const now = ctx.clock.now();
@@ -48,14 +45,14 @@ export const reconcileMissingAsk = async (
   }
 
   try {
-    const result = await sendAskMessage(client, { trigger: "cron", context: ctx });
-    if (result.status === "sent") {
+    const result = await sendAskMessage({ trigger: "cron", context: ctx });
+    if (result.status === "queued") {
       logger.info(
         {
           event: "reconciler.ask_created",
           sessionId: result.sessionId,
           weekKey: result.weekKey,
-          messageId: result.messageId
+          delivery: "outbox"
         },
         "Reconciler: created missing Friday ASKING session."
       );

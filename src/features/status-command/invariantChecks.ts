@@ -1,11 +1,11 @@
-import type { HeldEventRow, OutboxEntry, SessionRow } from "../../db/ports.js";
+import type { OutboxEntry, SessionRow } from "../../db/ports.js";
 
 export interface InvariantWarning {
   readonly kind: string;
   readonly message: string;
 }
 
-type CheckCtx = Readonly<{ now: Date; heldEvent: HeldEventRow | undefined }>;
+type CheckCtx = Readonly<{ now: Date }>;
 
 interface SessionInvariant {
   readonly kind: string;
@@ -15,7 +15,7 @@ interface SessionInvariant {
 
 const shortId = (id: string): string => id.slice(0, 8);
 
-// invariant: 新規 invariant の追加は SESSION_INVARIANTS に 1 行加えるだけで collectInvariantWarnings に伝播する @see ADR-0033
+// invariant: 新規 invariant の追加は SESSION_INVARIANTS に 1 行加えるだけで collectInvariantWarnings に伝播する @see ADR-0051
 const SESSION_INVARIANTS = {
   askingPastDeadline: {
     kind: "asking_past_deadline",
@@ -31,12 +31,11 @@ const SESSION_INVARIANTS = {
       `ASKING session ${shortId(s.id)} has no askMessageId (Discord send may have failed).`
   },
 
-  decidedStaleReminderClaim: {
-    kind: "decided_stale_reminder_claim",
-    predicate: (s, { heldEvent }) =>
-      s.status === "DECIDED" && s.reminderSentAt !== null && heldEvent === undefined,
+  decidedReminderCompletionMismatch: {
+    kind: "decided_reminder_completion_mismatch",
+    predicate: (s) => s.status === "DECIDED" && s.reminderSentAt !== null,
     message: (s) =>
-      `DECIDED session ${shortId(s.id)} has reminderSentAt set but no HeldEvent (stale claim?).`
+      `DECIDED session ${shortId(s.id)} has reminderSentAt set before completion.`
   },
 
   postponeVotingPastDeadline: {
@@ -60,7 +59,7 @@ const evaluate = (
  * @remarks
  * CANCELLED は短命中間状態。警告が返る場合は reconciler 未稼働を示す。
  * @see ADR-0001
- * @see ADR-0033
+ * @see ADR-0051
  */
 export const checkStrandedCancelledSessions = (
   strandedSessions: readonly SessionRow[]
@@ -79,7 +78,7 @@ export const checkStrandedCancelledSessions = (
  * @remarks
  * attempt_count が `OUTBOX_STRANDED_ATTEMPTS_THRESHOLD` を超えた行や FAILED 行は運用介入が必要。
  * 最古 entry の dedupeKey を含め一次切り分けを容易にする。
- * @see ADR-0035
+ * @see ADR-0051
  */
 export const checkStrandedOutboxEntries = (
   entries: readonly OutboxEntry[]
@@ -96,10 +95,9 @@ export const checkStrandedOutboxEntries = (
 
 export const collectInvariantWarnings = (
   session: SessionRow,
-  now: Date,
-  heldEvent: HeldEventRow | undefined
+  now: Date
 ): readonly InvariantWarning[] => {
-  const ctx: CheckCtx = { now, heldEvent };
+  const ctx: CheckCtx = { now };
   return Object.values(SESSION_INVARIANTS)
     .map((inv) => evaluate(inv, session, ctx))
     .filter((w): w is InvariantWarning => w !== undefined);

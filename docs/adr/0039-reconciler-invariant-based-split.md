@@ -12,7 +12,9 @@ tags: [runtime, docs]
 
 ## TL;DR
 
-`src/scheduler/reconciler.ts`（587 行 / 6 invariant + orchestrator + 7 internal helper）を ADR-0033 の invariant A–F に 1:1 対応する 9 ファイルへ `reconciler.<responsibilityKebab>.ts` サフィックス命名で分割し、`reconciler.ts` は named re-export のみの barrel に退化させる。ディレクトリ化は Node ESM `NodeNext` の解決仕様および sessions.* (ADR-0038) との統一性を崩すため却下する。public surface（types / `runReconciler` / 6 invariant）は barrel 維持で保護し consumer 4 箇所は無修正。
+`src/scheduler/reconciler.ts` の orchestration と各 recovery invariant を `reconciler.<responsibilityKebab>.ts` へ責務単位で分割し、`reconciler.ts` は named re-export のみの barrel にする。ディレクトリ化は Node ESM `NodeNext` の解決仕様および repository の flat suffix 規約との統一性を崩すため却下する。
+
+> **2026-08-08 implementation amendment:** ADR-0051 により stale reminder claim recovery を削除し、startup-only dead-letter chain recovery を追加した。責務単位の flat split / barrel という本 ADR の決定は維持する。
 
 ## Context
 
@@ -33,26 +35,26 @@ ADR-0038 で sessions.* に `repositories/sessions.<role>.ts` 形式（flat + su
 
 | file | 責務 |
 |---|---|
-| `reconciler.ts` | **barrel**。public API（types / `runReconciler` / 6 invariant）を named re-export のみ。実装コードを持たない |
+| `reconciler.ts` | **barrel**。public API（types / `runReconciler` / recovery functions）を named re-export のみ。実装コードを持たない |
 | `reconciler.types.ts` | `ReconcileReport` / `ReconcileScope` |
 | `reconciler.run.ts` | `runReconciler` + `EMPTY_REPORT`（orchestrator のみが使用） |
 | `reconciler.strandedCancelled.ts` | invariant A + `resolveSettleCancelReason` / `emitCancelledUiCleanup` / `promoteStranded` |
 | `reconciler.missingAsk.ts` | invariant B + `isFridayAskWindow` + `FRIDAY_JS_DAY` |
 | `reconciler.missingAskMessage.ts` | invariant C + `resendAskMessage` |
 | `reconciler.probeDeleted.ts` | invariant D + `probeAndRecreateAskMessage` / `probeAndRecreatePostponeMessage` |
-| `reconciler.staleReminderClaims.ts` | invariant E |
 | `reconciler.outboxClaims.ts` | invariant F |
+| `reconciler.outboxDeadLetters.ts` | startup-only の FAILED chain recovery |
 
-barrel は `export *` を使わず named list で re-export し、internal helper 7 種の漏出を静的保証する。ファイル先頭 TSDoc で `Invariant A (ADR-0033): ...` 形式の letter 表記を維持し、file 名自体は letter 非依存な descriptive 名を採用する。
+barrel は `export *` を使わず named list で re-export し、internal helper の漏出を静的保証する。既存 invariant の letter 表記は履歴追跡用に維持し、新規 recovery は descriptive 名を採用する。現行の収束・配送契約は ADR-0051 を参照する。
 
 ## Consequences
 
-- public surface 8 名（`ReconcileReport`, `ReconcileScope`, `runReconciler`, 6 invariant）は barrel 経由で不変。`src/index.ts` / `src/scheduler/index.ts` / `tests/scheduler/reconciler.test.ts` / `tests/scheduler/outboxWorker.test.ts` の 4 consumer は無修正で pass する。
+- public surface は barrel 経由で保護され、consumer は各実装ファイルの internal helper に依存しない。
 - `docs/reviews/2026-04-24/03-module-cohesion.md` H-2 / `11-modifiability.md` の残存変更集中点 / `14-uniformity.md` file-size advisory の 2 件目が解消対象になる。
 - 新 invariant 追加は新規ファイル作成 + `reconciler.run.ts` への 1 行追加に局所化される。既存 invariant のロジック修正は該当ファイルに閉じる。
 - 各 invariant file が ADR-0033 invariant と 1:1 で対応し、構造化 log event 名（`reconciler.cancelled_promoted` 等）との照合が grep ベースで容易になる。on-call 監査時のトレースパスが改善する。
-- `tests/scheduler/reconciler.test.ts`（595 行）は本 ADR の対象外。pure code motion で behavior 保証を最大化するため、test 分割は follow-up で invariant ごとにミラーする。
-- 過渡期の妥協なし。pure code motion + barrel 化のみで、振る舞い・DB スキーマ・log event 名・TSDoc 文面は完全不変。
+- テストも `reconciler.recovery.test.ts` / `reconciler.transitions.test.ts` と integration contract に責務分割し、単一巨大 test file を残さない。
+- 初回分割は pure code motion だった。ADR-0051 の amendment 後も flat split / barrel の境界は維持し、変更された recovery 契約だけを置換した。
 
 ## Alternatives considered
 
@@ -73,8 +75,9 @@ barrel は `export *` を使わず named list で re-export し、internal helpe
 ## Links
 
 - `@see ADR-0017` — 個別ファイル 300 行の advisory 閾値
-- `@see ADR-0033` — 本 ADR の実装対象である invariant A–F の定義（supersede しない、実装規範として参照）
+- `@see ADR-0051` — 現行の Session aggregate / ordered outbox / recovery 契約
+- `@see ADR-0033` — invariant A–F の歴史的定義（ADR-0051 により superseded）
 - `@see ADR-0036` — reconnect replay / scope=reconnect の扱い
-- `@see ADR-0038` — sessions repository role split の先例（flat + suffix + barrel 規範）
+- `@see ADR-0038` — sessions repository role split の歴史的先例（ADR-0051 により superseded）
 - `@see docs/reviews/2026-04-24/03-module-cohesion.md` — 分割根拠
 - `@see docs/reviews/2026-04-24/11-modifiability.md` — 変更集中点の指摘

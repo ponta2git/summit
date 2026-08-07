@@ -39,11 +39,10 @@ export const createFakeHeldEventsPort = (
       input: CompleteDecidedSessionAsHeldInput
     ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
       recordCall(calls, "completeDecidedSessionAsHeld", { input });
-      const transitioned = await sessionsPort.completeSession({
-        id: input.sessionId,
-        now: input.reminderSentAt,
-        reminderSentAt: input.reminderSentAt
-      });
+      const transitioned = sessionsPort.completeDecidedForHeld(
+        input.sessionId,
+        input.reminderSentAt
+      );
       if (!transitioned) {return undefined;}
       if (!transitioned.decidedStartAt) {
         throw new Error(
@@ -86,12 +85,6 @@ export const createFakeHeldEventsPort = (
       recordCall(calls, "findBySessionId", { sessionId });
       const found = heldEvents.find((event) => event.sessionId === sessionId);
       return found ? cloneHeld(found) : undefined;
-    },
-    listParticipants: async (heldEventId) => {
-      recordCall(calls, "listParticipants", { heldEventId });
-      return participants
-        .filter((participant) => participant.heldEventId === heldEventId)
-        .map(cloneParticipant);
     }
   };
 };

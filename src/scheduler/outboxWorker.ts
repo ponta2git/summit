@@ -1,5 +1,4 @@
-import type { Client, MessageCreateOptions } from "discord.js";
-import { z } from "zod";
+import type { Client } from "discord.js";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -11,12 +10,11 @@ import {
 import type { OutboxEntry } from "../db/ports.js";
 import { logger } from "../logger.js";
 import { getTextChannel } from "../discord/shared/channels.js";
-import { cancelWeekMessages } from "../features/cancel-week/messages.js";
-import { addMs } from "../time/index.js";
 import {
-  buildDecidedAnnouncementViewModel
-} from "../features/decided-announcement/viewModel.js";
-import { renderDecidedAnnouncement } from "../features/decided-announcement/send.js";
+  completeReminderDelivery
+} from "../features/reminder/send.js";
+import { addMs } from "../time/index.js";
+import { renderOutboxPayload } from "./outboxRenderers.js";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -24,7 +22,7 @@ import { renderDecidedAnnouncement } from "../features/decided-announcement/send
  * @remarks
  * state: `attemptCount >= OUTBOX_MAX_ATTEMPTS` で `null` を返し dead letter (FAILED)。
  * `attemptCount` は claim で +1 された後の値。
- * @see ADR-0035
+ * @see ADR-0051
  */
 export const computeOutboxBackoff = (
   attemptCount: number,
@@ -38,77 +36,6 @@ export const computeOutboxBackoff = (
   return addMs(now, delayMs);
 };
 
-type RendererFn = (input: {
-  readonly ctx: AppContext;
-  readonly entry: OutboxEntry;
-}) => Promise<MessageCreateOptions | undefined>;
-
-const rawTextExtraSchema = z.object({
-  content: z.string()
-});
-
-const cancelWeekNoticeExtraSchema = z.object({
-  invokerUserId: z.string(),
-  suppressMentions: z.boolean().optional()
-});
-
-const parseExtra = <T extends z.ZodType>(
-  schema: T,
-  extra: Record<string, unknown> | undefined
-): z.output<T> | undefined => {
-  const result = schema.safeParse(extra ?? {});
-  return result.success ? result.data : undefined;
-};
-
-// why: renderer 名を型で固定し ADR-0035 のカバレッジを grep 可能にする。未登録 renderer は dead letter。
-const renderers: Readonly<Record<string, RendererFn>> = {
-  raw_text: async ({ entry }) => {
-    if (entry.payload.kind !== "send_message") {return undefined;}
-    const extra = parseExtra(rawTextExtraSchema, entry.payload.extra);
-    return extra === undefined ? undefined : { content: extra.content };
-  },
-  // source-of-truth: DECIDED Session を DB から再取得し VM から構築する (state mismatch は dead letter)。
-  decided_announcement: async ({ ctx, entry }) => {
-    const session = await ctx.ports.sessions.findSessionById(entry.sessionId);
-    if (!session || session.status !== "DECIDED" || !session.decidedStartAt) {
-      return undefined;
-    }
-    const [responses, members] = await Promise.all([
-      ctx.ports.responses.listResponses(session.id),
-      ctx.ports.members.listMembers()
-    ]);
-    const vm = buildDecidedAnnouncementViewModel(session, responses, members);
-    if (!vm) {return undefined;}
-    return renderDecidedAnnouncement(vm);
-  },
-
-  cancel_week_notice: async ({ entry }) => {
-    if (entry.payload.kind !== "send_message") {return undefined;}
-    const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
-    if (extra === undefined) {return undefined;}
-    const content = extra.suppressMentions === true
-      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId: extra.invokerUserId })
-      : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId: extra.invokerUserId });
-    return { content };
-  }
-};
-
-const renderPayload = async (
-  ctx: AppContext,
-  entry: OutboxEntry
-): Promise<MessageCreateOptions | undefined> => {
-  const payload = entry.payload;
-  if (payload.kind !== "send_message") {return undefined;}
-  const rendererName = payload.renderer;
-  const fn = renderers[rendererName];
-  if (fn) {
-    return fn({ ctx, entry });
-  }
-  // why: 未登録 renderer は extra.content を fallback で拾う (text-only 後方互換)。
-  const extra = parseExtra(rawTextExtraSchema, payload.extra);
-  return extra === undefined ? undefined : { content: extra.content };
-};
-
 const deliverOne = async (
   client: Client,
   ctx: AppContext,
@@ -116,23 +43,43 @@ const deliverOne = async (
 ): Promise<void> => {
   const now = ctx.clock.now();
   const payload = entry.payload;
+  const claimToken = entry.claimToken;
+  if (!claimToken) {
+    logger.error(
+      {
+        event: "outbox.missing_claim_token",
+        outboxId: entry.id,
+        sessionId: entry.sessionId
+      },
+      "Outbox worker received an unfenced claim."
+    );
+    return;
+  }
 
   try {
-    const body = await renderPayload(ctx, entry);
+    const body = await renderOutboxPayload(ctx, entry);
     if (body === undefined) {
       // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
-      await ctx.ports.outbox.markFailed(entry.id, {
-        error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.kind === "send_message" ? payload.renderer : "n/a"}`,
+      const marked = await ctx.ports.outbox.markFailed(entry.id, {
+        error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.renderer}`,
+        claimToken,
         now,
         nextAttemptAt: null
       });
+      if (!marked) {
+        logger.error(
+          { event: "outbox.claim_lost", outboxId: entry.id, sessionId: entry.sessionId },
+          "Outbox worker lost claim while dead-lettering unsupported payload."
+        );
+        return;
+      }
       logger.error(
         {
           event: "outbox.unsupported_payload",
           outboxId: entry.id,
           sessionId: entry.sessionId,
           kind: payload.kind,
-          renderer: payload.kind === "send_message" ? payload.renderer : undefined,
+          renderer: payload.renderer,
           dedupeKey: entry.dedupeKey
         },
         "Outbox worker: unsupported payload; moved to FAILED."
@@ -140,58 +87,92 @@ const deliverOne = async (
       return;
     }
 
-    // invariant: body !== undefined を通過した時点で payload.kind === "send_message" が確定する (renderPayload 契約)。
-    if (payload.kind === "send_message") {
-      const channel = await getTextChannel(client, payload.channelId);
-      const sent = await channel.send(body);
-      await ctx.ports.outbox.markDelivered(entry.id, {
-        deliveredMessageId: sent.id,
-        now: ctx.clock.now()
-      });
-      // race: reconciler 再投稿と重なっても CAS-on-NULL により先勝ちが保証される (ADR-0035 FR-M2)。
-      let backfillResult: boolean | undefined;
-      if (payload.target === "askMessageId") {
-        backfillResult = await ctx.ports.sessions.backfillAskMessageId(entry.sessionId, sent.id);
-      } else if (payload.target === "postponeMessageId") {
-        backfillResult = await ctx.ports.sessions.backfillPostponeMessageId(
-          entry.sessionId,
-          sent.id
-        );
+    const channel = await getTextChannel(client, payload.channelId);
+    const sent = await channel.send(body);
+    if (payload.renderer === "reminder") {
+      const completed = await completeReminderDelivery(
+        ctx,
+        entry.sessionId,
+        ctx.clock.now()
+      );
+      if (!completed) {
+        throw new Error("Reminder delivered but Session/HeldEvent completion failed");
       }
-      if (backfillResult === false) {
-        logger.warn(
-          {
-            event: "outbox.backfill_skipped",
-            outboxId: entry.id,
-            sessionId: entry.sessionId,
-            dedupeKey: entry.dedupeKey,
-            target: payload.target,
-            messageId: sent.id
-          },
-          "Outbox worker: target column already set; skipped back-fill."
-        );
-      }
-      logger.info(
+    }
+    // race: claim expiry 後は旧・新 worker が Discord 受理まで到達し得る。CAS-on-NULL で
+    // canonical message を先勝ちにし、outbox の確定自体は claimToken で fence する。
+    let backfillResult: boolean | undefined;
+    if (payload.target === "askMessageId") {
+      backfillResult = await ctx.ports.sessions.backfillAskMessageId(entry.sessionId, sent.id);
+    } else if (payload.target === "postponeMessageId") {
+      backfillResult = await ctx.ports.sessions.backfillPostponeMessageId(
+        entry.sessionId,
+        sent.id
+      );
+    }
+    const marked = await ctx.ports.outbox.markDelivered(entry.id, {
+      claimToken,
+      deliveredMessageId: sent.id,
+      now: ctx.clock.now()
+    });
+    if (!marked) {
+      logger.error(
         {
-          event: "outbox.delivered",
+          event: "outbox.claim_lost_after_send",
+          outboxId: entry.id,
+          sessionId: entry.sessionId,
+          messageId: sent.id
+        },
+        "Outbox worker lost claim after Discord accepted the message."
+      );
+      return;
+    }
+    if (backfillResult === false) {
+      logger.warn(
+        {
+          event: "outbox.backfill_skipped",
           outboxId: entry.id,
           sessionId: entry.sessionId,
           dedupeKey: entry.dedupeKey,
-          messageId: sent.id,
-          attempt: entry.attemptCount
+          target: payload.target,
+          messageId: sent.id
         },
-        "Outbox worker: delivered message."
+        "Outbox worker: target column already set; skipped back-fill."
       );
     }
+    logger.info(
+      {
+        event: "outbox.delivered",
+        outboxId: entry.id,
+        sessionId: entry.sessionId,
+        dedupeKey: entry.dedupeKey,
+        messageId: sent.id,
+        attempt: entry.attemptCount
+      },
+      "Outbox worker: delivered message."
+    );
   } catch (error: unknown) {
     const failedNow = ctx.clock.now();
     const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
     const message = error instanceof Error ? error.message : String(error);
-    await ctx.ports.outbox.markFailed(entry.id, {
+    const marked = await ctx.ports.outbox.markFailed(entry.id, {
       error: message,
+      claimToken,
       now: failedNow,
       nextAttemptAt
     });
+    if (!marked) {
+      logger.error(
+        {
+          event: "outbox.claim_lost",
+          outboxId: entry.id,
+          sessionId: entry.sessionId,
+          error: message
+        },
+        "Outbox worker lost claim while recording delivery failure."
+      );
+      return;
+    }
     logger.warn(
       {
         event: nextAttemptAt === null ? "outbox.dead_letter" : "outbox.retry_scheduled",
@@ -212,7 +193,7 @@ const deliverOne = async (
  *
  * @remarks
  * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runTickSafely`) が閉じ込める。
- * @see ADR-0035
+ * @see ADR-0051
  */
 export const runOutboxWorkerTick = async (
   client: Client,

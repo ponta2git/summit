@@ -3,6 +3,8 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
+import { MEMBER_COUNT_EXPECTED } from "../../config.js";
+import type { SubmitAskResponseResult } from "../../db/ports.js";
 import type { SessionRow } from "../../db/rows.js";
 import {
   type AppError,
@@ -16,7 +18,6 @@ import { renderAskBody } from "./render.js";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
 import { buildAskMessageViewModel } from "./viewModel.js";
 import {
-  getGuardFailureReason,
   guardAskCustomId,
   guardChannelId,
   guardGuildId,
@@ -24,11 +25,11 @@ import {
   guardRegisteredMemberId,
   guardSessionAsking,
   guardSessionAskingDeadlineOpen,
-  guardSessionExists,
-  GUARD_REASON_TO_MESSAGE
+  guardSessionExists
 } from "../../discord/shared/guards.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { buildAbsentConfirmRow } from "./absentConfirm.js";
+import { handleAskPipelineError } from "./buttonError.js";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -91,19 +92,53 @@ const loadSessionAndMemberStep = (context: AskPipelineParsed): ResultAsync<AskPi
       }))
     );
 
-const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.responses.upsertResponse({
-      id: randomUUID(),
+const resolveAskCommandResult = (
+  context: AskPipelineReady,
+  result: SubmitAskResponseResult,
+  now: Date
+): ResultAsync<AskPipelineReady, AppError> => {
+  switch (result.kind) {
+    case "accepted_pending":
+    case "transitioned":
+      return okAsync(context);
+    case "stale_interaction":
+      logger.info(
+        {
+          sessionId: context.sessionId,
+          interactionId: context.interaction.id,
+          persistedInteractionId: result.response.sourceInteractionId
+        },
+        "Ignored stale ask interaction."
+      );
+      return okAsync(context);
+    case "session_not_found":
+      return toResultAsync(guardSessionExists(undefined)).map(() => context);
+    case "member_not_found":
+      return toResultAsync(guardRegisteredMemberId(undefined)).map(() => context);
+    case "deadline_passed":
+      return toResultAsync(guardSessionAskingDeadlineOpen(result.session, now)).map(
+        () => context
+      );
+    case "closed":
+      return toResultAsync(guardSessionAsking(result.session)).map(() => context);
+  }
+};
+
+const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> => {
+  const now = context.context.clock.now();
+  return fromDatabasePromise(
+    context.context.ports.sessionCommands.submitAskResponse({
+      responseId: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,
       choice: context.choice,
-      answeredAt: context.context.clock.now()
+      sourceInteractionId: context.interaction.id,
+      now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED
     }),
-    "Failed to record ask response."
+    "Failed to record ask response atomically."
   )
-    // race: `responses` の unique 制約 + upsert で同時押下でも最終回答 1 件に収束。
-    .map(() => context)
+    .andThen((result) => resolveAskCommandResult(context, result, now))
     .andTee((current) => {
       logger.info(
         {
@@ -116,6 +151,7 @@ const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineR
         "Ask response recorded."
       );
     });
+};
 
 const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
   fromDatabasePromise(
@@ -161,37 +197,6 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
           return okAsync(undefined);
         });
     });
-
-// invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
-//   reason 不明なら再 throw して上位で捕捉する。
-const handleAskPipelineError = async (
-  interaction: ButtonInteraction,
-  error: AppError
-): Promise<void> => {
-  const reason = getGuardFailureReason(error);
-  if (!reason) {
-    throw error;
-  }
-
-  // why: `invalid_custom_id` / `member_not_registered` は内部整合性の問題として warn ログを残す。
-  if (reason === "invalid_custom_id") {
-    logger.warn(
-      { interactionId: interaction.id, userId: interaction.user.id },
-      "Invalid custom_id for ask button."
-    );
-  }
-  if (reason === "member_not_registered") {
-    logger.warn(
-      { interactionId: interaction.id, userId: interaction.user.id },
-      "User is allowed but no matching member row."
-    );
-  }
-
-  await interaction.followUp({
-    content: GUARD_REASON_TO_MESSAGE[reason],
-    flags: MessageFlags.Ephemeral
-  });
-};
 
 /**
  * Handle ask button interactions via cheap-first validation and DB-backed pipeline composition.

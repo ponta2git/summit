@@ -1,75 +1,19 @@
-import { ChannelType, MessageFlags, type Client } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handlePostponeButton } from "../../../src/features/postpone-voting/button.js";
-import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
-import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
-import { appConfig } from "../../../src/userConfig.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { callArg } from "../../helpers/assertions.js";
 import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
-import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext } from "../../testing/index.js";
-
-const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
-  id: `member-${index}`,
-  userId,
-  displayName: `Member ${index + 1}`
-}));
-
-const postponeSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
-  buildSessionRow({
-    id: "4f7d54aa-3898-4a13-9f7c-5872a8220e0f",
-    status: "POSTPONE_VOTING",
-    postponeCount: 0,
-    postponeMessageId: "postpone-msg-1",
-    deadlineAt: new Date("2026-04-25T15:00:00.000Z"),
-    ...overrides
-  });
-
-const postponeResponse = (
-  index: number,
-  choice: "POSTPONE_OK" | "POSTPONE_NG",
-  sessionId: string
-): ResponseRow => ({
-  id: `response-${index}`,
-  sessionId,
-  memberId: seededMembers[index]!.id,
-  choice,
-  answeredAt: new Date(`2026-04-25T12:${String(index).padStart(2, "0")}:00.000Z`)
-});
-
-const createDiscordClient = () => {
-  const postponeMessageEdit = vi.fn(async () => undefined);
-  const channelSend = vi.fn(async () => ({ id: "sent-1" }));
-  const channel = {
-    type: ChannelType.GuildText,
-    isSendable: () => true,
-    send: channelSend,
-    messages: {
-      fetch: vi.fn(async () => ({ edit: postponeMessageEdit }))
-    }
-  };
-
-  const client = asDiscordClient({
-    channels: {
-      fetch: vi.fn(async () => channel)
-    }
-  });
-
-  return { client, postponeMessageEdit, channelSend };
-};
-
-const buildDeps = (
-  context: ReturnType<typeof createTestAppContext>,
-  client: Client
-): InteractionHandlerDeps => ({
-  context,
-  client,
-  sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }))
-});
+import {
+  buildDeps,
+  createDiscordClient,
+  postponeResponse,
+  postponeSession,
+  seededMembers
+} from "./postponeButton.harness.js";
 
 describe("handlePostponeButton", () => {
   it("persists OK vote and re-renders postpone message from DB", async () => {
@@ -291,10 +235,18 @@ describe("handlePostponeButton", () => {
       postponeCount: 1,
       candidateDateIso: "2026-04-25",
       status: "ASKING",
-      askMessageId: "sent-1",
+      askMessageId: null,
       deadlineAt: new Date("2026-04-25T12:30:00.000Z")
     });
-    expect(channelSend).toHaveBeenCalledOnce();
-    expect(context.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(channelSend).not.toHaveBeenCalled();
+    expect(context.ports.outbox.listEntries().map((entry) => ({
+      sessionId: entry.sessionId,
+      renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
+      status: entry.status
+    }))).toStrictEqual([{
+      sessionId: saturday?.id,
+      renderer: "ask_body",
+      status: "PENDING"
+    }]);
   });
 });

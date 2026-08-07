@@ -7,7 +7,6 @@ import type {
 } from "../../../src/discord/shared/viewModelInputs.js";
 import {
   buildAskMessageViewModel,
-  buildInitialAskMessageViewModel,
   type AskMessageViewModel
 } from "../../../src/features/ask-session/viewModel.js";
 import { appConfig } from "../../../src/userConfig.js";
@@ -132,26 +131,5 @@ describe("buildAskMessageViewModel", () => {
     }
   ])("omits the tentative footer when $label", ({ responses }) => {
     expect(buildAskMessageViewModel(session, responses, members).footer).toBeUndefined();
-  });
-});
-
-describe("buildInitialAskMessageViewModel", () => {
-  it("builds the complete initial-post view model", () => {
-    expect(buildInitialAskMessageViewModel(
-      "initial-session",
-      new Date("2026-04-24T00:00:00+09:00"),
-      members
-    )).toStrictEqual({
-      sessionId: "initial-session",
-      candidateDateIso: "2026-04-24",
-      disabled: false,
-      memberUserIds: appConfig.memberUserIds,
-      responsesByUserId: new Map(),
-      displayNameByUserId: new Map(
-        members.map((member) => [member.userId, member.displayName])
-      ),
-      suppressMentions: appConfig.dev.suppressMentions,
-      footer: undefined
-    });
   });
 });

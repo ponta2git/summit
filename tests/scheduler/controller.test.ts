@@ -115,12 +115,14 @@ describe("SchedulerController", () => {
     await ctx.ports.outbox.enqueue({
       kind: "send_message",
       sessionId: session.id,
-      dedupeKey: "raw-outbox-session",
+      dedupeKey: "settle-outbox-session",
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
-        renderer: "raw_text",
-        extra: { content: "hello" }
+        renderer: "settle_notice",
+        extra: { reason: "absent", forceSuppressMentions: true }
       }
     });
     const channel = { type: 0, isSendable: () => true, send: vi.fn(async () => ({ id: "m1" })) };

@@ -1,10 +1,10 @@
 ---
 adr: 0035
 title: Discord send outbox — atomic enqueue + worker で at-least-once 配送
-status: accepted
+status: superseded
 date: 2026-04-21
 supersedes: []
-superseded-by: null
+superseded-by: 0051
 tags: [runtime, db, discord]
 ---
 

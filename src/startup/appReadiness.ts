@@ -88,9 +88,10 @@ export const registerReconnectReplayHandlers = (input: {
             elapsedMs: lastReplaySucceededAt - startedAt,
             cancelledPromoted: report.cancelledPromoted,
             askCreated: report.askCreated,
-            messageResent: report.messageResent,
-            staleClaimReclaimed: report.staleClaimReclaimed,
-            outboxClaimReleased: report.outboxClaimReleased
+            messageIntentsQueued: report.messageIntentsQueued,
+            outboxClaimReleased: report.outboxClaimReleased,
+            outboxDeadLettersRequeued: report.outboxDeadLettersRequeued,
+            outboxSuccessorsRequeued: report.outboxSuccessorsRequeued
           },
           "Reconnect replay completed."
         );

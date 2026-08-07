@@ -1,29 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
-import {
-  sendDecidedAnnouncement,
-  renderDecidedAnnouncement
-} from "../../../src/features/decided-announcement/send.js";
+import type { ResponseRow } from "../../../src/db/rows.js";
+import { renderDecidedAnnouncement } from "../../../src/features/decided-announcement/render.js";
 import {
   buildDecidedAnnouncementViewModel
 } from "../../../src/features/decided-announcement/viewModel.js";
 import { appConfig } from "../../../src/userConfig.js";
-import { asDiscordClient } from "../../helpers/discord.js";
-import { createTestAppContext } from "../../testing/index.js";
-import { buildSessionRow } from "../factories/session.js";
 
 const decidedStartAt = new Date("2026-04-24T14:00:00.000Z");
-const decidedSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
-  buildSessionRow({
-    id: "session-decided-1",
-    askMessageId: "ask-msg-1",
-    status: "DECIDED",
-    decidedStartAt,
-    reminderAt: new Date(decidedStartAt.getTime() - 15 * 60_000),
-    reminderSentAt: null,
-    ...overrides
-  });
 
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index + 1}`,
@@ -37,10 +21,9 @@ const allTimeSlotResponses = (): ResponseRow[] =>
     sessionId: "session-decided-1",
     memberId: seededMembers[index]!.id,
     choice,
-    answeredAt: new Date(`2026-04-24T12:${String(index).padStart(2, "0")}:00.000Z`)
+    answeredAt: new Date(`2026-04-24T12:${String(index).padStart(2, "0")}:00.000Z`),
+    sourceInteractionId: null
   }));
-
-const stubClient = asDiscordClient({});
 
 describe("buildDecidedAnnouncementViewModel", () => {
   it("returns undefined when decidedStartAt is null", () => {
@@ -123,73 +106,5 @@ describe("renderDecidedAnnouncement", () => {
       "回答内訳:\n" +
       "- A : 22:30"
     );
-  });
-});
-
-describe("sendDecidedAnnouncement", () => {
-  it("enqueues a decided_announcement outbox entry with stable dedupeKey", async () => {
-    const session = decidedSession();
-    const responses = allTimeSlotResponses();
-    const ctx = createTestAppContext({
-      now: new Date("2026-04-24T12:31:00.000Z"),
-      seed: { sessions: [session], responses, members: seededMembers }
-    });
-
-    await sendDecidedAnnouncement(stubClient, ctx, session);
-
-    const entries = ctx.ports.outbox.listEntries();
-    expect(entries.map((entry) => ({
-      kind: entry.kind,
-      sessionId: entry.sessionId,
-      dedupeKey: entry.dedupeKey,
-      payload: entry.payload,
-      status: entry.status,
-      attemptCount: entry.attemptCount
-    }))).toStrictEqual([{
-      kind: "send_message",
-      sessionId: session.id,
-      dedupeKey: `decided-announcement-${session.id}`,
-      payload: {
-        kind: "send_message",
-        channelId: session.channelId,
-        renderer: "decided_announcement",
-        extra: {}
-      },
-      status: "PENDING",
-      attemptCount: 0
-    }]);
-  });
-
-  it("does not enqueue when session is not DECIDED", async () => {
-    const session = decidedSession({ status: "ASKING" });
-    const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-
-    await sendDecidedAnnouncement(stubClient, ctx, session);
-
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
-  });
-
-  it("does not enqueue when decidedStartAt is null", async () => {
-    const session = decidedSession({ decidedStartAt: null });
-    const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-
-    await sendDecidedAnnouncement(stubClient, ctx, session);
-
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
-  });
-
-  it("dedupes repeated enqueue for same session (idempotent)", async () => {
-    const session = decidedSession();
-    const responses = allTimeSlotResponses();
-    const ctx = createTestAppContext({
-      seed: { sessions: [session], responses, members: seededMembers }
-    });
-
-    await sendDecidedAnnouncement(stubClient, ctx, session);
-    await sendDecidedAnnouncement(stubClient, ctx, session);
-
-    expect(ctx.ports.outbox.listEntries().map((entry) => entry.dedupeKey)).toStrictEqual([
-      `decided-announcement-${session.id}`
-    ]);
   });
 });

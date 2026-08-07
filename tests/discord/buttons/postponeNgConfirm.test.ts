@@ -40,7 +40,8 @@ const postponeResponse = (
   sessionId: testSessionId,
   memberId: seededMembers[index]!.id,
   choice,
-  answeredAt: new Date(`2026-04-25T12:${String(index).padStart(2, "0")}:00.000Z`)
+  answeredAt: new Date(`2026-04-25T12:${String(index).padStart(2, "0")}:00.000Z`),
+  sourceInteractionId: null
 });
 
 const confirmCustomId = buildPostponeNgConfirmCustomId({
@@ -79,7 +80,7 @@ const buildDeps = (
   client: ReturnType<typeof createDiscordClient>["client"],
   context: TestAppContext
 ): InteractionHandlerDeps => ({
-  sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" })),
   client,
   context
 });
@@ -191,7 +192,8 @@ describe("postpone_ng confirmation button — confirm", () => {
     expect(memberResponses).toStrictEqual([{
       ...postponeResponse(0, "POSTPONE_OK"),
       choice: "POSTPONE_NG",
-      answeredAt: now
+      answeredAt: now,
+      sourceInteractionId: interaction.id
     }]);
   });
 

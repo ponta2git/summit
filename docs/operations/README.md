@@ -13,9 +13,9 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 
 | ファイル | 主題 | 主な参照 ADR |
 |---|---|---|
-| [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | 0001, 0024, 0033, 0035 |
+| [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | 0001, 0033, 0035, 0051 |
 | [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | 0047 |
-| [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | 0035, 0042, 0043 |
+| [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | 0035, 0042, 0043, 0051 |
 | [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | 0044 |
 | [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | 0008, 0019 |
 | [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | 0008 |
@@ -40,7 +40,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない (ADR-0001)。
 2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は AGENTS.md `prohibited_actions` で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
 3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない (AGENTS.md)。
-4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない (ADR-0001, ADR-0033)。
+4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない (ADR-0001, ADR-0051)。
 5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列 / ping URL は `.env.example` の placeholder のみ commit 可 (`.github/instructions/secrets-review.instructions.md`)。
 
 ## 連絡先 / 監視

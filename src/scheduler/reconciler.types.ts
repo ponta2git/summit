@@ -1,9 +1,10 @@
 export interface ReconcileReport {
   readonly cancelledPromoted: number;
   readonly askCreated: number;
-  readonly messageResent: number;
-  readonly staleClaimReclaimed: number;
+  readonly messageIntentsQueued: number;
   readonly outboxClaimReleased: number;
+  readonly outboxDeadLettersRequeued: number;
+  readonly outboxSuccessorsRequeued: number;
 }
 
-export type ReconcileScope = "startup" | "tick" | "reconnect";
+export type ReconcileScope = "startup" | "reconnect";

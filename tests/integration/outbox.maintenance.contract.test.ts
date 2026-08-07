@@ -14,9 +14,18 @@ import { isIntegration } from "./_support.js";
 
 const describeDb = isIntegration ? describe : describe.skip;
 
+const claimTokenOf = (
+  rows: Awaited<ReturnType<typeof claimNextOutboxBatch>>
+): string => {
+  const token = rows[0]?.claimToken;
+  expect(token).toBeTypeOf("string");
+  if (!token) {throw new Error("Expected claimed outbox token");}
+  return token;
+};
+
 describeDb("discord_outbox maintenance contract (integration)", () => {
   const harness = createOutboxContractHarness();
-  const { db, enqueueWithNextAttempt } = harness;
+  const { db, baseSession, enqueueWithNextAttempt } = harness;
 
   beforeAll(async () => {
     await harness.initialize();
@@ -30,6 +39,24 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     await harness.close();
   });
 
+  it("DB rejects outbox kinds without a delivery implementation", async () => {
+    await expect(db.execute(sql`
+      INSERT INTO discord_outbox (id, kind, session_id, payload, dedupe_key)
+      VALUES (
+        'unsupported-kind-row',
+        'edit_message',
+        ${baseSession.id},
+        '{"kind":"edit_message"}'::jsonb,
+        'unsupported-kind-dedupe'
+      )
+    `)).rejects.toMatchObject({
+      cause: {
+        code: "23514",
+        constraint_name: "discord_outbox_kind_check"
+      }
+    });
+  });
+
   // invariant: DELIVERED / FAILED の期限切れだけを削除し、PENDING は保持する。@see ADR-0042
   it("pruneOutbox deletes only expired terminal rows", async () => {
     const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
@@ -40,8 +67,12 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
       "prune-old-delivered",
       new Date("2026-03-30T00:00:00.000Z")
     );
-    await claimNextOutboxBatch(db, { limit: 1, now: oldDelivered, claimDurationMs: 30_000 });
+    const oldDeliveredClaim = await claimNextOutboxBatch(
+      db,
+      { limit: 1, now: oldDelivered, claimDurationMs: 30_000 }
+    );
     await markOutboxDelivered(db, oldDeliveredId, {
+      claimToken: claimTokenOf(oldDeliveredClaim),
       deliveredMessageId: "msg-1",
       now: oldDelivered
     });
@@ -54,8 +85,12 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
       "prune-recent-delivered",
       new Date("2026-04-22T00:00:00.000Z")
     );
-    await claimNextOutboxBatch(db, { limit: 1, now: recent, claimDurationMs: 30_000 });
+    const recentDeliveredClaim = await claimNextOutboxBatch(
+      db,
+      { limit: 1, now: recent, claimDurationMs: 30_000 }
+    );
     await markOutboxDelivered(db, recentDeliveredId, {
+      claimToken: claimTokenOf(recentDeliveredClaim),
       deliveredMessageId: "msg-2",
       now: recent
     });
@@ -66,9 +101,13 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
 
     const oldFailedAt = new Date("2026-03-20T00:00:00.000Z");
     const { id: oldFailedId } = await enqueueWithNextAttempt("prune-old-failed", oldFailedAt);
-    await claimNextOutboxBatch(db, { limit: 1, now: oldFailedAt, claimDurationMs: 30_000 });
+    const oldFailedClaim = await claimNextOutboxBatch(
+      db,
+      { limit: 1, now: oldFailedAt, claimDurationMs: 30_000 }
+    );
     await markOutboxFailed(db, oldFailedId, {
       error: "boom",
+      claimToken: claimTokenOf(oldFailedClaim),
       now: oldFailedAt,
       nextAttemptAt: null
     });
@@ -85,7 +124,7 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     expect(await pruneOutbox(db, {
       deliveredOlderThan: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000),
       failedOlderThan: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000)
-    })).toStrictEqual({ deliveredPruned: 1, failedPruned: 1 });
+    })).toStrictEqual({ deliveredPruned: 1, failedPruned: 1, cancelledPruned: 0 });
 
     const remainingIds = new Set(
       (await db.select({ id: discordOutbox.id }).from(discordOutbox)).map((row) => row.id)

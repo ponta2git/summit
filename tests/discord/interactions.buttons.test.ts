@@ -92,7 +92,7 @@ describe("interaction button routing", () => {
       reason: warnFields["reason"],
       message: callArg<string>(loggerWarnSpy, 0, 1)
     }).toStrictEqual({
-      interactionId: "interaction-button",
+      interactionId: "323456789012345679",
       userId: memberUserId,
       customId: "totally:unknown:id",
       reason: "unknown_or_stale_button",

@@ -13,7 +13,7 @@ const DEFAULT_NOW = new Date("2026-04-24T10:00:00.000Z");
 const stubClient = asDiscordClient({});
 
 export const successfulSendAsk = () =>
-  vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" }));
+  vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
 
 export const defaultInteractionDeps = (
   sendAsk: ReturnType<typeof vi.fn>,

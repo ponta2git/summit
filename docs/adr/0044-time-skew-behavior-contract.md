@@ -14,6 +14,8 @@ superseded-by: null
 
 Fly.io の host NTP に依存して system clock が正しく JST と同期している前提で運用する。**サーバ clock が ±数秒以上ずれた場合の挙動を本 ADR で明文化** し、(1) 軽微な skew (<1 分) は cron / 締切判定の通常許容範囲、(2) 中程度の skew (1〜30 分) は週 session の取りこぼしや重複が起きうる範囲、(3) 重大な skew (>30 分) は運用者手動介入領域、として境界を確定する。skew 検知の自動化は導入せず、`/status` の `now` 表示と Discord 上の体感差で運用者が気付く現行モデルを維持する。
 
+> **2026-08-08 implementation amendment:** reminder 固有 claim は廃止し、必須 Discord 投稿を claim-token fenced ordered outbox に統合した。現在の配送・回復契約は ADR-0051 を正本とする。
+
 ## Context
 
 Summit は固定 4 名・週 1 回の桃鉄出欠 Bot で、すべての時刻判定を JST 基準で行う（ADR-0002）。`process.env.TZ="Asia/Tokyo"` を起動時に設定し、cron は `node-cron` の `timezone: "Asia/Tokyo"` で発火する（`src/scheduler/index.ts`）。締切判定 / 週キー / 順延期限はすべて `ctx.clock.now()` 経由で `Date` を取得する。
@@ -23,8 +25,8 @@ Summit は固定 4 名・週 1 回の桃鉄出欠 Bot で、すべての時刻�
 - **cron 発火**: `node-cron` が host clock の wall-clock を JST 解釈で評価して tick を出す。host clock が遅れている場合、cron tick も遅れる。
 - **締切判定** (`findDueAskingSessions` 等): `deadline_at <= now` を postgres-side で評価。`now` は app 側から渡される `ctx.clock.now()`。
 - **週キー** (`isoWeekKey`): `getISOWeek` + `getISOWeekYear` を `now` から算出。年跨ぎ境界 (12/31 金 → 1/1 土) を厳格に処理。
-- **reminder claim 失効**: `REMINDER_CLAIM_STALENESS_MS=5min`。skew で `reminder_sent_at` と `now` がずれると reclaim タイミングが移動。
-- **outbox claim 失効**: `OUTBOX_CLAIM_DURATION_MS=30s`。同様に skew で release タイミングが移動。
+- **reminder eligibility**: `reminder_at <= now` で delivery intent を作る。reminder 固有の stale claim は持たず、配送所有権は outbox に統一する。
+- **outbox claim 失効**: `OUTBOX_CLAIM_DURATION_MS` を境に release タイミングが移動する。古い worker の DB 確定は claim token が拒否する。
 
 ### 想定されるリスク
 
@@ -55,10 +57,9 @@ Fly.io host は KVM ベースで NTP 同期されているのが通常だが、(
 
 skew が起きても致命的取りこぼしを起こさない設計上の根拠を本 ADR で記録する:
 
-- **reconciler invariant B (missingAsk, ADR-0033)**: 金曜 ASK 窓 (`ASK_START_HHMM`〜`ASK_DEADLINE_HHMM`) 内に session が無ければ作る。skew で 08:00 cron を逃しても、その後の 1 分 tick reconciler が窓内なら拾う。
-- **reconciler invariant E (staleReminderClaims)**: claim から 5 分超で reclaim。skew でも `reminder_sent_at` と `now` の相対差で判断するため、相対値が狂わない限り収束する。
-- **CAS-on-NULL (ADR-0024)**: reminder 二重送信は claim-first で物理的に排除。skew でも DB 上の状態遷移整合性は崩れない。
-- **outbox at-least-once (ADR-0035)**: 配送は冪等な dedupe_key で 1 行に collapse。skew で worker tick がずれても二重配送は起きない。
+- **reconciler missing-ask recovery (ADR-0051)**: ASK 窓内に Session が無ければ作る。開始 tick を逃しても、その後の supervisor が窓内なら拾う。
+- **Session aggregate command (ADR-0051)**: Session lock 後の同一 snapshot で期限判定、Response、状態遷移、delivery intent を確定するため、skew 中も DB 内の整合性を保つ。
+- **ordered outbox at-least-once (ADR-0051)**: global dedupe key で intent row を一意化し、claim token で古い owner の DB 確定を拒否する。Discord 受理後・DB 確定前の停止では表示が重複し得るが、欠落回避と Session 内順序を優先する。
 - **(weekKey, postpone_count) unique (ADR-0009)**: 30 分超の skew で誤った週キーが算出されても、二重 session 作成は DB 制約で物理的に block。
 
 ### 4. 検知と運用 SOP
@@ -127,8 +128,6 @@ skew が起きても致命的取りこぼしを起こさない設計上の根拠
 - ADR-0001 単一インスタンス + DB 正本 (skew 中も DB 整合性が保たれる根拠)
 - ADR-0002 JST 固定 (`process.env.TZ` / `src/time/`)
 - ADR-0009 (weekKey, postpone_count) unique (二重 session 作成の物理ガード)
-- ADR-0024 reminder claim-first (二重送信防止)
-- ADR-0033 startup / tick reconciler (skew 復旧後の自動収束)
-- ADR-0035 outbox at-least-once (二重配送防止)
+- ADR-0051 Session aggregate / ordered outbox / startup recovery（ADR-0024・0033・0035 を supersede）
 - ADR-0043 outbox observability metrics (skew 兆候の secondary detection)
 - `docs/reviews/2026-04-24/09-robustness.md` 改善提案 L (本 ADR の起点)

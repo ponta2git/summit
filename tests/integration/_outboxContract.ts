@@ -31,6 +31,7 @@ const basePayload: OutboxPayload = {
 
 export const createOutboxContractHarness = () => {
   const { db, client } = createIntegrationDb();
+  let nextAggregateRevision = 0;
 
   const forceNextAttemptAt = async (dedupeKey: string, at: Date): Promise<void> => {
     await db
@@ -47,7 +48,9 @@ export const createOutboxContractHarness = () => {
       kind: "send_message",
       sessionId: baseSession.id,
       payload: basePayload,
-      dedupeKey
+      dedupeKey,
+      aggregateRevision: nextAggregateRevision++,
+      ordinal: 0
     });
     await forceNextAttemptAt(dedupeKey, nextAttemptAt);
     return { id: result.id };
@@ -63,6 +66,7 @@ export const createOutboxContractHarness = () => {
       await seedBaseMembers(db);
     },
     reset: async (): Promise<void> => {
+      nextAggregateRevision = 0;
       await truncatePerTestTables(db);
       await createAskSession(db, { ...baseSession });
     },

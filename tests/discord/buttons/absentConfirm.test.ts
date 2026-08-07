@@ -58,7 +58,7 @@ const buildDeps = (
   client: ReturnType<typeof createDiscordClient>["client"],
   context: TestAppContext
 ): InteractionHandlerDeps => ({
-  sendAsk: vi.fn(async () => ({ status: "sent" as const, weekKey: "2026-W17" })),
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" })),
   client,
   context
 });
@@ -131,7 +131,17 @@ describe("ask_absent confirmation button — confirm", () => {
       cancelReason: "saturday_cancelled",
       updatedAt: now
     }]);
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => ({
+      sessionId: entry.sessionId,
+      renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
+      aggregateRevision: entry.aggregateRevision,
+      ordinal: entry.ordinal
+    }))).toStrictEqual([{
+      sessionId: session.id,
+      renderer: "settle_notice",
+      aggregateRevision: 2,
+      ordinal: 0
+    }]);
 
     // invariant: 募集メッセージが更新される。
     expect(askEdit).toHaveBeenCalledOnce();

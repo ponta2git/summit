@@ -3,44 +3,36 @@
 
 import type { DbLike } from "./rows.js";
 import {
-  cancelAsking,
-  claimReminderDispatch,
-  completeCancelledSession,
-  completePostponeVoting,
-  completeSession,
   createAskSession,
-  decideAsking,
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
   getSchedulerSessionHints,
   findNonTerminalSessions,
-  findNonTerminalSessionsByWeekKey,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
-  findStaleReminderClaims,
   findStrandedCancelledSessions,
-  isNonTerminal,
-  revertReminderClaim,
-  skipSession,
-  startPostponeVoting,
   updateAskMessageId,
   updatePostponeMessageId,
   backfillAskMessageId,
   backfillPostponeMessageId
 } from "./repositories/sessions.js";
+import { listResponses } from "./repositories/responses.js";
 import {
-  listResponses,
-  upsertResponse
-} from "./repositories/responses.js";
+  cancelWeekAtomically,
+  settleAskingCancellation,
+  settleAskingDeadline,
+  settlePostponeVoting,
+  submitAskResponse,
+  submitPostponeVote
+} from "./repositories/sessionCommands.js";
 import {
   findMemberIdByUserId,
   listMembers
 } from "./repositories/members.js";
 import {
   completeDecidedSessionAsHeld,
-  findHeldEventBySessionId,
-  listHeldEventParticipants
+  findHeldEventBySessionId
 } from "./repositories/heldEvents.js";
 import {
   claimNextOutboxBatch,
@@ -51,6 +43,7 @@ import {
   markOutboxDelivered,
   markOutboxFailed,
   pruneOutbox,
+  requeueFailedOutboxChains,
   releaseExpiredOutboxClaims
 } from "./repositories/outbox.js";
 import type {
@@ -59,6 +52,7 @@ import type {
   MembersPort,
   OutboxPort,
   ResponsesPort,
+  SessionCommandsPort,
   SessionsPort
 } from "./ports.js";
 
@@ -71,30 +65,25 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
   backfillAskMessageId: (id, messageId) => backfillAskMessageId(db, id, messageId),
   backfillPostponeMessageId: (id, messageId) => backfillPostponeMessageId(db, id, messageId),
-  cancelAsking: (input) => cancelAsking(db, input),
-  startPostponeVoting: (input) => startPostponeVoting(db, input),
-  completePostponeVoting: (input) => completePostponeVoting(db, input),
-  decideAsking: (input) => decideAsking(db, input),
-  completeCancelledSession: (input) => completeCancelledSession(db, input),
-  completeSession: (input) => completeSession(db, input),
-  claimReminderDispatch: (id, now) => claimReminderDispatch(db, id, now),
-  revertReminderClaim: (id, claimedAt) => revertReminderClaim(db, id, claimedAt),
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
   findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findDueReminderSessions: (now) => findDueReminderSessions(db, now),
   getSchedulerSessionHints: (now) => getSchedulerSessionHints(db, now),
   findNonTerminalSessions: () => findNonTerminalSessions(db),
-  findNonTerminalSessionsByWeekKey: (weekKey) =>
-    findNonTerminalSessionsByWeekKey(db, weekKey),
-  findStrandedCancelledSessions: () => findStrandedCancelledSessions(db),
-  findStaleReminderClaims: (olderThan) => findStaleReminderClaims(db, olderThan),
-  skipSession: (input) => skipSession(db, input),
-  isNonTerminal
+  findStrandedCancelledSessions: () => findStrandedCancelledSessions(db)
 });
 
 const makeResponsesPort = (db: DbLike): ResponsesPort => ({
-  listResponses: (sessionId) => listResponses(db, sessionId),
-  upsertResponse: (input) => upsertResponse(db, input)
+  listResponses: (sessionId) => listResponses(db, sessionId)
+});
+
+const makeSessionCommandsPort = (db: DbLike): SessionCommandsPort => ({
+  cancelWeekAtomically: (input) => cancelWeekAtomically(db, input),
+  submitAskResponse: (input) => submitAskResponse(db, input),
+  settleAskingCancellation: (input) => settleAskingCancellation(db, input),
+  settleAskingDeadline: (input) => settleAskingDeadline(db, input),
+  submitPostponeVote: (input) => submitPostponeVote(db, input),
+  settlePostponeVoting: (input) => settlePostponeVoting(db, input)
 });
 
 const makeMembersPort = (db: DbLike): MembersPort => ({
@@ -104,8 +93,7 @@ const makeMembersPort = (db: DbLike): MembersPort => ({
 
 const makeHeldEventsPort = (db: DbLike): HeldEventsPort => ({
   completeDecidedSessionAsHeld: (input) => completeDecidedSessionAsHeld(db, input),
-  findBySessionId: (sessionId) => findHeldEventBySessionId(db, sessionId),
-  listParticipants: (heldEventId) => listHeldEventParticipants(db, heldEventId)
+  findBySessionId: (sessionId) => findHeldEventBySessionId(db, sessionId)
 });
 
 const makeOutboxPort = (db: DbLike): OutboxPort => ({
@@ -113,6 +101,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   claimNextBatch: (options) => claimNextOutboxBatch(db, options),
   markDelivered: (id, options) => markOutboxDelivered(db, id, options),
   markFailed: (id, options) => markOutboxFailed(db, id, options),
+  requeueFailedChains: (now) => requeueFailedOutboxChains(db, now),
   releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
   findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
   prune: (options) => pruneOutbox(db, options),
@@ -122,6 +111,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
 
 export const makeRealPorts = (db: DbLike): AppPorts => ({
   sessions: makeSessionsPort(db),
+  sessionCommands: makeSessionCommandsPort(db),
   responses: makeResponsesPort(db),
   members: makeMembersPort(db),
   heldEvents: makeHeldEventsPort(db),

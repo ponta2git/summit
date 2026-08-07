@@ -3,19 +3,18 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
+import { MEMBER_COUNT_EXPECTED } from "../../config.js";
+import type { SubmitPostponeVoteResult } from "../../db/ports.js";
 import type { ResponseChoice, SessionRow } from "../../db/rows.js";
 import {
   type AppError,
   type AppResult,
   okResult
 } from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { postponeMessages } from "./messages.js";
-import { renderPostponeBody } from "./render.js";
-import { buildPostponeMessageViewModel } from "./viewModel.js";
 import {
-  getGuardFailureReason,
   guardChannelId,
   guardGuildId,
   guardMemberUserId,
@@ -23,13 +22,17 @@ import {
   guardRegisteredMemberId,
   guardSessionExists,
   guardSessionPostponeDeadlineOpen,
-  guardSessionPostponeVoting,
-  GUARD_REASON_TO_MESSAGE
+  guardSessionPostponeVoting
 } from "../../discord/shared/guards.js";
-import { settlePostponeVotingSession } from "../../orchestration/index.js";
+import {
+  applyPostponeTransitionResult,
+  buildSaturdaySessionInput
+} from "../../orchestration/postponeVoting.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import type { PostponeCustomIdChoice } from "../../discord/shared/customId.js";
 import { buildPostponeNgConfirmRow } from "./ngConfirm.js";
+import { handlePostponePipelineError } from "./buttonError.js";
+import { refreshPostponeMessage } from "./messageRefresh.js";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",
@@ -52,6 +55,19 @@ interface PostponePipelineReady extends PostponePipelineParsed {
   readonly session: SessionRow;
   readonly memberId: string;
 }
+
+type AcceptedPostponeResult = Extract<
+  SubmitPostponeVoteResult,
+  { kind: "accepted_pending" | "stale_interaction" | "transitioned" }
+>;
+
+interface PostponePipelineRecorded extends PostponePipelineReady {
+  readonly commandResult: AcceptedPostponeResult;
+}
+
+const unreachableGuardSuccess = (): never => {
+  throw new Error("Expected aggregate rejection guard to fail");
+};
 
 const validatePostponePipeline = (context: PostponePipelineStart): AppResult<PostponePipelineParsed, AppError> =>
   okResult(context)
@@ -98,19 +114,49 @@ const loadSessionAndMemberStep = (context: PostponePipelineParsed): ResultAsync<
       }))
     );
 
-const recordResponseStep = (context: PostponePipelineReady): ResultAsync<PostponePipelineReady, AppError> =>
-  fromDatabasePromise(
-    context.context.ports.responses.upsertResponse({
-      id: randomUUID(),
+const resolvePostponeCommandResult = (
+  context: PostponePipelineReady,
+  result: SubmitPostponeVoteResult,
+  now: Date
+): ResultAsync<PostponePipelineRecorded, AppError> => {
+  switch (result.kind) {
+    case "accepted_pending":
+    case "stale_interaction":
+    case "transitioned":
+      return okAsync({ ...context, commandResult: result });
+    case "session_not_found":
+      return toResultAsync(guardSessionExists(undefined)).map(unreachableGuardSuccess);
+    case "member_not_found":
+      return toResultAsync(guardRegisteredMemberId(undefined)).map(unreachableGuardSuccess);
+    case "deadline_passed":
+      return toResultAsync(
+        guardSessionPostponeDeadlineOpen(result.session, now)
+      ).map(unreachableGuardSuccess);
+    case "closed":
+      return toResultAsync(
+        guardSessionPostponeVoting(result.session)
+      ).map(unreachableGuardSuccess);
+  }
+};
+
+const recordResponseStep = (
+  context: PostponePipelineReady
+): ResultAsync<PostponePipelineRecorded, AppError> => {
+  const now = context.context.clock.now();
+  return fromDatabasePromise(
+    context.context.ports.sessionCommands.submitPostponeVote({
+      responseId: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,
       choice: context.responseChoice,
-      answeredAt: context.context.clock.now()
+      sourceInteractionId: context.interaction.id,
+      now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED,
+      saturday: buildSaturdaySessionInput(context.session)
     }),
-    "Failed to record postpone response."
+    "Failed to record postpone response atomically."
   )
-    // race: responses.(sessionId, memberId) unique 制約 + upsert で再投票でも最新 1 件に収束する。
-    .map(() => context)
+    .andThen((result) => resolvePostponeCommandResult(context, result, now))
     .andTee((current) => {
       logger.info(
         {
@@ -125,93 +171,6 @@ const recordResponseStep = (context: PostponePipelineReady): ResultAsync<Postpon
         "Postpone response recorded."
       );
     });
-
-const refreshPostponeMessageStep = (context: PostponePipelineReady): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.responses.listResponses(context.sessionId),
-      context.context.ports.members.listMembers()
-    ]),
-    "Failed to load postpone message snapshot."
-  )
-    .andThen(([responses, memberRows]) =>
-      fromDatabasePromise(
-        context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to reload session after postpone response."
-      ).map((freshSession) => ({
-        freshSession,
-        responses,
-        memberRows
-      }))
-    )
-    .andThen(({ freshSession, responses, memberRows }) => {
-      if (!freshSession || !freshSession.postponeMessageId) {
-        return okAsync(undefined);
-      }
-
-      const vm = buildPostponeMessageViewModel(freshSession, responses, memberRows, {
-        disabled: false
-      });
-      const rendered = renderPostponeBody(vm);
-      const editPayload = {
-        content: rendered.content ?? "",
-        ...(rendered.components ? { components: rendered.components } : {})
-      };
-      // source-of-truth: 再描画は常に DB から再取得した session + responses を正本として構築する。
-      return fromDiscordPromise(
-        context.interaction.message.edit(editPayload),
-        "Failed to edit postpone message after response."
-      )
-        .map(() => undefined)
-        .orElse((error) => {
-          // race: edit 失敗でも DB を巻き戻さず、次 tick / 次押下の再描画で回復させる。
-          logger.warn(
-            {
-              error,
-              interactionId: context.interaction.id,
-              customId: context.interaction.customId,
-              sessionId: context.sessionId,
-              weekKey: freshSession.weekKey,
-              userId: context.interaction.user.id,
-              messageId: freshSession.postponeMessageId
-            },
-            "Failed to edit postpone message after response."
-          );
-          return okAsync(undefined);
-        });
-    });
-
-const settlePostponeStep = (context: PostponePipelineReady): ResultAsync<void, AppError> =>
-  settlePostponeVotingSession(
-    context.deps.client,
-    context.context,
-    context.session,
-    context.context.clock.now()
-  );
-
-const handlePostponePipelineError = async (
-  interaction: ButtonInteraction,
-  error: AppError
-): Promise<void> => {
-  const reason = getGuardFailureReason(error);
-  if (!reason) {
-    throw error;
-  }
-
-  logger.info(
-    {
-      interactionId: interaction.id,
-      customId: interaction.customId,
-      userId: interaction.user.id,
-      reason
-    },
-    "Rejected postpone button interaction by guard."
-  );
-
-  await interaction.followUp({
-    content: GUARD_REASON_TO_MESSAGE[reason],
-    flags: MessageFlags.Ephemeral
-  });
 };
 
 /**
@@ -275,8 +234,19 @@ export const handlePostponeButton = async (
 
   const result = await loadSessionAndMemberStep(parsed)
     .andThen(recordResponseStep)
-    .andThen((context) => refreshPostponeMessageStep(context).map(() => context))
-    .andThen((context) => settlePostponeStep(context).map(() => context));
+    .andThen((context) =>
+      context.commandResult.kind === "transitioned"
+        ? applyPostponeTransitionResult(
+            context.deps.client,
+            context.context,
+            context.commandResult
+          ).map(() => context)
+        : refreshPostponeMessage(
+            context.context,
+            context.interaction,
+            context.sessionId
+          ).map(() => context)
+    );
 
   await result.match(
     async (context) => {

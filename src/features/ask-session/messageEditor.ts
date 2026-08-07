@@ -32,7 +32,7 @@ export const updateAskMessage = async (
       //   source-of-truth: DB-as-SoT。状態は巻き戻さず ID だけ更新する。
       // race: startup probe と競合しても DB 最新値から再描画し、最終的な askMessageId だけを更新する。
       // @see ADR-0001
-      // @see ADR-0033
+      // @see ADR-0051
       try {
         const sent = await channel.send(rendered);
         await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);

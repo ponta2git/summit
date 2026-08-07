@@ -20,7 +20,7 @@ Summit の DB は Neon PostgreSQL 16 を使用する。本ファイルは backup
 | RTO | 1 時間以内 (業務時間帯) | Neon restore + Fly redeploy |
 | 許容 data loss | 1 週分の session / responses 全損失まで | reconciler が次週以降を自動再生成できる |
 
-**重要**: 金曜募集 → 土曜順延のサイクル中に DB が壊れた場合でも、members テーブルさえ残っていれば reconciler が次週以降を自動で組み立てる。「今週を復旧できなくても来週は動く」設計 (ADR-0033)。
+**重要**: 金曜募集 → 土曜順延のサイクル中に DB が壊れた場合でも、members テーブルさえ残っていれば reconciler が次週以降を自動で組み立てる。「今週を復旧できなくても来週は動く」設計 (ADR-0051)。
 
 ## restore-pitr 手順
 

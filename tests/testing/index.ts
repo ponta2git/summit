@@ -8,3 +8,4 @@ export {
   createTestAppContext,
   type TestAppContext
 } from "./ports.js";
+export { createFakeSessionCommandsPort } from "./ports.sessionCommands.js";

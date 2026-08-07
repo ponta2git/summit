@@ -12,21 +12,27 @@ import { stubChannel, stubClient } from "./outboxWorker.harness.js";
 
 describe("outbox worker delivery", () => {
   it("starts claimed deliveries concurrently within one batch", async () => {
-    const session = buildSessionRow({ id: "s3-parallel" });
+    const sessions = [
+      buildSessionRow({ id: "s3-parallel-a" }),
+      buildSessionRow({ id: "s3-parallel-b", weekKey: "2026-W18" })
+    ];
     const ctx = createTestAppContext({
-      seed: { sessions: [session] },
+      seed: { sessions },
       now: new Date("2026-04-24T12:00:00Z")
     });
-    for (const suffix of ["a", "b"]) {
+    for (const [index, session] of sessions.entries()) {
+      const suffix = index === 0 ? "a" : "b";
       await ctx.ports.outbox.enqueue({
         kind: "send_message",
         sessionId: session.id,
-        dedupeKey: `raw-${session.id}-${suffix}`,
+        dedupeKey: `settle-${session.id}-${suffix}`,
+        aggregateRevision: 0,
+        ordinal: 0,
         payload: {
           kind: "send_message",
           channelId: session.channelId,
-          renderer: "raw_text",
-          extra: { content: suffix }
+          renderer: "settle_notice",
+          extra: { reason: "absent", forceSuppressMentions: true }
         }
       });
     }
@@ -69,6 +75,8 @@ describe("outbox worker delivery", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `ask-msg-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
@@ -85,7 +93,11 @@ describe("outbox worker delivery", () => {
     expect({ status: entry?.status, deliveredMessageId: entry?.deliveredMessageId })
       .toStrictEqual({ status: "DELIVERED", deliveredMessageId: "posted-1" });
     expect((await ctx.ports.sessions.findSessionById(session.id))?.askMessageId).toBe("posted-1");
-    expect(sentMessages).toStrictEqual([{ id: "posted-1", payload: { content: "hello" } }]);
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]?.payload).toMatchObject({
+      content: expect.stringContaining("開催候補日: 2026-04-24(金)"),
+      components: expect.any(Array)
+    });
   });
 
   it("does not overwrite a non-null ask message id", async () => {
@@ -102,6 +114,8 @@ describe("outbox worker delivery", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `ask-msg-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,
@@ -129,6 +143,8 @@ describe("outbox worker retry policy", () => {
       kind: "send_message",
       sessionId: session.id,
       dedupeKey: `ask-msg-${session.id}`,
+      aggregateRevision: 0,
+      ordinal: 0,
       payload: {
         kind: "send_message",
         channelId: session.channelId,

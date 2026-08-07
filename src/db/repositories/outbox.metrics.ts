@@ -32,15 +32,17 @@ export const findStrandedOutboxEntries = async (
 export interface PruneOutboxResult {
   readonly deliveredPruned: number;
   readonly failedPruned: number;
+  readonly cancelledPruned: number;
 }
 
 /**
  * Delete terminal outbox rows past their retention deadline.
  *
  * @remarks
- * invariant: `status IN ('DELIVERED','FAILED')` のみを削除する。PENDING / IN_FLIGHT は
+ * invariant: `status IN ('DELIVERED','FAILED','CANCELLED')` のみを削除する。PENDING / IN_FLIGHT は
  *   at-least-once 配送と CAS-on-NULL back-fill の正本性を保つため絶対に prune しない。
- *   実装は status 別に 2 DELETE に分け、混在不可能にする。
+ *   実装は status 別に DELETE を分け、混在不可能にする。CANCELLED は失敗系と同じ
+ *   retention window を使い、先行 intent の dead-letter 後も監査期間を確保する。
  * idempotent: 削除のみで状態遷移なし。同一 tick の重複呼び出しに安全。
  * @see ADR-0042
  */
@@ -69,9 +71,19 @@ export const pruneOutbox = async (
       )
     )
     .returning({ id: discordOutbox.id });
+  const cancelledRows = await db
+    .delete(discordOutbox)
+    .where(
+      and(
+        eq(discordOutbox.status, "CANCELLED"),
+        lte(discordOutbox.updatedAt, options.failedOlderThan)
+      )
+    )
+    .returning({ id: discordOutbox.id });
   return {
     deliveredPruned: deliveredRows.length,
-    failedPruned: failedRows.length
+    failedPruned: failedRows.length,
+    cancelledPruned: cancelledRows.length
   };
 };
 

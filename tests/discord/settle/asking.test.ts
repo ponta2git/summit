@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applyDeadlineDecision,
+  evaluateAndApplyDeadlineDecision,
   settleAskingSession
 } from "../../../src/orchestration/index.js";
+import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { callArg } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
@@ -27,7 +28,12 @@ const disabledStates = (payload: MessagePayload): readonly boolean[] => {
 
 describe("settleAskingSession", () => {
   it("settles Friday into postpone voting and publishes the two ordered messages", async () => {
-    const session = sessionRow({ postponeCount: 0, status: "ASKING", cancelReason: null });
+    const session = sessionRow({
+      postponeCount: 0,
+      status: "ASKING",
+      cancelReason: null,
+      postponeMessageId: null
+    });
     const ctx = createTestAppContext({
       now,
       seed: { sessions: [session], members: seededMembers }
@@ -35,6 +41,23 @@ describe("settleAskingSession", () => {
     const discord = createSettleDiscordFixture();
 
     await settleAskingSession(discord.client, ctx, session.id, "absent");
+
+    expect(discord.edit).toHaveBeenCalledTimes(1);
+    const askEdit = asMessagePayload(callArg(discord.edit));
+    expect(askEdit.content).toContain("今回はお流れです。回答は締め切りました");
+    expect(disabledStates(askEdit)).toStrictEqual([true, true, true, true, true]);
+    expect(discord.send).not.toHaveBeenCalled();
+    expect(ctx.ports.outbox.listEntries().map((entry) => ({
+      renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
+      ordinal: entry.ordinal,
+      status: entry.status
+    }))).toStrictEqual([
+      { renderer: "settle_notice", ordinal: 0, status: "PENDING" },
+      { renderer: "postpone_vote", ordinal: 1, status: "PENDING" }
+    ]);
+
+    await runOutboxWorkerTick(discord.client, ctx);
+    await runOutboxWorkerTick(discord.client, ctx);
 
     expect(ctx.ports.sessions.listSessions()).toHaveLength(1);
     const persisted = ctx.ports.sessions.listSessions()[0]!;
@@ -54,11 +77,6 @@ describe("settleAskingSession", () => {
       updatedAt: now.toISOString()
     });
 
-    expect(discord.edit).toHaveBeenCalledTimes(1);
-    const askEdit = asMessagePayload(callArg(discord.edit));
-    expect(askEdit.content).toContain("今回はお流れです。回答は締め切りました");
-    expect(disabledStates(askEdit)).toStrictEqual([true, true, true, true, true]);
-
     expect(discord.send).toHaveBeenCalledTimes(2);
     expect(discord.sentPayloads).toHaveLength(2);
     expect(discord.sentPayloads[0]).toStrictEqual({
@@ -68,7 +86,10 @@ describe("settleAskingSession", () => {
     expect(postponePost.content).toContain("🔁 今回はお流れです。明日も募集しますか？");
     expect(postponePost.content).toContain("回答締切: 候補日翌日 00:00 JST");
     expect(renderedComponentData(postponePost)).toHaveLength(1);
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
+      "DELIVERED",
+      "DELIVERED"
+    ]);
   });
 
   it("normalizes Saturday cancellation and completes the week", async () => {
@@ -80,6 +101,9 @@ describe("settleAskingSession", () => {
     const discord = createSettleDiscordFixture();
 
     await settleAskingSession(discord.client, ctx, session.id, "deadline_unanswered");
+
+    expect(discord.send).not.toHaveBeenCalled();
+    await runOutboxWorkerTick(discord.client, ctx);
 
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
       id: persisted.id,
@@ -108,7 +132,9 @@ describe("settleAskingSession", () => {
     expect(discord.sentPayloads).toStrictEqual([{
       content: `${mentionPrefix}🛑 土曜回も予定がそろわなかったため、今週はお流れです。`
     }]);
-    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
+      "DELIVERED"
+    ]);
   });
 
   it("keeps a Saturday decision pending until reminder delivery", async () => {
@@ -124,19 +150,17 @@ describe("settleAskingSession", () => {
       sessionId: session.id,
       memberId: member.id,
       choice: "T2300" as const,
-      answeredAt: new Date(`2026-04-25T11:${String(index).padStart(2, "0")}:00.000Z`)
+      answeredAt: new Date(`2026-04-25T11:${String(index).padStart(2, "0")}:00.000Z`),
+      sourceInteractionId: null
     }));
     const ctx = createTestAppContext({
       now: decisionNow,
       seed: { sessions: [session], responses, members: seededMembers }
     });
     const discord = createSettleDiscordFixture();
-    const startAt = new Date("2026-04-25T14:00:00.000Z");
-
-    await applyDeadlineDecision(discord.client, ctx, session, {
-      kind: "decided",
-      chosenSlot: "T2300",
-      startAt
+    await evaluateAndApplyDeadlineDecision(discord.client, ctx, session, {
+      memberCountExpected: 4,
+      now: decisionNow
     });
 
     const persisted = ctx.ports.sessions.listSessions()[0]!;

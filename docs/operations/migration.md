@@ -40,6 +40,15 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 生成された SQL ファイルと `momo-db/drizzle/meta/` の両方を `momo-db` リポジトリに commit する。
 
+### Fail-closed preflight を持つ migration
+
+Session aggregate / ordered outbox migration は、旧 reminder claim、重複 dedupe key、未対応 outbox kind を検出すると transaction を中断する。これは監査履歴を migration が独断で修復しないための安全装置である。
+
+- guard を削除・迂回して再実行しない。
+- 対象行を read-only query で特定し、backup を確認する。
+- 解消方法を別 migration としてレビューし、`generate` + `migrate` の手順を守る。
+- preflight 失敗時は application deploy を進めない。
+
 ## 本番への適用
 
 > **注意**: Fly.toml の `release_command` は削除済み。migration は summit deploy とは独立して手動で適用する。
