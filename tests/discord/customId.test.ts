@@ -3,13 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildCancelWeekCustomId,
   buildCustomId,
-  CUSTOM_ID_SLOT_CHOICES,
-  customIdChoiceFromSlotKey,
   parseCancelWeekCustomId,
   parseCustomId,
   slotKeyFromCustomIdChoice
 } from "../../src/discord/shared/customId.js";
-import { SLOT_KEYS } from "../../src/slot.js";
 import { expectParseSuccess } from "../helpers/assertions.js";
 
 describe("customId codec", () => {
@@ -59,12 +56,11 @@ describe("customId codec", () => {
 });
 
 describe("slot wire in custom_id", () => {
-  it("round-trips SlotKey through customId choice", () => {
-    for (const slotKey of SLOT_KEYS) {
-      const choice = customIdChoiceFromSlotKey(slotKey);
-      expect(CUSTOM_ID_SLOT_CHOICES).toContain(choice);
-      expect(slotKeyFromCustomIdChoice(choice)).toBe(slotKey);
-    }
+  it("maps customId choices to SlotKey", () => {
+    expect(slotKeyFromCustomIdChoice("t2200")).toBe("T2200");
+    expect(slotKeyFromCustomIdChoice("t2230")).toBe("T2230");
+    expect(slotKeyFromCustomIdChoice("t2300")).toBe("T2300");
+    expect(slotKeyFromCustomIdChoice("t2330")).toBe("T2330");
   });
 });
 

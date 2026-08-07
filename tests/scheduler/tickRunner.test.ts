@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 
 import { TICK_DURATION_WARN_MS } from "../../src/config.js";
-import { createTickSafetyWrap, runTickSafely } from "../../src/scheduler/tickRunner.js";
+import { runTickSafely } from "../../src/scheduler/tickRunner.js";
 import { callArg } from "../helpers/assertions.js";
 
 const makeLogger = () => {
@@ -81,20 +81,5 @@ describe("runTickSafely", () => {
     await runTickSafely({ name: "fastTick", logger: asLogger(logger), nowFn }, async () => {});
 
     expect(logger.warn).not.toHaveBeenCalled();
-  });
-});
-
-describe("createTickSafetyWrap", () => {
-  it("returns a function that delegates to runTickSafely with the bound logger", async () => {
-    const logger = makeLogger();
-    const safeWrap = createTickSafetyWrap(asLogger(logger));
-
-    await safeWrap("wrappedTick", async () => {});
-
-    expect(loggedEvents(logger.info)).toStrictEqual([
-      "scheduler.tick_started",
-      "scheduler.tick_finished"
-    ]);
-    expect(callArg<{ tick: string }>(logger.info).tick).toBe("wrappedTick");
   });
 });

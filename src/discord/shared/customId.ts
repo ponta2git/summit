@@ -15,18 +15,8 @@ const CUSTOM_ID_TO_SLOT_KEY: Record<CustomIdSlotChoice, SlotKey> = {
   t2330: "T2330"
 };
 
-const SLOT_KEY_TO_CUSTOM_ID: Record<SlotKey, CustomIdSlotChoice> = {
-  T2200: "t2200",
-  T2230: "t2230",
-  T2300: "t2300",
-  T2330: "t2330"
-};
-
 export const slotKeyFromCustomIdChoice = (choice: CustomIdSlotChoice): SlotKey =>
   CUSTOM_ID_TO_SLOT_KEY[choice];
-
-export const customIdChoiceFromSlotKey = (slotKey: SlotKey): CustomIdSlotChoice =>
-  SLOT_KEY_TO_CUSTOM_ID[slotKey];
 
 const askCustomIdChoiceSchema = z.union([
   z.enum(CUSTOM_ID_SLOT_CHOICES),

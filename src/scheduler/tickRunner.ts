@@ -37,8 +37,3 @@ export const runTickSafely = async (
     logger.error({ event: "scheduler.tick_failed", tick: name, elapsedMs, err });
   }
 };
-
-export const createTickSafetyWrap =
-  (logger: Pick<Logger, "error" | "info" | "warn">) =>
-  (name: string, fn: () => Promise<void>): Promise<void> =>
-    runTickSafely({ name, logger }, fn);
