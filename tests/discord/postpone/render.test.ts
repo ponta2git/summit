@@ -170,21 +170,23 @@ describe("renderPostponeBody", () => {
       { disabled: true }
     );
     const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0] as unknown as {
-      toJSON?: () => { components: { disabled?: boolean }[] };
-    };
-    const json = row?.toJSON?.();
-    expect(json?.components.every((c) => c.disabled === true)).toBe(true);
+    const row = rendered.components?.[0];
+    expect(row).toBeDefined();
+    const json = (row as unknown as {
+      toJSON: () => { components: { disabled?: boolean }[] };
+    }).toJSON();
+    expect(json.components.map((component) => component.disabled)).toStrictEqual([true, true]);
   });
 
   it("leaves buttons enabled when vm.disabled=false (default)", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0] as unknown as {
-      toJSON?: () => { components: { disabled?: boolean }[] };
-    };
-    const json = row?.toJSON?.();
-    expect(json?.components.every((c) => c.disabled !== true)).toBe(true);
+    const row = rendered.components?.[0];
+    expect(row).toBeDefined();
+    const json = (row as unknown as {
+      toJSON: () => { components: { disabled?: boolean }[] };
+    }).toJSON();
+    expect(json.components.map((component) => component.disabled)).toStrictEqual([false, false]);
   });
 
   it("appends footerText after 1 blank line at the end of content", () => {
@@ -216,13 +218,16 @@ describe("renderPostponeBody", () => {
   it("builds postpone custom ids for ok and ng buttons", () => {
     const vm = buildPostponeMessageViewModel({ id: SESSION_ID, candidateDateIso: CANDIDATE_DATE });
     const rendered = renderPostponeBody(vm);
-    const row = rendered.components?.[0] as unknown as {
-      toJSON?: () => { components: { custom_id?: string }[] };
-    };
-    const ids = row?.toJSON?.().components.map((c) => c.custom_id);
-    expect(ids).toEqual([
-      `postpone:${SESSION_ID}:ok`,
-      `postpone:${SESSION_ID}:ng`
+    const row = rendered.components?.[0];
+    expect(row).toBeDefined();
+    const buttons = (row as unknown as {
+      toJSON: () => {
+        components: { custom_id?: string; label?: string; disabled?: boolean }[];
+      };
+    }).toJSON().components;
+    expect(buttons.map(({ custom_id, label, disabled }) => ({ custom_id, label, disabled }))).toStrictEqual([
+      { custom_id: `postpone:${SESSION_ID}:ok`, label: "明日も募集OK", disabled: false },
+      { custom_id: `postpone:${SESSION_ID}:ng`, label: "今週はお流れ", disabled: false }
     ]);
   });
 });

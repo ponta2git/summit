@@ -20,16 +20,18 @@ describe("askMessage", () => {
 
   it("builds ask buttons with expected custom ids", () => {
     const row = buildAskRow("session-id");
-    const customIds = row
-      .toJSON()
-      .components.map((component) => ("custom_id" in component ? component.custom_id : undefined));
+    const buttons = row.toJSON().components.map((component) => ({
+      customId: "custom_id" in component ? component.custom_id : undefined,
+      label: "label" in component ? component.label : undefined,
+      disabled: "disabled" in component ? component.disabled : undefined
+    }));
 
-    expect(customIds).toEqual([
-      "ask:session-id:t2200",
-      "ask:session-id:t2230",
-      "ask:session-id:t2300",
-      "ask:session-id:t2330",
-      "ask:session-id:absent"
+    expect(buttons).toStrictEqual([
+      { customId: "ask:session-id:t2200", label: "22:00", disabled: false },
+      { customId: "ask:session-id:t2230", label: "22:30", disabled: false },
+      { customId: "ask:session-id:t2300", label: "23:00", disabled: false },
+      { customId: "ask:session-id:t2330", label: "23:30", disabled: false },
+      { customId: "ask:session-id:absent", label: "今回は欠席", disabled: false }
     ]);
   });
 
@@ -58,11 +60,17 @@ describe("askMessage", () => {
     const session = buildSessionRow({ status: "CANCELLED", cancelReason: "absent" });
     const vm = buildAskMessageViewModel(session, [], []);
     const rendered = renderAskBody(vm);
-    const first = rendered.components?.[0] as unknown as {
-      toJSON?: () => { components: { disabled?: boolean }[] };
-    };
-    const row = first?.toJSON?.();
-    const allDisabled = row?.components.every((c) => c.disabled === true);
-    expect(allDisabled).toBe(true);
+    const first = rendered.components?.[0];
+    expect(first).toBeDefined();
+    const row = (first as unknown as {
+      toJSON: () => { components: { disabled?: boolean }[] };
+    }).toJSON();
+    expect(row.components.map((component) => component.disabled)).toStrictEqual([
+      true,
+      true,
+      true,
+      true,
+      true
+    ]);
   });
 });

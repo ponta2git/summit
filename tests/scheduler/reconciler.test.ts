@@ -137,7 +137,7 @@ describe("reconcileStrandedCancelled", () => {
     expect(promoted).toBe(1);
     const after = await ctx.ports.sessions.findSessionById("c-friday");
     expect(after?.status).toBe("POSTPONE_VOTING");
-    expect(after?.postponeMessageId).toBeTruthy();
+    expect(after?.postponeMessageId).toBe("sent-2");
   });
 
   it("promotes a Friday CANCELLED past the postpone deadline to COMPLETED", async () => {
@@ -462,7 +462,7 @@ describe("promoteStranded cancelled UI cleanup", () => {
     expect(postponeContent).toContain("<@");
     const after = await ctx.ports.sessions.findSessionById("c-fri-ui");
     expect(after?.status).toBe("POSTPONE_VOTING");
-    expect(after?.postponeMessageId).toBeTruthy();
+    expect(after?.postponeMessageId).toBe("sent-2");
   });
 
   it("Saturday path: disables ASK buttons and sends settle notice before COMPLETED", async () => {

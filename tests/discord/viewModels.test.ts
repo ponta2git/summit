@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildAskMessageViewModel,
   buildInitialAskMessageViewModel,
-  buildSettleNoticeViewModel
+  buildSettleNoticeViewModel,
+  renderSettleNotice
 } from "../../src/features/ask-session/viewModel.js";
 import { buildPostponeMessageViewModel } from "../../src/features/postpone-voting/viewModel.js";
 import type {
@@ -69,6 +70,19 @@ describe("buildAskMessageViewModel", () => {
       []
     );
     expect(vm.footer).toContain("お流れ");
+  });
+
+  it("disables controls and uses the SKIPPED footer", () => {
+    const vm = buildAskMessageViewModel(
+      { ...session, status: "SKIPPED" },
+      [],
+      []
+    );
+
+    expect({ disabled: vm.disabled, footer: vm.footer }).toStrictEqual({
+      disabled: true,
+      footer: "🛑 今週の出欠確認はお休みです"
+    });
   });
 
   it("computes DECIDED footer with start time", () => {
@@ -254,5 +268,23 @@ describe("buildSettleNoticeViewModel", () => {
   it("uses appConfig.memberUserIds", () => {
     const vm = buildSettleNoticeViewModel("absent");
     expect(vm.memberUserIds).toEqual(appConfig.memberUserIds);
+  });
+});
+
+describe("renderSettleNotice", () => {
+  it("renders member mentions followed by the cancel text", () => {
+    const vm = buildSettleNoticeViewModel("absent", { forceSuppressMentions: false });
+
+    expect(renderSettleNotice(vm)).toStrictEqual({
+      content: `${appConfig.memberUserIds.map((id) => `<@${id}>`).join(" ")}\n${vm.cancelText}`
+    });
+  });
+
+  it("omits the mention line when suppression is forced", () => {
+    const vm = buildSettleNoticeViewModel("deadline_unanswered", {
+      forceSuppressMentions: true
+    });
+
+    expect(renderSettleNotice(vm)).toStrictEqual({ content: vm.cancelText });
   });
 });

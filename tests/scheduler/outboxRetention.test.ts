@@ -44,8 +44,10 @@ describe("runOutboxRetentionTick", () => {
     });
 
     const oldDelivered = new Date(now.getTime() - OUTBOX_RETENTION_DELIVERED_MS - 1);
+    const boundaryDelivered = new Date(now.getTime() - OUTBOX_RETENTION_DELIVERED_MS);
     const recentDelivered = new Date(now.getTime() - 60_000);
     const oldFailed = new Date(now.getTime() - OUTBOX_RETENTION_FAILED_MS - 1);
+    const boundaryFailed = new Date(now.getTime() - OUTBOX_RETENTION_FAILED_MS);
     const recentFailed = new Date(now.getTime() - 60_000);
 
     ctx.ports.outbox.seedEntry(
@@ -70,6 +72,16 @@ describe("runOutboxRetentionTick", () => {
     );
     ctx.ports.outbox.seedEntry(
       baseEntry({
+        id: "boundary-del",
+        sessionId: session.id,
+        dedupeKey: "boundary-del",
+        status: "DELIVERED",
+        deliveredAt: boundaryDelivered,
+        updatedAt: boundaryDelivered
+      })
+    );
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
         id: "old-failed",
         sessionId: session.id,
         dedupeKey: "old-failed",
@@ -84,6 +96,15 @@ describe("runOutboxRetentionTick", () => {
         dedupeKey: "recent-failed",
         status: "FAILED",
         updatedAt: recentFailed
+      })
+    );
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
+        id: "boundary-failed",
+        sessionId: session.id,
+        dedupeKey: "boundary-failed",
+        status: "FAILED",
+        updatedAt: boundaryFailed
       })
     );
     ctx.ports.outbox.seedEntry(
@@ -110,7 +131,9 @@ describe("runOutboxRetentionTick", () => {
 
     const remaining = ctx.ports.outbox.listEntries().map((e) => e.id);
     expect(remaining).not.toContain("old-del");
+    expect(remaining).not.toContain("boundary-del");
     expect(remaining).not.toContain("old-failed");
+    expect(remaining).not.toContain("boundary-failed");
     expect(remaining).toContain("recent-del");
     expect(remaining).toContain("recent-failed");
     // invariant: PENDING / IN_FLIGHT は経過時間に関わらず絶対に prune しない (ADR-0042)。
