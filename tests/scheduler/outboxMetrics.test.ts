@@ -128,6 +128,44 @@ describe("runOutboxMetricsTick", () => {
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(callArg<Record<string, unknown>>(warn)).toStrictEqual({
+      event: "outbox.metrics",
+      pending: 1,
+      inFlight: 0,
+      failed: 0,
+      oldestPendingAgeMs: OUTBOX_METRICS_PENDING_AGE_WARN_MS + 1,
+      oldestFailedAgeMs: null
+    });
+  });
+
+  it("keeps info level at the exact oldest pending age threshold", async () => {
+    const session = buildSessionRow({ id: "sm3-boundary" });
+    const now = new Date("2026-04-25T01:00:00Z");
+    const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
+    ctx.ports.outbox.seedEntry(
+      baseEntry({
+        id: "p-boundary",
+        sessionId: session.id,
+        dedupeKey: "p-boundary",
+        status: "PENDING",
+        createdAt: new Date(now.getTime() - OUTBOX_METRICS_PENDING_AGE_WARN_MS)
+      })
+    );
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+
+    await runOutboxMetricsTick(ctx);
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(callArg<Record<string, unknown>>(info)).toStrictEqual({
+      event: "outbox.metrics",
+      pending: 1,
+      inFlight: 0,
+      failed: 0,
+      oldestPendingAgeMs: OUTBOX_METRICS_PENDING_AGE_WARN_MS,
+      oldestFailedAgeMs: null
+    });
   });
 
   it("escalates to warn when pending depth exceeds threshold", async () => {

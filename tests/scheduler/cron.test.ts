@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
 import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
+import { logger } from "../../src/logger.js";
 import { callArgs } from "../helpers/assertions.js";
+import { deferred } from "../helpers/deferred.js";
 import { buildSessionRow } from "../discord/factories/session.js";
 import { createTestAppContext } from "../testing/index.js";
 
@@ -112,6 +114,26 @@ describe("ask scheduler", () => {
     const scheduler = createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
 
     const wrappedIndices = [0, 2, 3];
+    const terminalTicks = deferred<void>();
+    let terminalTickCount = 0;
+    const onTerminalTick = (args: readonly unknown[]): void => {
+      const fields = args[0];
+      if (
+        typeof fields !== "object" ||
+        fields === null ||
+        !("event" in fields) ||
+        (fields.event !== "scheduler.tick_finished" && fields.event !== "scheduler.tick_failed")
+      ) {
+        return;
+      }
+      terminalTickCount += 1;
+      if (terminalTickCount === wrappedIndices.length) {
+        terminalTicks.resolve();
+      }
+    };
+    vi.spyOn(logger, "info").mockImplementation((...args) => onTerminalTick(args));
+    vi.spyOn(logger, "error").mockImplementation((...args) => onTerminalTick(args));
+
     expect(capturedTicks).toHaveLength(4);
     for (const i of wrappedIndices) {
       const tick = capturedTicks[i];
@@ -120,7 +142,7 @@ describe("ask scheduler", () => {
       }
       tick();
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await terminalTicks.promise;
     scheduler.stop();
   });
 

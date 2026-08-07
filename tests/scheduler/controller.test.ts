@@ -147,4 +147,28 @@ describe("SchedulerController", () => {
     expect(channel.send).toHaveBeenCalledTimes(1);
     controller.stop();
   });
+
+  it("does not start the outbox worker when no deliverable rows exist", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-24T12:00:00.000Z");
+    const ctx = createTestAppContext({ now });
+    const channel = { type: 0, isSendable: () => true, send: vi.fn(async () => ({ id: "m1" })) };
+    const discordClient = {
+      channels: { fetch: vi.fn(async () => channel) }
+    } as unknown as Client;
+    const controller = createSchedulerController({
+      client: discordClient,
+      context: ctx,
+      logger: silentLogger,
+      runDeadlineTick: vi.fn(async () => {}),
+      runPostponeDeadlineTick: vi.fn(async () => {}),
+      runReminderTick: vi.fn(async () => {})
+    });
+
+    await controller.recompute("test");
+    await vi.advanceTimersByTimeAsync(SCHEDULER_MIN_TIMER_DELAY_MS);
+
+    expect(channel.send).not.toHaveBeenCalled();
+    controller.stop();
+  });
 });

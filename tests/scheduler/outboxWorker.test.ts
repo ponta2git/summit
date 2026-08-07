@@ -300,10 +300,22 @@ describe("outbox worker: failure path", () => {
     expect(entry?.nextAttemptAt.getTime()).toBe(expectedAt.getTime());
   });
 
-  it("computeOutboxBackoff returns null once attemptCount >= OUTBOX_MAX_ATTEMPTS", () => {
+  it("computes each configured backoff delay and caps before dead lettering", () => {
     const now = new Date("2026-04-24T12:00:00Z");
+
+    for (const [index, delayMs] of OUTBOX_BACKOFF_MS_SEQUENCE.entries()) {
+      const nextAttemptAt = computeOutboxBackoff(index + 1, now);
+      expect(nextAttemptAt?.getTime()).toBe(now.getTime() + delayMs);
+    }
+
+    const cappedAttemptAt = computeOutboxBackoff(
+      OUTBOX_BACKOFF_MS_SEQUENCE.length + 1,
+      now
+    );
+    expect(cappedAttemptAt?.getTime()).toBe(
+      now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE.at(-1) ?? 0)
+    );
     expect(computeOutboxBackoff(OUTBOX_MAX_ATTEMPTS, now)).toBeNull();
-    expect(computeOutboxBackoff(1, now)).not.toBeNull();
   });
 });
 

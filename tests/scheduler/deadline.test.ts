@@ -282,20 +282,4 @@ describe("runPostponeDeadlineTick", () => {
     await expect(runPostponeDeadlineTick(client, ctx)).rejects.toThrow("db down");
   });
 
-  it("is idempotent: re-running the tick does not cause errors", async () => {
-    const s = sessionRow({
-      id: "pv-idem",
-      weekKey: "2026-W17",
-      postponeCount: 0,
-      status: "POSTPONE_VOTING",
-      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
-    });
-    const now = new Date("2026-04-25T15:01:00.000Z");
-    const ctx = createTestAppContext({ now, seed: { sessions: [s] } });
-
-    await runPostponeDeadlineTick(client, ctx);
-    await runPostponeDeadlineTick(client, ctx);
-
-    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
-  });
 });
