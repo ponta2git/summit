@@ -143,7 +143,8 @@ const recordAbsentAndApplyStep = (
       );
       // source-of-truth: 判定ロジックは ./decide.ts。欠席が 1 件でも含まれれば cancelled。
       const decision = evaluateDeadline(context.session, responses, {
-        memberCountExpected: activeMembers.length
+        memberCountExpected: activeMembers.length,
+        now: context.context.clock.now()
       });
       if (decision.kind === "pending") {
         return okAsync(undefined);

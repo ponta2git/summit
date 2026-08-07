@@ -12,7 +12,6 @@ import {
 import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
 import { logger } from "../../logger.js";
 import { askMessages } from "./messages.js";
-import { evaluateDeadline } from "./decide.js";
 import { renderAskBody } from "./render.js";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
 import { buildAskMessageViewModel } from "./viewModel.js";
@@ -28,10 +27,8 @@ import {
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.js";
-import { applyDeadlineDecision } from "../../orchestration/index.js";
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
 import { buildAbsentConfirmRow } from "./absentConfirm.js";
-import { appConfig } from "../../userConfig.js";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -120,16 +117,6 @@ const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineR
       );
     });
 
-const applyDecisionStep = (
-  context: AskPipelineReady,
-  decision: ReturnType<typeof evaluateDeadline>
-): ResultAsync<void, AppError> => {
-  if (decision.kind === "pending") {
-    return okAsync(undefined);
-  }
-  return applyDeadlineDecision(context.deps.client, context.context, context.session, decision);
-};
-
 const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
   fromDatabasePromise(
     Promise.all([
@@ -138,21 +125,7 @@ const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, App
     ]),
     "Failed to load ask message snapshot."
   )
-    .andThen(([responses, memberRows]) => {
-      const activeMembers = memberRows.filter((member) =>
-        appConfig.memberUserIds.includes(member.userId)
-      );
-      // source-of-truth: 判定ロジックは ./decide.ts。
-      const decision = evaluateDeadline(context.session, responses, {
-        memberCountExpected: activeMembers.length
-      });
-
-      return applyDecisionStep(context, decision).map(() => ({
-        responses,
-        memberRows
-      }));
-    })
-    .andThen(({ responses, memberRows }) =>
+    .andThen(([responses, memberRows]) =>
       fromDatabasePromise(
         context.context.ports.sessions.findSessionById(context.sessionId),
         "Failed to reload session after ask response."

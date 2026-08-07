@@ -16,7 +16,7 @@ export type DecisionResult =
 
 export interface EvaluateDeadlineOptions {
   memberCountExpected: number;
-  now?: Date;
+  now: Date;
 }
 
 const isAskTimeChoice = (choice: ResponseRow["choice"]): choice is AskTimeChoice =>
@@ -44,6 +44,11 @@ export const evaluateDeadline = (
     .filter(isAskTimeChoice);
   const allTimeChoices = allAnswered && timeChoices.length === responses.length;
 
+  // invariant: 欠席だけは即時中止。時刻回答は全員分が揃っていても締切まで暫定表示に留める。
+  if (session.deadlineAt.getTime() > options.now.getTime()) {
+    return { kind: "pending", reason: "not_all_answered_and_not_overdue" };
+  }
+
   if (allTimeChoices) {
     const chosenSlot = latestChoice(timeChoices);
     const startAt = decidedStartAt(parseCandidateDateIso(session.candidateDateIso), timeChoices);
@@ -52,9 +57,5 @@ export const evaluateDeadline = (
     }
   }
 
-  if (options.now && session.deadlineAt.getTime() <= options.now.getTime()) {
-    return { kind: "cancelled", reason: "deadline_unanswered" };
-  }
-
-  return { kind: "pending", reason: "not_all_answered_and_not_overdue" };
+  return { kind: "cancelled", reason: "deadline_unanswered" };
 };

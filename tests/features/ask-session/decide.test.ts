@@ -32,8 +32,11 @@ describe("evaluateDeadline", () => {
     expect(result).toStrictEqual({ kind: "cancelled", reason: "all_absent" });
   });
 
-  it("returns decided before deadline when all members answered with time choices", () => {
-    const session = sessionRow({ candidateDateIso: "2026-04-24" });
+  it("keeps all time choices pending before the deadline", () => {
+    const session = sessionRow({
+      candidateDateIso: "2026-04-24",
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
     const result = evaluateDeadline(
       session,
       [
@@ -43,6 +46,28 @@ describe("evaluateDeadline", () => {
         responseRow({ id: "r4", memberId: "m4", choice: "T2330" })
       ],
       { memberCountExpected: 4, now: new Date("2026-04-24T12:29:00.000Z") }
+    );
+
+    expect(result).toStrictEqual({
+      kind: "pending",
+      reason: "not_all_answered_and_not_overdue"
+    });
+  });
+
+  it("returns decided at the deadline when all members answered with time choices", () => {
+    const session = sessionRow({
+      candidateDateIso: "2026-04-24",
+      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
+    });
+    const result = evaluateDeadline(
+      session,
+      [
+        responseRow({ id: "r1", memberId: "m1", choice: "T2200" }),
+        responseRow({ id: "r2", memberId: "m2", choice: "T2230" }),
+        responseRow({ id: "r3", memberId: "m3", choice: "T2300" }),
+        responseRow({ id: "r4", memberId: "m4", choice: "T2330" })
+      ],
+      { memberCountExpected: 4, now: new Date("2026-04-24T12:30:00.000Z") }
     );
 
     expect(expectKind(result, "decided")).toStrictEqual({
