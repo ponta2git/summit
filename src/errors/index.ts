@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 
-export const APP_ERROR_CODES = [
+const APP_ERROR_CODES = [
   "INVARIANT_VIOLATION",
   "VALIDATION",
   "NOT_FOUND",
@@ -8,7 +8,7 @@ export const APP_ERROR_CODES = [
   "DATABASE"
 ] as const;
 
-export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
+type AppErrorCode = (typeof APP_ERROR_CODES)[number];
 
 export interface AppErrorOptions {
   cause?: unknown;

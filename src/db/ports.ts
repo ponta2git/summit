@@ -65,7 +65,7 @@ export interface SchedulerSessionHints {
   readonly nextReminderAt: Date | null;
 }
 
-export const SESSION_ALLOWED_TRANSITIONS = {
+const SESSION_ALLOWED_TRANSITIONS = {
   ASKING: ["CANCELLED", "DECIDED"],
   POSTPONE_VOTING: ["POSTPONED", "COMPLETED"],
   POSTPONED: [],

@@ -5,8 +5,8 @@ import { z } from "zod";
 import type { SlotKey } from "../../slot.js";
 
 // invariant: SlotKey と 1:1 対応する lowercase wire 表現。
-export const CUSTOM_ID_SLOT_CHOICES = ["t2200", "t2230", "t2300", "t2330"] as const;
-export type CustomIdSlotChoice = (typeof CUSTOM_ID_SLOT_CHOICES)[number];
+const CUSTOM_ID_SLOT_CHOICES = ["t2200", "t2230", "t2300", "t2330"] as const;
+type CustomIdSlotChoice = (typeof CUSTOM_ID_SLOT_CHOICES)[number];
 
 const CUSTOM_ID_TO_SLOT_KEY: Record<CustomIdSlotChoice, SlotKey> = {
   t2200: "T2200",
