@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createFakePorts,
   createFakeResponsesPort,
   createFakeSessionsPort,
-  makeSession,
-  withFixedNow
+  createTestAppContext,
+  makeSession
 } from "./index.js";
 
 describe("tests/testing helpers", () => {
@@ -19,8 +18,16 @@ describe("tests/testing helpers", () => {
       reminderAt: new Date("2026-04-24T13:45:00.000Z")
     });
 
-    expect(transitioned?.status).toBe("DECIDED");
-    expect(sessions.calls.map((call) => call.name)).toEqual(["decideAsking"]);
+    expect({
+      status: transitioned?.status,
+      decidedStartAt: transitioned?.decidedStartAt,
+      reminderAt: transitioned?.reminderAt
+    }).toStrictEqual({
+      status: "DECIDED",
+      decidedStartAt: new Date("2026-04-24T14:00:00.000Z"),
+      reminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
+    expect(sessions.calls.map((call) => call.name)).toStrictEqual(["decideAsking"]);
   });
 
   it("refuses to transition on CAS loss", async () => {
@@ -51,22 +58,27 @@ describe("tests/testing helpers", () => {
       answeredAt: new Date("2026-04-24T12:05:00.000Z")
     });
 
-    expect(updated.id).toBe("r1");
-    expect(updated.choice).toBe("T2330");
-    expect(responses.listAllResponses()).toHaveLength(1);
+    expect({ id: updated.id, choice: updated.choice, answeredAt: updated.answeredAt })
+      .toStrictEqual({
+        id: "r1",
+        choice: "T2330",
+        answeredAt: new Date("2026-04-24T12:05:00.000Z")
+      });
+    expect(responses.listAllResponses()).toStrictEqual([updated]);
   });
 
-  it("composes a fake AppPorts bundle with shared deterministic time", async () => {
-    const ports = createFakePorts({
-      sessions: [makeSession({ id: "s1", status: "ASKING" })]
+  it("uses the AppContext clock for fake mutation timestamps", async () => {
+    const now = new Date("2026-04-24T12:31:00.000Z");
+    const ctx = createTestAppContext({
+      now,
+      seed: { sessions: [makeSession({ id: "s1", status: "ASKING" })] }
     });
 
-    await withFixedNow("2026-04-24T12:31:00.000Z", async () => {
-      const due = await ports.sessions.findDueAskingSessions(
-        new Date("2026-04-24T12:31:00.000Z")
-      );
-      expect(due).toHaveLength(1);
-    });
+    await ctx.ports.sessions.updateAskMessageId("s1", "message-1");
+
+    const persisted = await ctx.ports.sessions.findSessionById("s1");
+    expect({ askMessageId: persisted?.askMessageId, updatedAt: persisted?.updatedAt })
+      .toStrictEqual({ askMessageId: "message-1", updatedAt: now });
   });
 
   it("returns scheduler session hints from active DB state", async () => {
@@ -96,8 +108,10 @@ describe("tests/testing helpers", () => {
 
     const hints = await sessions.getSchedulerSessionHints(new Date("2026-04-24T11:00:00.000Z"));
 
-    expect(hints.nextAskingDeadlineAt?.toISOString()).toBe("2026-04-24T12:00:00.000Z");
-    expect(hints.nextPostponeDeadlineAt?.toISOString()).toBe("2026-04-25T00:00:00.000Z");
-    expect(hints.nextReminderAt?.toISOString()).toBe("2026-04-24T13:45:00.000Z");
+    expect(hints).toStrictEqual({
+      nextAskingDeadlineAt: new Date("2026-04-24T12:00:00.000Z"),
+      nextPostponeDeadlineAt: new Date("2026-04-25T00:00:00.000Z"),
+      nextReminderAt: new Date("2026-04-24T13:45:00.000Z")
+    });
   });
 });

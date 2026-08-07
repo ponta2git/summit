@@ -38,7 +38,7 @@ export interface FakePortsSeed {
   readonly outbox?: ReadonlyArray<OutboxEntry>;
 }
 
-export const createFakePorts = (
+const createFakePorts = (
   seed: FakePortsSeed = {},
   clock: FakeClock = DEFAULT_CLOCK
 ): FakePorts => {
