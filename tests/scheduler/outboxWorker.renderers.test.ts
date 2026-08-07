@@ -40,13 +40,36 @@ describe("outbox worker renderers", () => {
 
     await runOutboxWorkerTick(stubClient(channel), ctx);
 
-    expect(ctx.ports.outbox.listEntries()[0]?.status).toBe("DELIVERED");
-    expect(sentMessages).toHaveLength(1);
-    const content = sentMessages[0]?.payload.content;
-    expect(content).toContain("🎉 今週の桃鉄1年勝負、開催です！");
-    expect(content).toContain("開始: 23:00");
-    expect(content).toContain("Member 1");
-    expect(content).toContain("22:00");
+    const mentionLines = appConfig.dev.suppressMentions
+      ? []
+      : [appConfig.memberUserIds.map((userId) => `<@${userId}>`).join(" ")];
+    expect(sentMessages).toStrictEqual([{
+      id: "posted-1",
+      payload: {
+        content: [
+          ...mentionLines,
+          "🎉 今週の桃鉄1年勝負、開催です！",
+          "",
+          "開始: 23:00",
+          "回答内訳:",
+          "- Member 1 : 22:00",
+          "- Member 2 : 22:30",
+          "- Member 3 : 23:00",
+          "- Member 4 : 23:30"
+        ].join("\n")
+      }
+    }]);
+    expect(ctx.ports.outbox.listEntries().map((entry) => ({
+      status: entry.status,
+      attemptCount: entry.attemptCount,
+      deliveredMessageId: entry.deliveredMessageId,
+      lastError: entry.lastError
+    }))).toStrictEqual([{
+      status: "DELIVERED",
+      attemptCount: 1,
+      deliveredMessageId: "posted-1",
+      lastError: null
+    }]);
   });
 
   it("renders a mention-suppressed cancel-week notice", async () => {

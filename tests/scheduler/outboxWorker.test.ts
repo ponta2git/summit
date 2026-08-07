@@ -2,10 +2,6 @@ import { ChannelType } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  OUTBOX_BACKOFF_MS_SEQUENCE,
-  OUTBOX_MAX_ATTEMPTS
-} from "../../src/config.js";
-import {
   computeOutboxBackoff,
   runOutboxWorkerTick
 } from "../../src/scheduler/outboxWorker.js";
@@ -154,21 +150,26 @@ describe("outbox worker retry policy", () => {
       status: "PENDING",
       attemptCount: 1,
       lastError: "Discord API failure",
-      nextAttemptAt: new Date(now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE[0] ?? 0))
+      nextAttemptAt: new Date("2026-04-24T12:00:01.000Z")
     });
   });
 
-  it("uses every configured delay, caps, then dead-letters", () => {
+  it("uses the complete retry sequence, caps, then dead-letters", () => {
     const now = new Date("2026-04-24T12:00:00Z");
 
-    expect(
-      OUTBOX_BACKOFF_MS_SEQUENCE.map((_, index) =>
-        computeOutboxBackoff(index + 1, now)?.getTime()
-      )
-    ).toStrictEqual(OUTBOX_BACKOFF_MS_SEQUENCE.map((delay) => now.getTime() + delay));
-    expect(
-      computeOutboxBackoff(OUTBOX_BACKOFF_MS_SEQUENCE.length + 1, now)?.getTime()
-    ).toBe(now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE.at(-1) ?? 0));
-    expect(computeOutboxBackoff(OUTBOX_MAX_ATTEMPTS, now)).toBeNull();
+    expect(Array.from({ length: 9 }, (_, index) =>
+      computeOutboxBackoff(index + 1, now)?.toISOString()
+    )).toStrictEqual([
+      "2026-04-24T12:00:01.000Z",
+      "2026-04-24T12:00:02.000Z",
+      "2026-04-24T12:00:05.000Z",
+      "2026-04-24T12:00:15.000Z",
+      "2026-04-24T12:01:00.000Z",
+      "2026-04-24T12:05:00.000Z",
+      "2026-04-24T12:15:00.000Z",
+      "2026-04-24T12:15:00.000Z",
+      "2026-04-24T12:15:00.000Z"
+    ]);
+    expect(computeOutboxBackoff(10, now)).toBeNull();
   });
 });
