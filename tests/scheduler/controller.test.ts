@@ -23,7 +23,6 @@ describe("SchedulerController", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    vi.clearAllMocks();
   });
 
   it("debounces multiple wake requests into one scheduler hint query", async () => {

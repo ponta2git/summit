@@ -98,7 +98,7 @@ describeDb("responses repository contract (integration)", () => {
 
     const rows = await listResponses(db, baseSession.id);
     expect(rows).toHaveLength(4);
-    expect(new Set(rows.map((r) => r.memberId))).toEqual(new Set(memberIds));
+    expect(new Set(rows.map((r) => r.memberId))).toStrictEqual(new Set(memberIds));
   });
 
   // race: 同一 (sessionId, memberId) への並行 upsert が race しても、最終的に 1 行に収束する。

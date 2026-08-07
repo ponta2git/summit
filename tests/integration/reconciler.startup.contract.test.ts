@@ -94,7 +94,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
     // boot-1: 初回 startup reconcile。両 invariant が 1 件ずつ収束する。
     const boot1 = await runReconciler(fakeClient, ctx, { scope: "startup" });
-    expect(boot1).toEqual({
+    expect(boot1).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
       messageResent: 0,
@@ -106,7 +106,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     //   regression: bootId 跨ぎで CAS-on-NULL / claim release が二重発火しないことを保証する
     //   (ADR-0033 startup recovery の冪等性契約)。
     const boot2 = await runReconciler(fakeClient, ctx, { scope: "startup" });
-    expect(boot2).toEqual({
+    expect(boot2).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
       messageResent: 0,

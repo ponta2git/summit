@@ -29,7 +29,7 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "cancelled", reason: "all_absent" });
+    expect(result).toStrictEqual({ kind: "cancelled", reason: "all_absent" });
   });
 
   it("returns decided before deadline when all members answered with time choices", () => {
@@ -84,7 +84,7 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:30:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "cancelled", reason: "deadline_unanswered" });
+    expect(result).toStrictEqual({ kind: "cancelled", reason: "deadline_unanswered" });
   });
 
   it("returns pending when partial answers exist but deadline has not passed", () => {
@@ -99,7 +99,7 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:29:00.000Z") }
     );
 
-    expect(result).toEqual({
+    expect(result).toStrictEqual({
       kind: "pending",
       reason: "not_all_answered_and_not_overdue"
     });

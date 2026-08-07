@@ -81,6 +81,6 @@ describe("buildFeatureRegistry", () => {
       moduleWithCommand("a", "alpha"),
       moduleWithCommand("b", "beta")
     ]);
-    expect(registry.slashBuilders.map((b) => b.name)).toEqual(["alpha", "beta"]);
+    expect(registry.slashBuilders.map((b) => b.name)).toStrictEqual(["alpha", "beta"]);
   });
 });

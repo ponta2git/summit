@@ -79,8 +79,9 @@ describe("time utilities", () => {
   it("picks the latest chosen time slot for decidedStartAt", () => {
     const candidate = parseCandidateDateIso("2026-04-24");
     // invariant: 全員の選択が揃っていれば最も遅いスロットを採用する。
-    const start = decidedStartAt(candidate, ["T2200", "T2300", "T2230"]);
-    expect(start?.toISOString()).toBe("2026-04-24T14:00:00.000Z");
+    expect(decidedStartAt(candidate, ["T2200", "T2300", "T2230"])).toStrictEqual(
+      new Date("2026-04-24T14:00:00.000Z")
+    );
   });
 
   it("returns undefined from decidedStartAt when no choices are given", () => {

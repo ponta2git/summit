@@ -29,6 +29,6 @@ describe("createDiscordClient", () => {
     const { createDiscordClient } = await import("../../src/discord/client.js");
     const client = createDiscordClient();
 
-    expect(client.options.allowedMentions).toEqual({ parse: [] });
+    expect(client.options.allowedMentions).toStrictEqual({ parse: [] });
   });
 });
