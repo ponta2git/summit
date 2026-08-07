@@ -82,16 +82,6 @@ export const createTestAppContext = (options: {
 };
 
 export {
-  createFakeHeldEventsPort,
-  createFakeMembersPort,
-  createFakeOutboxPort,
   createFakeResponsesPort,
   createFakeSessionsPort
-};
-export type {
-  FakeHeldEventsPort,
-  FakeMembersPort,
-  FakeOutboxPort,
-  FakeResponsesPort,
-  FakeSessionsPort
 };
