@@ -1,4 +1,4 @@
-import { ChannelType } from "discord.js";
+import { ChannelType, MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
@@ -6,6 +6,7 @@ import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatc
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { postponeMessages } from "../../../src/features/postpone-voting/messages.js";
+import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { buildPostponeNgConfirmCustomId } from "../../../src/discord/shared/customId.js";
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
@@ -101,8 +102,8 @@ describe("postpone_ng confirmation button — abort", () => {
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     // invariant: abort は response を記録しない。
-    const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     expect(editReplyPayload(interaction)).toStrictEqual({
       content: postponeMessages.ngConfirm.aborted,
       components: []
@@ -114,6 +115,7 @@ describe("postpone_ng confirmation button — confirm", () => {
   it("confirm: records POSTPONE_NG, settles session, and confirms with editReply", async () => {
     const session = postponeSession();
     const { client, postponeMessageEdit } = createDiscordClient();
+    const now = new Date("2026-04-25T12:00:00.000Z");
     const ctx = createTestAppContext({
       seed: {
         sessions: [session],
@@ -124,7 +126,7 @@ describe("postpone_ng confirmation button — confirm", () => {
           postponeResponse(3, "POSTPONE_OK")
         ]
       },
-      now: new Date("2026-04-25T12:00:00.000Z")
+      now
     });
     const interaction = buildButtonInteraction(confirmCustomId);
 
@@ -132,14 +134,31 @@ describe("postpone_ng confirmation button — confirm", () => {
 
     // invariant: POSTPONE_NG が記録される。
     const responses = await ctx.ports.responses.listResponses(testSessionId);
-    const ngResponses = responses.filter((r) => r.choice === "POSTPONE_NG");
-    expect(ngResponses).toHaveLength(1);
+    expect(responses.filter((response) => response.choice === "POSTPONE_NG").map((response) => ({
+      sessionId: response.sessionId,
+      memberId: response.memberId,
+      choice: response.choice,
+      answeredAt: response.answeredAt
+    }))).toStrictEqual([{
+      sessionId: session.id,
+      memberId: seededMembers[0]!.id,
+      choice: "POSTPONE_NG",
+      answeredAt: now
+    }]);
 
     // invariant: NG があればセッションは POSTPONE_VOTING から脱出する。
     // regression: 順延 NG は CANCELLED を経由せず最終的に COMPLETED へ収束する。
-    const updated = await ctx.ports.sessions.findSessionById(testSessionId);
-    expect(updated?.status).toBe("COMPLETED");
-    expect(updated?.cancelReason).toBe("postpone_ng");
+    expect(ctx.ports.sessions.listSessions().map((updated) => ({
+      id: updated.id,
+      status: updated.status,
+      cancelReason: updated.cancelReason,
+      updatedAt: updated.updatedAt
+    }))).toStrictEqual([{
+      id: session.id,
+      status: "COMPLETED",
+      cancelReason: "postpone_ng",
+      updatedAt: now
+    }]);
 
     // invariant: 順延メッセージが決着内容で更新される（settlePostponeVotingSession 経由）。
     expect(postponeMessageEdit).toHaveBeenCalledOnce();
@@ -153,13 +172,14 @@ describe("postpone_ng confirmation button — confirm", () => {
   it("confirm: updates an existing OK vote to NG via upsert", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
+    const now = new Date("2026-04-25T12:00:00.000Z");
     const ctx = createTestAppContext({
       seed: {
         sessions: [session],
         members: seededMembers,
         responses: [postponeResponse(0, "POSTPONE_OK")]
       },
-      now: new Date("2026-04-25T12:00:00.000Z")
+      now
     });
     const interaction = buildButtonInteraction(confirmCustomId);
 
@@ -168,8 +188,11 @@ describe("postpone_ng confirmation button — confirm", () => {
     const memberResponses = (await ctx.ports.responses.listResponses(testSessionId)).filter(
       (r) => r.memberId === seededMembers[0]!.id
     );
-    expect(memberResponses).toHaveLength(1);
-    expect(memberResponses[0]?.choice).toBe("POSTPONE_NG");
+    expect(memberResponses).toStrictEqual([{
+      ...postponeResponse(0, "POSTPONE_OK"),
+      choice: "POSTPONE_NG",
+      answeredAt: now
+    }]);
   });
 
   it("confirm: session deadline already passed → guard rejects with ephemeral", async () => {
@@ -183,10 +206,12 @@ describe("postpone_ng confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
-    expect(editReplyPayload(interaction).components).toStrictEqual([]);
-    expect(typeof editReplyPayload(interaction).content).toBe("string");
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: rejectMessages.reject.postponeVotingClosed,
+      components: []
+    });
   });
 
   it("confirm: session not in POSTPONE_VOTING state → guard rejects with ephemeral", async () => {
@@ -200,9 +225,12 @@ describe("postpone_ng confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const after = await ctx.ports.sessions.findSessionById(testSessionId);
-    expect(after?.status).toBe("COMPLETED"); // unchanged
-    expect(editReplyPayload(interaction).components).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(editReplyPayload(interaction)).toStrictEqual({
+      content: rejectMessages.reject.postponeVotingClosed,
+      components: []
+    });
   });
 
   it("confirm: non-member user → dispatcher cheapFirstGuard rejects with followUp", async () => {
@@ -218,11 +246,14 @@ describe("postpone_ng confirmation button — confirm", () => {
 
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
-    const responses = await ctx.ports.responses.listResponses(testSessionId);
-    expect(responses).toHaveLength(0);
+    expect(await ctx.ports.responses.listResponses(testSessionId)).toStrictEqual([]);
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     // invariant: non-member は dispatcher の cheapFirstGuard で弾かれ followUp で通知される。
     //   deferUpdate 後の followUp で ephemeral 拒否。editReply は呼ばれない。
-    expect(interaction.followUp).toHaveBeenCalledOnce();
+    expect(interaction.followUp).toHaveBeenCalledWith({
+      content: rejectMessages.reject.notMember,
+      flags: MessageFlags.Ephemeral
+    });
     expect(interaction.editReply).not.toHaveBeenCalled();
   });
 });
