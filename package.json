@@ -33,23 +33,23 @@
   },
   "dependencies": {
     "@momo/db": "file:../momo-db",
-    "date-fns": "^4.1.0",
-    "discord.js": "^14.26.3",
+    "date-fns": "^4.4.0",
+    "discord.js": "^14.27.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "neverthrow": "^8.2.0",
-    "node-cron": "^4.2.1",
+    "node-cron": "^4.6.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
-    "yaml": "^2.8.3",
-    "zod": "^4.3.6"
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^24.12.2",
+    "@types/node": "^24.13.3",
     "dotenv-cli": "^11.0.0",
-    "oxlint": "^1.60.0",
-    "tsx": "^4.21.0",
+    "oxlint": "^1.77.0",
+    "tsx": "^4.23.9",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.10"
   }
 }
