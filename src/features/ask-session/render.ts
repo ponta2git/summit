@@ -23,7 +23,7 @@ import type { AskMessageViewModel } from "./viewModel.js";
 // invariant: custom_id 末尾は `AskCustomIdChoice` の小文字値と一致させる。codec / choiceMap と同時更新。
 const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const satisfies readonly AskCustomIdChoice[];
 
-export const buildAskRow = (
+const buildAskRow = (
   sessionId: string,
   options: { disabled?: boolean } = {}
 ): ActionRowBuilder<ButtonBuilder> => {

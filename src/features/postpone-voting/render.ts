@@ -14,7 +14,7 @@ import { postponeMessages } from "./messages.js";
 import { buildCustomId } from "../../discord/shared/customId.js";
 import type { PostponeMessageViewModel } from "./viewModel.js";
 
-export const buildPostponeRow = (
+const buildPostponeRow = (
   sessionId: string,
   options: { disabled?: boolean } = {}
 ): ActionRowBuilder<ButtonBuilder> => {
