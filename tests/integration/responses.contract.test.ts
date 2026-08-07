@@ -47,7 +47,7 @@ describeDb("responses repository contract (integration)", () => {
 
   it("listResponses returns [] when no rows exist for session", async () => {
     const rows = await listResponses(db, baseSession.id);
-    expect(rows).toEqual([]);
+    expect(rows).toStrictEqual([]);
   });
 
   // unique: (sessionId, memberId) unique で 1 メンバー 1 行に制約される。
@@ -104,23 +104,30 @@ describeDb("responses repository contract (integration)", () => {
   // race: 同一 (sessionId, memberId) への並行 upsert が race しても、最終的に 1 行に収束する。
   it("upsertResponse: concurrent upserts for same (session, member) converge to a single row", async () => {
     const concurrency = 6;
+    const attempts = Array.from({ length: concurrency }, (_, index) => ({
+      id: `r-race-${index}`,
+      sessionId: baseSession.id,
+      memberId: "m2",
+      choice: index % 2 === 0 ? ("T2230" as const) : ("T2300" as const),
+      answeredAt: new Date(Date.UTC(2026, 3, 24, 10, 0, index))
+    }));
     await Promise.all(
-      Array.from({ length: concurrency }, (_, i) =>
-        upsertResponse(db, {
-          id: `r-race-${i}`,
-          sessionId: baseSession.id,
-          memberId: "m2",
-          choice: i % 2 === 0 ? "T2230" : "T2300",
-          answeredAt: new Date(Date.UTC(2026, 3, 24, 10, 0, i))
-        })
-      )
+      attempts.map((attempt) => upsertResponse(db, attempt))
     );
 
     const rows = await listResponses(db, baseSession.id);
     expect(rows).toHaveLength(1);
-    // invariant: choice は RESPONSE_CHOICES のいずれか。race 勝者の値に収束すれば良く、
-    //   特定の値は保証しない。
-    expect(["T2230", "T2300"]).toContain(rows[0]?.choice);
+    const persisted = rows[0];
+    expect(persisted?.sessionId).toBe(baseSession.id);
+    expect(persisted?.memberId).toBe("m2");
+    // invariant: choice / answeredAt は同じ upsert の組として原子的に残る。
+    expect(attempts.map((attempt) => ({
+      choice: attempt.choice,
+      answeredAt: attempt.answeredAt
+    }))).toContainEqual({
+      choice: persisted?.choice,
+      answeredAt: persisted?.answeredAt
+    });
   });
 
   // regression: responses.choice CHECK 制約がドメイン層より先に invalid value を弾く。

@@ -69,21 +69,25 @@ describeDb("heldEvents repository contract (integration)", () => {
       reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
       memberIds: ["m1", "m2", "m3", "m4"]
     });
-    expect(result).toBeDefined();
-    expect(result?.session.status).toBe("COMPLETED");
-    expect(result?.heldEvent.sessionId).toBe(baseSession.id);
-    // invariant: heldDateIso / startAt は session からリポジトリ内で導出する。
-    expect(result?.heldEvent.heldDateIso).toBe(baseSession.candidateDateIso);
-    expect(result?.heldEvent.startAt.toISOString()).toBe(
-      "2026-04-24T14:00:00.000Z"
-    );
-    expect(result?.participants).toHaveLength(4);
+    if (!result) {throw new Error("expected held-event completion to win CAS");}
+    expect({
+      sessionStatus: result.session.status,
+      reminderSentAt: result.session.reminderSentAt,
+      heldSessionId: result.heldEvent.sessionId,
+      heldDateIso: result.heldEvent.heldDateIso,
+      startAt: result.heldEvent.startAt,
+      participantMemberIds: result.participants.map((participant) => participant.memberId)
+    }).toStrictEqual({
+      sessionStatus: "COMPLETED",
+      reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
+      heldSessionId: baseSession.id,
+      heldDateIso: baseSession.candidateDateIso,
+      startAt: new Date("2026-04-24T14:00:00.000Z"),
+      participantMemberIds: ["m1", "m2", "m3", "m4"]
+    });
 
-    const participants = await listHeldEventParticipants(
-      db,
-      result!.heldEvent.id
-    );
-    expect(participants).toHaveLength(4);
+    expect((await listHeldEventParticipants(db, result.heldEvent.id)).map((row) => row.memberId))
+      .toStrictEqual(["m1", "m2", "m3", "m4"]);
   });
 
   // race: CAS 敗北時 (既に COMPLETED) は undefined を返し、held_events を書き込まない。
@@ -94,7 +98,7 @@ describeDb("heldEvents repository contract (integration)", () => {
       reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
       memberIds: ["m1"]
     });
-    expect(first).toBeDefined();
+    if (!first) {throw new Error("expected first completion to win CAS");}
 
     const second = await completeDecidedSessionAsHeld(db, {
       sessionId: baseSession.id,
@@ -105,9 +109,9 @@ describeDb("heldEvents repository contract (integration)", () => {
 
     // idempotent: 既存の held_event / participants は保持される。
     const held = await findHeldEventBySessionId(db, baseSession.id);
-    expect(held).toBeDefined();
-    const participants = await listHeldEventParticipants(db, held!.id);
-    expect(participants.map((p) => p.memberId)).toEqual(["m1"]);
+    expect(held?.id).toBe(first.heldEvent.id);
+    const participants = await listHeldEventParticipants(db, first.heldEvent.id);
+    expect(participants.map((participant) => participant.memberId)).toStrictEqual(["m1"]);
   });
 
   // race: 並行 complete で 1 件の held_event に収束する。
@@ -127,13 +131,13 @@ describeDb("heldEvents repository contract (integration)", () => {
     ]);
     const winners = [a, b].filter((r) => r !== undefined);
     expect(winners).toHaveLength(1);
+    const winner = winners[0];
+    if (!winner) {throw new Error("expected one concurrent completion winner");}
 
     const held = await findHeldEventBySessionId(db, baseSession.id);
-    expect(held).toBeDefined();
-
-    // invariant: winner の participants のみ書き込まれる。loser の memberIds は反映されない。
-    const participants = await listHeldEventParticipants(db, held!.id);
-    expect(participants).toHaveLength(2);
+    expect(held?.id).toBe(winner.heldEvent.id);
+    expect((await listHeldEventParticipants(db, winner.heldEvent.id)).map((row) => row.memberId))
+      .toStrictEqual(winner.participants.map((row) => row.memberId));
   });
 
   // edge: memberIds が空でも COMPLETED 遷移と held_event 作成は成立する (全員欠席でも開催扱いはしない想定だが
@@ -145,16 +149,16 @@ describeDb("heldEvents repository contract (integration)", () => {
       reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
       memberIds: []
     });
-    expect(result?.session.status).toBe("COMPLETED");
-    expect(result?.participants).toEqual([]);
+    expect({ status: result?.session.status, participants: result?.participants })
+      .toStrictEqual({ status: "COMPLETED", participants: [] });
 
     const [row] = await db
       .select()
       .from(sessions)
       .where(eq(sessions.id, baseSession.id));
-    expect(row?.status).toBe("COMPLETED");
-    expect(row?.reminderSentAt?.toISOString()).toBe(
-      "2026-04-24T13:45:01.000Z"
-    );
+    expect({ status: row?.status, reminderSentAt: row?.reminderSentAt }).toStrictEqual({
+      status: "COMPLETED",
+      reminderSentAt: new Date("2026-04-24T13:45:01.000Z")
+    });
   });
 });

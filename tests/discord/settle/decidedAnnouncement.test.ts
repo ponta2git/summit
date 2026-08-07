@@ -1,5 +1,4 @@
-import { ChannelType, type Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import {
@@ -10,6 +9,7 @@ import {
   buildDecidedAnnouncementViewModel
 } from "../../../src/features/decided-announcement/viewModel.js";
 import { appConfig } from "../../../src/userConfig.js";
+import { asDiscordClient } from "../../helpers/discord.js";
 import { createTestAppContext } from "../../testing/index.js";
 import { buildSessionRow } from "../factories/session.js";
 
@@ -40,19 +40,7 @@ const allTimeSlotResponses = (): ResponseRow[] =>
     answeredAt: new Date(`2026-04-24T12:${String(index).padStart(2, "0")}:00.000Z`)
   }));
 
-const stubChannel = () => {
-  const send = vi.fn(async (_payload: unknown) => ({ id: "decided-msg-id" }));
-  const channel = {
-    type: ChannelType.GuildText,
-    isSendable: () => true,
-    send,
-    messages: { fetch: vi.fn() }
-  };
-  const client = {
-    channels: { fetch: vi.fn(async () => channel) }
-  } as unknown as Client;
-  return { channel, client, send };
-};
+const stubClient = asDiscordClient({});
 
 describe("buildDecidedAnnouncementViewModel", () => {
   it("returns undefined when decidedStartAt is null", () => {
@@ -71,15 +59,17 @@ describe("buildDecidedAnnouncementViewModel", () => {
       allTimeSlotResponses(),
       seededMembers
     );
-    expect(vm).toBeDefined();
-    expect(vm?.startTimeLabel).toBe("23:00");
-    expect(vm?.memberLines).toHaveLength(appConfig.memberUserIds.length);
-    expect(vm?.memberLines.map((l) => l.slotLabel)).toEqual([
-      "22:00",
-      "22:30",
-      "23:00",
-      "23:30"
-    ]);
+    expect(vm).toStrictEqual({
+      startTimeLabel: "23:00",
+      memberUserIds: appConfig.memberUserIds,
+      suppressMentions: appConfig.dev.suppressMentions,
+      memberLines: [
+        { displayName: "表示名1", slotLabel: "22:00" },
+        { displayName: "表示名2", slotLabel: "22:30" },
+        { displayName: "表示名3", slotLabel: "23:00" },
+        { displayName: "表示名4", slotLabel: "23:30" }
+      ]
+    });
   });
 
   it("renders '-' when a member has no response (defensive fallback)", () => {
@@ -88,8 +78,12 @@ describe("buildDecidedAnnouncementViewModel", () => {
       allTimeSlotResponses().slice(0, 2),
       seededMembers
     );
-    expect(vm?.memberLines[2]?.slotLabel).toBe("-");
-    expect(vm?.memberLines[3]?.slotLabel).toBe("-");
+    expect(vm?.memberLines).toStrictEqual([
+      { displayName: "表示名1", slotLabel: "22:00" },
+      { displayName: "表示名2", slotLabel: "22:30" },
+      { displayName: "表示名3", slotLabel: "-" },
+      { displayName: "表示名4", slotLabel: "-" }
+    ]);
   });
 });
 
@@ -104,12 +98,15 @@ describe("renderDecidedAnnouncement", () => {
         { displayName: "Bee", slotLabel: "23:00" }
       ]
     }).content;
-    expect(content.startsWith("<@u1> <@u2>\n")).toBe(true);
-    expect(content).toContain("🎉 今週の桃鉄1年勝負、開催です！");
-    expect(content).toContain("開始: 23:00");
-    expect(content).toContain("回答内訳:");
-    expect(content).toContain("- A   : 22:30");
-    expect(content).toContain("- Bee : 23:00");
+    expect(content).toBe(
+      "<@u1> <@u2>\n" +
+      "🎉 今週の桃鉄1年勝負、開催です！\n" +
+      "\n" +
+      "開始: 23:00\n" +
+      "回答内訳:\n" +
+      "- A   : 22:30\n" +
+      "- Bee : 23:00"
+    );
   });
 
   it("omits mention line when suppressMentions is true", () => {
@@ -119,55 +116,66 @@ describe("renderDecidedAnnouncement", () => {
       suppressMentions: true,
       memberLines: [{ displayName: "A", slotLabel: "22:30" }]
     }).content;
-    expect(content).not.toContain("<@u1>");
-    expect(content.startsWith("🎉")).toBe(true);
+    expect(content).toBe(
+      "🎉 今週の桃鉄1年勝負、開催です！\n" +
+      "\n" +
+      "開始: 23:00\n" +
+      "回答内訳:\n" +
+      "- A : 22:30"
+    );
   });
 });
 
 describe("sendDecidedAnnouncement", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("enqueues a decided_announcement outbox entry with stable dedupeKey", async () => {
     const session = decidedSession();
     const responses = allTimeSlotResponses();
     const ctx = createTestAppContext({
+      now: new Date("2026-04-24T12:31:00.000Z"),
       seed: { sessions: [session], responses, members: seededMembers }
     });
-    const { client } = stubChannel();
 
-    await sendDecidedAnnouncement(client, ctx, session);
+    await sendDecidedAnnouncement(stubClient, ctx, session);
 
     const entries = ctx.ports.outbox.listEntries();
-    expect(entries).toHaveLength(1);
-    const [entry] = entries;
-    expect(entry?.sessionId).toBe(session.id);
-    expect(entry?.dedupeKey).toBe(`decided-announcement-${session.id}`);
-    expect(entry?.payload).toMatchObject({
+    expect(entries.map((entry) => ({
+      kind: entry.kind,
+      sessionId: entry.sessionId,
+      dedupeKey: entry.dedupeKey,
+      payload: entry.payload,
+      status: entry.status,
+      attemptCount: entry.attemptCount
+    }))).toStrictEqual([{
       kind: "send_message",
-      renderer: "decided_announcement"
-    });
+      sessionId: session.id,
+      dedupeKey: `decided-announcement-${session.id}`,
+      payload: {
+        kind: "send_message",
+        channelId: session.channelId,
+        renderer: "decided_announcement",
+        extra: {}
+      },
+      status: "PENDING",
+      attemptCount: 0
+    }]);
   });
 
   it("does not enqueue when session is not DECIDED", async () => {
     const session = decidedSession({ status: "ASKING" });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const { client } = stubChannel();
 
-    await sendDecidedAnnouncement(client, ctx, session);
+    await sendDecidedAnnouncement(stubClient, ctx, session);
 
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
   });
 
   it("does not enqueue when decidedStartAt is null", async () => {
     const session = decidedSession({ decidedStartAt: null });
     const ctx = createTestAppContext({ seed: { sessions: [session], members: seededMembers } });
-    const { client } = stubChannel();
 
-    await sendDecidedAnnouncement(client, ctx, session);
+    await sendDecidedAnnouncement(stubClient, ctx, session);
 
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(0);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
   });
 
   it("dedupes repeated enqueue for same session (idempotent)", async () => {
@@ -176,11 +184,12 @@ describe("sendDecidedAnnouncement", () => {
     const ctx = createTestAppContext({
       seed: { sessions: [session], responses, members: seededMembers }
     });
-    const { client } = stubChannel();
 
-    await sendDecidedAnnouncement(client, ctx, session);
-    await sendDecidedAnnouncement(client, ctx, session);
+    await sendDecidedAnnouncement(stubClient, ctx, session);
+    await sendDecidedAnnouncement(stubClient, ctx, session);
 
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
+    expect(ctx.ports.outbox.listEntries().map((entry) => entry.dedupeKey)).toStrictEqual([
+      `decided-announcement-${session.id}`
+    ]);
   });
 });
