@@ -4,8 +4,7 @@
     "noEmit": false,
     "noEmitOnError": true,
     "rootDir": "src",
-    "outDir": "dist",
-    "declaration": false
+    "outDir": "dist"
   },
   "include": ["src/**/*.ts"]
 }
