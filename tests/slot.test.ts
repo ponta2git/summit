@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { SLOT_KEYS, slotKeySchema } from "../src/slot.js";
+import { slotKeySchema } from "../src/slot.js";
 
 describe("slot (domain)", () => {
-  it("parses valid SlotKey values via zod schema", () => {
-    for (const slotKey of SLOT_KEYS) {
+  it("accepts exactly the four domain SlotKey values", () => {
+    const slotKeys = ["T2200", "T2230", "T2300", "T2330"] as const;
+    expect(slotKeySchema.options).toStrictEqual(slotKeys);
+    for (const slotKey of slotKeys) {
       expect(slotKeySchema.parse(slotKey)).toBe(slotKey);
     }
   });

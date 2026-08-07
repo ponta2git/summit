@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  DISCORD_UNKNOWN_MESSAGE_CODE,
   isUnknownMessageError
 } from "../../src/discord/shared/discordErrors.js";
 import {
@@ -22,7 +21,6 @@ beforeEach(resetReconcilerHarness);
 
 describe("isUnknownMessageError", () => {
   it("matches Discord code 10008", () => {
-    expect(isUnknownMessageError({ code: DISCORD_UNKNOWN_MESSAGE_CODE })).toBe(true);
     expect(isUnknownMessageError({ code: 10008 })).toBe(true);
   });
 

@@ -8,7 +8,7 @@ import { appConfig } from "./userConfig.js";
 
 export type SlotKey = "T2200" | "T2230" | "T2300" | "T2330";
 
-export const SLOT_KEYS: readonly SlotKey[] = ["T2200", "T2230", "T2300", "T2330"] as const;
+const SLOT_KEYS: readonly SlotKey[] = ["T2200", "T2230", "T2300", "T2330"] as const;
 
 export const slotKeySchema = z.enum(SLOT_KEYS);
 

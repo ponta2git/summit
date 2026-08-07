@@ -28,7 +28,7 @@ export const buildEphemeralReject = (content: string) => ({
   flags: MessageFlags.Ephemeral
 } as const);
 
-export const GUARD_FAILURE_REASONS = [
+const GUARD_FAILURE_REASONS = [
   "wrong_guild",
   "wrong_channel",
   "not_member",
