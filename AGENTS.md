@@ -7,14 +7,14 @@ Summit（個人開発 Discord Bot / 固定 4 名の桃鉄 1 年勝負 出欠自�
 | ファイル | 役割 | ここにしか書かないもの |
 |---|---|---|
 | `requirements/base.md` | 業務仕様 SSoT | 状態名 / 締切 / 順延 / 週キー等の仕様用語 |
-| `.github/copilot-instructions.md` | 常時ルール**要約**（即死ルールのみ） | 箇条 10 項目で完結 |
+| `.github/copilot-instructions.md` | Codex の常時ルール**要約**（即死ルールのみ） | Codex が作業開始時に確認する要点 |
 | **`AGENTS.md`（本書）** | **タスク入口 / 手順 / protocol / footgun** | 逆引き・decision tree・落とし穴 |
 | `.github/instructions/*.md` | ドメイン別実装規約（`applyTo` 適用） | time / interaction / db / runtime / secrets 詳細 |
 | `docs/adr/` | 判断根拠（Why）。索引 `docs/adr/README.md` | 意思決定の歴史・代替案却下 |
 | `docs/operations/` | 運用 runbook（How）。入口 `docs/operations/README.md` | 障害 SOP / migration / backup / secrets rotation / time skew |
 | `src/config.ts` / `src/env.ts` / `src/db/schema.ts` / `src/time/` | **実行されるリテラル値の唯一 SSoT**（ADR-0022） | cron 式 / HH:MM / 閾値 / 状態名 / 列名 |
 
-**原則**: 要約は copilot-instructions、詳細は AGENTS.md、規約は instructions、リテラルはコード。重複記述は drift 源（ADR-0022）。
+**原則**: 要約は Codex instructions、詳細は AGENTS.md、規約は instructions、リテラルはコード。重複記述は drift 源（ADR-0022）。
 
 ## タスク → 最初に開くファイル
 
