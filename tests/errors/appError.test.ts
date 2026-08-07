@@ -4,6 +4,7 @@ import {
   AppError,
   DatabaseError,
   NotFoundError,
+  ShutdownError,
   ValidationError,
   errResult,
   okResult
@@ -23,6 +24,10 @@ describe("AppError", () => {
 
     expect(error.cause).toBe(cause);
     expect(error.message).toBe("database write failed");
+  });
+
+  it("discriminates shutdown errors", () => {
+    expect(new ShutdownError("shutdown in progress").code).toBe("SHUTDOWN");
   });
 });
 

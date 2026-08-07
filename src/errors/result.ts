@@ -10,6 +10,18 @@ export const toResultAsync = <T, E extends AppError>(result: AppResult<T, E>): R
 export const fromDatabasePromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DatabaseError> =>
   ResultAsync.fromPromise(promise, (cause) => new DatabaseError(message, { cause }));
 
+export const fromDatabaseCall = <T>(
+  call: () => Promise<T>,
+  message: string
+): ResultAsync<T, DatabaseError> =>
+  ResultAsync.fromThrowable(call, (cause) => new DatabaseError(message, { cause }))();
+
 // why: Discord API 失敗を DB 失敗と同格の AppError に揃える → ADR-0015
 export const fromDiscordPromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DiscordApiError> =>
   ResultAsync.fromPromise(promise, (cause) => new DiscordApiError(message, { cause }));
+
+export const fromDiscordCall = <T>(
+  call: () => Promise<T>,
+  message: string
+): ResultAsync<T, DiscordApiError> =>
+  ResultAsync.fromThrowable(call, (cause) => new DiscordApiError(message, { cause }))();

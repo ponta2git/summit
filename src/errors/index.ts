@@ -5,7 +5,8 @@ const APP_ERROR_CODES = [
   "VALIDATION",
   "NOT_FOUND",
   "DISCORD_API",
-  "DATABASE"
+  "DATABASE",
+  "SHUTDOWN"
 ] as const;
 
 type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -54,6 +55,12 @@ export class DiscordApiError extends AppError {
 export class DatabaseError extends AppError {
   public constructor(message: string, options?: AppErrorOptions) {
     super("DATABASE", message, options);
+  }
+}
+
+export class ShutdownError extends AppError {
+  public constructor(message: string, options?: AppErrorOptions) {
+    super("SHUTDOWN", message, options);
   }
 }
 

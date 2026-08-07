@@ -16,7 +16,7 @@
 | 状態遷移の原則は？（CAS / 正本 / 冪等） | [0001](./0001-single-instance-db-as-source-of-truth.md) / 実例 [0019](./0019-postpone-voting-and-saturday-reask-flow.md), [0031](./0031-held-event-persistence.md), [0051](./0051-session-aggregate-ordered-discord-intents.md) |
 | Interaction / command 設計 | [0004](./0004-discord-interaction-architecture.md), [0016](./0016-customid-codec-hmac-rejected.md), [0023](./0023-cancel-week-command-flow.md), [0032](./0032-status-command.md), [0048](./0048-user-facing-copy-and-notification-policy.md) |
 | test で DB / 時計を差し替える方法 | [0018](./0018-port-wiring-and-factory-injection.md) |
-| エラーを throw する / しない、neverthrow の範囲 | [0015](./0015-error-core-apperror-neverthrow.md), [0045](./0045-neverthrow-boundary-scope.md) |
+| エラーを throw する / しない、neverthrow の範囲 | [0015](./0015-error-core-apperror-neverthrow.md), [0053](./0053-neverthrow-scheduler-application-seam.md) |
 | 新しい feature をどこに置く / 境界は | [0025](./0025-features-directory-migration.md), [0026](./0026-boundary-rationalization.md), [0027](./0027-ui-colocation-and-shared-boundary.md), [0028](./0028-viewmodels-as-feature-assets.md), [0037](./0037-feature-locality-over-cross-cutting-extraction.md), [0040](./0040-orchestration-layer.md), [0041](./0041-feature-registry-pattern.md) |
 | cross-feature な副作用フローをどこに置く | [0040](./0040-orchestration-layer.md) |
 | 新しい feature の dispatcher / slash command への登録方法 | [0041](./0041-feature-registry-pattern.md) |
@@ -35,11 +35,11 @@
 | Tag | ADR |
 |---|---|
 | db | 0001, 0003, 0008, 0009, 0012, 0019, 0023, 0024, 0026, 0031, 0033, 0035, 0038, 0042, 0043, 0047, 0050, 0051 |
-| discord | 0004, 0007, 0009, 0011, 0016, 0017, 0019, 0020, 0023, 0024, 0025, 0026, 0027, 0028, 0030, 0032, 0033, 0035, 0036, 0037, 0040, 0041, 0045, 0047, 0048, 0051 |
+| discord | 0004, 0007, 0009, 0011, 0016, 0017, 0019, 0020, 0023, 0024, 0025, 0026, 0027, 0028, 0030, 0032, 0033, 0035, 0036, 0037, 0040, 0041, 0045, 0047, 0048, 0051, 0053 |
 | time | 0002, 0007, 0019, 0024, 0044, 0051 |
-| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050, 0051, 0052 |
+| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050, 0051, 0052, 0053 |
 | docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038, 0039, 0040, 0041, 0046, 0048, 0051 |
-| testing | 0018, 0051 |
+| testing | 0018, 0051, 0053 |
 | dev-tools | 0029 |
 
 ## ADR format (MADR)
@@ -113,6 +113,7 @@ tags: [runtime, db, discord, ops, docs, time, testing, dev-tools]
 - ADR-0012（member SSoT を env+DB ハイブリッドに統合する）→ ADR-0046（ユーザー向け設定ファイル）
 - ADR-0013（config 階層）→ ADR-0046（ユーザー向け設定ファイル）
 - ADR-0021（neverthrow 全面採用の却下）→ ADR-0045（境界・orchestration 積極導入）
+- ADR-0045（境界・orchestration 積極導入）→ ADR-0053（scheduler application seam への適用拡大）
 - ADR-0024（reminder claim-first）→ ADR-0051（順序付き delivery intent）
 - ADR-0033（直接再投稿を含む startup reconciler）→ ADR-0051（outbox recovery を含む reconciler）
 - ADR-0035（部分移行・順序なし outbox）→ ADR-0051（全必須投稿・順序付き outbox）

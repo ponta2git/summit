@@ -1,10 +1,10 @@
 ---
 adr: 0045
 title: neverthrow の境界・orchestration 積極導入スコープ
-status: accepted
+status: superseded
 date: 2026-04-25
 supersedes: [0021]
-superseded-by: null
+superseded-by: 0053
 tags: [runtime, discord, ops]
 ---
 
