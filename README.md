@@ -19,7 +19,7 @@ Summit は、固定 4 名で毎週遊ぶ「桃鉄 1 年勝負」の出欠確認�
 | 領域 | 技術 |
 |---|---|
 | Runtime | Node.js 24, TypeScript, ESM |
-| Package manager | pnpm v10 |
+| Package manager | pnpm v11.20.0 |
 | Discord | discord.js v14 |
 | Database | PostgreSQL 16, Drizzle ORM, postgres.js |
 | Scheduling | node-cron + DB-driven reconciliation |
