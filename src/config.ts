@@ -1,6 +1,6 @@
 import { appConfig } from "./userConfig.js";
 
-export type Hhmm = Readonly<{ hour: number; minute: number }>;
+type Hhmm = Readonly<{ hour: number; minute: number }>;
 
 // why: runtime tunables 集約 → ADR-0013
 
@@ -34,11 +34,6 @@ export const POSTPONE_DEADLINE_HHMM = parseHhmm(appConfig.schedule.postponeDeadl
 
 // why: cron 送信スケジュールは user config の askTime から派生させる。
 export const CRON_ASK_SCHEDULE = buildWeeklyCron(ASK_START_HHMM, 5);
-export const CRON_DEADLINE_SCHEDULE = buildWeeklyCron(ASK_DEADLINE_HHMM, 5);
-// jst: POSTPONE_DEADLINE_HHMM="24:00" = 候補日翌日 00:00 JST に対応する土曜境界 tick。
-export const CRON_POSTPONE_DEADLINE_SCHEDULE = "0 0 * * 6" as const;
-// why: reminder 到達判定を毎 tick で行う → ADR-0024
-export const CRON_REMINDER_SCHEDULE = "* * * * *" as const;
 export const REMINDER_LEAD_MINUTES = -appConfig.schedule.reminderLeadMinutes;
 // why: 開催確定からリマインド予定まで余裕がない場合は送信をスキップする（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
@@ -54,8 +49,6 @@ export const HEALTHCHECK_PING_INTERVAL_CRON = "*/1 * * * *" as const;
 // why: healthchecks.io 無応答時も起動/tick を止めないための HTTP タイムアウト → ADR-0034
 export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 
-// why: Discord send outbox worker → ADR-0035。state transitions が同 tx で enqueue し worker が非同期送信。
-export const CRON_OUTBOX_WORKER_SCHEDULE = "*/10 * * * * *" as const;
 // why: DB-driven scheduler supervisor is the fallback for missed wake/timer events.
 export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/30 * * * *" as const;
 export const SCHEDULER_WAKE_DEBOUNCE_MS = 250 as const;
@@ -86,9 +79,7 @@ export const OUTBOX_RETENTION_FAILED_MS = 30 * 24 * 60 * 60 * 1_000;
 // jst: オフピーク帯 (4:00 JST) で 1 日 1 回 prune。deploy 禁止窓 (金 17:30〜土 01:00 JST) と重ならない。
 export const CRON_OUTBOX_RETENTION_SCHEDULE = "0 4 * * *" as const;
 
-// why: outbox 観測メトリクスの cron cadence と warn 昇格しきい値。
-//   5 分粒度はノイズと検知遅延のバランス。warn 条件は OR で評価される。@see ADR-0043
-export const CRON_OUTBOX_METRICS_SCHEDULE = "*/5 * * * *" as const;
+// why: outbox 観測メトリクスの warn 昇格しきい値。warn 条件は OR で評価される。@see ADR-0043
 export const OUTBOX_METRICS_PENDING_WARN_DEPTH = 50 as const;
 export const OUTBOX_METRICS_PENDING_AGE_WARN_MS = 5 * 60 * 1_000;
 

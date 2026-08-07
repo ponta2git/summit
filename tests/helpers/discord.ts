@@ -2,7 +2,6 @@ import {
   ChannelType,
   type Client,
   type Message,
-  type MessagePayload,
   type TextChannel
 } from "discord.js";
 import { vi } from "vitest";
@@ -67,5 +66,3 @@ export const createDiscordTextFixture = (
 export const sentPayload = <T = string>(send: {
   readonly mock: { readonly calls: ReadonlyArray<readonly [unknown, ...unknown[]]> };
 }): T => callArg<T>(send);
-
-export type SendPayload = string | MessagePayload;

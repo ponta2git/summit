@@ -13,7 +13,6 @@ import {
   REMINDER_LEAD_MINUTES
 } from "../config.js";
 import {
-  SLOT_KEYS,
   SLOT_TO_LABEL,
   SLOT_TO_MINUTES,
   type SlotKey
@@ -50,7 +49,6 @@ export const formatCandidateJa = (value: Date): string =>
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
 
-export const ASK_TIME_CHOICES = SLOT_KEYS;
 export type AskTimeChoice = SlotKey;
 
 /**

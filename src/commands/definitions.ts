@@ -6,6 +6,6 @@ import { featureModules } from "../discord/registry/modules.js";
 // 新 feature 追加でこのファイルの編集は不要 (ADR-0041)。
 const registry = buildFeatureRegistry(featureModules);
 
-export const commandBuilders = registry.slashBuilders;
+const commandBuilders = registry.slashBuilders;
 
 export const slashCommands = commandBuilders.map((command) => command.toJSON());

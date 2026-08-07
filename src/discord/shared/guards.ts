@@ -23,16 +23,6 @@ import {
   type PostponeNgConfirmCustomIdChoice
 } from "./customId.js";
 
-export const assertGuildAndChannel = (
-  guildId: string | null,
-  channelId: string | null
-): boolean =>
-  guildId === appConfig.discord.guildId &&
-  channelId === appConfig.discord.channelId;
-
-export const assertMember = (userId: string): boolean =>
-  appConfig.memberUserIds.includes(userId);
-
 export const buildEphemeralReject = (content: string) => ({
   content,
   flags: MessageFlags.Ephemeral

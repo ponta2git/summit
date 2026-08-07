@@ -5,8 +5,7 @@ export const APP_ERROR_CODES = [
   "VALIDATION",
   "NOT_FOUND",
   "DISCORD_API",
-  "DATABASE",
-  "RACE_LOST"
+  "DATABASE"
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
@@ -58,21 +57,7 @@ export class DatabaseError extends AppError {
   }
 }
 
-export class RaceLostError extends AppError {
-  public constructor(message: string, options?: AppErrorOptions) {
-    super("RACE_LOST", message, options);
-  }
-}
-
 export type AppResult<T, E extends AppError = AppError> = Result<T, E>;
 
 export const okResult = <T>(value: T): AppResult<T, never> => ok(value);
 export const errResult = <E extends AppError>(error: E): AppResult<never, E> => err(error);
-
-export const toAppError = (error: unknown, fallbackMessage: string): AppError => {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new InvariantViolationError(fallbackMessage, { cause: error });
-};
