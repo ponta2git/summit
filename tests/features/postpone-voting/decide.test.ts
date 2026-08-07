@@ -77,8 +77,25 @@ describe("evaluatePostponeVote", () => {
     expect(result).toEqual({ kind: "pending" });
   });
 
-  it("uses the latest answer per member when duplicate responses exist", () => {
-    // race: 再押下で NG→OK に更新された場合は、最新回答を採用して判定する。
+  it.each([
+    {
+      label: "NG→OK",
+      earlierChoice: "POSTPONE_NG",
+      latestChoice: "POSTPONE_OK",
+      expected: { kind: "all_ok" }
+    },
+    {
+      label: "OK→NG",
+      earlierChoice: "POSTPONE_OK",
+      latestChoice: "POSTPONE_NG",
+      expected: { kind: "cancelled", reason: "postpone_ng" }
+    }
+  ] as const)("uses the latest answer per member when duplicate responses exist ($label)", ({
+    earlierChoice,
+    latestChoice,
+    expected
+  }) => {
+    // race: 再押下で回答が更新された場合は、最新回答を採用して判定する。
     const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
     const result = evaluatePostponeVote(
       session,
@@ -86,19 +103,30 @@ describe("evaluatePostponeVote", () => {
         responseRow({
           id: "r1",
           memberId: "m1",
-          choice: "POSTPONE_NG",
+          choice: earlierChoice,
           answeredAt: new Date("2026-04-24T12:00:00.000Z")
         }),
         responseRow({
           id: "r2",
           memberId: "m1",
-          choice: "POSTPONE_OK",
+          choice: latestChoice,
           answeredAt: new Date("2026-04-24T12:05:00.000Z")
         })
       ],
       { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
     );
 
-    expect(result).toEqual({ kind: "all_ok" });
+    expect(result).toStrictEqual(expected);
+  });
+
+  it("ignores responses that belong to another session", () => {
+    const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
+    const result = evaluatePostponeVote(
+      session,
+      [responseRow({ sessionId: "foreign-session", memberId: "m1" })],
+      { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
+    );
+
+    expect(result).toStrictEqual({ kind: "pending" });
   });
 });

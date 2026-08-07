@@ -73,7 +73,11 @@ describe("buildAskMessageViewModel", () => {
 
   it("computes DECIDED footer with start time", () => {
     const vm = buildAskMessageViewModel(
-      { ...session, status: "DECIDED", decidedStartAt: new Date() },
+      {
+        ...session,
+        status: "DECIDED",
+        decidedStartAt: new Date("2026-04-24T14:00:00.000Z")
+      },
       [
         { memberId: "m1", choice: "T2300" },
         { memberId: "m2", choice: "T2200" }

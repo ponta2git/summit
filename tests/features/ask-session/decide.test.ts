@@ -32,7 +32,7 @@ describe("evaluateDeadline", () => {
     expect(result).toEqual({ kind: "cancelled", reason: "all_absent" });
   });
 
-  it("returns decided with latest slot when all members answered with time choices", () => {
+  it("returns decided before deadline when all members answered with time choices", () => {
     const session = sessionRow({ candidateDateIso: "2026-04-24" });
     const result = evaluateDeadline(
       session,
@@ -42,7 +42,7 @@ describe("evaluateDeadline", () => {
         responseRow({ id: "r3", memberId: "m3", choice: "T2300" }),
         responseRow({ id: "r4", memberId: "m4", choice: "T2330" })
       ],
-      { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
+      { memberCountExpected: 4, now: new Date("2026-04-24T12:29:00.000Z") }
     );
 
     expect(expectKind(result, "decided")).toStrictEqual({
@@ -65,10 +65,14 @@ describe("evaluateDeadline", () => {
       { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
     );
 
-    expect(expectKind(result, "decided").chosenSlot).toBe("T2330");
+    expect(expectKind(result, "decided")).toStrictEqual({
+      kind: "decided",
+      chosenSlot: "T2330",
+      startAt: new Date("2026-04-24T14:30:00.000Z")
+    });
   });
 
-  it("returns cancelled/deadline_unanswered when still partial after deadline", () => {
+  it("returns cancelled/deadline_unanswered at deadline when still partial", () => {
     const session = sessionRow({ deadlineAt: new Date("2026-04-24T12:30:00.000Z") });
     const result = evaluateDeadline(
       session,
@@ -77,7 +81,7 @@ describe("evaluateDeadline", () => {
         responseRow({ id: "r2", memberId: "m2", choice: "T2230" }),
         responseRow({ id: "r3", memberId: "m3", choice: "T2300" })
       ],
-      { memberCountExpected: 4, now: new Date("2026-04-24T12:31:00.000Z") }
+      { memberCountExpected: 4, now: new Date("2026-04-24T12:30:00.000Z") }
     );
 
     expect(result).toEqual({ kind: "cancelled", reason: "deadline_unanswered" });
