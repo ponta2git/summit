@@ -10,7 +10,7 @@ RUN corepack enable
 # ── momo-db build ──────────────────────────────────────────────────────────────
 FROM base AS momo-db-build
 WORKDIR /app/momo-db
-COPY momo-db/package.json momo-db/pnpm-lock.yaml ./
+COPY momo-db/package.json momo-db/pnpm-lock.yaml momo-db/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY momo-db/tsconfig*.json ./
 COPY momo-db/src ./src
@@ -20,7 +20,7 @@ RUN pnpm build
 FROM base AS summit-deps
 COPY --from=momo-db-build /app/momo-db /app/momo-db
 WORKDIR /app/summit
-COPY summit/package.json summit/pnpm-lock.yaml ./
+COPY summit/package.json summit/pnpm-lock.yaml summit/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ── summit build ───────────────────────────────────────────────────────────────
