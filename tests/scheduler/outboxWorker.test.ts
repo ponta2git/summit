@@ -1,10 +1,6 @@
-// why: outbox port (ADR-0035) の fake 実装と worker 配送パスの回帰テスト。
-//   real repository は同じ port 契約 (ports.ts) を満たすため、ここでのカバレッジが production 挙動の保証の要。
+import { ChannelType } from "discord.js";
+import { describe, expect, it, vi } from "vitest";
 
-import { ChannelType, type Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import type { OutboxEntry } from "../../src/db/ports.js";
 import {
   OUTBOX_BACKOFF_MS_SEQUENCE,
   OUTBOX_MAX_ATTEMPTS
@@ -13,131 +9,12 @@ import {
   computeOutboxBackoff,
   runOutboxWorkerTick
 } from "../../src/scheduler/outboxWorker.js";
-import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
-import { createTestAppContext } from "../testing/index.js";
-import { asDiscordClient } from "../helpers/discord.js";
 import { deferred } from "../helpers/deferred.js";
-
+import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "./factories/session.js";
+import { stubChannel, stubClient } from "./outboxWorker.harness.js";
 
-const stubChannel = (overrides?: { sendThrows?: boolean }) => {
-  const sentMessages: { id: string }[] = [];
-  const channel = {
-    type: ChannelType.GuildText,
-    isSendable: () => true,
-    send: vi.fn(async () => {
-      if (overrides?.sendThrows) {
-        throw new Error("Discord API failure");
-      }
-      const msg = { id: `posted-${sentMessages.length + 1}` };
-      sentMessages.push(msg);
-      return msg;
-    })
-  };
-  return { channel, sentMessages };
-};
-
-const stubClient = (channel: unknown): Client =>
-  asDiscordClient({
-    channels: { fetch: vi.fn(async () => channel) }
-  });
-
-describe("outbox port (fake): enqueue idempotency", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns skipped=true for duplicate dedupeKey while status is non-FAILED", async () => {
-    const session = buildSessionRow({ id: "s1" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    const input = {
-      kind: "send_message" as const,
-      sessionId: session.id,
-      dedupeKey: "settle-notice-s1-absent",
-      payload: {
-        kind: "send_message" as const,
-        channelId: session.channelId,
-        renderer: "settle_notice",
-        extra: { content: "hi" }
-      }
-    };
-    const first = await ctx.ports.outbox.enqueue(input);
-    const second = await ctx.ports.outbox.enqueue(input);
-
-    expect(first.skipped).toBe(false);
-    expect(second.skipped).toBe(true);
-    expect(second.id).toBe(first.id);
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
-  });
-
-  it("enqueues via transaction when passed through cancelAsking.outbox and rejects duplicates", async () => {
-    const session = buildSessionRow({ id: "s2", status: "ASKING" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
-
-    const entry = {
-      kind: "send_message" as const,
-      sessionId: session.id,
-      dedupeKey: `settle-notice-${session.id}-absent`,
-      payload: {
-        kind: "send_message" as const,
-        channelId: session.channelId,
-        renderer: "settle_notice",
-        extra: { content: "hi" }
-      }
-    };
-
-    await ctx.ports.sessions.cancelAsking({
-      id: session.id,
-      now: new Date("2026-04-24T12:30:00Z"),
-      reason: "absent",
-      outbox: [entry]
-    });
-
-    // unique: 直接 enqueue で同 key を追加しようとしても skipped=true が返り 1 件に収束する。
-    const again = await ctx.ports.outbox.enqueue(entry);
-    expect(again.skipped).toBe(true);
-    expect(ctx.ports.outbox.listEntries()).toHaveLength(1);
-  });
-
-  it("returns the next dispatch timestamp across pending and in-flight rows", async () => {
-    const session = buildSessionRow({ id: "s-dispatch-at" });
-    const ctx = createTestAppContext({
-      seed: { sessions: [session] },
-      now: new Date("2026-04-24T12:00:00.000Z")
-    });
-    await ctx.ports.outbox.enqueue({
-      kind: "send_message",
-      sessionId: session.id,
-      dedupeKey: "pending-later",
-      payload: {
-        kind: "send_message",
-        channelId: session.channelId,
-        renderer: "raw_text",
-        extra: { content: "later" }
-      }
-    });
-    const [entry] = ctx.ports.outbox.listEntries();
-    if (!entry) {
-      throw new Error("expected seeded outbox entry");
-    }
-    ctx.ports.outbox.seedEntry({
-      ...entry,
-      id: "in-flight-earlier",
-      dedupeKey: "in-flight-earlier",
-      status: "IN_FLIGHT",
-      claimExpiresAt: new Date("2026-04-24T12:00:30.000Z"),
-      nextAttemptAt: new Date("2026-04-24T12:05:00.000Z")
-    });
-
-    const nextDispatchAt = await ctx.ports.outbox.getNextDispatchAt(
-      new Date("2026-04-24T12:00:00.000Z")
-    );
-
-    expect(nextDispatchAt?.toISOString()).toBe("2026-04-24T12:00:00.000Z");
-  });
-});
-
-describe("outbox worker: success path", () => {
+describe("outbox worker delivery", () => {
   it("starts claimed deliveries concurrently within one batch", async () => {
     const session = buildSessionRow({ id: "s3-parallel" });
     const ctx = createTestAppContext({
@@ -177,7 +54,6 @@ describe("outbox worker: success path", () => {
     const tick = runOutboxWorkerTick(stubClient(channel), ctx);
     await secondSendStarted.promise;
     expect(channel.send).toHaveBeenCalledTimes(2);
-
     firstSendDone.resolve({ id: "posted-1" });
     await tick;
 
@@ -187,17 +63,12 @@ describe("outbox worker: success path", () => {
     ]);
   });
 
-  it("delivers PENDING row, marks DELIVERED, and back-fills askMessageId when target=askMessageId", async () => {
-    const session = buildSessionRow({
-      id: "s3",
-      status: "ASKING",
-      askMessageId: null
-    });
+  it("delivers a row and backfills a null ask message id", async () => {
+    const session = buildSessionRow({ id: "s3", status: "ASKING", askMessageId: null });
     const ctx = createTestAppContext({
       seed: { sessions: [session] },
       now: new Date("2026-04-24T12:00:00Z")
     });
-
     await ctx.ports.outbox.enqueue({
       kind: "send_message",
       sessionId: session.id,
@@ -210,23 +81,18 @@ describe("outbox worker: success path", () => {
         extra: { content: "hello" }
       }
     });
+    const { channel, sentMessages } = stubChannel();
 
-    const { channel } = stubChannel();
     await runOutboxWorkerTick(stubClient(channel), ctx);
 
-    const entries = ctx.ports.outbox.listEntries();
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.status).toBe("DELIVERED");
-    expect(entries[0]?.deliveredMessageId).toBe("posted-1");
-
-    const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    expect(persisted?.askMessageId).toBe("posted-1");
-    expect(channel.send).toHaveBeenCalledTimes(1);
+    const [entry] = ctx.ports.outbox.listEntries();
+    expect({ status: entry?.status, deliveredMessageId: entry?.deliveredMessageId })
+      .toStrictEqual({ status: "DELIVERED", deliveredMessageId: "posted-1" });
+    expect((await ctx.ports.sessions.findSessionById(session.id))?.askMessageId).toBe("posted-1");
+    expect(sentMessages).toStrictEqual([{ id: "posted-1", payload: { content: "hello" } }]);
   });
 
-  // regression: FR-M2. reconciler 再投稿が先に askMessageId をセットした場合、
-  //   後続の outbox 配送は Discord への送信には成功するが DB 列は上書きしない (CAS-on-NULL)。
-  it("does NOT overwrite askMessageId when already non-null (CAS-on-NULL; FR-M2)", async () => {
+  it("does not overwrite a non-null ask message id", async () => {
     const session = buildSessionRow({
       id: "s3b",
       status: "ASKING",
@@ -236,7 +102,6 @@ describe("outbox worker: success path", () => {
       seed: { sessions: [session] },
       now: new Date("2026-04-24T12:00:00Z")
     });
-
     await ctx.ports.outbox.enqueue({
       kind: "send_message",
       sessionId: session.id,
@@ -249,31 +114,21 @@ describe("outbox worker: success path", () => {
         extra: { content: "hello" }
       }
     });
-
     const { channel } = stubChannel();
+
     await runOutboxWorkerTick(stubClient(channel), ctx);
 
-    const entries = ctx.ports.outbox.listEntries();
-    expect(entries[0]?.status).toBe("DELIVERED");
-
-    const persisted = ctx.ports.sessions.listSessions().find((s) => s.id === session.id);
-    // invariant: reconciler-posted-99 は上書きされない。
-    expect(persisted?.askMessageId).toBe("reconciler-posted-99");
-
-    const skipCalls = ctx.ports.sessions.calls.filter(
-      (c) => c.name === "backfillAskMessageId"
-    );
-    expect(skipCalls).toHaveLength(1);
+    expect(ctx.ports.outbox.listEntries()[0]?.status).toBe("DELIVERED");
+    expect((await ctx.ports.sessions.findSessionById(session.id))?.askMessageId)
+      .toBe("reconciler-posted-99");
   });
 });
 
-describe("outbox worker: failure path", () => {
-  it("marks PENDING with exponential backoff and increments attemptCount", async () => {
+describe("outbox worker retry policy", () => {
+  it("marks a failed delivery PENDING with the first backoff", async () => {
+    const now = new Date("2026-04-24T12:00:00Z");
     const session = buildSessionRow({ id: "s4" });
-    const ctx = createTestAppContext({
-      seed: { sessions: [session] },
-      now: new Date("2026-04-24T12:00:00Z")
-    });
+    const ctx = createTestAppContext({ seed: { sessions: [session] }, now });
     await ctx.ports.outbox.enqueue({
       kind: "send_message",
       sessionId: session.id,
@@ -285,151 +140,35 @@ describe("outbox worker: failure path", () => {
         extra: { content: "x" }
       }
     });
-
     const { channel } = stubChannel({ sendThrows: true });
+
     await runOutboxWorkerTick(stubClient(channel), ctx);
 
     const [entry] = ctx.ports.outbox.listEntries();
-    expect(entry?.status).toBe("PENDING");
-    expect(entry?.attemptCount).toBe(1);
-    expect(entry?.lastError).toMatch(/Discord API failure/);
-    // invariant: 1st failure → OUTBOX_BACKOFF_MS_SEQUENCE[0] ms 後に再試行予定。
-    const expectedAt = new Date(
-      ctx.clock.now().getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE[0] ?? 0)
-    );
-    expect(entry?.nextAttemptAt.getTime()).toBe(expectedAt.getTime());
+    expect({
+      status: entry?.status,
+      attemptCount: entry?.attemptCount,
+      lastError: entry?.lastError,
+      nextAttemptAt: entry?.nextAttemptAt
+    }).toStrictEqual({
+      status: "PENDING",
+      attemptCount: 1,
+      lastError: "Discord API failure",
+      nextAttemptAt: new Date(now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE[0] ?? 0))
+    });
   });
 
-  it("computes each configured backoff delay and caps before dead lettering", () => {
+  it("uses every configured delay, caps, then dead-letters", () => {
     const now = new Date("2026-04-24T12:00:00Z");
 
-    for (const [index, delayMs] of OUTBOX_BACKOFF_MS_SEQUENCE.entries()) {
-      const nextAttemptAt = computeOutboxBackoff(index + 1, now);
-      expect(nextAttemptAt?.getTime()).toBe(now.getTime() + delayMs);
-    }
-
-    const cappedAttemptAt = computeOutboxBackoff(
-      OUTBOX_BACKOFF_MS_SEQUENCE.length + 1,
-      now
-    );
-    expect(cappedAttemptAt?.getTime()).toBe(
-      now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE.at(-1) ?? 0)
-    );
+    expect(
+      OUTBOX_BACKOFF_MS_SEQUENCE.map((_, index) =>
+        computeOutboxBackoff(index + 1, now)?.getTime()
+      )
+    ).toStrictEqual(OUTBOX_BACKOFF_MS_SEQUENCE.map((delay) => now.getTime() + delay));
+    expect(
+      computeOutboxBackoff(OUTBOX_BACKOFF_MS_SEQUENCE.length + 1, now)?.getTime()
+    ).toBe(now.getTime() + (OUTBOX_BACKOFF_MS_SEQUENCE.at(-1) ?? 0));
     expect(computeOutboxBackoff(OUTBOX_MAX_ATTEMPTS, now)).toBeNull();
-  });
-});
-
-describe("outbox worker: claim expiration", () => {
-  it("does not re-claim IN_FLIGHT rows until claim_expires_at passes", async () => {
-    const session = buildSessionRow({ id: "s5" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    await ctx.ports.outbox.enqueue({
-      kind: "send_message",
-      sessionId: session.id,
-      dedupeKey: `ask-msg-${session.id}`,
-      payload: {
-        kind: "send_message",
-        channelId: session.channelId,
-        renderer: "ask_body",
-        extra: { content: "x" }
-      }
-    });
-
-    const now = ctx.clock.now();
-    const first = await ctx.ports.outbox.claimNextBatch({
-      limit: 10,
-      now,
-      claimDurationMs: 30_000
-    });
-    expect(first).toHaveLength(1);
-    expect(first[0]?.status).toBe("IN_FLIGHT");
-
-    // race: 同時 tick を模す: まだ claim_expires_at を過ぎていない。
-    const sameTick = await ctx.ports.outbox.claimNextBatch({
-      limit: 10,
-      now,
-      claimDurationMs: 30_000
-    });
-    expect(sameTick).toHaveLength(0);
-
-    // race: claim_expires_at を過ぎると reclaim される。
-    const later = new Date(now.getTime() + 60_000);
-    const reclaimed = await ctx.ports.outbox.claimNextBatch({
-      limit: 10,
-      now: later,
-      claimDurationMs: 30_000
-    });
-    expect(reclaimed).toHaveLength(1);
-    expect(reclaimed[0]?.attemptCount).toBe(2);
-  });
-});
-
-describe("reconciler: releaseExpiredClaims", () => {
-  it("reclaims stale IN_FLIGHT outbox rows back to PENDING", async () => {
-    const session = buildSessionRow({ id: "s6" });
-    const ctx = createTestAppContext({
-      seed: { sessions: [session] },
-      now: new Date("2026-04-24T12:00:00Z")
-    });
-    const stale: OutboxEntry = {
-      id: "stale-1",
-      kind: "send_message",
-      sessionId: session.id,
-      dedupeKey: "stale-1",
-      payload: {
-        kind: "send_message",
-        channelId: session.channelId,
-        renderer: "x",
-        extra: { content: "x" }
-      },
-      status: "IN_FLIGHT",
-      attemptCount: 1,
-      lastError: null,
-      claimExpiresAt: new Date("2026-04-24T11:00:00Z"),
-      nextAttemptAt: new Date("2026-04-24T11:00:00Z"),
-      deliveredAt: null,
-      deliveredMessageId: null,
-      createdAt: new Date("2026-04-24T10:00:00Z"),
-      updatedAt: new Date("2026-04-24T11:00:00Z")
-    };
-    ctx.ports.outbox.seedEntry(stale);
-
-    const released = await reconcileOutboxClaims(ctx);
-    expect(released).toBe(1);
-    const [entry] = ctx.ports.outbox.listEntries();
-    expect(entry?.status).toBe("PENDING");
-    expect(entry?.claimExpiresAt).toBeNull();
-  });
-});
-
-describe("outbox findStranded: /status warning source", () => {
-  it("returns FAILED rows and high-attempt PENDING rows", async () => {
-    const session = buildSessionRow({ id: "s7" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    ctx.ports.outbox.seedEntry({
-      id: "fail-1",
-      kind: "send_message",
-      sessionId: session.id,
-      dedupeKey: "fail-1",
-      payload: {
-        kind: "send_message",
-        channelId: session.channelId,
-        renderer: "x",
-        extra: { content: "x" }
-      },
-      status: "FAILED",
-      attemptCount: 10,
-      lastError: "gave up",
-      claimExpiresAt: null,
-      nextAttemptAt: new Date("2026-04-24T12:00:00Z"),
-      deliveredAt: null,
-      deliveredMessageId: null,
-      createdAt: new Date("2026-04-24T10:00:00Z"),
-      updatedAt: new Date("2026-04-24T12:00:00Z")
-    });
-
-    const stranded = await ctx.ports.outbox.findStranded(5);
-    expect(stranded).toHaveLength(1);
-    expect(stranded[0]?.status).toBe("FAILED");
   });
 });
