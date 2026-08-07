@@ -75,8 +75,9 @@ describe("handlePostponeButton", () => {
   it("persists OK vote and re-renders postpone message from DB", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
+    const now = new Date("2026-04-25T12:00:00.000Z");
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now,
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
@@ -89,9 +90,17 @@ describe("handlePostponeButton", () => {
     );
 
     const responses = await context.ports.responses.listResponses(session.id);
-    expect(responses).toHaveLength(1);
-    expect(responses[0]?.memberId).toBe(seededMembers[0]!.id);
-    expect(responses[0]?.choice).toBe("POSTPONE_OK");
+    expect(responses.map((response) => ({
+      sessionId: response.sessionId,
+      memberId: response.memberId,
+      choice: response.choice,
+      answeredAt: response.answeredAt
+    }))).toStrictEqual([{
+      sessionId: session.id,
+      memberId: seededMembers[0]!.id,
+      choice: "POSTPONE_OK",
+      answeredAt: now
+    }]);
     expect(interactionWithMessage.deferUpdate).toHaveBeenCalledOnce();
     expect(messageEdit).toHaveBeenCalledOnce();
     expect(interactionWithMessage.followUp).not.toHaveBeenCalled();
@@ -151,9 +160,9 @@ describe("handlePostponeButton", () => {
     );
 
     // invariant: ダイアログ表示の段階では既存の OK 票は上書きされない。
-    const responses = await context.ports.responses.listResponses(session.id);
-    expect(responses).toHaveLength(1);
-    expect(responses[0]?.choice).toBe("POSTPONE_OK");
+    expect(await context.ports.responses.listResponses(session.id)).toStrictEqual([
+      postponeResponse(0, "POSTPONE_OK", session.id)
+    ]);
     expect(interactionWithMessage.followUp).toHaveBeenCalledOnce();
   });
 
@@ -234,8 +243,9 @@ describe("handlePostponeButton", () => {
   it("settles to POSTPONED and creates Saturday session when all 4 vote OK", async () => {
     const session = postponeSession();
     const { client, channelSend } = createDiscordClient();
+    const now = new Date("2026-04-25T12:00:00.000Z");
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now,
       seed: {
         sessions: [session],
         members: seededMembers,
@@ -260,8 +270,31 @@ describe("handlePostponeButton", () => {
     const sessions = context.ports.sessions.listSessions();
     const persisted = sessions.find((row) => row.id === session.id);
     const saturday = sessions.find((row) => row.weekKey === session.weekKey && row.postponeCount === 1);
-    expect(persisted?.status).toBe("POSTPONED");
-    expect(saturday?.status).toBe("ASKING");
-    expect(channelSend).toHaveBeenCalled();
+    expect({
+      status: persisted?.status,
+      cancelReason: persisted?.cancelReason,
+      updatedAt: persisted?.updatedAt
+    }).toStrictEqual({
+      status: "POSTPONED",
+      cancelReason: null,
+      updatedAt: now
+    });
+    expect({
+      weekKey: saturday?.weekKey,
+      postponeCount: saturday?.postponeCount,
+      candidateDateIso: saturday?.candidateDateIso,
+      status: saturday?.status,
+      askMessageId: saturday?.askMessageId,
+      deadlineAt: saturday?.deadlineAt
+    }).toStrictEqual({
+      weekKey: session.weekKey,
+      postponeCount: 1,
+      candidateDateIso: "2026-04-25",
+      status: "ASKING",
+      askMessageId: "sent-1",
+      deadlineAt: new Date("2026-04-25T12:30:00.000Z")
+    });
+    expect(channelSend).toHaveBeenCalledOnce();
+    expect(context.ports.outbox.listEntries()).toStrictEqual([]);
   });
 });
