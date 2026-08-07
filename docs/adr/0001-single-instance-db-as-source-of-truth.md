@@ -51,7 +51,7 @@ Forces:
 - **Footgun**: `message.edit` / Discord API 失敗で DB を巻き戻さない。表示再同期は次 tick または次 interaction に任せる（DB が正本。応急修正で表示側に合わせると整合が壊れる）。
 - **Footgun**: 任意 from/to を取る `transitionStatus` 風 API を追加しない。許可遷移グラフが型で閉じなくなる。新状態は edge-specific API を追加する（正本は `src/db/ports.ts` の `SESSION_ALLOWED_TRANSITIONS`）。
 - **Footgun**: cron は at-least-once 前提。同一 tick の重複実行で結果が変わらない冪等性を崩さない（状態判定 + 条件付き `UPDATE ... WHERE status = ...` を省略しない）。
-- **Monitoring**: プロセス生存だけでなく cron tick の継続を監視する（healthchecks.io ping 停止で検知）。
+- **Monitoring**: プロセス生存だけでなく cron tick の継続を、構造化ログと `/status` で確認する。外部pingはアプリから送信しない（ADR-0052）。
 
 ## Alternatives considered
 

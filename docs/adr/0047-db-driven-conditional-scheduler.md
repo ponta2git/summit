@@ -26,7 +26,7 @@ Discord Bot は HTTP request で起動できる Web app ではなく、Gateway W
 
 `src/scheduler/controller.ts` に DB-driven scheduler controller を導入する。
 
-- `createAskScheduler()` は固定 cron を calendar ask / healthcheck / outbox retention / supervisor に絞る。実値は `src/config.ts` の `CRON_*` / `SCHEDULER_*` / `OUTBOX_*` 定数を SSoT とする。
+- `createAskScheduler()` は固定 cron を calendar ask / outbox retention / supervisor に絞る。実値は `src/config.ts` の `CRON_*` / `SCHEDULER_*` / `OUTBOX_*` 定数を SSoT とする。
 - `SessionsPort.getSchedulerSessionHints()` は進行中セッションの次締切と次 reminder 時刻を返す。過去時刻も返し、controller が即時収束させる。
 - `OutboxPort.getNextDispatchAt()` は未配送 row の次試行時刻と claim expiry から、次に worker attention が必要な時刻を返す。
 - controller は DB hint から one-shot timer を張り、期限到達時に既存 tick 関数を `runTickSafely` 経由で実行する。

@@ -41,10 +41,6 @@ export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 export const TICK_DURATION_WARN_MS = 10_000;
 // why: メンバー数 SSoT → ADR-0012。循環参照回避のため定義は env.ts、消費側は config 経由で import。
 export { MEMBER_COUNT_EXPECTED } from "./env.js";
-// why: healthcheck ping でプロセス死亡を検知する → ADR-0034
-export const HEALTHCHECK_PING_INTERVAL_CRON = "*/1 * * * *" as const;
-// why: healthchecks.io 無応答時も起動/tick を止めないための HTTP タイムアウト → ADR-0034
-export const HEALTHCHECK_PING_TIMEOUT_MS = 5_000 as const;
 
 // why: DB-driven scheduler supervisor is the fallback for missed wake/timer events.
 export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/30 * * * *" as const;

@@ -25,7 +25,7 @@ tags: [runtime, ops, docs]
 設定境界を次の 3 層に分ける。
 
 - **User config**: Discord guild / channel、固定 member の user ID と表示名、ユーザーに見えるスケジュール・slot、開発時 mention 抑止を YAML で管理する。runtime は `src/userConfig.ts` で YAML を `unknown` として読み、zod で起動時に fail-fast 検証する。
-- **Environment variables**: Discord token、DB URL、healthcheck ping URL、Fly / CI metadata、`SUMMIT_CONFIG_YAML` に限定する。ローカルでは `package.json` scripts が `summit.config.yml` のファイル内容を `SUMMIT_CONFIG_YAML` に詰めてから起動する。
+- **Environment variables**: Discord token、DB URL、Fly / CI metadata、`SUMMIT_CONFIG_YAML` に限定する。ローカルでは `package.json` scripts が `summit.config.yml` のファイル内容を `SUMMIT_CONFIG_YAML` に詰めてから起動する。
 - **TypeScript internal config**: outbox worker、retention、metrics、reconnect debounce など、利用者が日常的に編集すべきでない信頼性チューニング値を保持する。cron 式など user config から安全に派生できる値は直接編集させない。
 
 Member の identity は user config の `members[*].userId` を SSoT とし、DB `members.display_name` は boot reconcile で user config から同期する。削除は引き続き行わず、履歴保全のため DB に孤立 member 行が残ることを許容する。
@@ -41,7 +41,7 @@ Member の identity は user config の `members[*].userId` を SSoT とし、DB
 
 ### Operational invariants & footguns
 
-- user config に token / DB URL / ping URL を置かない。
+- user config に token / DB URL / 監視用 URL を置かない。
 - `summit.config.yml` はローカル実値を含み得るため Git 管理しない。コミットするのは example のみ。
 - 本番で user config を注入する方法は deploy packaging と secrets 運用の両方に影響するため、Fly の設定手順を README に明記する。
 - 固定 4 名、JST 固定、順延 1 回などの業務 invariant は zod schema で維持する。

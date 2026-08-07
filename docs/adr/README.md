@@ -21,7 +21,7 @@
 | cross-feature な副作用フローをどこに置く | [0040](./0040-orchestration-layer.md) |
 | 新しい feature の dispatcher / slash command への登録方法 | [0041](./0041-feature-registry-pattern.md) |
 | JST / ISO week / 締切の扱い | [0002](./0002-jst-fixed-time-handling.md), [0019](./0019-postpone-voting-and-saturday-reask-flow.md), [0051](./0051-session-aggregate-ordered-discord-intents.md) |
-| Deploy / secrets / 運用権限 | [0005](./0005-operations-policy.md), [0011](./0011-dev-mention-suppression.md), [0034](./0034-healthcheck-ping.md) |
+| Deploy / secrets / 運用権限 | [0005](./0005-operations-policy.md), [0011](./0011-dev-mention-suppression.md), [0052](./0052-remove-unused-healthcheck.md) |
 | Discord 送信の整合性（crash / transient failure / 順序） | [0036](./0036-reconnect-replay.md), [0042](./0042-outbox-retention-prune.md), [0043](./0043-outbox-observability-metrics.md), [0051](./0051-session-aggregate-ordered-discord-intents.md) |
 | Neon compute cost を抑える scheduler 設計は？ | [0047](./0047-db-driven-conditional-scheduler.md), [0050](./0050-scheduler-supervisor-cadence-extension.md) |
 | 代替案は既に却下されているか | [0017](./0017-rejected-architecture-alternatives.md), [0021](./0021-neverthrow-scope-reaffirmed.md), [0045](./0045-neverthrow-boundary-scope.md) |
@@ -37,7 +37,7 @@
 | db | 0001, 0003, 0008, 0009, 0012, 0019, 0023, 0024, 0026, 0031, 0033, 0035, 0038, 0042, 0043, 0047, 0050, 0051 |
 | discord | 0004, 0007, 0009, 0011, 0016, 0017, 0019, 0020, 0023, 0024, 0025, 0026, 0027, 0028, 0030, 0032, 0033, 0035, 0036, 0037, 0040, 0041, 0045, 0047, 0048, 0051 |
 | time | 0002, 0007, 0019, 0024, 0044, 0051 |
-| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050, 0051 |
+| ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050, 0051, 0052 |
 | docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038, 0039, 0040, 0041, 0046, 0048, 0051 |
 | testing | 0018, 0051 |
 | dev-tools | 0029 |
@@ -117,6 +117,7 @@ tags: [runtime, db, discord, ops, docs, time, testing, dev-tools]
 - ADR-0033（直接再投稿を含む startup reconciler）→ ADR-0051（outbox recovery を含む reconciler）
 - ADR-0035（部分移行・順序なし outbox）→ ADR-0051（全必須投稿・順序付き outbox）
 - ADR-0038（edge-specific sessions repository 分割）→ ADR-0051（Session aggregate command）
+- ADR-0034（healthcheck ping）→ ADR-0052（未使用 healthcheck 連携の撤去）
 
 ## Architecture snapshot
 
@@ -161,7 +162,7 @@ commands/definitions.ts  ──► discord/registry/  (slashBuilders を導出)
 features/*/button.ts, features/*/command.ts  ──► orchestration/
 orchestration/  ──► features/*  (send / settle / messageEditor を順序駆動)
 scheduler/      ──► orchestration/, features/* (pure), reconciler, outboxWorker
-index.ts        ──► scheduler/, dispatcher, appContext, members/, healthcheck/
+index.ts        ──► scheduler/, dispatcher, appContext, members/
 ```
 
 Session の書込みは `SessionCommandsPort` で lock・回答・状態・delivery intent を一括確定する。新規投稿は `discord_outbox` を経て Session ごとに直列、Session 間で並列配送し、既存投稿の edit / 再生成は message editor と reconciler が DB 正本から行う（ADR-0051）。
@@ -205,7 +206,7 @@ feature 相互依存は避ける。共通化が必要なら `discord/shared/` �
 | [0031](./0031-held-event-persistence.md) | HeldEvent 永続化（実開催回の履歴化と DECIDED→COMPLETED の atomic 化） | accepted | 2026-04-27 | runtime, db, ops |
 | [0032](./0032-status-command.md) | /status コマンドによる運用観測性の追加 | accepted | 2026-04-27 | discord, runtime, ops |
 | [0033](./0033-startup-invariant-reconciler.md) | 起動時および tick 境界での invariant 収束 (startup / tick reconciler) | superseded | 2026-04-28 | runtime, db, discord, ops |
-| [0034](./0034-healthcheck-ping.md) | Healthcheck ping strategy — boot ping + minute-tick ping | accepted | 2026-04-28 | runtime, ops |
+| [0034](./0034-healthcheck-ping.md) | Healthcheck ping strategy — boot ping + minute-tick ping | superseded | 2026-04-28 | runtime, ops |
 | [0035](./0035-discord-send-outbox.md) | Discord send outbox — atomic enqueue + worker で at-least-once 配送 | superseded | 2026-04-21 | runtime, db, discord |
 | [0036](./0036-reconnect-replay.md) | Reconnect replay on shardReady — in-flight lock + debounce + scope=reconnect | accepted | 2026-04-21 | runtime, discord, ops |
 | [0037](./0037-feature-locality-over-cross-cutting-extraction.md) | feature locality 優先と cross-cutting 抽出基準の明示化 | accepted | 2026-04-24 | runtime, discord, docs |
@@ -223,3 +224,4 @@ feature 相互依存は避ける。共通化が必要なら `discord/shared/` �
 | [0049](./0049-extract-db-management-to-momo-db.md) | DB スキーマ・migration 管理を @momo/db に分離 | accepted | 2026-04-29 | db, ops, runtime |
 | [0050](./0050-scheduler-supervisor-cadence-extension.md) | Scheduler supervisor cadence extension | accepted | 2026-05-19 | runtime, db, ops |
 | [0051](./0051-session-aggregate-ordered-discord-intents.md) | Session 集約コマンドと順序付き Discord delivery intent | accepted | 2026-08-08 | runtime, db, discord, ops, docs, time, testing |
+| [0052](./0052-remove-unused-healthcheck.md) | 未使用 healthcheck 外部連携の撤去 | accepted | 2026-08-08 | runtime, ops, docs |

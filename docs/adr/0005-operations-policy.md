@@ -11,7 +11,7 @@ tags: [ops]
 # ADR-0005: 運用ポリシー（Staging 不採用・禁止窓・依存更新・最小権限）
 
 ## TL;DR
-個人開発規模に合わせ、Staging 環境は持たず、deploy 禁止窓（金 17:30〜土 01:00 JST）・Fly deploy-scoped token・最小 Discord 権限・Fly secrets + `.env.local` の secret 分離・healthchecks.io の任意 ping を運用ポリシーとして固定する。
+個人開発規模に合わせ、Staging 環境は持たず、deploy 禁止窓（金 17:30〜土 01:00 JST）・Fly deploy-scoped token・最小 Discord 権限・Fly secrets + `.env.local` の secret 分離を運用ポリシーとして固定する。外部 healthcheck ping は ADR-0052 で撤去する。
 
 ## Context
 個人開発規模と週次クリティカル運用の両立を図る運用ポリシーの決定。
@@ -48,8 +48,8 @@ Forces:
 - `fly secrets unset` / 既存 secret 上書きは**不可逆変更**。ad-hoc 実行禁止（事前通知 + 停止窓外 + 手順書でのみ）。
 
 ### Health monitoring
-- healthchecks.io を使う。毎分の cron tick 成功時に ping 送信。
-- `HEALTHCHECK_PING_URL` **未設定時は no-op**。未設定を理由にアプリ起動を止めない。
+- アプリから外部 healthcheck ping は送信しない。
+- 運用観測は構造化ログと `/status` を用いる。外部監視を追加する場合は別途 ADR で責務と障害時運用を定める。
 ## Consequences
 
 ### Follow-up obligations
@@ -61,11 +61,10 @@ Forces:
 - **Hard invariant**: 本番 secret は Fly secrets のみ。commit 可能な env は `.env.example` の雛形のみ。`.env*` 実値・token・接続文字列をコード・fixture・ログ・PR に載せない。
 - **Hard invariant**: `fly secrets unset` / 既存 secret 上書きは不可逆。事前通知 + 停止窓外 + 手順書でのみ実施。ad-hoc 実行禁止。
 - **Hard invariant**: CI には Personal Auth Token を置かない。`fly tokens create deploy` の app-scoped token のみ。漏洩疑いは即 revoke。
-- **Footgun**: `HEALTHCHECK_PING_URL` 未設定を理由にアプリ起動を止めない（未設定時は ping no-op）。
 
 ## Alternatives considered
 
 - **Staging 環境 + pre-prod smoke test** — 環境差分の管理コストが大きく、固定 4 名の実運用確認は本番でしか成立しない。
 - **Renovate の導入** — 依存数と更新頻度に対し Dependabot で十分で運用ルールも単純に保てる。
 - **Personal Auth Token を CI に置く運用** — 権限範囲が広すぎ漏洩時の影響が大きく、deploy 専用 token で代替可能。
-- **New Relic / Datadog 等のフルマネージド監視** — Bot の規模に対しコスト・運用設計が過剰で毎分 ping で必要十分。
+- **New Relic / Datadog 等のフルマネージド監視** — Bot の規模に対しコスト・運用設計が過剰。外部監視が必要になった場合は、アプリからの暗黙の ping ではなく別管理の導入を再評価する。

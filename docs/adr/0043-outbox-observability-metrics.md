@@ -20,7 +20,7 @@ ADR-0035 (outbox) と ADR-0042 (retention) で配送と prune は確立した。
 
 - **Worker tick (10s) で毎回 emit**: ~8640 logs/day と過剰。ノミナル状態のノイズで warn シグナルが埋もれる
 - **Reconciler (30s) で同居**: invariant 収束ロジックと観測責務が混線。ADR-0039 の関心分離方針と矛盾
-- **Prometheus / OpenTelemetry エクスポータ**: 単一インスタンス + 4 ユーザー規模に対し過剰。Fly logs + healthchecks.io の現行スタックで十分
+- **Prometheus / OpenTelemetry エクスポータ**: 単一インスタンス + 4 ユーザー規模に対し過剰。Fly logs + `/status` の現行運用で十分
 - **`/status` の能動 polling 自動化**: Discord 経由は rate-limit と Bot 自身への通知ループになる
 
 ## Decision
@@ -39,7 +39,7 @@ ADR-0035 (outbox) と ADR-0042 (retention) で配送と prune は確立した。
 
 - 観測性が能動化し、`/status` 手動確認に依存せず Fly logs ベースで滞留検知できる
 - info レベルで ~288 logs/day 増加するが pino redact 対象外でサイズも数百 byte/log と運用許容内
-- warn 昇格時は既存の logger.warn がそのまま healthchecks.io 連携や将来の log-based alert で利用可能
+- warn 昇格時は既存の logger.warn を Fly logs の運用観測に利用する
 - 閾値はあくまで初期値であり、運用実績に応じ `src/config.ts` で調整する (ADR 改訂不要)
 - メトリクス取得は worker / retention / reconciler と完全独立で、failure 隔離 (try/catch in tick) により他経路に影響しない
 

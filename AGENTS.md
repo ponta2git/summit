@@ -41,13 +41,13 @@ Summit（個人開発 Discord Bot / 固定 4 名の桃鉄 1 年勝負 出欠自�
 3. **依存は `ctx.ports.*` / `ctx.clock` か？** repositories / `systemClock` 直 import していないか。→ ADR-0018
 4. **Interaction は defer 先行か？** 検証より前に `deferUpdate()` / `deferReply()` しているか。→ interaction-review
 5. **今、deploy 禁止窓か？** 金 17:30〜土 01:00 JST は deploy / restart / schema 変更しない。
-6. **秘匿値に触れるか？** token / 接続文字列 / ping URL を code / fixture / log / PR に出さない。→ secrets-review
+6. **秘匿値に触れるか？** token / 接続文字列 / 監視用 URL を code / fixture / log / PR に出さない。→ secrets-review
 7. **リテラル値を ADR / コメントに書き写していないか？** `src/config.ts` 等への pointer に留める（ADR-0022）。
 
 ## 禁止領域（違反即リジェクト）
 
 - **単一インスタンス逸脱**: Fly scale 増 / ローカル二重起動 / `node-cron` 多重登録。
-- **secrets 実値の混入**: `.env*` 実値 / token / 接続文字列 / ping URL をコード・fixture・ログ・PR・コミットに載せる（commit 可は `.env.example` のみ）。
+- **secrets 実値の混入**: `.env*` 実値 / token / 接続文字列 / 監視用 URL をコード・fixture・ログ・PR・コミットに載せる（commit 可は `.env.example` のみ）。
 - **本番 DB 破壊**: `DROP` / `TRUNCATE` / 手動 `UPDATE` / `INSERT` / `fly ssh` 生 SQL。
 - **drizzle-kit push**: migration は `generate` + `migrate` のみ。
 - **secrets 不可逆変更**: `fly secrets unset` / 既存上書きの ad-hoc 実行。
@@ -155,8 +155,6 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ### ops
 
 11. **cron 多重登録 / in-memory 依存**: cron は起動時 1 回のみ。毎 tick DB 再計算。起動時に非終端 Session を再読込。同一 tick 重複実行で結果が変わらないこと。
-12. **`HEALTHCHECK_PING_URL` 未設定時は ping 無効**（no-op）。未設定で起動停止するな。
-
 ### testing
 
 13. **AppContext 経由の依存注入**: 新規 handler/scheduler/workflow は repositories を直接 import せず `ctx.ports.*` / `ctx.clock` を使う。テストは `createTestAppContext` で Fake ports（`vi.mock` を新規追加しない）。根拠 ADR-0018。

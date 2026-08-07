@@ -2,7 +2,6 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
 
 import { envSchema } from "../../src/env.js";
-import { expectParseSuccess } from "../helpers/assertions.js";
 
 const validEnvInput = {
   DISCORD_TOKEN: "dummy-token",
@@ -12,32 +11,6 @@ const validEnvInput = {
 } as const;
 
 describe("envSchema", () => {
-  it("accepts blank HEALTHCHECK_PING_URL and transforms it to undefined", () => {
-    const result = envSchema.safeParse({
-      ...validEnvInput,
-      HEALTHCHECK_PING_URL: ""
-    });
-
-    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBeUndefined();
-  });
-
-  it("accepts missing HEALTHCHECK_PING_URL as undefined", () => {
-    const result = envSchema.safeParse(validEnvInput);
-
-    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBeUndefined();
-  });
-
-  it("accepts valid HEALTHCHECK_PING_URL URL", () => {
-    const result = envSchema.safeParse({
-      ...validEnvInput,
-      HEALTHCHECK_PING_URL: "https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    });
-
-    expect(expectParseSuccess(result).HEALTHCHECK_PING_URL).toBe(
-      "https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    );
-  });
-
   it("accepts valid required fields and preserves the injected config YAML", () => {
     const parsed = envSchema.parse(validEnvInput);
 
@@ -58,10 +31,6 @@ describe("envSchema", () => {
         name: "DATABASE_URL is not URL",
         input: { ...validEnvInput, DATABASE_URL: "not-a-url" }
       },
-      {
-        name: "HEALTHCHECK_PING_URL is invalid URL",
-        input: { ...validEnvInput, HEALTHCHECK_PING_URL: "ht!tp://invalid-url" }
-      }
     ] as const;
 
     for (const testCase of cases) {

@@ -10,7 +10,6 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 | `DATABASE_URL` | アプリの DB 接続 (Neon pooled) | 再起動で再接続、cron tick 数回スキップあり |
 | `DIRECT_URL` | migration 専用 (`drizzle.config.ts`) | `momo-db` の migration 実行環境でのみ管理。Fly secrets には設定しない |
 | `SUMMIT_CONFIG_YAML` | 本番 user config 本文 | guild/channel/member/時刻設定。次回 deploy 前に stage 推奨 |
-| `HEALTHCHECK_PING_URL` | healthchecks.io の ping URL | 未設定時は no-op。誤設定で alert が鳴らない点に注意 |
 | `FLY_API_TOKEN` (CI) | GitHub Actions から Fly deploy | app-scoped deploy token のみ。Personal Auth Token 禁止 |
 
 ## 共通原則 (再掲)
@@ -26,7 +25,6 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 
 - `DISCORD_TOKEN`: Discord Developer Portal → Bot → Reset Token
 - `DATABASE_URL` / `DIRECT_URL`: Neon dashboard → Connection string (pooled / direct)
-- `HEALTHCHECK_PING_URL`: healthchecks.io → Check → Ping URL
 - `SUMMIT_CONFIG_YAML`: `summit.config.production.yml` を編集し、Fly secrets の `--stage` で次回 deploy 用に stage
 - `FLY_API_TOKEN`: `fly tokens create deploy --app summit-momotetsu`
 
@@ -57,7 +55,6 @@ cd summit
 
 - `fly logs -a summit-momotetsu` で `phase=ready` 確認
 - Discord で `/status` 応答確認
-- healthchecks.io の ping が到達しているか dashboard で確認
 
 ### 4. 旧値の無効化
 

@@ -9,7 +9,6 @@ Summit は Fly の Bot process を常時起動し、Neon DB への idle polling 
 | 対象 | 駆動方式 |
 |---|---|
 | 自動 ask 投稿 | `CRON_ASK_SCHEDULE` の固定 cron |
-| healthcheck ping | `HEALTHCHECK_PING_INTERVAL_CRON` の固定 cron |
 | outbox retention | `CRON_OUTBOX_RETENTION_SCHEDULE` の固定 cron |
 | deadline / postpone deadline / reminder | DB hint から one-shot timer |
 | outbox worker | 配送対象がある間だけ burst worker |

@@ -47,13 +47,13 @@ describe("ask scheduler", () => {
       cronAdapter: { schedule }
     });
 
-    expect(schedule).toHaveBeenCalledTimes(4);
+    expect(schedule).toHaveBeenCalledTimes(3);
     const [expression, tick, options] = callArgs<ScheduleCall>(schedule);
     expect(expression).toBe("0 8 * * 5");
     expect(tick).toBeTypeOf("function");
     expect(options).toStrictEqual({ timezone: "Asia/Tokyo", noOverlap: true });
     scheduler.stop();
-    expect(stop).toHaveBeenCalledTimes(4);
+    expect(stop).toHaveBeenCalledTimes(3);
   });
 
   it("registers scheduler supervisor cron with noOverlap", () => {
@@ -75,7 +75,7 @@ describe("ask scheduler", () => {
       cronAdapter: { schedule }
     });
 
-    expect(schedule).toHaveBeenCalledTimes(4);
+    expect(schedule).toHaveBeenCalledTimes(3);
     expect(registeredSchedules(schedule)).toContainEqual({
       expression: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       options: { timezone: "Asia/Tokyo", noOverlap: true }
@@ -96,7 +96,7 @@ describe("ask scheduler", () => {
   });
 
   it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {
-    // invariant: static cron callbacks are wrapped except healthcheck, which is internally best-effort.
+    // invariant: static cron callbacks are wrapped by runTickSafely.
     //   登録 tick 関数を実際に呼び、throw する業務ロジックを食わせて「callback が resolves する」ことで
     //   runTickSafely が挟まっていることを間接的に検証する。
     const stop = vi.fn();
@@ -114,7 +114,7 @@ describe("ask scheduler", () => {
 
     const scheduler = createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
 
-    const wrappedIndices = [0, 2, 3];
+    const wrappedIndices = [0, 1, 2];
     const terminalTicks = deferred<void>();
     let terminalTickCount = 0;
     const onTerminalTick = (args: readonly unknown[]): void => {
@@ -135,7 +135,7 @@ describe("ask scheduler", () => {
     vi.spyOn(logger, "info").mockImplementation((...args) => onTerminalTick(args));
     vi.spyOn(logger, "error").mockImplementation((...args) => onTerminalTick(args));
 
-    expect(capturedTicks).toHaveLength(4);
+    expect(capturedTicks).toHaveLength(3);
     for (const i of wrappedIndices) {
       const tick = capturedTicks[i];
       if (!tick) {

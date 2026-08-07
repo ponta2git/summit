@@ -10,8 +10,6 @@ process.env.DATABASE_URL ??= "postgres://summit:summit@localhost:5433/summit";
 if (!process.env.SUMMIT_CONFIG_YAML) {
   process.env.SUMMIT_CONFIG_YAML = readFileSync("summit.config.example.yml", "utf8");
 }
-process.env.HEALTHCHECK_PING_URL ??= "";
-
 export default defineConfig({
   test: {
     // why: テスト間で mock 状態が漏れると race 系テストで偽陽性が出るため、常に clear + restore する。

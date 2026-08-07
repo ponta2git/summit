@@ -104,7 +104,7 @@ guild 管理者が bot を kick / channel 権限を剥奪。
 
 ### C. env 誤設定
 
-zod parse 失敗で `process.exit(1)` → healthchecks.io の ping 切れ通知。
+zod parse 失敗で `process.exit(1)` → Fly logs の `Failed to start Discord bot.` を確認。
 
 **SOP**:
 

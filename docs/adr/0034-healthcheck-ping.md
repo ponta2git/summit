@@ -1,10 +1,10 @@
 ---
 adr: 0034
 title: Healthcheck ping strategy — boot ping + minute-tick ping
-status: accepted
+status: superseded
 date: 2026-04-28
 supersedes: []
-superseded-by: null
+superseded-by: 0052
 tags: [runtime, ops]
 ---
 

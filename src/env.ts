@@ -18,10 +18,6 @@ export const envSchema = z.object({
   ),
   // jst: Asia/Tokyo 固定のみ許可（DST なし、他地域運用想定なし）。
   TZ: z.literal("Asia/Tokyo"),
-  HEALTHCHECK_PING_URL: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().url().optional()
-  ),
   // why: デプロイ追跡用。Fly の FLY_IMAGE_REF を優先、CI inject の GIT_SHA をフォールバックに使う。
   FLY_IMAGE_REF: z.string().optional(),
   GIT_SHA: z.string().optional()

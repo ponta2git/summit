@@ -4,12 +4,12 @@ applyTo: "**/*"
 
 # Secrets & Logging Review Rules
 
-Discord Bot token / Neon 接続文字列 / 死活監視 ping URL 等の秘匿値を扱う。ログ・PR・fixture への漏洩は運用事故。
+Discord Bot token / Neon 接続文字列等の秘匿値を扱う。ログ・PR・fixture への漏洩は運用事故。
 
 ## Secrets
 - 本番は **Fly secrets** のみ（`fly secrets set KEY=...`）。ローカルは `.env.local`（`.gitignore` 対象）。
 - commit 可能な env は `.env.example`（雛形）のみ。`.env*` の実値を追跡対象に入れない。
-- `DISCORD_TOKEN` / `DATABASE_URL` / `DIRECT_URL` / `HEALTHCHECK_PING_URL` の**実値**をコード・fixture・テスト・ログ・PR・コミットに載せない。
+- `DISCORD_TOKEN` / `DATABASE_URL` / `DIRECT_URL` の**実値**をコード・fixture・テスト・ログ・PR・コミットに載せない。
 - `FLY_API_TOKEN` は **app-scoped deploy token**（`fly tokens create deploy`）のみ。Personal Auth Token を CI に登録しない。漏洩時は即 revoke。
 - `fly secrets unset` / 既存 secrets 上書きは **不可逆変更**。事前通知 + 停止窓外 + 手順書でのみ実施。ad-hoc は禁止。
 

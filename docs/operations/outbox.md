@@ -25,7 +25,7 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 - `OUTBOX_METRICS_PENDING_AGE_WARN_MS`: pending age の warn 閾値
 - `failed > 0` も無条件で warn 昇格
 
-これらを超過すると `level=warn` で出る。healthchecks.io には繋がっていないので、**fly logs を直接見るか、必要なら別途 alert 経路を整備する** こと。
+これらを超過すると `level=warn` で出る。外部alert連携はアプリに持たせていないため、**Fly logs を直接確認する** こと。
 
 ## 警告対応フロー
 

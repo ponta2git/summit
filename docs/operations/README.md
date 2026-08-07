@@ -33,7 +33,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | `pnpm db:migrate` が途中で失敗した | [migration.md](./migration.md) §ロールバック (`momo-db` リポジトリで対応) |
 | Discord token / DATABASE_URL を rotate したい | [secrets-rotation.md](./secrets-rotation.md) |
 | Neon インスタンスを restore したい | [backup.md](./backup.md) |
-| healthchecks.io が ping 切れの通知を出した | [recovery.md](./recovery.md) case 1 + [secrets-rotation.md](./secrets-rotation.md) |
+| Bot が応答しない / 起動状態を確認したい | [recovery.md](./recovery.md) case 1 + `/status` |
 
 ## 共通原則 (再掲)
 
@@ -41,13 +41,13 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は AGENTS.md `prohibited_actions` で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
 3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない (AGENTS.md)。
 4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない (ADR-0001, ADR-0051)。
-5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列 / ping URL は `.env.example` の placeholder のみ commit 可 (`.github/instructions/secrets-review.instructions.md`)。
+5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可 (`.github/instructions/secrets-review.instructions.md`)。
 
 ## 連絡先 / 監視
 
-- 死活監視: healthchecks.io (`HEALTHCHECK_PING_URL`)
+- 運用観測: 構造化ログと `/status`。外部pingはアプリから送信しない (ADR-0052)
 - ログ: `fly logs -a summit-momotetsu` (構造化 JSON、`event` で grep)
 - DB console: Neon dashboard
 - Discord guild / channel: `SUMMIT_CONFIG_YAML` (from `summit.config.production.yml`)
 
-> 個人開発 Bot のため on-call ローテーション・PagerDuty 等は不要。alert 手段は healthchecks.io のメール通知のみ。
+> 個人開発 Bot のため on-call ローテーション・PagerDuty 等は不要。異常時は Fly logs と `/status` で確認する。

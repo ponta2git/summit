@@ -10,12 +10,10 @@ import {
   CRON_ASK_SCHEDULE,
   CRON_OUTBOX_RETENTION_SCHEDULE,
   CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
-  HEALTHCHECK_PING_INTERVAL_CRON,
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
 import type { AppError } from "../errors/index.js";
-import type { FetchFn } from "../healthcheck/ping.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -31,10 +29,8 @@ import {
   runSchedulerSupervisorTick,
   type SchedulerController
 } from "./controller.js";
-import { runHealthcheckTickPing } from "./healthcheckTick.js";
 import { runTickSafely } from "./tickRunner.js";
 
-export { runHealthcheckTickPing } from "./healthcheckTick.js";
 export { runStartupRecovery } from "./startupRecovery.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
@@ -68,8 +64,6 @@ export interface AskSchedulerDeps {
   readonly context: AppContext;
   readonly sendAsk?: SendAsk;
   readonly cronAdapter?: CronAdapter;
-  readonly healthcheckUrl?: string;
-  readonly fetchFn?: FetchFn;
 }
 
 export interface AppScheduler {
@@ -212,12 +206,6 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
           runScheduledAskTick(sendAsk, context)
             .then(() => controller.wake("ask_dispatch"))
         )
-    },
-    // why: runHealthcheckTickPing は内部で失敗を握り潰す best-effort 実装のため runTickSafely で囲まない。
-    // @see ADR-0034
-    {
-      schedule: HEALTHCHECK_PING_INTERVAL_CRON,
-      tick: () => void runHealthcheckTickPing(deps.healthcheckUrl, deps.fetchFn)
     },
     // @see ADR-0042
     {

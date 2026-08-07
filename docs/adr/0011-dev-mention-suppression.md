@@ -32,7 +32,7 @@ env flag `DEV_SUPPRESS_MENTIONS`（boolean, default `false`）を導入し、ON 
 2. **Client-level の保険**: `createDiscordClient` で ON 時に `allowedMentions: { parse: [] }` を付与。将来の新規送信経路で `<@id>` 混入しても user / role / everyone いずれも通知しない。
 
 ### env parse
-`HEALTHCHECK_PING_URL` と同流儀で `z.preprocess((v) => v === "" ? undefined : v, z.stringbool().default(false))`。**`z.coerce.boolean()` 禁止**（`"false"` / `"0"` が true になる）。
+optional string env と同流儀で `z.preprocess((v) => v === "" ? undefined : v, z.stringbool().default(false))`。**`z.coerce.boolean()` 禁止**（`"false"` / `"0"` が true になる）。
 
 ### Invariants
 - **per-message `allowedMentions` を渡さない**。渡すと Client-level 設定が無効化される。回帰テストで担保。

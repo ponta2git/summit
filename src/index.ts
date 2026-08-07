@@ -16,7 +16,6 @@ import { appConfig } from "./userConfig.js";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.js";
 import { createBootPhaseLogger } from "./startup/bootLogging.js";
 import { attachRateLimitLogging } from "./startup/rateLimitLogging.js";
-import { sendBootHealthcheckPing } from "./startup/bootHealthcheck.js";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
@@ -124,8 +123,7 @@ const run = async (): Promise<void> => {
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({
     client,
-    context: appContext,
-    ...(env.HEALTHCHECK_PING_URL !== undefined ? { healthcheckUrl: env.HEALTHCHECK_PING_URL } : {})
+    context: appContext
   });
 
   // why: Fly 自動挿入の FLY_IMAGE_REF → CI inject の GIT_SHA → 'unknown' の優先順で commit を識別する。
@@ -138,8 +136,6 @@ const run = async (): Promise<void> => {
     memberCount: appConfig.memberUserIds.length,
     nodeVersion: process.version
   });
-
-  sendBootHealthcheckPing(env.HEALTHCHECK_PING_URL);
 
   logger.info(
     {

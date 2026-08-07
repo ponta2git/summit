@@ -30,7 +30,7 @@ XState / effect-ts / OpenTelemetry / HMAC 署名 custom_id / discord.js componen
 - **再評価トリガ**: DI / resource management / fiber 並行制御が必要な規模拡大、複数 developer による型レベル契約の必要性。
 
 ### OpenTelemetry
-却下。単一インスタンス個人 bot に対し collector / exporter / backend 運用コストが価値超過。`pino` 構造化ログ + healthchecks.io ping で十分。
+却下。単一インスタンス個人 bot に対し collector / exporter / backend 運用コストが価値超過。`pino` 構造化ログと Fly logs で十分。
 - **再評価トリガ**: 複数 service 分割、分散 trace が必要なレイテンシ問題、SLO ベース運用への移行。
 
 ### HMAC 署名 custom_id
@@ -59,7 +59,7 @@ PR で上記採用提案が出た場合、本 ADR の再評価トリガ該当可
 
 - **XState（session 状態機械）** — 状態 7 / 遷移 ~10 / 1500 LOC 規模では DB state column + CAS + `assertNever` で足り、DSL 学習・可視化 tooling・actor model のコストに見合わない。
 - **effect-ts** — runtime 依存と学習曲線が過剰。エラー処理は ADR-0015 の `AppError` + `neverthrow` で達成可能。
-- **OpenTelemetry** — 単一インスタンス個人 bot に対し collector / exporter / backend 運用コストが価値を超過。`pino` + healthchecks.io で十分。
+- **OpenTelemetry** — 単一インスタンス個人 bot に対し collector / exporter / backend 運用コストが価値を超過。`pino` + Fly logs で十分。
 - **HMAC 署名 custom_id** — 固定 private guild / 4 名信頼モデルでは不要。`interaction.user.id` が Discord 側で署名済みで actor 詐称は構造上不可（ADR-0016）。
 - **discord.js component-v2 / select menu UX** — 現行ボタン × 5 スロットで要件十分。library 追従と既存 codec 影響評価コストに見合う改善が無い。
 - **event sourcing（sessions を event log 化）** — 監査要件や時系列再構成要件が無く、state column 直接保持で足り、書込み・再構築コストとデバッグ可視性の悪化を招く。

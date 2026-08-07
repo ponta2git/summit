@@ -50,7 +50,6 @@ cp summit.config.example.yml summit.config.yml
 - `DISCORD_TOKEN`
 - `DATABASE_URL`
 - `TZ=Asia/Tokyo`
-- optional `HEALTHCHECK_PING_URL`
 
 `summit.config.yml` には非 secret のユーザー設定を記入します。
 
@@ -84,7 +83,7 @@ Summit は secret とユーザー向け設定を分離します。
 
 ローカルの package script は `summit.config.yml` を `SUMMIT_CONFIG_YAML` に詰めて起動します。本番では deploy 前に production config の本文を `SUMMIT_CONFIG_YAML` Fly secret として stage します。
 
-Discord token、DB URL、healthcheck ping URL の実値は commit しないでください。
+Discord token、DB URL の実値は commit しないでください。
 
 ## Common commands（主要コマンド）
 
@@ -133,7 +132,7 @@ pnpm db:reset --all # members も消すため、後で pnpm db:seed が必要
 
 deploy 前の基本手順:
 
-1. Fly secrets に `DISCORD_TOKEN` / `DATABASE_URL` / optional `HEALTHCHECK_PING_URL` を設定する。
+1. Fly secrets に `DISCORD_TOKEN` / `DATABASE_URL` を設定する。
 2. ユーザー設定を変えた場合は `summit.config.production.yml` を更新する。
 3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu` を実行する。
 4. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
