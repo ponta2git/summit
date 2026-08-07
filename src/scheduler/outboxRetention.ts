@@ -5,6 +5,8 @@ import {
 } from "../config.js";
 import { logger } from "../logger.js";
 import { subMs } from "../time/index.js";
+import { fromDatabaseCall } from "../errors/result.js";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 /**
  * Prune terminal outbox rows past their retention deadline.
@@ -14,15 +16,21 @@ import { subMs } from "../time/index.js";
  * invariant: PENDING / IN_FLIGHT は repository 側で除外済 (ADR-0042)。
  * @see ADR-0042
  */
-export const runOutboxRetentionTick = async (ctx: AppContext): Promise<void> => {
+export const runOutboxRetentionTick = (ctx: AppContext): SchedulerResult<{
+  readonly deliveredPruned: number;
+  readonly failedPruned: number;
+  readonly cancelledPruned: number;
+}> => {
   const now = ctx.clock.now();
   const deliveredOlderThan = subMs(now, OUTBOX_RETENTION_DELIVERED_MS);
   const failedOlderThan = subMs(now, OUTBOX_RETENTION_FAILED_MS);
-  try {
-    const result = await ctx.ports.outbox.prune({
+  return fromDatabaseCall(
+    () => ctx.ports.outbox.prune({
       deliveredOlderThan,
       failedOlderThan
-    });
+    }),
+    "Failed to prune outbox rows."
+  ).andTee((result) => {
     if (
       result.deliveredPruned > 0 ||
       result.failedPruned > 0 ||
@@ -38,10 +46,5 @@ export const runOutboxRetentionTick = async (ctx: AppContext): Promise<void> => 
         "Outbox retention: pruned terminal rows."
       );
     }
-  } catch (error: unknown) {
-    logger.error(
-      { error, event: "outbox.retention_failed" },
-      "Outbox retention: prune failed."
-    );
-  }
+  });
 };

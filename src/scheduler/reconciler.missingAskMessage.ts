@@ -6,7 +6,14 @@ import {
 } from "../db/repositories/sessionOutboxIntents.js";
 import type { EnqueueOutboxInput } from "../db/ports.js";
 import type { SessionRow } from "../db/rows.js";
+import { AppError, DatabaseError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
 import { logger } from "../logger.js";
+import {
+  runSchedulerBatch,
+  type SchedulerBatchReport,
+  type SchedulerResult
+} from "./scheduler.types.js";
 
 const buildMissingMessageIntents = (
   session: SessionRow
@@ -39,41 +46,67 @@ const buildMissingMessageIntents = (
  * the original pending intent and producing two Discord messages. Reserved tail ordinals place a
  * legacy repair after existing intents in the current revision and before any future revision.
  */
-export const reconcileMissingMessageIntents = async (
+export const reconcileMissingMessageIntents = (
   ctx: AppContext
-): Promise<number> => {
-  const nonTerminal = await ctx.ports.sessions.findNonTerminalSessions();
-  let queued = 0;
-  for (const session of nonTerminal) {
-    try {
-      for (const intent of buildMissingMessageIntents(session)) {
-        const result = await ctx.ports.outbox.enqueue(intent);
-        if (!result.skipped) {
-          queued += 1;
-          logger.info(
-            {
-              event: "reconciler.message_intent_queued",
-              sessionId: session.id,
-              weekKey: session.weekKey,
-              renderer: intent.payload.kind === "send_message"
-                ? intent.payload.renderer
-                : undefined
+): SchedulerResult<SchedulerBatchReport> =>
+  fromDatabaseCall(
+    () => ctx.ports.sessions.findNonTerminalSessions(),
+    "Failed to find non-terminal sessions for message recovery."
+  ).andThen((nonTerminal) =>
+    fromAppCall(
+      () => runSchedulerBatch(
+        "missing_message_intents",
+        nonTerminal,
+        (session) =>
+          fromAppCall(
+            async () => {
+              let queued = 0;
+              for (const intent of buildMissingMessageIntents(session)) {
+                const result = await fromDatabaseCall(
+                  () => ctx.ports.outbox.enqueue(intent),
+                  "Failed to enqueue a missing message intent."
+                ).match(
+                  (value) => value,
+                  (error) => { throw error; }
+                );
+                if (!result.skipped) {
+                  queued += 1;
+                  logger.info(
+                    {
+                      event: "reconciler.message_intent_queued",
+                      sessionId: session.id,
+                      weekKey: session.weekKey,
+                      renderer: intent.payload.kind === "send_message"
+                        ? intent.payload.renderer
+                        : undefined
+                    },
+                    "Reconciler: queued a missing message delivery intent."
+                  );
+                }
+              }
+              return queued;
             },
-            "Reconciler: queued a missing message delivery intent."
+            (cause) => cause instanceof AppError
+              ? cause
+              : new DatabaseError("Failed to recover missing message intents.", { cause })
+          ),
+        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+        (failure) => {
+          logger.error(
+            {
+              error: failure.error,
+              errorCode: failure.error.code,
+              event: "reconciler.message_intent_queue_failed",
+              sessionId: failure.sessionId,
+              weekKey: failure.weekKey
+            },
+            "Reconciler: failed to queue a missing message delivery intent."
           );
-        }
-      }
-    } catch (error: unknown) {
-      logger.error(
-        {
-          error,
-          event: "reconciler.message_intent_queue_failed",
-          sessionId: session.id,
-          weekKey: session.weekKey
         },
-        "Reconciler: failed to queue a missing message delivery intent."
-      );
-    }
-  }
-  return queued;
-};
+        (queued) => queued
+      ),
+      (cause) => cause instanceof AppError
+        ? cause
+        : new DatabaseError("Missing message intent batch failed.", { cause })
+    )
+  );

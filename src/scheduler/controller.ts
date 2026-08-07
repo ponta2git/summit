@@ -10,7 +10,9 @@ import {
 import { logger as defaultLogger } from "../logger.js";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";
-import { runTickSafely } from "./tickRunner.js";
+import { runResultTickSafely } from "./tickRunner.js";
+import { fromDatabaseCall } from "../errors/result.js";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -28,9 +30,9 @@ export interface SchedulerController {
 export interface SchedulerControllerDeps {
   readonly client: Client;
   readonly context: AppContext;
-  readonly runDeadlineTick: () => Promise<void>;
-  readonly runPostponeDeadlineTick: () => Promise<void>;
-  readonly runReminderTick: () => Promise<void>;
+  readonly runDeadlineTick: () => SchedulerResult<unknown>;
+  readonly runPostponeDeadlineTick: () => SchedulerResult<unknown>;
+  readonly runReminderTick: () => SchedulerResult<unknown>;
   readonly logger?: SchedulerLogger;
 }
 
@@ -82,7 +84,11 @@ export const createSchedulerController = (
     logger.info({ event: "scheduler.worker_stopped", worker: "outbox_worker", reason });
   };
 
-  const scheduleTimer = (kind: TimerKind, at: Date | null, run: () => Promise<void>): void => {
+  const scheduleTimer = (
+    kind: TimerKind,
+    at: Date | null,
+    run: () => SchedulerResult<unknown>
+  ): void => {
     clearTimer(kind);
     if (at === null || stopped) {return;}
 
@@ -90,7 +96,7 @@ export const createSchedulerController = (
     const delayMs = delayUntil(now, at);
     const handle = setTimeout(() => {
       timers.delete(kind);
-      void runTickSafely({ name: kind, logger }, run)
+      void runResultTickSafely({ name: kind, logger }, run)
         .finally(() => controller.wake(`${kind}_timer_fired`));
     }, delayMs);
     timers.set(kind, handle);
@@ -107,8 +113,8 @@ export const createSchedulerController = (
     if (stopped) {return;}
     outboxTimer = setTimeout(() => {
       outboxTimer = undefined;
-      void runTickSafely({ name: "outbox_worker", logger }, async () => {
-        await runOutboxWorkerTick(client, context);
+      void runResultTickSafely({ name: "outbox_worker", logger }, () =>
+        runOutboxWorkerTick(client, context), async () => {
         const now = context.clock.now();
         const nextDispatchAt = await context.ports.outbox.getNextDispatchAt(now);
         if (isDue(nextDispatchAt, now)) {
@@ -167,7 +173,7 @@ export const createSchedulerController = (
     let didRun = false;
     if (isDue(sessionHints.nextAskingDeadlineAt, now)) {
       clearTimer("deadline");
-      await runTickSafely({ name: "deadline", logger }, deps.runDeadlineTick);
+      await runResultTickSafely({ name: "deadline", logger }, deps.runDeadlineTick);
       didRun = true;
     } else {
       scheduleTimer("deadline", sessionHints.nextAskingDeadlineAt, deps.runDeadlineTick);
@@ -175,7 +181,10 @@ export const createSchedulerController = (
 
     if (isDue(sessionHints.nextPostponeDeadlineAt, now)) {
       clearTimer("postpone_deadline");
-      await runTickSafely({ name: "postpone_deadline", logger }, deps.runPostponeDeadlineTick);
+      await runResultTickSafely(
+        { name: "postpone_deadline", logger },
+        deps.runPostponeDeadlineTick
+      );
       didRun = true;
     } else {
       scheduleTimer(
@@ -187,7 +196,7 @@ export const createSchedulerController = (
 
     if (isDue(sessionHints.nextReminderAt, now)) {
       clearTimer("reminder");
-      await runTickSafely({ name: "reminder", logger }, deps.runReminderTick);
+      await runResultTickSafely({ name: "reminder", logger }, deps.runReminderTick);
       didRun = true;
     } else {
       scheduleTimer("reminder", sessionHints.nextReminderAt, deps.runReminderTick);
@@ -265,10 +274,13 @@ export const createSchedulerController = (
   return controller;
 };
 
-export const runSchedulerSupervisorTick = async (
+export const runSchedulerSupervisorTick = (
   ctx: AppContext,
   controller: SchedulerController
-): Promise<void> => {
-  await reconcileOutboxClaims(ctx);
-  await controller.recompute("supervisor");
-};
+): SchedulerResult<{ readonly outboxClaimReleased: number }> =>
+  reconcileOutboxClaims(ctx).andThen((outboxClaimReleased) =>
+    fromDatabaseCall(
+      () => controller.recompute("supervisor"),
+      "Failed to recompute scheduler state."
+    ).map(() => ({ outboxClaimReleased }))
+  );

@@ -90,9 +90,10 @@ describe("ask scheduler", () => {
       throw new Error("network failure");
     });
 
-    await expect(runScheduledAskTick(sendAsk, createTestAppContext())).rejects.toThrow(
-      "network failure"
-    );
+    const result = await runScheduledAskTick(sendAsk, createTestAppContext());
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) {throw new Error("Expected ask scheduler tick to fail.");}
+    expect(result.error.cause).toBeInstanceOf(Error);
   });
 
   it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {

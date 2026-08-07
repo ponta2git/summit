@@ -77,8 +77,16 @@ export const registerReconnectReplayHandlers = (input: {
     );
     replayInFlight = (async () => {
       try {
-        const report = await runReconciler(client, context, { scope: "reconnect" });
-        await runStartupRecovery(client, context);
+        const reportResult = await runReconciler(client, context, { scope: "reconnect" });
+        const report = reportResult.match(
+          (value) => value,
+          (error) => { throw error; }
+        );
+        const startupRecoveryResult = await runStartupRecovery(client, context);
+        startupRecoveryResult.match(
+          () => undefined,
+          (error) => { throw error; }
+        );
         input.wakeScheduler?.("reconnect_replay");
         lastReplaySucceededAt = Date.now();
         logger.info(

@@ -8,6 +8,8 @@ import {
   OUTBOX_WORKER_BATCH_LIMIT
 } from "../config.js";
 import type { OutboxEntry } from "../db/ports.js";
+import { DatabaseError, type AppError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
 import { logger } from "../logger.js";
 import { getTextChannel } from "../discord/shared/channels.js";
 import {
@@ -15,6 +17,7 @@ import {
 } from "../features/reminder/send.js";
 import { addMs } from "../time/index.js";
 import { renderOutboxPayload } from "./outboxRenderers.js";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -195,17 +198,29 @@ const deliverOne = async (
  * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runTickSafely`) が閉じ込める。
  * @see ADR-0051
  */
-export const runOutboxWorkerTick = async (
+export const runOutboxWorkerTick = (
   client: Client,
   ctx: AppContext
-): Promise<void> => {
+): SchedulerResult<{ readonly claimed: number }> => {
   const now = ctx.clock.now();
-  const batch = await ctx.ports.outbox.claimNextBatch({
-    limit: OUTBOX_WORKER_BATCH_LIMIT,
-    now,
-    claimDurationMs: OUTBOX_CLAIM_DURATION_MS
+  return fromDatabaseCall(
+    () => ctx.ports.outbox.claimNextBatch({
+      limit: OUTBOX_WORKER_BATCH_LIMIT,
+      now,
+      claimDurationMs: OUTBOX_CLAIM_DURATION_MS
+    }),
+    "Failed to claim outbox batch."
+  ).andThen((batch) => {
+    if (batch.length === 0) {
+      return fromAppCall(
+        async () => ({ claimed: 0 }),
+        (cause: unknown): AppError => new DatabaseError("Unexpected empty outbox batch failure.", { cause })
+      );
+    }
+    // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
+    return fromAppCall(
+      () => Promise.all(batch.map((entry) => deliverOne(client, ctx, entry))).then(() => ({ claimed: batch.length })),
+      (cause: unknown): AppError => new DatabaseError("Failed to finalize outbox delivery batch.", { cause })
+    );
   });
-  if (batch.length === 0) {return;}
-  // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
-  await Promise.all(batch.map((entry) => deliverOne(client, ctx, entry)));
 };

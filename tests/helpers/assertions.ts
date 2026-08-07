@@ -1,4 +1,11 @@
 import { expect } from "vitest";
+import type { ResultAsync } from "neverthrow";
+
+export const unwrapResultAsync = async <T, E>(result: ResultAsync<T, E>): Promise<T> =>
+  result.match(
+    (value) => value,
+    (error) => { throw error; }
+  );
 
 type ParseResult<T> =
   | { readonly success: true; readonly data: T }

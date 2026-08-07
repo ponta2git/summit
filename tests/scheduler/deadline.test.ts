@@ -9,7 +9,7 @@ import { buildSessionRow } from "./factories/session.js";
 import { errAsync, okAsync } from "neverthrow";
 
 import { DiscordApiError } from "../../src/errors/index.js";
-import { callArgs } from "../helpers/assertions.js";
+import { callArgs, unwrapResultAsync } from "../helpers/assertions.js";
 
 // why: orchestration 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
 vi.mock("../../src/orchestration/askDeadline.js", () => ({
@@ -99,7 +99,10 @@ describe("runDeadlineTick", () => {
     const ctx = createTestAppContext();
     // race: findDueAskingSessions の失敗は tick 関数が throw して返し、runTickSafely が握り潰す (FR-M3)。
     vi.spyOn(ctx.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("boom"));
-    await expect(runDeadlineTick(client, ctx)).rejects.toThrow("boom");
+    const result = await runDeadlineTick(client, ctx);
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) {throw new Error("Expected deadline tick to fail.");}
+    expect(result.error.cause).toBeInstanceOf(Error);
   });
 });
 
@@ -240,7 +243,8 @@ describe("runPostponeDeadlineTick", () => {
       .mockReturnValueOnce(errAsync(new DiscordApiError("network failure")))
       .mockReturnValueOnce(okAsync(undefined));
 
-    await expect(runPostponeDeadlineTick(client, ctx)).resolves.toBeUndefined();
+    const result = await unwrapResultAsync(runPostponeDeadlineTick(client, ctx));
+    expect(result).toMatchObject({ processed: 2, succeeded: 1, failures: [{ sessionId: "pv-fail" }] });
     expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
   });
 
@@ -250,7 +254,10 @@ describe("runPostponeDeadlineTick", () => {
       new Error("db down")
     );
 
-    await expect(runPostponeDeadlineTick(client, ctx)).rejects.toThrow("db down");
+    const result = await runPostponeDeadlineTick(client, ctx);
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) {throw new Error("Expected postpone deadline tick to fail.");}
+    expect(result.error.cause).toBeInstanceOf(Error);
   });
 
 });

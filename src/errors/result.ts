@@ -25,3 +25,8 @@ export const fromDiscordCall = <T>(
   message: string
 ): ResultAsync<T, DiscordApiError> =>
   ResultAsync.fromThrowable(call, (cause) => new DiscordApiError(message, { cause }))();
+
+export const fromAppCall = <T>(
+  call: () => Promise<T>,
+  mapError: (cause: unknown) => AppError
+): ResultAsync<T, AppError> => ResultAsync.fromThrowable(call, mapError)();

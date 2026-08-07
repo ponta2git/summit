@@ -1,8 +1,12 @@
 import type { AppContext } from "../appContext.js";
 import { ASK_DEADLINE_HHMM, ASK_START_HHMM } from "../config.js";
+import { AppError, DatabaseError, ShutdownError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
 import { sendAskMessage } from "../features/ask-session/send.js";
 import { logger } from "../logger.js";
 import { isoWeekKey } from "../time/index.js";
+import { okAsync } from "neverthrow";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 const FRIDAY_JS_DAY = 5;
 
@@ -30,23 +34,33 @@ const isFridayAskWindow = (now: Date): boolean => {
  * `(weekKey, postponeCount=0)` Session が無い場合のみ通常経路で作成する。窓外では no-op。
  * @see ADR-0051
  */
-export const reconcileMissingAsk = async (
+const mapAskError = (cause: unknown): AppError => {
+  if (cause instanceof AppError) {return cause;}
+  if (cause instanceof Error && cause.message === "Shutdown in progress.") {
+    return new ShutdownError(cause.message, { cause });
+  }
+  return new DatabaseError("Failed to create missing ASK session.", { cause });
+};
+
+export const reconcileMissingAsk = (
   ctx: AppContext
-): Promise<number> => {
+): SchedulerResult<number> => {
   const now = ctx.clock.now();
   if (!isFridayAskWindow(now)) {
-    return 0;
+    return okAsync(0);
   }
 
   const weekKey = isoWeekKey(now);
-  const existing = await ctx.ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0);
-  if (existing) {
-    return 0;
-  }
-
-  try {
-    const result = await sendAskMessage({ trigger: "cron", context: ctx });
-    if (result.status === "queued") {
+  return fromDatabaseCall(
+    () => ctx.ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0),
+    "Failed to check for an existing ASK session."
+  ).andThen((existing) => {
+    if (existing) {return okAsync(0);}
+    return fromAppCall(
+      () => sendAskMessage({ trigger: "cron", context: ctx }),
+      mapAskError
+    ).map((result) => {
+      if (result.status === "queued") {
       logger.info(
         {
           event: "reconciler.ask_created",
@@ -56,14 +70,9 @@ export const reconcileMissingAsk = async (
         },
         "Reconciler: created missing Friday ASKING session."
       );
-      return 1;
-    }
-    return 0;
-  } catch (error: unknown) {
-    logger.error(
-      { error, event: "reconciler.ask_created_failed", weekKey },
-      "Reconciler: failed to create missing Friday ASKING session."
-    );
-    return 0;
-  }
+        return 1;
+      }
+      return 0;
+    });
+  });
 };

@@ -4,6 +4,7 @@
 
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
+import { ResultAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -13,7 +14,14 @@ import {
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
-import type { AppError } from "../errors/index.js";
+import {
+  AppError,
+  DatabaseError,
+  InvariantViolationError,
+  ShutdownError,
+  type AppError as AppErrorType
+} from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -29,27 +37,48 @@ import {
   runSchedulerSupervisorTick,
   type SchedulerController
 } from "./controller.js";
-import { runTickSafely } from "./tickRunner.js";
+import {
+  runResultTickSafely
+} from "./tickRunner.js";
+import {
+  runSchedulerBatch,
+  type SchedulerFailure,
+  type SchedulerResult,
+  type SchedulerBatchReport
+} from "./scheduler.types.js";
 
 export { runStartupRecovery } from "./startupRecovery.js";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 
-const logSessionResultError = (
-  error: AppError,
-  session: SessionRow,
-  message: string
-): void => {
+const logSchedulerFailure = (failure: SchedulerFailure): void => {
   logger.error(
     {
-      error,
-      errorCode: error.code,
-      sessionId: session.id,
-      weekKey: session.weekKey
+      error: failure.error,
+      errorCode: failure.error.code,
+      phase: failure.phase,
+      ...(failure.sessionId === undefined ? {} : { sessionId: failure.sessionId }),
+      ...(failure.weekKey === undefined ? {} : { weekKey: failure.weekKey }),
+      ...(failure.outboxId === undefined ? {} : { outboxId: failure.outboxId })
     },
-    message
+    "Scheduler operation failed for an item."
   );
 };
+
+const mapAskError = (cause: unknown): AppErrorType => {
+  if (cause instanceof AppError) {
+    return cause;
+  }
+  if (cause instanceof Error && cause.message === "Shutdown in progress.") {
+    return new ShutdownError(cause.message, { cause });
+  }
+  return new DatabaseError("Failed to queue ASK message.", { cause });
+};
+
+const mapReminderError = (cause: unknown): AppErrorType =>
+  cause instanceof AppError
+    ? cause
+    : new DatabaseError("Failed to enqueue reminder.", { cause });
 
 interface CronAdapter {
   schedule(
@@ -72,27 +101,22 @@ export interface AppScheduler {
   wake(reason: string): void;
 }
 
-export const runScheduledAskTick = async (
+export const runScheduledAskTick = (
   sendAsk: SendAsk,
   context: AppContext
-): Promise<void> => {
-  await sendAsk({ trigger: "cron", context });
-};
+): SchedulerResult<SendAskMessageResult> =>
+  fromAppCall(() => sendAsk({ trigger: "cron", context }), mapAskError);
 
-const settleDueAskingSession = async (
+const settleDueAskingSession = (
   client: Client,
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): Promise<void> => {
-  await evaluateAndApplyDeadlineDecision(client, ctx, session, {
+): SchedulerResult<void> =>
+  evaluateAndApplyDeadlineDecision(client, ctx, session, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
-  }).match(
-    () => {},
-    (error) => logSessionResultError(error, session, "Failed to apply ask deadline decision.")
-  );
-};
+  });
 
 /**
  * Settle every ASKING session whose deadline has passed.
@@ -101,22 +125,26 @@ const settleDueAskingSession = async (
  * idempotent: settle は CAS 済みのためセッション単位の重複呼び出しに安全。
  * 例外はセッション単位で log に集約し、外側 `runTickSafely` に委譲する。
  */
-export const runDeadlineTick = async (
+export const runDeadlineTick = (
   client: Client,
   ctx: AppContext
-): Promise<void> => {
+): SchedulerResult<SchedulerBatchReport> => {
   const now = ctx.clock.now();
-  const due = await ctx.ports.sessions.findDueAskingSessions(now);
-  for (const session of due) {
-    try {
-      await settleDueAskingSession(client, ctx, session, now);
-    } catch (error: unknown) {
-      logger.error(
-        { error, sessionId: session.id, weekKey: session.weekKey },
-        "Failed to settle ASKING session in deadline tick."
-      );
-    }
-  }
+  return fromDatabaseCall(
+    () => ctx.ports.sessions.findDueAskingSessions(now),
+    "Failed to find due ASKING sessions."
+  ).andThen((due) =>
+    ResultAsync.fromThrowable(
+      () => runSchedulerBatch(
+        "deadline",
+        due,
+        (session) => settleDueAskingSession(client, ctx, session, now),
+        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+        logSchedulerFailure
+      ),
+      (cause) => new InvariantViolationError("Deadline scheduler batch failed.", { cause })
+    )()
+  );
 };
 
 /**
@@ -127,23 +155,26 @@ export const runDeadlineTick = async (
  * idempotent: settlePostponeVotingSession は内部 CAS で重複呼び出し安全。
  * @see ADR-0001
  */
-export const runPostponeDeadlineTick = async (
+export const runPostponeDeadlineTick = (
   client: Client,
   ctx: AppContext
-): Promise<void> => {
+): SchedulerResult<SchedulerBatchReport> => {
   const now = ctx.clock.now();
-  const due = await ctx.ports.sessions.findDuePostponeVotingSessions(now);
-  for (const session of due) {
-    await settlePostponeVotingSession(client, ctx, session, now).match(
-      () => {},
-      (error) =>
-        logSessionResultError(
-          error,
-          session,
-          "Failed to settle POSTPONE_VOTING session in postpone deadline tick."
-        )
-    );
-  }
+  return fromDatabaseCall(
+    () => ctx.ports.sessions.findDuePostponeVotingSessions(now),
+    "Failed to find due POSTPONE_VOTING sessions."
+  ).andThen((due) =>
+    ResultAsync.fromThrowable(
+      () => runSchedulerBatch(
+        "postpone_deadline",
+        due,
+        (session) => settlePostponeVotingSession(client, ctx, session, now),
+        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+        logSchedulerFailure
+      ),
+      (cause) => new InvariantViolationError("Postpone deadline scheduler batch failed.", { cause })
+    )()
+  );
 };
 
 /**
@@ -154,22 +185,30 @@ export const runPostponeDeadlineTick = async (
  * 送信失敗時は outbox backoff で再試行する。
  * @see ADR-0051
  */
-export const runReminderTick = async (
+export const runReminderTick = (
   client: Client,
   ctx: AppContext
-): Promise<void> => {
+): SchedulerResult<SchedulerBatchReport> => {
   const now = ctx.clock.now();
-  const due = await ctx.ports.sessions.findDueReminderSessions(now);
-  for (const session of due) {
-    try {
-      await sendReminderForSession(client, ctx, session.id, now);
-    } catch (error: unknown) {
-      logger.error(
-        { error, sessionId: session.id, weekKey: session.weekKey },
-        "Failed to dispatch reminder in reminder tick."
-      );
-    }
-  }
+  return fromDatabaseCall(
+    () => ctx.ports.sessions.findDueReminderSessions(now),
+    "Failed to find due reminder sessions."
+  ).andThen((due) =>
+    ResultAsync.fromThrowable(
+      () => runSchedulerBatch(
+        "reminder",
+        due,
+        (session) =>
+          fromAppCall(
+            () => sendReminderForSession(client, ctx, session.id, now),
+            mapReminderError
+          ),
+        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+        logSchedulerFailure
+      ),
+      (cause) => new InvariantViolationError("Reminder scheduler batch failed.", { cause })
+    )()
+  );
 };
 
 /**
@@ -202,27 +241,32 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     {
       schedule: CRON_ASK_SCHEDULE,
       tick: () =>
-        void runTickSafely({ name: "ask_dispatch", logger }, () =>
-          runScheduledAskTick(sendAsk, context)
-            .then(() => controller.wake("ask_dispatch"))
+        void runResultTickSafely(
+          { name: "ask_dispatch", logger },
+          () => runScheduledAskTick(sendAsk, context),
+          () => controller.wake("ask_dispatch")
         )
     },
     // @see ADR-0042
     {
       schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
       tick: () =>
-        void runTickSafely({ name: "outbox_retention", logger }, () =>
-          runOutboxRetentionTick(context)
+        void runResultTickSafely(
+          { name: "outbox_retention", logger },
+          () => runOutboxRetentionTick(context)
         )
     },
     // @see ADR-0047
     {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       tick: () =>
-        void runTickSafely({ name: "scheduler_supervisor", logger }, async () => {
-          await runOutboxMetricsTick(context);
-          await runSchedulerSupervisorTick(context, controller);
-        })
+        void runResultTickSafely(
+          { name: "scheduler_supervisor", logger },
+          () =>
+            runOutboxMetricsTick(context).andThen(() =>
+              runSchedulerSupervisorTick(context, controller)
+            )
+        )
     }
   ];
 

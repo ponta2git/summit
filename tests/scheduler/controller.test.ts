@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { okAsync } from "neverthrow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -18,6 +19,7 @@ const silentLogger = {
 };
 
 const client = {} as Client;
+const okTask = () => okAsync(undefined);
 
 describe("SchedulerController", () => {
   afterEach(() => {
@@ -32,9 +34,9 @@ describe("SchedulerController", () => {
       client,
       context: ctx,
       logger: silentLogger,
-      runDeadlineTick: vi.fn(async () => {}),
-      runPostponeDeadlineTick: vi.fn(async () => {}),
-      runReminderTick: vi.fn(async () => {})
+      runDeadlineTick: vi.fn(okTask),
+      runPostponeDeadlineTick: vi.fn(okTask),
+      runReminderTick: vi.fn(okTask)
     });
 
     controller.wake("a");
@@ -56,14 +58,14 @@ describe("SchedulerController", () => {
         sessions: [buildSessionRow({ id: "asking", status: "ASKING", deadlineAt })]
       }
     });
-    const runDeadlineTick = vi.fn(async () => {});
+    const runDeadlineTick = vi.fn(okTask);
     const controller = createSchedulerController({
       client,
       context: ctx,
       logger: silentLogger,
       runDeadlineTick,
-      runPostponeDeadlineTick: vi.fn(async () => {}),
-      runReminderTick: vi.fn(async () => {})
+      runPostponeDeadlineTick: vi.fn(okTask),
+      runReminderTick: vi.fn(okTask)
     });
 
     await controller.recompute("test");
@@ -91,13 +93,13 @@ describe("SchedulerController", () => {
         ]
       }
     });
-    const runReminderTick = vi.fn(async () => {});
+    const runReminderTick = vi.fn(okTask);
     const controller = createSchedulerController({
       client,
       context: ctx,
       logger: silentLogger,
-      runDeadlineTick: vi.fn(async () => {}),
-      runPostponeDeadlineTick: vi.fn(async () => {}),
+      runDeadlineTick: vi.fn(okTask),
+      runPostponeDeadlineTick: vi.fn(okTask),
       runReminderTick
     });
 
@@ -133,9 +135,9 @@ describe("SchedulerController", () => {
       client: discordClient,
       context: ctx,
       logger: silentLogger,
-      runDeadlineTick: vi.fn(async () => {}),
-      runPostponeDeadlineTick: vi.fn(async () => {}),
-      runReminderTick: vi.fn(async () => {})
+      runDeadlineTick: vi.fn(okTask),
+      runPostponeDeadlineTick: vi.fn(okTask),
+      runReminderTick: vi.fn(okTask)
     });
 
     await controller.recompute("test");
@@ -161,9 +163,9 @@ describe("SchedulerController", () => {
       client: discordClient,
       context: ctx,
       logger: silentLogger,
-      runDeadlineTick: vi.fn(async () => {}),
-      runPostponeDeadlineTick: vi.fn(async () => {}),
-      runReminderTick: vi.fn(async () => {})
+      runDeadlineTick: vi.fn(okTask),
+      runPostponeDeadlineTick: vi.fn(okTask),
+      runReminderTick: vi.fn(okTask)
     });
 
     await controller.recompute("test");

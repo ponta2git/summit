@@ -1,5 +1,7 @@
 import type { AppContext } from "../appContext.js";
+import { fromDatabaseCall } from "../errors/result.js";
 import { logger } from "../logger.js";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 /**
  * Invariant F: Release IN_FLIGHT outbox rows past their claim deadline.
@@ -9,23 +11,17 @@ import { logger } from "../logger.js";
  * PENDING に戻し次 worker tick で再配送させる。
  * @see ADR-0051
  */
-export const reconcileOutboxClaims = async (
+export const reconcileOutboxClaims = (
   ctx: AppContext
-): Promise<number> => {
-  try {
-    const released = await ctx.ports.outbox.releaseExpiredClaims(ctx.clock.now());
+): SchedulerResult<number> =>
+  fromDatabaseCall(
+    () => ctx.ports.outbox.releaseExpiredClaims(ctx.clock.now()),
+    "Failed to release expired outbox claims."
+  ).andTee((released) => {
     if (released > 0) {
       logger.warn(
         { event: "reconciler.outbox_claim_reclaimed", released },
         "Reconciler: released expired outbox claims."
       );
     }
-    return released;
-  } catch (error: unknown) {
-    logger.error(
-      { error, event: "reconciler.outbox_claim_reclaim_failed" },
-      "Reconciler: failed to release expired outbox claims."
-    );
-    return 0;
-  }
-};
+  });

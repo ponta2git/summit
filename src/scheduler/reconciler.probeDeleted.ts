@@ -1,7 +1,10 @@
 import type { Client } from "discord.js";
+import { errAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import type { SessionRow } from "../db/rows.js";
+import { AppError, DatabaseError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall, fromDiscordCall } from "../errors/result.js";
 import { getTextChannel } from "../discord/shared/channels.js";
 import { isUnknownMessageError } from "../discord/shared/discordErrors.js";
 import { renderAskBody } from "../features/ask-session/render.js";
@@ -9,6 +12,11 @@ import { buildAskMessageViewModel } from "../features/ask-session/viewModel.js";
 import { renderPostponeBody } from "../features/postpone-voting/render.js";
 import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.js";
 import { logger } from "../logger.js";
+import {
+  runSchedulerBatch,
+  type SchedulerBatchReport,
+  type SchedulerResult
+} from "./scheduler.types.js";
 
 /**
  * Invariant D (startup active probe): Detect deleted Discord messages at boot.
@@ -20,42 +28,56 @@ import { logger } from "../logger.js";
  * 見合わないため実施しない。
  * @see ADR-0051
  */
-export const probeDeletedMessagesAtStartup = async (
+export const probeDeletedMessagesAtStartup = (
   client: Client,
   ctx: AppContext
-): Promise<number> => {
-  const nonTerminal = await ctx.ports.sessions.findNonTerminalSessions();
-  let recreated = 0;
-  for (const session of nonTerminal) {
-    try {
-      if (await probeAndRecreateAskMessage(client, ctx, session)) {
-        recreated += 1;
-      }
-      if (await probeAndRecreatePostponeMessage(client, ctx, session)) {
-        recreated += 1;
-      }
-    } catch (error: unknown) {
-      logger.error(
-        {
-          error,
-          event: "reconciler.message_probe_failed",
-          sessionId: session.id,
-          weekKey: session.weekKey
+): SchedulerResult<SchedulerBatchReport> =>
+  fromDatabaseCall(
+    () => ctx.ports.sessions.findNonTerminalSessions(),
+    "Failed to find non-terminal sessions for message probing."
+  ).andThen((nonTerminal) =>
+    fromAppCall(
+      () => runSchedulerBatch(
+        "message_probe",
+        nonTerminal,
+        (session) => safeTry(async function* () {
+          const ask = yield* probeAndRecreateAskMessage(client, ctx, session);
+          const postpone = yield* probeAndRecreatePostponeMessage(client, ctx, session);
+          return okAsync(Number(ask) + Number(postpone));
+        }),
+        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+        (failure) => {
+          logger.error(
+            {
+              error: failure.error,
+              errorCode: failure.error.code,
+              event: "reconciler.message_probe_failed",
+              sessionId: failure.sessionId,
+              weekKey: failure.weekKey
+            },
+            "Reconciler: failed to probe session messages at startup."
+          );
         },
-        "Reconciler: failed to probe session messages at startup."
-      );
-    }
-  }
-  return recreated;
-};
+        (recreated) => recreated
+      ),
+      (cause) => cause instanceof AppError
+        ? cause
+        : new DatabaseError("Message probe batch failed.", { cause })
+    )
+  );
 
-const probeAndRecreateAskMessage = async (
+const probeAndRecreateAskMessage = (
   client: Client,
   ctx: AppContext,
   session: SessionRow
-): Promise<boolean> => {
-  if (!session.askMessageId) {return false;}
-  const channel = await getTextChannel(client, session.channelId);
+): SchedulerResult<boolean> => {
+  if (!session.askMessageId) {return okAsync(false);}
+  const askMessageId = session.askMessageId;
+  const channelResult = fromDiscordCall(
+    () => getTextChannel(client, session.channelId),
+    "Failed to load channel for ask message probe."
+  );
+  return channelResult.andThen((channel) => {
   logger.debug(
     {
       event: "reconciler.message_probed",
@@ -66,57 +88,67 @@ const probeAndRecreateAskMessage = async (
     },
     "Reconciler: probing ask message."
   );
-  try {
-    await channel.messages.fetch(session.askMessageId);
-    return false;
-  } catch (error: unknown) {
-    if (!isUnknownMessageError(error)) {
+  return fromDiscordCall(
+    () => channel.messages.fetch(askMessageId),
+    "Failed to fetch ask message during startup probe."
+  ).andThen(() => okAsync(false)).orElse((error) => {
+    if (!isUnknownMessageError(error.cause)) {
+      return errAsync(error);
+    }
+    // state: messageEditor.ts の 10008 フォールバックと同 viewModel で新規投稿し ID を差し替え。
+    return safeTry(async function* () {
+      const memberRows = yield* fromDatabaseCall(
+        () => ctx.ports.members.listMembers(),
+        "Failed to load members for ask message recreation."
+      );
+      const fresh = yield* fromDatabaseCall(
+        () => ctx.ports.sessions.findSessionById(session.id),
+        "Failed to reload session for ask message recreation."
+      );
+      if (!fresh) {return okAsync(false);}
+      const responses = yield* fromDatabaseCall(
+        () => ctx.ports.responses.listResponses(fresh.id),
+        "Failed to load responses for ask message recreation."
+      );
+      const sent = yield* fromDiscordCall(
+        () => channel.send(renderAskBody(buildAskMessageViewModel(fresh, responses, memberRows))),
+        "Failed to recreate deleted ask message."
+      );
+      yield* fromDatabaseCall(
+        () => ctx.ports.sessions.updateAskMessageId(session.id, sent.id),
+        "Failed to persist recreated ask message id."
+      );
       logger.warn(
         {
-          error,
-          event: "reconciler.message_probe_error",
+          event: "reconciler.message_recreated_at_startup",
           sessionId: session.id,
           weekKey: session.weekKey,
           kind: "ask",
-          messageId: session.askMessageId
+          previousMessageId: session.askMessageId,
+          messageId: sent.id
         },
-        "Reconciler: ask message probe failed with non-10008 error."
+        "Reconciler: recreated deleted ask message detected at startup."
       );
-      return false;
-    }
-    // state: messageEditor.ts の 10008 フォールバックと同 viewModel で新規投稿し ID を差し替え。
-    const memberRows = await ctx.ports.members.listMembers();
-    const fresh = await ctx.ports.sessions.findSessionById(session.id);
-    if (!fresh) {return false;}
-    const responses = await ctx.ports.responses.listResponses(fresh.id);
-    const vm = buildAskMessageViewModel(fresh, responses, memberRows);
-    const sent = await channel.send(renderAskBody(vm));
-    await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);
-    logger.warn(
-      {
-        event: "reconciler.message_recreated_at_startup",
-        sessionId: session.id,
-        weekKey: session.weekKey,
-        kind: "ask",
-        previousMessageId: session.askMessageId,
-        messageId: sent.id
-      },
-      "Reconciler: recreated deleted ask message detected at startup."
-    );
-    return true;
-  }
+      return okAsync(true);
+    });
+  });
+  });
 };
 
-const probeAndRecreatePostponeMessage = async (
+const probeAndRecreatePostponeMessage = (
   client: Client,
   ctx: AppContext,
   session: SessionRow
-): Promise<boolean> => {
+): SchedulerResult<boolean> => {
   if (session.status !== "POSTPONE_VOTING" && session.status !== "POSTPONED") {
-    return false;
+    return okAsync(false);
   }
-  if (!session.postponeMessageId) {return false;}
-  const channel = await getTextChannel(client, session.channelId);
+  if (!session.postponeMessageId) {return okAsync(false);}
+  const postponeMessageId = session.postponeMessageId;
+  return fromDiscordCall(
+    () => getTextChannel(client, session.channelId),
+    "Failed to load channel for postpone message probe."
+  ).andThen((channel) => {
   logger.debug(
     {
       event: "reconciler.message_probed",
@@ -127,38 +159,35 @@ const probeAndRecreatePostponeMessage = async (
     },
     "Reconciler: probing postpone message."
   );
-  try {
-    await channel.messages.fetch(session.postponeMessageId);
-    return false;
-  } catch (error: unknown) {
-    if (!isUnknownMessageError(error)) {
+  return fromDiscordCall(
+    () => channel.messages.fetch(postponeMessageId),
+    "Failed to fetch postpone message during startup probe."
+  ).andThen(() => okAsync(false)).orElse((error) => {
+    if (!isUnknownMessageError(error.cause)) {
+      return errAsync(error);
+    }
+    return safeTry(async function* () {
+      const sent = yield* fromDiscordCall(
+        () => channel.send(renderPostponeBody(buildPostponeMessageViewModel(session))),
+        "Failed to recreate deleted postpone message."
+      );
+      yield* fromDatabaseCall(
+        () => ctx.ports.sessions.updatePostponeMessageId(session.id, sent.id),
+        "Failed to persist recreated postpone message id."
+      );
       logger.warn(
         {
-          error,
-          event: "reconciler.message_probe_error",
+          event: "reconciler.message_recreated_at_startup",
           sessionId: session.id,
           weekKey: session.weekKey,
           kind: "postpone",
-          messageId: session.postponeMessageId
+          previousMessageId: session.postponeMessageId,
+          messageId: sent.id
         },
-        "Reconciler: postpone message probe failed with non-10008 error."
+        "Reconciler: recreated deleted postpone message detected at startup."
       );
-      return false;
-    }
-    const postponeVm = buildPostponeMessageViewModel(session);
-    const sent = await channel.send(renderPostponeBody(postponeVm));
-    await ctx.ports.sessions.updatePostponeMessageId(session.id, sent.id);
-    logger.warn(
-      {
-        event: "reconciler.message_recreated_at_startup",
-        sessionId: session.id,
-        weekKey: session.weekKey,
-        kind: "postpone",
-        previousMessageId: session.postponeMessageId,
-        messageId: sent.id
-      },
-      "Reconciler: recreated deleted postpone message detected at startup."
-    );
-    return true;
-  }
+      return okAsync(true);
+    });
+  });
+  });
 };

@@ -4,6 +4,8 @@ import {
   OUTBOX_METRICS_PENDING_WARN_DEPTH
 } from "../config.js";
 import { logger } from "../logger.js";
+import { fromDatabaseCall } from "../errors/result.js";
+import type { SchedulerResult } from "./scheduler.types.js";
 
 /**
  * Snapshot outbox depth/age and emit a structured log line for observability.
@@ -14,10 +16,18 @@ import { logger } from "../logger.js";
  *   ローカル try/catch で吸収して他 tick への波及を防ぐ。
  * @see ADR-0043
  */
-export const runOutboxMetricsTick = async (ctx: AppContext): Promise<void> => {
+export const runOutboxMetricsTick = (ctx: AppContext): SchedulerResult<{
+  readonly pending: number;
+  readonly inFlight: number;
+  readonly failed: number;
+  readonly oldestPendingAgeMs: number | null;
+  readonly oldestFailedAgeMs: number | null;
+}> => {
   const now = ctx.clock.now();
-  try {
-    const m = await ctx.ports.outbox.getMetrics(now);
+  return fromDatabaseCall(
+    () => ctx.ports.outbox.getMetrics(now),
+    "Failed to read outbox metrics."
+  ).andTee((m) => {
     const isWarn =
       m.failed > 0 ||
       m.pending > OUTBOX_METRICS_PENDING_WARN_DEPTH ||
@@ -36,10 +46,5 @@ export const runOutboxMetricsTick = async (ctx: AppContext): Promise<void> => {
     } else {
       logger.info(fields, "Outbox metrics.");
     }
-  } catch (error: unknown) {
-    logger.error(
-      { error, event: "outbox.metrics_failed" },
-      "Outbox metrics: snapshot failed."
-    );
-  }
+  });
 };

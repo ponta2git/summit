@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import { reconcileMissingAsk } from "./reconciler.missingAsk.js";
@@ -8,6 +9,7 @@ import { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.js";
 import { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.js";
 import { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.js";
 import type { ReconcileReport, ReconcileScope } from "./reconciler.types.js";
+import type { SchedulerBatchReport, SchedulerResult } from "./scheduler.types.js";
 
 /**
  * Run all reconciliation invariants for the given scope.
@@ -20,31 +22,36 @@ import type { ReconcileReport, ReconcileScope } from "./reconciler.types.js";
  * @see ADR-0051
  * @see ADR-0036
  */
-export const runReconciler = async (
+export const runReconciler = (
   client: Client,
   ctx: AppContext,
   options: { readonly scope: ReconcileScope }
-): Promise<ReconcileReport> => {
-  const deadLetterRecovery =
-    options.scope === "startup"
-      ? await reconcileOutboxDeadLetters(ctx)
+): SchedulerResult<ReconcileReport> =>
+  safeTry(async function* () {
+    const deadLetterRecovery = options.scope === "startup"
+      ? yield* reconcileOutboxDeadLetters(ctx)
       : { deadLettersRequeued: 0, successorsRequeued: 0 };
-  const cancelledPromoted = await reconcileStrandedCancelled(client, ctx);
-  const askCreated = await reconcileMissingAsk(ctx);
-  const messageIntentsQueued = await reconcileMissingMessageIntents(ctx);
-  // why: active probe は startup 限定。reconnect は毎回 Discord fetch するコストに見合わず、
-  //   scheduler tick の opportunistic な updateAskMessage に委ねる。
-  if (options.scope === "startup") {
-    await probeDeletedMessagesAtStartup(client, ctx);
-  }
-  const outboxClaimReleased = await reconcileOutboxClaims(ctx);
+    const cancelledReport = yield* reconcileStrandedCancelled(client, ctx);
+    const askCreated = yield* reconcileMissingAsk(ctx);
+    const messageReport = yield* reconcileMissingMessageIntents(ctx);
+    // why: active probe は startup 限定。reconnect は毎回 Discord fetch するコストに見合わず、
+    //   scheduler tick の opportunistic な updateAskMessage に委ねる。
+    const probeReport: SchedulerBatchReport = options.scope === "startup"
+      ? yield* probeDeletedMessagesAtStartup(client, ctx)
+      : { processed: 0, succeeded: 0, failures: [] };
+    const outboxClaimReleased = yield* reconcileOutboxClaims(ctx);
 
-  return {
-    cancelledPromoted,
-    askCreated,
-    messageIntentsQueued,
-    outboxClaimReleased,
-    outboxDeadLettersRequeued: deadLetterRecovery.deadLettersRequeued,
-    outboxSuccessorsRequeued: deadLetterRecovery.successorsRequeued
-  };
-};
+    return okAsync({
+      cancelledPromoted: cancelledReport.succeeded,
+      askCreated,
+      messageIntentsQueued: messageReport.succeeded,
+      outboxClaimReleased,
+      outboxDeadLettersRequeued: deadLetterRecovery.deadLettersRequeued,
+      outboxSuccessorsRequeued: deadLetterRecovery.successorsRequeued,
+      failures: [
+        ...cancelledReport.failures,
+        ...messageReport.failures,
+        ...probeReport.failures
+      ]
+    });
+  });

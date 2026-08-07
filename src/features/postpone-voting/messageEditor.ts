@@ -2,7 +2,6 @@ import type { Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.js";
 import type { ResponseRow, SessionRow } from "../../db/rows.js";
-import { logger } from "../../logger.js";
 import { renderPostponeBody } from "./render.js";
 import { buildPostponeMessageViewModel } from "./viewModel.js";
 import { getTextChannel } from "../../discord/shared/channels.js";
@@ -28,13 +27,6 @@ export const updatePostponeMessage = async (
     content: rendered.content ?? "",
     ...(rendered.components ? { components: rendered.components } : {})
   };
-  try {
-    const msg = await channel.messages.fetch(session.postponeMessageId);
-    await msg.edit(editPayload);
-  } catch (error: unknown) {
-    logger.warn(
-      { error, sessionId: session.id, messageId: session.postponeMessageId },
-      "Failed to update postpone message."
-    );
-  }
+  const msg = await channel.messages.fetch(session.postponeMessageId);
+  await msg.edit(editPayload);
 };

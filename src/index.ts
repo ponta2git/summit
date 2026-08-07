@@ -104,7 +104,11 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
   // @see ADR-0051
-  const report = await runReconciler(client, appContext, { scope: "startup" });
+  const reportResult = await runReconciler(client, appContext, { scope: "startup" });
+  const report = reportResult.match(
+    (value) => value,
+    (error) => { throw error; }
+  );
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,
     askCreated: report.askCreated,
@@ -116,7 +120,11 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   // race: scheduler は本呼び出しの完了**後**に生成し、startup recovery との重複処理を避ける。
-  await runStartupRecovery(client, appContext);
+  const startupRecoveryResult = await runStartupRecovery(client, appContext);
+  startupRecoveryResult.match(
+    () => undefined,
+    (error) => { throw error; }
+  );
   startupCompleted = true;
   readiness.markReady();
 

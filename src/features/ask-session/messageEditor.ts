@@ -33,36 +33,20 @@ export const updateAskMessage = async (
       // race: startup probe と競合しても DB 最新値から再描画し、最終的な askMessageId だけを更新する。
       // @see ADR-0001
       // @see ADR-0051
-      try {
-        const sent = await channel.send(rendered);
-        await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);
-        logger.warn(
-          {
-            event: "reconciler.message_recreated",
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            previousMessageId: session.askMessageId,
-            messageId: sent.id
-          },
-          "Reconciler: recreated ask message after Unknown Message (10008)."
-        );
-      } catch (recreateError: unknown) {
-        logger.error(
-          {
-            error: recreateError,
-            event: "reconciler.message_recreated_failed",
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            previousMessageId: session.askMessageId
-          },
-          "Reconciler: failed to recreate ask message after Unknown Message."
-        );
-      }
+      const sent = await channel.send(rendered);
+      await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);
+      logger.warn(
+        {
+          event: "reconciler.message_recreated",
+          sessionId: session.id,
+          weekKey: session.weekKey,
+          previousMessageId: session.askMessageId,
+          messageId: sent.id
+        },
+        "Reconciler: recreated ask message after Unknown Message (10008)."
+      );
       return;
     }
-    logger.warn(
-      { error, sessionId: session.id, messageId: session.askMessageId },
-      "Failed to update ask message."
-    );
+    throw error;
   }
 };

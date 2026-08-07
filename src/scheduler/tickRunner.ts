@@ -1,6 +1,8 @@
 import type { Logger } from "pino";
+import type { ResultAsync } from "neverthrow";
 
 import { TICK_DURATION_WARN_MS } from "../config.js";
+import { AppError, type AppError as AppErrorType } from "../errors/index.js";
 
 export interface RunTickSafelyOptions {
   readonly name: string;
@@ -34,6 +36,28 @@ export const runTickSafely = async (
     }
   } catch (err: unknown) {
     const elapsedMs = nowFn() - start;
-    logger.error({ event: "scheduler.tick_failed", tick: name, elapsedMs, err });
+    logger.error({
+      event: "scheduler.tick_failed",
+      tick: name,
+      elapsedMs,
+      err,
+      ...(err instanceof AppError ? { errorCode: err.code } : {})
+    });
   }
+};
+
+export const runResultTickSafely = async <T>(
+  options: RunTickSafelyOptions,
+  fn: () => ResultAsync<T, AppErrorType>,
+  onSuccess?: (value: T) => void | Promise<void>
+): Promise<void> => {
+  await runTickSafely(options, async () => {
+    const value = await fn().match(
+      (result) => result,
+      (error) => {
+        throw error;
+      }
+    );
+    await onSuccess?.(value);
+  });
 };

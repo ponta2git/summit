@@ -1,10 +1,18 @@
 import type { Client } from "discord.js";
+import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import type { SessionRow } from "../db/rows.js";
+import { AppError, DatabaseError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall, fromDiscordCall } from "../errors/result.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import type { SettleCancelReason } from "../features/ask-session/messages.js";
 import { logger } from "../logger.js";
+import {
+  runSchedulerBatch,
+  type SchedulerBatchReport,
+  type SchedulerResult
+} from "./scheduler.types.js";
 
 /**
  * Invariant A: Promote stranded CANCELLED sessions to their next canonical state.
@@ -15,45 +23,39 @@ import { logger } from "../logger.js";
  * CANCELLED→SKIPPED は許可遷移に無いため終端は COMPLETED を採用する。
  * @see ADR-0051
  */
-export const reconcileStrandedCancelled = async (
+export const reconcileStrandedCancelled = (
   client: Client,
   ctx: AppContext
-): Promise<number> => {
-  const stranded = await ctx.ports.sessions.findStrandedCancelledSessions();
-  let promoted = 0;
-  const now = ctx.clock.now();
-
-  for (const session of stranded) {
-    try {
-      const next = await promoteStranded(client, ctx, session, now);
-      if (next) {
-        promoted += 1;
-        logger.info(
+): SchedulerResult<SchedulerBatchReport> =>
+  fromDatabaseCall(
+    () => ctx.ports.sessions.findStrandedCancelledSessions(),
+    "Failed to find stranded CANCELLED sessions."
+  ).andThen((stranded) =>
+    fromAppCall(
+      () => runSchedulerBatch(
+      "stranded_cancelled",
+      stranded,
+      (session) => promoteStranded(client, ctx, session, ctx.clock.now()),
+      (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+      (failure) => {
+        logger.error(
           {
-            event: "reconciler.cancelled_promoted",
-            sessionId: session.id,
-            weekKey: session.weekKey,
-            from: "CANCELLED",
-            to: next.to,
-            reason: next.reason
+            error: failure.error,
+            errorCode: failure.error.code,
+            event: "reconciler.cancelled_promoted_failed",
+            sessionId: failure.sessionId,
+            weekKey: failure.weekKey
           },
-          "Reconciler: promoted stranded CANCELLED session."
+          "Reconciler: failed to promote stranded CANCELLED session."
         );
-      }
-    } catch (error: unknown) {
-      logger.error(
-        {
-          error,
-          event: "reconciler.cancelled_promoted_failed",
-          sessionId: session.id,
-          weekKey: session.weekKey
-        },
-        "Reconciler: failed to promote stranded CANCELLED session."
-      );
-    }
-  }
-  return promoted;
-};
+      },
+      (result) => result === undefined ? 0 : 1
+      ),
+      (cause) => cause instanceof AppError
+        ? cause
+        : new DatabaseError("Stranded CANCELLED batch failed.", { cause })
+    )
+  );
 
 const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
   const reason = session.cancelReason;
@@ -68,27 +70,46 @@ const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
   return session.postponeCount === 1 ? "saturday_cancelled" : "deadline_unanswered";
 };
 
-const promoteStranded = async (
+const promoteStranded = (
   client: Client,
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): Promise<{ readonly to: "POSTPONE_VOTING" | "COMPLETED"; readonly reason: string } | undefined> => {
-  const result = await ctx.ports.sessionCommands.settleAskingCancellation({
-    sessionId: session.id,
-    now,
-    reason: resolveSettleCancelReason(session)
+): SchedulerResult<
+  { readonly to: "POSTPONE_VOTING" | "COMPLETED"; readonly reason: string } | undefined
+> =>
+  fromDatabaseCall(
+    () => ctx.ports.sessionCommands.settleAskingCancellation({
+      sessionId: session.id,
+      now,
+      reason: resolveSettleCancelReason(session)
+    }),
+    "Failed to settle stranded CANCELLED session."
+  ).andThen((result) => {
+    if (result.kind !== "transitioned") {return okAsync(undefined);}
+    return fromDiscordCall(
+      () => updateAskMessage(client, ctx, result.session),
+      "Failed to update ask message after stranded cancellation."
+    ).map(() => {
+      const next = result.session.status === "POSTPONE_VOTING"
+        ? { to: "POSTPONE_VOTING" as const, reason: "friday_cancel_resumed" }
+        : {
+            to: "COMPLETED" as const,
+            reason: session.postponeCount === 1
+              ? "saturday_cancelled_stranded"
+              : "friday_postpone_window_elapsed"
+          };
+      logger.info(
+        {
+          event: "reconciler.cancelled_promoted",
+          sessionId: session.id,
+          weekKey: session.weekKey,
+          from: "CANCELLED",
+          to: next.to,
+          reason: next.reason
+        },
+        "Reconciler: promoted stranded CANCELLED session."
+      );
+      return next;
+    });
   });
-  if (result.kind !== "transitioned") {return undefined;}
-  await updateAskMessage(client, ctx, result.session);
-  if (result.session.status === "POSTPONE_VOTING") {
-    return { to: "POSTPONE_VOTING", reason: "friday_cancel_resumed" };
-  }
-  return {
-    to: "COMPLETED",
-    reason:
-      session.postponeCount === 1
-        ? "saturday_cancelled_stranded"
-        : "friday_postpone_window_elapsed"
-  };
-};

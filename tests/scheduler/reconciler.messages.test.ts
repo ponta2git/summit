@@ -16,6 +16,7 @@ import { updateAskMessage } from "../../src/features/ask-session/messageEditor.j
 import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "./factories/session.js";
+import { unwrapResultAsync } from "../helpers/assertions.js";
 
 beforeEach(resetReconcilerHarness);
 
@@ -49,14 +50,14 @@ describe("updateAskMessage recovery", () => {
     expect(editCalls).toStrictEqual([]);
   });
 
-  it("keeps the old id on non-10008 errors", async () => {
+  it("propagates non-10008 errors without changing the old id", async () => {
     const session = buildSessionRow({ id: "s-other", status: "ASKING", askMessageId: "old-id" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async () => {
       throw Object.assign(new Error("Missing Access"), { code: 50001 });
     });
 
-    await updateAskMessage(client, ctx, session);
+    await expect(updateAskMessage(client, ctx, session)).rejects.toMatchObject({ code: 50001 });
 
     expect((await ctx.ports.sessions.findSessionById("s-other"))?.askMessageId).toBe("old-id");
     expect(sentMessages).toStrictEqual([]);
@@ -88,7 +89,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       throw Object.assign(new Error("Unknown Message"), { code: 10008 });
     });
 
-    expect(await probeDeletedMessagesAtStartup(client, ctx)).toBe(1);
+    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
     expect(fetchedMessageIds).toStrictEqual(["gone-ask-id"]);
     expect(sentMessages).toHaveLength(1);
     expect((await ctx.ports.sessions.findSessionById("probe-ask-gone"))?.askMessageId).toBe("sent-1");
@@ -110,7 +111,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       return makeMessage(id);
     });
 
-    expect(await probeDeletedMessagesAtStartup(client, ctx)).toBe(1);
+    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
     expect(new Set(fetchedMessageIds)).toStrictEqual(new Set(["ask-ok", "gone-postpone-id"]));
     const after = await ctx.ports.sessions.findSessionById("probe-postpone-gone");
     expect({ askMessageId: after?.askMessageId, postponeMessageId: after?.postponeMessageId })
@@ -122,7 +123,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => makeMessage(id));
 
-    expect(await probeDeletedMessagesAtStartup(client, ctx)).toBe(0);
+    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
     expect(sentMessages).toStrictEqual([]);
     expect((await ctx.ports.sessions.findSessionById("probe-fresh"))?.askMessageId).toBe("fresh-ask-id");
   });
@@ -131,7 +132,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const session = buildSessionRow({ id: "probe-null", status: "ASKING", askMessageId: null });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect(await probeDeletedMessagesAtStartup(client, ctx)).toBe(0);
+    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
     expect(fetchedMessageIds).toStrictEqual([]);
   });
 });
