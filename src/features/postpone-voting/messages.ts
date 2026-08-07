@@ -1,5 +1,5 @@
 import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.js";
-import { POSTPONE_DEADLINE_HHMM } from "../../config.js";
+import { MEMBER_COUNT_EXPECTED, POSTPONE_DEADLINE_HHMM } from "../../config.js";
 import { SLOT_TO_LABEL } from "../../slot.js";
 
 interface PostponeBodyParams {
@@ -21,6 +21,7 @@ const formatPostponeDeadline = (): string =>
   POSTPONE_DEADLINE_HHMM.hour === 24 && POSTPONE_DEADLINE_HHMM.minute === 0
     ? "候補日翌日 00:00 JST"
     : `${String(POSTPONE_DEADLINE_HHMM.hour).padStart(2, "0")}:${String(POSTPONE_DEADLINE_HHMM.minute).padStart(2, "0")} JST`;
+const expectedMemberCountLabel = `${MEMBER_COUNT_EXPECTED}人分`;
 
 export const postponeMessages = {
   postpone: {
@@ -48,7 +49,7 @@ export const postponeMessages = {
     cancelled: ({ reason }: PostponeCancelledParams): string =>
       reason === "ng"
         ? "🛑 今週はお流れです。予定がそろわない人がいました。"
-        : "🛑 今週はお流れです。締切までに4人分の回答がそろいませんでした。"
+        : `🛑 今週はお流れです。締切までに${expectedMemberCountLabel}の回答がそろいませんでした。`
   },
 
   interaction: {

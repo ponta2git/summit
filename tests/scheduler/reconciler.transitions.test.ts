@@ -12,6 +12,7 @@ import {
 } from "./reconciler.harness.js";
 import { reconcileStrandedCancelled } from "../../src/scheduler/reconciler.js";
 import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
+import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "./factories/session.js";
 
@@ -110,7 +111,9 @@ describe("stranded CANCELLED Discord cleanup", () => {
     await runOutboxWorkerTick(client, ctx);
     await runOutboxWorkerTick(client, ctx);
     expect(sentMessages).toHaveLength(2);
-    expect(extractContent(sentMessages[0]?.payload)).toContain("21:30 までに4人分の回答");
+    expect(extractContent(sentMessages[0]?.payload)).toContain(
+      `21:30 までに${MEMBER_COUNT_EXPECTED}人分の回答`
+    );
     expect(extractContent(sentMessages[0]?.payload)).not.toContain("<@");
     expect(extractContent(sentMessages[1]?.payload)).toContain("<@");
     const after = await ctx.ports.sessions.findSessionById("c-fri-ui");

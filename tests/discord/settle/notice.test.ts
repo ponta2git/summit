@@ -4,7 +4,11 @@ import {
   buildSettleNoticeViewModel,
   renderSettleNotice
 } from "../../../src/features/ask-session/viewModel.js";
+import { ASK_DEADLINE_HHMM, MEMBER_COUNT_EXPECTED } from "../../../src/config.js";
 import { appConfig } from "../../../src/userConfig.js";
+
+const formatHhmm = (value: { readonly hour: number; readonly minute: number }): string =>
+  `${String(value.hour).padStart(2, "0")}:${String(value.minute).padStart(2, "0")}`;
 
 describe("buildSettleNoticeViewModel", () => {
   it.each([
@@ -14,7 +18,7 @@ describe("buildSettleNoticeViewModel", () => {
     },
     {
       reason: "deadline_unanswered" as const,
-      cancelText: "🛑 21:30 までに4人分の回答がそろわなかったため、今回はお流れです。"
+      cancelText: `🛑 ${formatHhmm(ASK_DEADLINE_HHMM)} までに${MEMBER_COUNT_EXPECTED}人分の回答がそろわなかったため、今回はお流れです。`
     },
     {
       reason: "saturday_cancelled" as const,

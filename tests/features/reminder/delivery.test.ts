@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sendReminderForSession } from "../../../src/features/reminder/send.js";
 import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
+import { REMINDER_LEAD_MINUTES } from "../../../src/config.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { sentPayload } from "../../helpers/discord.js";
 import { createTestAppContext } from "../../testing/index.js";
@@ -12,7 +13,7 @@ import {
   timeResponses
 } from "./harness.js";
 
-const reminderBody = "⏰ 15分後に開始です（22:00 開始）";
+const reminderBody = `⏰ ${REMINDER_LEAD_MINUTES}分後に開始です（22:00 開始）`;
 
 const expectedReminderContent = (): string =>
   appConfig.dev.suppressMentions

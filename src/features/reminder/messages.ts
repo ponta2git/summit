@@ -1,3 +1,5 @@
+import { REMINDER_LEAD_MINUTES } from "../../config.js";
+
 interface ReminderBodyParams {
   startTimeLabel: string;
 }
@@ -5,6 +7,6 @@ interface ReminderBodyParams {
 export const reminderMessages = {
   reminder: {
     body: ({ startTimeLabel }: ReminderBodyParams): string =>
-      `⏰ 15分後に開始です（${startTimeLabel} 開始）`
+      `⏰ ${REMINDER_LEAD_MINUTES}分後に開始です（${startTimeLabel} 開始）`
   }
 } as const;

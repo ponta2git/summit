@@ -1,6 +1,6 @@
 import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.js";
 import { SLOT_TO_LABEL, type SlotKey } from "../../slot.js";
-import { ASK_DEADLINE_HHMM } from "../../config.js";
+import { ASK_DEADLINE_HHMM, MEMBER_COUNT_EXPECTED } from "../../config.js";
 
 export type SettleCancelReason = "absent" | "deadline_unanswered" | "saturday_cancelled";
 
@@ -8,6 +8,7 @@ const formatHhmm = (value: { readonly hour: number; readonly minute: number }): 
   `${String(value.hour).padStart(2, "0")}:${String(value.minute).padStart(2, "0")}`;
 
 const answerDeadlineLabel = formatHhmm(ASK_DEADLINE_HHMM);
+const expectedMemberCountLabel = `${MEMBER_COUNT_EXPECTED}人分`;
 
 interface AskBodyParams {
   dateIso: string;
@@ -70,7 +71,7 @@ export const askMessages = {
       reason === "absent"
           ? "🛑 今回は予定がそろわなかったため、お流れです。"
         : reason === "deadline_unanswered"
-          ? `🛑 ${answerDeadlineLabel} までに4人分の回答がそろわなかったため、今回はお流れです。`
+          ? `🛑 ${answerDeadlineLabel} までに${expectedMemberCountLabel}の回答がそろわなかったため、今回はお流れです。`
           : "🛑 土曜回も予定がそろわなかったため、今週はお流れです。",
     completed: ({ count }: SettleCompletedParams): string =>
       `✅ ${count}名の回答を反映して完了しました。`
