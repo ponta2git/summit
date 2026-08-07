@@ -102,7 +102,7 @@ Discord token、DB URL、healthcheck ping URL の実値は commit しないで�
 | `pnpm lint:fix` | oxlint の自動修正 |
 | `pnpm test` | 単体テスト |
 | `pnpm test:integration` | DB 統合テスト |
-| `pnpm ci` | 主要な CI 検証を直列実行 |
+| `pnpm run ci` | 主要な CI 検証を直列実行 |
 | `pnpm db:seed` | 設定からローカル members を seed |
 | `pnpm db:reset` | ローカル sessions / responses をリセット |
 | `pnpm commands:sync` | guild-scoped slash commands を同期 |
