@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AppContext } from "../../appContext.js";
+import { ShutdownError } from "../../errors/index.js";
 import { logger } from "../../logger.js";
 import { buildAskBodyIntent } from "../../db/repositories/sessionOutboxIntents.js";
 import { isShuttingDown } from "../../shutdown.js";
@@ -54,7 +55,7 @@ const doSendAskMessage = async (
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
   if (isShuttingDown()) {
-    throw new Error("Shutdown in progress.");
+    throw new ShutdownError("Shutdown in progress.");
   }
 
   const { ports, clock } = context.context;

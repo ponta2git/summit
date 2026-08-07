@@ -7,11 +7,12 @@ import {
   SCHEDULER_MIN_TIMER_DELAY_MS,
   SCHEDULER_WAKE_DEBOUNCE_MS
 } from "../config.js";
+import { AppError, InvariantViolationError } from "../errors/index.js";
+import { fromAppCall, fromDatabaseCall, unwrapResultAsync } from "../errors/result.js";
 import { logger as defaultLogger } from "../logger.js";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
 import { runOutboxWorkerTick } from "./outboxWorker.js";
 import { runResultTickSafely } from "./tickRunner.js";
-import { fromDatabaseCall } from "../errors/result.js";
 import type { SchedulerResult } from "./scheduler.types.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -44,6 +45,9 @@ const delayUntil = (now: Date, at: Date): number =>
     SCHEDULER_MIN_TIMER_DELAY_MS,
     Math.min(MAX_TIMER_DELAY_MS, at.getTime() - now.getTime())
   );
+
+const readDatabase = <T>(call: () => Promise<T>, message: string): Promise<T> =>
+  unwrapResultAsync(fromDatabaseCall(call, message));
 
 export const createSchedulerController = (
   deps: SchedulerControllerDeps
@@ -113,18 +117,26 @@ export const createSchedulerController = (
     if (stopped) {return;}
     outboxTimer = setTimeout(() => {
       outboxTimer = undefined;
-      void runResultTickSafely({ name: "outbox_worker", logger }, () =>
-        runOutboxWorkerTick(client, context), async () => {
-        const now = context.clock.now();
-        const nextDispatchAt = await context.ports.outbox.getNextDispatchAt(now);
-        if (isDue(nextDispatchAt, now)) {
-          scheduleOutboxLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);
-          return;
-        }
-        stopOutboxWorker("idle");
-        scheduleOutbox(nextDispatchAt, now);
-      });
+      void runResultTickSafely(
+        { name: "outbox_worker", logger },
+        () => runOutboxWorkerTick(client, context),
+        continueOutboxLoop
+      );
     }, delayMs);
+  };
+
+  const continueOutboxLoop = async (): Promise<void> => {
+    const now = context.clock.now();
+    const nextDispatchAt = await readDatabase(
+      () => context.ports.outbox.getNextDispatchAt(now),
+      "Failed to read next outbox dispatch time."
+    );
+    if (isDue(nextDispatchAt, now)) {
+      scheduleOutboxLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);
+      return;
+    }
+    stopOutboxWorker("idle");
+    scheduleOutbox(nextDispatchAt, now);
   };
 
   const scheduleOutbox = (nextDispatchAt: Date | null, now: Date): void => {
@@ -166,8 +178,14 @@ export const createSchedulerController = (
   ): Promise<boolean> => {
     const now = context.clock.now();
     const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
-      context.ports.sessions.getSchedulerSessionHints(now),
-      context.ports.outbox.getNextDispatchAt(now)
+      readDatabase(
+        () => context.ports.sessions.getSchedulerSessionHints(now),
+        "Failed to read scheduler session hints."
+      ),
+      readDatabase(
+        () => context.ports.outbox.getNextDispatchAt(now),
+        "Failed to read next outbox dispatch time."
+      )
     ]);
 
     let didRun = false;
@@ -234,7 +252,8 @@ export const createSchedulerController = (
           event: "scheduler.recompute_failed",
           reason,
           elapsedMs: performance.now() - startedAt,
-          error
+          error,
+          ...(error instanceof AppError ? { errorCode: error.code } : {})
         });
       }
     })()
@@ -279,8 +298,10 @@ export const runSchedulerSupervisorTick = (
   controller: SchedulerController
 ): SchedulerResult<{ readonly outboxClaimReleased: number }> =>
   reconcileOutboxClaims(ctx).andThen((outboxClaimReleased) =>
-    fromDatabaseCall(
+    fromAppCall(
       () => controller.recompute("supervisor"),
-      "Failed to recompute scheduler state."
+      (cause) => cause instanceof AppError
+        ? cause
+        : new InvariantViolationError("Failed to recompute scheduler state.", { cause })
     ).map(() => ({ outboxClaimReleased }))
   );

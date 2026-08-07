@@ -3,7 +3,7 @@ import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
+import { fromDatabasePromise } from "../errors/result.js";
 import type { CancelReason } from "../features/ask-session/cancelReason.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import { logger } from "../logger.js";
@@ -15,10 +15,7 @@ export const reflectAskingCancellation = (
   ctx: AppContext,
   settled: Parameters<typeof updateAskMessage>[2]
 ): ResultAsync<void, AppError> =>
-  fromDiscordPromise(
-    updateAskMessage(client, ctx, settled),
-    "Failed to update ask message after cancel."
-  ).andTee(() => {
+  updateAskMessage(client, ctx, settled).andTee(() => {
     logger.info(
       {
         sessionId: settled.id,

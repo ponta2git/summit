@@ -1,52 +1,87 @@
 import type { Client } from "discord.js";
+import { errAsync, ResultAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../../appContext.js";
 import type { SessionRow } from "../../db/rows.js";
-import { logger } from "../../logger.js";
+import { fromDatabaseCall, fromDiscordCall } from "../../errors/result.js";
 import { isUnknownMessageError } from "../../discord/shared/discordErrors.js";
+import { logger } from "../../logger.js";
+import { getTextChannel } from "../../discord/shared/channels.js";
 import { renderAskBody } from "./render.js";
 import { buildAskMessageViewModel } from "./viewModel.js";
-import { getTextChannel } from "../../discord/shared/channels.js";
+import type { AppError } from "../../errors/index.js";
 
-export const updateAskMessage = async (
+const recreateAskMessage = (
+  channel: Awaited<ReturnType<typeof getTextChannel>>,
+  ctx: AppContext,
+  session: SessionRow,
+  rendered: ReturnType<typeof renderAskBody>
+): ResultAsync<void, AppError> =>
+  safeTry(async function* () {
+    const sent = yield* fromDiscordCall(
+      () => channel.send(rendered),
+      "Failed to recreate deleted ask message."
+    );
+    yield* fromDatabaseCall(
+      () => ctx.ports.sessions.updateAskMessageId(session.id, sent.id),
+      "Failed to persist recreated ask message id."
+    );
+    logger.warn(
+      {
+        event: "reconciler.message_recreated",
+        sessionId: session.id,
+        weekKey: session.weekKey,
+        previousMessageId: session.askMessageId,
+        messageId: sent.id
+      },
+      "Reconciler: recreated ask message after Unknown Message (10008)."
+    );
+    return okAsync(undefined);
+  });
+
+export const updateAskMessage = (
   client: Client,
   ctx: AppContext,
   session: SessionRow
-): Promise<void> => {
-  if (!session.askMessageId) {return;}
-  const [channel, memberRows, fresh] = await Promise.all([
-    getTextChannel(client, session.channelId),
-    ctx.ports.members.listMembers(),
-    ctx.ports.sessions.findSessionById(session.id)
-  ]);
-  if (!fresh) {return;}
-  const responses = await ctx.ports.responses.listResponses(fresh.id);
-  const vm = buildAskMessageViewModel(fresh, responses, memberRows);
-  const rendered = renderAskBody(vm);
-  try {
-    const msg = await channel.messages.fetch(session.askMessageId);
-    await msg.edit(rendered);
-  } catch (error: unknown) {
-    if (isUnknownMessageError(error)) {
-      // state: Discord 側で message が消されたら復旧不可のため新規投稿して askMessageId を差し替える。
-      //   source-of-truth: DB-as-SoT。状態は巻き戻さず ID だけ更新する。
-      // race: startup probe と競合しても DB 最新値から再描画し、最終的な askMessageId だけを更新する。
-      // @see ADR-0001
-      // @see ADR-0051
-      const sent = await channel.send(rendered);
-      await ctx.ports.sessions.updateAskMessageId(session.id, sent.id);
-      logger.warn(
-        {
-          event: "reconciler.message_recreated",
-          sessionId: session.id,
-          weekKey: session.weekKey,
-          previousMessageId: session.askMessageId,
-          messageId: sent.id
-        },
-        "Reconciler: recreated ask message after Unknown Message (10008)."
-      );
-      return;
-    }
-    throw error;
-  }
+): ResultAsync<void, AppError> => {
+  if (!session.askMessageId) {return okAsync(undefined);}
+  const messageId = session.askMessageId;
+
+  return safeTry(async function* () {
+    const [channel, memberRows, fresh] = yield* ResultAsync.combine([
+      fromDiscordCall(
+        () => getTextChannel(client, session.channelId),
+        "Failed to load channel for ask message update."
+      ),
+      fromDatabaseCall(
+        () => ctx.ports.members.listMembers(),
+        "Failed to load members for ask message update."
+      ),
+      fromDatabaseCall(
+        () => ctx.ports.sessions.findSessionById(session.id),
+        "Failed to reload session for ask message update."
+      )
+    ]);
+    if (!fresh) {return okAsync(undefined);}
+    const responses = yield* fromDatabaseCall(
+      () => ctx.ports.responses.listResponses(fresh.id),
+      "Failed to load responses for ask message update."
+    );
+    const rendered = renderAskBody(buildAskMessageViewModel(fresh, responses, memberRows));
+    const fetched = yield* fromDiscordCall(
+      () => channel.messages.fetch(messageId),
+      "Failed to fetch ask message for update."
+    ).orElse((error) => {
+      if (isUnknownMessageError(error.cause)) {
+        return recreateAskMessage(channel, ctx, session, rendered).map(() => undefined);
+      }
+      return errAsync(error);
+    });
+    if (fetched === undefined) {return okAsync(undefined);}
+    yield* fromDiscordCall(
+      () => fetched.edit(rendered),
+      "Failed to edit ask message."
+    );
+    return okAsync(undefined);
+  });
 };

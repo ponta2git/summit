@@ -3,13 +3,12 @@ import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import type { SessionRow } from "../db/rows.js";
-import { AppError, DatabaseError } from "../errors/index.js";
-import { fromAppCall, fromDatabaseCall, fromDiscordCall } from "../errors/result.js";
+import { fromDatabaseCall } from "../errors/result.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import type { SettleCancelReason } from "../features/ask-session/messages.js";
 import { logger } from "../logger.js";
 import {
-  runSchedulerBatch,
+  runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerResult
 } from "./scheduler.types.js";
@@ -31,8 +30,7 @@ export const reconcileStrandedCancelled = (
     () => ctx.ports.sessions.findStrandedCancelledSessions(),
     "Failed to find stranded CANCELLED sessions."
   ).andThen((stranded) =>
-    fromAppCall(
-      () => runSchedulerBatch(
+    runSchedulerBatchResult(
       "stranded_cancelled",
       stranded,
       (session) => promoteStranded(client, ctx, session, ctx.clock.now()),
@@ -50,10 +48,6 @@ export const reconcileStrandedCancelled = (
         );
       },
       (result) => result === undefined ? 0 : 1
-      ),
-      (cause) => cause instanceof AppError
-        ? cause
-        : new DatabaseError("Stranded CANCELLED batch failed.", { cause })
     )
   );
 
@@ -87,10 +81,7 @@ const promoteStranded = (
     "Failed to settle stranded CANCELLED session."
   ).andThen((result) => {
     if (result.kind !== "transitioned") {return okAsync(undefined);}
-    return fromDiscordCall(
-      () => updateAskMessage(client, ctx, result.session),
-      "Failed to update ask message after stranded cancellation."
-    ).map(() => {
+    return updateAskMessage(client, ctx, result.session).map(() => {
       const next = result.session.status === "POSTPONE_VOTING"
         ? { to: "POSTPONE_VOTING" as const, reason: "friday_cancel_resumed" }
         : {

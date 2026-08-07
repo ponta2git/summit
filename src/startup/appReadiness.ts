@@ -6,6 +6,7 @@ import { logger } from "../logger.js";
 import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../config.js";
 import { runReconciler } from "../scheduler/reconciler.js";
 import { runStartupRecovery } from "../scheduler/index.js";
+import { unwrapResultAsync } from "../errors/result.js";
 
 export interface AppReadiness {
   readonly state: AppReadyState;
@@ -77,16 +78,8 @@ export const registerReconnectReplayHandlers = (input: {
     );
     replayInFlight = (async () => {
       try {
-        const reportResult = await runReconciler(client, context, { scope: "reconnect" });
-        const report = reportResult.match(
-          (value) => value,
-          (error) => { throw error; }
-        );
-        const startupRecoveryResult = await runStartupRecovery(client, context);
-        startupRecoveryResult.match(
-          () => undefined,
-          (error) => { throw error; }
-        );
+        const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
+        await unwrapResultAsync(runStartupRecovery(client, context));
         input.wakeScheduler?.("reconnect_replay");
         lastReplaySucceededAt = Date.now();
         logger.info(

@@ -4,7 +4,6 @@
 
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
-import { ResultAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -14,14 +13,7 @@ import {
   MEMBER_COUNT_EXPECTED
 } from "../config.js";
 import type { SessionRow } from "../db/rows.js";
-import {
-  AppError,
-  DatabaseError,
-  InvariantViolationError,
-  ShutdownError,
-  type AppError as AppErrorType
-} from "../errors/index.js";
-import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.js";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -41,10 +33,10 @@ import {
   runResultTickSafely
 } from "./tickRunner.js";
 import {
-  runSchedulerBatch,
   type SchedulerFailure,
   type SchedulerResult,
-  type SchedulerBatchReport
+  type SchedulerBatchReport,
+  runSchedulerBatchResult
 } from "./scheduler.types.js";
 
 export { runStartupRecovery } from "./startupRecovery.js";
@@ -64,21 +56,6 @@ const logSchedulerFailure = (failure: SchedulerFailure): void => {
     "Scheduler operation failed for an item."
   );
 };
-
-const mapAskError = (cause: unknown): AppErrorType => {
-  if (cause instanceof AppError) {
-    return cause;
-  }
-  if (cause instanceof Error && cause.message === "Shutdown in progress.") {
-    return new ShutdownError(cause.message, { cause });
-  }
-  return new DatabaseError("Failed to queue ASK message.", { cause });
-};
-
-const mapReminderError = (cause: unknown): AppErrorType =>
-  cause instanceof AppError
-    ? cause
-    : new DatabaseError("Failed to enqueue reminder.", { cause });
 
 interface CronAdapter {
   schedule(
@@ -105,7 +82,10 @@ export const runScheduledAskTick = (
   sendAsk: SendAsk,
   context: AppContext
 ): SchedulerResult<SendAskMessageResult> =>
-  fromAppCall(() => sendAsk({ trigger: "cron", context }), mapAskError);
+  fromAppCall(
+    () => sendAsk({ trigger: "cron", context }),
+    mapDatabaseError("Failed to queue ASK message.")
+  );
 
 const settleDueAskingSession = (
   client: Client,
@@ -134,16 +114,13 @@ export const runDeadlineTick = (
     () => ctx.ports.sessions.findDueAskingSessions(now),
     "Failed to find due ASKING sessions."
   ).andThen((due) =>
-    ResultAsync.fromThrowable(
-      () => runSchedulerBatch(
-        "deadline",
-        due,
-        (session) => settleDueAskingSession(client, ctx, session, now),
-        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
-        logSchedulerFailure
-      ),
-      (cause) => new InvariantViolationError("Deadline scheduler batch failed.", { cause })
-    )()
+    runSchedulerBatchResult(
+      "deadline",
+      due,
+      (session) => settleDueAskingSession(client, ctx, session, now),
+      (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+      logSchedulerFailure
+    )
   );
 };
 
@@ -164,16 +141,13 @@ export const runPostponeDeadlineTick = (
     () => ctx.ports.sessions.findDuePostponeVotingSessions(now),
     "Failed to find due POSTPONE_VOTING sessions."
   ).andThen((due) =>
-    ResultAsync.fromThrowable(
-      () => runSchedulerBatch(
-        "postpone_deadline",
-        due,
-        (session) => settlePostponeVotingSession(client, ctx, session, now),
-        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
-        logSchedulerFailure
-      ),
-      (cause) => new InvariantViolationError("Postpone deadline scheduler batch failed.", { cause })
-    )()
+    runSchedulerBatchResult(
+      "postpone_deadline",
+      due,
+      (session) => settlePostponeVotingSession(client, ctx, session, now),
+      (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+      logSchedulerFailure
+    )
   );
 };
 
@@ -194,20 +168,17 @@ export const runReminderTick = (
     () => ctx.ports.sessions.findDueReminderSessions(now),
     "Failed to find due reminder sessions."
   ).andThen((due) =>
-    ResultAsync.fromThrowable(
-      () => runSchedulerBatch(
-        "reminder",
-        due,
-        (session) =>
-          fromAppCall(
-            () => sendReminderForSession(client, ctx, session.id, now),
-            mapReminderError
-          ),
-        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
-        logSchedulerFailure
-      ),
-      (cause) => new InvariantViolationError("Reminder scheduler batch failed.", { cause })
-    )()
+    runSchedulerBatchResult(
+      "reminder",
+      due,
+      (session) =>
+        fromAppCall(
+          () => sendReminderForSession(client, ctx, session.id, now),
+          mapDatabaseError("Failed to enqueue reminder.")
+        ),
+      (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+      logSchedulerFailure
+    )
   );
 };
 

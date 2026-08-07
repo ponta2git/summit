@@ -1,6 +1,7 @@
 import type { ResultAsync } from "neverthrow";
 
-import { InvariantViolationError, type AppError } from "../errors/index.js";
+import { AppError, InvariantViolationError } from "../errors/index.js";
+import { fromAppCall } from "../errors/result.js";
 
 export interface SchedulerFailure {
   readonly phase: string;
@@ -68,3 +69,18 @@ export const runSchedulerBatch = async <TItem, TValue>(
     failures
   };
 };
+
+export const runSchedulerBatchResult = <TItem, TValue>(
+  phase: string,
+  items: readonly TItem[],
+  run: (item: TItem) => SchedulerResult<TValue>,
+  identify: (item: TItem) => SchedulerItemIdentity,
+  onFailure: (failure: SchedulerFailure) => void,
+  successCount: (value: TValue) => number = () => 1
+): SchedulerResult<SchedulerBatchReport> =>
+  fromAppCall(
+    () => runSchedulerBatch(phase, items, run, identify, onFailure, successCount),
+    (cause) => cause instanceof AppError
+      ? cause
+      : new InvariantViolationError(`Scheduler batch failed in phase '${phase}'.`, { cause })
+  );

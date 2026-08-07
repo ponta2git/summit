@@ -6,7 +6,7 @@ import { type ResultAsync, safeTry } from "neverthrow";
 import type { AppContext } from "../appContext.js";
 import type { SessionRow } from "../db/rows.js";
 import { type AppError, okResult } from "../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
+import { fromDatabasePromise } from "../errors/result.js";
 import { askMessages } from "../features/ask-session/messages.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
@@ -30,24 +30,18 @@ const repaintSkippedSession = (
   session: SessionRow
 ): ResultAsync<void, AppError> =>
   safeTry(async function* () {
-    yield* fromDiscordPromise(
-      updateAskMessage(client, ctx, session),
-      "Failed to update ask message after manual skip."
-    );
+    yield* updateAskMessage(client, ctx, session);
     if (session.postponeMessageId) {
       const responses = yield* fromDatabasePromise(
         ctx.ports.responses.listResponses(session.id),
         "Failed to load responses for skipped postpone message."
       );
-      yield* fromDiscordPromise(
-        updatePostponeMessage(
-          client,
-          ctx,
-          session,
-          responses,
-          askMessages.ask.footerSkipped
-        ),
-        "Failed to update postpone message after manual skip."
+      yield* updatePostponeMessage(
+        client,
+        ctx,
+        session,
+        responses,
+        askMessages.ask.footerSkipped
       );
     }
     return okResult(undefined);

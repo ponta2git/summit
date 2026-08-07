@@ -12,8 +12,8 @@ import type { SchedulerResult } from "./scheduler.types.js";
  *
  * @remarks
  * idempotent: read-only snapshot。warn 昇格は OR 条件 (failed>0 / pending>threshold /
- *   oldestPendingAgeMs>threshold) で評価する。失敗は呼び出し側 tick safety に閉じ込めず
- *   ローカル try/catch で吸収して他 tick への波及を防ぐ。
+ *   oldestPendingAgeMs>threshold) で評価する。DB failure は ResultAsync で runtime boundary に
+ *   返し、他 tick への波及は `runResultTickSafely` が防ぐ。
  * @see ADR-0043
  */
 export const runOutboxMetricsTick = (ctx: AppContext): SchedulerResult<{

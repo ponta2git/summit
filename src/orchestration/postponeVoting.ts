@@ -11,7 +11,7 @@ import type {
 } from "../db/repositories/sessionCommands.js";
 import type { SessionRow } from "../db/rows.js";
 import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
+import { fromDatabasePromise } from "../errors/result.js";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
 import { logger } from "../logger.js";
 import {
@@ -60,15 +60,12 @@ export const applyPostponeTransitionResult = (
       ctx.ports.responses.listResponses(result.session.id),
       "Failed to load responses for postpone message reflection."
     );
-    yield* fromDiscordPromise(
-      updatePostponeMessage(
-        client,
-        ctx,
-        result.session,
-        responseRows,
-        decisionFooter(result.outcome)
-      ),
-      "Failed to update postpone message after settlement."
+    yield* updatePostponeMessage(
+      client,
+      ctx,
+      result.session,
+      responseRows,
+      decisionFooter(result.outcome)
     );
 
     if (result.outcome === "cancelled") {

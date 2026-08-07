@@ -1,3 +1,5 @@
+import { okAsync, safeTry } from "neverthrow";
+
 import type { AppContext } from "../appContext.js";
 import {
   buildAskBodyIntent,
@@ -6,11 +8,10 @@ import {
 } from "../db/repositories/sessionOutboxIntents.js";
 import type { EnqueueOutboxInput } from "../db/ports.js";
 import type { SessionRow } from "../db/rows.js";
-import { AppError, DatabaseError } from "../errors/index.js";
-import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
+import { fromDatabaseCall } from "../errors/result.js";
 import { logger } from "../logger.js";
 import {
-  runSchedulerBatch,
+  runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerResult
 } from "./scheduler.types.js";
@@ -53,60 +54,46 @@ export const reconcileMissingMessageIntents = (
     () => ctx.ports.sessions.findNonTerminalSessions(),
     "Failed to find non-terminal sessions for message recovery."
   ).andThen((nonTerminal) =>
-    fromAppCall(
-      () => runSchedulerBatch(
-        "missing_message_intents",
-        nonTerminal,
-        (session) =>
-          fromAppCall(
-            async () => {
-              let queued = 0;
-              for (const intent of buildMissingMessageIntents(session)) {
-                const result = await fromDatabaseCall(
-                  () => ctx.ports.outbox.enqueue(intent),
-                  "Failed to enqueue a missing message intent."
-                ).match(
-                  (value) => value,
-                  (error) => { throw error; }
-                );
-                if (!result.skipped) {
-                  queued += 1;
-                  logger.info(
-                    {
-                      event: "reconciler.message_intent_queued",
-                      sessionId: session.id,
-                      weekKey: session.weekKey,
-                      renderer: intent.payload.kind === "send_message"
-                        ? intent.payload.renderer
-                        : undefined
-                    },
-                    "Reconciler: queued a missing message delivery intent."
-                  );
-                }
-              }
-              return queued;
-            },
-            (cause) => cause instanceof AppError
-              ? cause
-              : new DatabaseError("Failed to recover missing message intents.", { cause })
-          ),
-        (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
-        (failure) => {
-          logger.error(
-            {
-              error: failure.error,
-              errorCode: failure.error.code,
-              event: "reconciler.message_intent_queue_failed",
-              sessionId: failure.sessionId,
-              weekKey: failure.weekKey
-            },
-            "Reconciler: failed to queue a missing message delivery intent."
+    runSchedulerBatchResult(
+      "missing_message_intents",
+      nonTerminal,
+      (session) => safeTry(async function* () {
+        let queued = 0;
+        for (const intent of buildMissingMessageIntents(session)) {
+          const result = yield* fromDatabaseCall(
+            () => ctx.ports.outbox.enqueue(intent),
+            "Failed to enqueue a missing message intent."
           );
-        },
-        (queued) => queued
-      ),
-      (cause) => cause instanceof AppError
-        ? cause
-        : new DatabaseError("Missing message intent batch failed.", { cause })
+          if (!result.skipped) {
+            queued += 1;
+            logger.info(
+              {
+                event: "reconciler.message_intent_queued",
+                sessionId: session.id,
+                weekKey: session.weekKey,
+                renderer: intent.payload.kind === "send_message"
+                  ? intent.payload.renderer
+                  : undefined
+              },
+              "Reconciler: queued a missing message delivery intent."
+            );
+          }
+        }
+        return okAsync(queued);
+      }),
+      (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
+      (failure) => {
+        logger.error(
+          {
+            error: failure.error,
+            errorCode: failure.error.code,
+            event: "reconciler.message_intent_queue_failed",
+            sessionId: failure.sessionId,
+            weekKey: failure.weekKey
+          },
+          "Reconciler: failed to queue a missing message delivery intent."
+        );
+      },
+      (queued) => queued
     )
   );

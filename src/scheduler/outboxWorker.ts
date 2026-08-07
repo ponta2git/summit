@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.js";
 import {
@@ -8,7 +9,7 @@ import {
   OUTBOX_WORKER_BATCH_LIMIT
 } from "../config.js";
 import type { OutboxEntry } from "../db/ports.js";
-import { DatabaseError, type AppError } from "../errors/index.js";
+import { AppError, InvariantViolationError } from "../errors/index.js";
 import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
 import { logger } from "../logger.js";
 import { getTextChannel } from "../discord/shared/channels.js";
@@ -195,7 +196,7 @@ const deliverOne = async (
  * Claim a batch of PENDING outbox entries and deliver each.
  *
  * @remarks
- * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runTickSafely`) が閉じ込める。
+ * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runResultTickSafely`) が閉じ込める。
  * @see ADR-0051
  */
 export const runOutboxWorkerTick = (
@@ -212,15 +213,14 @@ export const runOutboxWorkerTick = (
     "Failed to claim outbox batch."
   ).andThen((batch) => {
     if (batch.length === 0) {
-      return fromAppCall(
-        async () => ({ claimed: 0 }),
-        (cause: unknown): AppError => new DatabaseError("Unexpected empty outbox batch failure.", { cause })
-      );
+      return okAsync({ claimed: 0 });
     }
     // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
     return fromAppCall(
       () => Promise.all(batch.map((entry) => deliverOne(client, ctx, entry))).then(() => ({ claimed: batch.length })),
-      (cause: unknown): AppError => new DatabaseError("Failed to finalize outbox delivery batch.", { cause })
+      (cause: unknown): AppError => cause instanceof AppError
+        ? cause
+        : new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause })
     );
   });
 };

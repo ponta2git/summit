@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   isUnknownMessageError
@@ -43,7 +43,7 @@ describe("updateAskMessage recovery", () => {
       throw Object.assign(new Error("Unknown Message"), { code: 10008 });
     });
 
-    await updateAskMessage(client, ctx, session);
+    await unwrapResultAsync(updateAskMessage(client, ctx, session));
 
     expect((await ctx.ports.sessions.findSessionById("s-10008"))?.askMessageId).toBe("sent-1");
     expect(sentMessages).toHaveLength(1);
@@ -57,7 +57,10 @@ describe("updateAskMessage recovery", () => {
       throw Object.assign(new Error("Missing Access"), { code: 50001 });
     });
 
-    await expect(updateAskMessage(client, ctx, session)).rejects.toMatchObject({ code: 50001 });
+    const result = await updateAskMessage(client, ctx, session);
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) {throw new Error("Expected ask message update to fail.");}
+    expect(result.error.cause).toMatchObject({ code: 50001 });
 
     expect((await ctx.ports.sessions.findSessionById("s-other"))?.askMessageId).toBe("old-id");
     expect(sentMessages).toStrictEqual([]);
@@ -68,12 +71,24 @@ describe("updateAskMessage recovery", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => makeMessage(id));
 
-    await updateAskMessage(client, ctx, session);
+    await unwrapResultAsync(updateAskMessage(client, ctx, session));
 
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("keep-id");
     expect(sentMessages).toStrictEqual([]);
     expect((await ctx.ports.sessions.findSessionById("s-ok"))?.askMessageId).toBe("keep-id");
+  });
+
+  it("keeps database failures classified as DATABASE", async () => {
+    const session = buildSessionRow({ id: "s-db-fail", status: "ASKING", askMessageId: "old-id" });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    vi.spyOn(ctx.ports.members, "listMembers").mockRejectedValue(new Error("db unavailable"));
+
+    const result = await updateAskMessage(client, ctx, session);
+
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) {throw new Error("Expected ask message update to fail.");}
+    expect(result.error.code).toBe("DATABASE");
   });
 });
 

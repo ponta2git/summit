@@ -5,7 +5,7 @@ import type { AppContext } from "../appContext.js";
 import type { AskingDeadlineResult } from "../db/ports.js";
 import type { SessionRow } from "../db/rows.js";
 import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../errors/result.js";
+import { fromDatabasePromise } from "../errors/result.js";
 import type { EvaluateDeadlineOptions } from "../features/ask-session/decide.js";
 import { updateAskMessage } from "../features/ask-session/messageEditor.js";
 import { skipReminderAndComplete } from "../features/reminder/send.js";
@@ -18,10 +18,7 @@ const applyDecidedSideEffects = (
   session: SessionRow
 ): ResultAsync<void, AppError> =>
   safeTry(async function* () {
-    yield* fromDiscordPromise(
-      updateAskMessage(client, ctx, session),
-      "Failed to update ask message after decide."
-    );
+    yield* updateAskMessage(client, ctx, session);
     if (session.reminderAt && shouldSkipReminder(ctx.clock.now(), session.reminderAt)) {
       yield* fromDatabasePromise(
         skipReminderAndComplete(ctx, session, ctx.clock.now()),
