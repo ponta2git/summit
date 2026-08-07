@@ -1,5 +1,5 @@
 import { MessageFlags } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../src/discord/shared/dispatcher.js";
 import { askMessages } from "../../src/features/ask-session/messages.js";
@@ -22,10 +22,6 @@ import {
 const SESSION_ID = "4f7d54aa-3898-4a13-9f7c-5872a8220e0f";
 
 describe("interaction button routing", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("rejects an invalid ask custom id", async () => {
     const interaction = buildButtonInteraction("ask:not-a-uuid:t2200");
 

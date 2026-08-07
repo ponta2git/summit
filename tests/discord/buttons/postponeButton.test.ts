@@ -1,5 +1,5 @@
 import { ChannelType, MessageFlags, type Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handlePostponeButton } from "../../../src/features/postpone-voting/button.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
@@ -72,10 +72,6 @@ const buildDeps = (
 });
 
 describe("handlePostponeButton", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("persists OK vote and re-renders postpone message from DB", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();

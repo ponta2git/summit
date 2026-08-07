@@ -1,5 +1,5 @@
 import type { Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../src/db/rows.js";
 import { createTestAppContext } from "../testing/index.js";
@@ -45,10 +45,6 @@ type AskDeadlineCall = Parameters<typeof settle.evaluateAndApplyDeadlineDecision
 type PostponeDeadlineCall = Parameters<typeof settle.settlePostponeVotingSession>;
 
 describe("runDeadlineTick", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("evaluates each due ASKING session with shared now timestamp", async () => {
     const s1 = sessionRow({
       id: "a",
@@ -124,10 +120,6 @@ describe("runDeadlineTick", () => {
 });
 
 describe("runStartupRecovery", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("settles overdue ASKING sessions on startup", async () => {
     const overdue = sessionRow({
       id: "overdue",
@@ -204,10 +196,6 @@ describe("runStartupRecovery", () => {
 });
 
 describe("runPostponeDeadlineTick", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("calls settlePostponeVotingSession for each due POSTPONE_VOTING session", async () => {
     const s1 = sessionRow({
       id: "pv-a",

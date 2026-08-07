@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
@@ -6,10 +6,6 @@ import { makeOutboxEntry } from "../testing/fixtures.js";
 import { buildSessionRow } from "./factories/session.js";
 
 describe("outbox port fake", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("deduplicates a non-FAILED dedupe key", async () => {
     const session = buildSessionRow({ id: "s1" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });

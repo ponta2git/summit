@@ -1,5 +1,5 @@
 import { MessageFlags } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handleAskButton } from "../../../src/features/ask-session/button.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
@@ -25,10 +25,6 @@ const buildDeps = (
 });
 
 describe("handleAskButton deadline guard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("rejects responses after asking deadline and does not persist DB changes", async () => {
     const session = buildSessionRow({
       id: "4f7d54aa-3898-4a13-9f7c-5872a8220e0f",

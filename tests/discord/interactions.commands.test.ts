@@ -1,5 +1,5 @@
 import { MessageFlags, type Interaction } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   handleInteraction,
@@ -24,10 +24,6 @@ import {
 } from "./interactions.harness.js";
 
 describe("interaction command routing", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("handles /ask success", async () => {
     const sendAsk = successfulSendAsk();
     const interaction = buildAskInteraction();

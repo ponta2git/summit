@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { DbLike } from "../../src/db/rows.js";
 import { computeMemberReconcilePlan, reconcileMembers } from "../../src/members/reconcile.js";
@@ -60,10 +60,6 @@ const buildMockDb = (existingRows: { id: string; userId: string; displayName: st
 };
 
 describe("reconcileMembers", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("inserts all 4 IDs when the members table is empty", async () => {
     const { db, insertResult } = buildMockDb([]);
 

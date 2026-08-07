@@ -1,5 +1,5 @@
 import { ChannelType } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
@@ -89,10 +89,6 @@ const editReplyPayload = (interaction: { readonly editReply: ReturnType<typeof v
   );
 
 describe("postpone_ng confirmation button — abort", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("abort: no state changes and ephemeral updated to aborted message", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
@@ -115,10 +111,6 @@ describe("postpone_ng confirmation button — abort", () => {
 });
 
 describe("postpone_ng confirmation button — confirm", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("confirm: records POSTPONE_NG, settles session, and confirms with editReply", async () => {
     const session = postponeSession();
     const { client, postponeMessageEdit } = createDiscordClient();

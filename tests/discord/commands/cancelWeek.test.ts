@@ -1,5 +1,5 @@
 import { ChannelType, MessageFlags, type Client } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
@@ -68,10 +68,6 @@ const editReplyPayload = (interaction: { readonly editReply: ReturnType<typeof v
   );
 
 describe("/cancel_week command flow", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("opens ephemeral confirmation dialog with confirm/abort buttons", async () => {
     const ctx = createTestAppContext({
       seed: { sessions: [currentWeekSession()], members: seededMembers },
@@ -93,10 +89,6 @@ describe("/cancel_week command flow", () => {
 });
 
 describe("cancel_week confirmation button", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   const confirmCustomId = (nonce = "d8b1f8e5-1111-4222-8333-123456789abc"): string =>
     `cancel_week:${nonce}:confirm`;
   const abortCustomId = (nonce = "d8b1f8e5-1111-4222-8333-123456789abc"): string =>

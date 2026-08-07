@@ -1,5 +1,5 @@
 import { ChannelType } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { handleInteraction } from "../../../src/discord/shared/dispatcher.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
@@ -68,10 +68,6 @@ const editReplyPayload = (interaction: { readonly editReply: ReturnType<typeof v
   );
 
 describe("ask_absent confirmation button — abort", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("abort: no state changes and ephemeral updated to aborted message", async () => {
     const session = buildSessionRow({ id: testSessionId, askMessageId: "ask-msg-1" });
     const ctx = createTestAppContext({
@@ -94,10 +90,6 @@ describe("ask_absent confirmation button — abort", () => {
 });
 
 describe("ask_absent confirmation button — confirm", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("confirm: records ABSENT, cancels session, and confirms with editReply", async () => {
     // why: postponeCount: 1 (土曜) で順延不可とし、ABSENT 後に CANCELLED 確定で止まることを検証する。
     const session = buildSessionRow({ id: testSessionId, askMessageId: "ask-msg-1", postponeCount: 1 });
