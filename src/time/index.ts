@@ -157,5 +157,3 @@ export const parseTimestamp = (value: string): Date | null => {
   if (Number.isNaN(parsed.getTime())) { return null; }
   return parsed;
 };
-
-export const unixEpoch = (): Date => new Date(0);
