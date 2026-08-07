@@ -85,7 +85,7 @@ describe("buildAskMessageViewModel", () => {
     });
   });
 
-  it("computes DECIDED footer with start time", () => {
+  it("uses the persisted DECIDED start time instead of recalculating from responses", () => {
     const vm = buildAskMessageViewModel(
       {
         ...session,
@@ -93,12 +93,14 @@ describe("buildAskMessageViewModel", () => {
         decidedStartAt: new Date("2026-04-24T14:00:00.000Z")
       },
       [
-        { memberId: "m1", choice: "T2300" },
+        { memberId: "m1", choice: "T2200" },
         { memberId: "m2", choice: "T2200" }
       ],
       members
     );
-    expect(vm.footer).toContain("23:00");
+    expect(vm.footer).toBe(
+      "✅ みんなの回答がそろいました。23:00 開始で確定です（開催決定を投稿します）"
+    );
   });
 
   it("has no footer when ASKING", () => {

@@ -37,16 +37,10 @@ const computeAskFooter = (
   members: ReadonlyArray<ViewModelMemberInput>
 ): string | undefined => {
   if (session.status === "DECIDED" && session.decidedStartAt) {
-    const timeChoices = responses
-      .map((r) => r.choice)
-      .filter((c): c is AskTimeChoice => slotKeySchema.safeParse(c).success);
-    const start = decidedStartAt(parseCandidateDateIso(session.candidateDateIso), timeChoices);
-    if (start) {
-      const hh = String(start.getHours()).padStart(2, "0");
-      const mm = String(start.getMinutes()).padStart(2, "0");
-      return askMessages.ask.footerDecided({ startTimeLabel: `${hh}:${mm}` });
-    }
-    return undefined;
+    // source-of-truth: DECIDED 後は回答の再計算結果ではなく、CAS で永続化した開始時刻を表示する。
+    const hh = String(session.decidedStartAt.getHours()).padStart(2, "0");
+    const mm = String(session.decidedStartAt.getMinutes()).padStart(2, "0");
+    return askMessages.ask.footerDecided({ startTimeLabel: `${hh}:${mm}` });
   }
   if (session.status === "CANCELLED") {
     return askMessages.ask.footerCancelled;
