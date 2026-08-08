@@ -173,60 +173,65 @@ export const createSchedulerController = (
     });
   };
 
-  const runDueSessionWork = async (
-    reason: string
-  ): Promise<boolean> => {
-    const now = context.clock.now();
-    const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
-      readDatabase(
-        () => context.ports.sessions.getSchedulerSessionHints(now),
-        "Failed to read scheduler session hints."
-      ),
-      readDatabase(
-        () => context.ports.outbox.getNextDispatchAt(now),
-        "Failed to read next outbox dispatch time."
-      )
-    ]);
-
+  const runDueSessionWork = async (): Promise<boolean> => {
+    // A due reminder remains due until the outbox worker successfully delivers it and
+    // completes the Session. Do not wake the controller after every attempted tick, or
+    // the same due row can cause an unbounded recompute loop. A different due kind created
+    // by a transition is still drained in this recompute, but each kind is attempted once.
+    const attemptedDueKinds = new Set<TimerKind>();
     let didRun = false;
-    if (isDue(sessionHints.nextAskingDeadlineAt, now)) {
-      clearTimer("deadline");
-      await runResultTickSafely({ name: "deadline", logger }, deps.runDeadlineTick);
-      didRun = true;
-    } else {
-      scheduleTimer("deadline", sessionHints.nextAskingDeadlineAt, deps.runDeadlineTick);
-    }
 
-    if (isDue(sessionHints.nextPostponeDeadlineAt, now)) {
-      clearTimer("postpone_deadline");
-      await runResultTickSafely(
-        { name: "postpone_deadline", logger },
-        deps.runPostponeDeadlineTick
-      );
-      didRun = true;
-    } else {
-      scheduleTimer(
+    while (true) {
+      const now = context.clock.now();
+      const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
+        readDatabase(
+          () => context.ports.sessions.getSchedulerSessionHints(now),
+          "Failed to read scheduler session hints."
+        ),
+        readDatabase(
+          () => context.ports.outbox.getNextDispatchAt(now),
+          "Failed to read next outbox dispatch time."
+        )
+      ]);
+      let ranThisPass = false;
+
+      const runIfDue = async (
+        kind: TimerKind,
+        at: Date | null,
+        run: () => SchedulerResult<unknown>
+      ): Promise<void> => {
+        if (!isDue(at, now)) {
+          scheduleTimer(kind, at, run);
+          return;
+        }
+
+        clearTimer(kind);
+        if (attemptedDueKinds.has(kind)) {
+          // The operation may intentionally leave the timestamp due while an async
+          // outbox delivery is pending. The supervisor will retry if it remains due.
+          return;
+        }
+        attemptedDueKinds.add(kind);
+        await runResultTickSafely({ name: kind, logger }, run);
+        ranThisPass = true;
+      };
+
+      await runIfDue("deadline", sessionHints.nextAskingDeadlineAt, deps.runDeadlineTick);
+      await runIfDue(
         "postpone_deadline",
         sessionHints.nextPostponeDeadlineAt,
         deps.runPostponeDeadlineTick
       );
-    }
+      await runIfDue("reminder", sessionHints.nextReminderAt, deps.runReminderTick);
 
-    if (isDue(sessionHints.nextReminderAt, now)) {
-      clearTimer("reminder");
-      await runResultTickSafely({ name: "reminder", logger }, deps.runReminderTick);
+      if (!ranThisPass) {
+        // Re-read after due work so an intent enqueued by the tick is visible to the
+        // outbox scheduler in the same recompute.
+        scheduleOutbox(nextOutboxDispatchAt, now);
+        return didRun;
+      }
       didRun = true;
-    } else {
-      scheduleTimer("reminder", sessionHints.nextReminderAt, deps.runReminderTick);
     }
-
-    if (didRun) {
-      controller.wake(`${reason}_due_work_finished`);
-      return true;
-    }
-
-    scheduleOutbox(nextOutboxDispatchAt, now);
-    return false;
   };
 
   const recompute = async (reason: string): Promise<void> => {
@@ -240,7 +245,7 @@ export const createSchedulerController = (
       const startedAt = performance.now();
       logger.info({ event: "scheduler.recompute_started", reason });
       try {
-        const didRun = await runDueSessionWork(reason);
+        const didRun = await runDueSessionWork();
         logger.info({
           event: "scheduler.recompute_finished",
           reason,

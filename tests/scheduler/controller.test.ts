@@ -7,6 +7,7 @@ import {
   SCHEDULER_MIN_TIMER_DELAY_MS,
   SCHEDULER_WAKE_DEBOUNCE_MS
 } from "../../src/config.js";
+import { buildReminderIntent } from "../../src/db/repositories/sessionOutboxIntents.js";
 import { createSchedulerController } from "../../src/scheduler/controller.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../discord/factories/session.js";
@@ -80,20 +81,23 @@ describe("SchedulerController", () => {
   it("runs due reminder work immediately during recompute", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-24T12:45:00.000Z");
+    const decidedSession = buildSessionRow({
+      id: "decided",
+      status: "DECIDED",
+      reminderAt: now,
+      reminderSentAt: null,
+      decidedStartAt: new Date("2026-04-24T13:00:00.000Z")
+    });
     const ctx = createTestAppContext({
       now,
-      seed: {
-        sessions: [
-          buildSessionRow({
-            id: "decided",
-            status: "DECIDED",
-            reminderAt: now,
-            reminderSentAt: null
-          })
-        ]
-      }
+      seed: { sessions: [decidedSession] }
     });
-    const runReminderTick = vi.fn(okTask);
+    const runReminderTick = vi.fn(() => {
+      // Model the real reminder tick: enqueue succeeds, but the Session remains due
+      // until the outbox worker delivers the intent.
+      void ctx.ports.outbox.enqueue(buildReminderIntent(decidedSession));
+      return okTask();
+    });
     const controller = createSchedulerController({
       client,
       context: ctx,
@@ -105,6 +109,15 @@ describe("SchedulerController", () => {
 
     await controller.recompute("test");
 
+    expect(runReminderTick).toHaveBeenCalledTimes(1);
+    expect(silentLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "scheduler.worker_started",
+        worker: "outbox_worker"
+      })
+    );
+
+    await vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
     expect(runReminderTick).toHaveBeenCalledTimes(1);
     controller.stop();
   });
