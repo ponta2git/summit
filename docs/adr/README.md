@@ -40,7 +40,7 @@
 | ops | 0001, 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0012, 0015, 0017, 0019, 0021, 0022, 0023, 0031, 0032, 0033, 0034, 0036, 0042, 0043, 0044, 0045, 0046, 0047, 0050, 0051, 0052, 0053, 0054 |
 | docs | 0006, 0010, 0013, 0014, 0017, 0020, 0022, 0025, 0026, 0027, 0028, 0029, 0030, 0037, 0038, 0039, 0040, 0041, 0046, 0048, 0051, 0054 |
 | testing | 0018, 0051, 0053, 0054 |
-| dev-tools | 0029 |
+| dev-tools | 0029, 0055 |
 
 ## ADR format (MADR)
 
@@ -227,3 +227,4 @@ feature 相互依存は避ける。共通化が必要なら `discord/shared/` �
 | [0051](./0051-session-aggregate-ordered-discord-intents.md) | Session 集約コマンドと順序付き Discord delivery intent | accepted | 2026-08-08 | runtime, db, discord, ops, docs, time, testing |
 | [0052](./0052-remove-unused-healthcheck.md) | 未使用 healthcheck 外部連携の撤去 | accepted | 2026-08-08 | runtime, ops, docs |
 | [0054](./0054-legacy-reminder-claim-bridge.md) | 旧 reminder claim marker の outbox 移行互換 | accepted | 2026-08-08 | runtime, db, discord, ops, docs, testing |
+| [0055](./0055-remove-tsx-use-node-native-typescript.md) | tsx を削除し Node native TypeScript 実行へ移行 | accepted | 2026-08-08 | runtime, docs, dev-tools |

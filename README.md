@@ -89,7 +89,7 @@ Discord token、DB URL の実値は commit しないでください。
 
 | コマンド | 説明 |
 |---|---|
-| `pnpm dev` | `tsx watch` でローカル起動 |
+| `pnpm dev` | Node.js の `--watch` で TypeScript をローカル起動 |
 | `pnpm build` | `dist/` に本番ビルド |
 | `pnpm start` | ビルド済みアプリをローカル実行 |
 | `pnpm typecheck` | TypeScript 型検査 |
