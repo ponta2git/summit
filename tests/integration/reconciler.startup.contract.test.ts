@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeRealPorts } from "../../src/db/ports.real.js";
 import { runReconciler } from "../../src/scheduler/reconciler.js";
 import type { Clock } from "../../src/time/index.js";
+import { unwrapResultAsync } from "../helpers/assertions.js";
 import {
   assertSchemaReady,
   createIntegrationDb,
@@ -110,27 +111,29 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     `);
 
     // boot-1: 初回 startup reconcile。expired outbox claim が収束する。
-    const boot1 = await runReconciler(fakeClient, ctx, { scope: "startup" });
+    const boot1 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));
     expect(boot1).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
       messageIntentsQueued: 0,
       outboxClaimReleased: 1,
       outboxDeadLettersRequeued: 1,
-      outboxSuccessorsRequeued: 1
+      outboxSuccessorsRequeued: 1,
+      failures: []
     });
 
     // boot-2: 別 boot を模した再実行。DB は前回の収束結果を保持しているので全 invariant は no-op。
     //   regression: bootId 跨ぎで CAS-on-NULL / claim release が二重発火しないことを保証する
     //   (ADR-0051 startup recovery の冪等性契約)。
-    const boot2 = await runReconciler(fakeClient, ctx, { scope: "startup" });
+    const boot2 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));
     expect(boot2).toStrictEqual({
       cancelledPromoted: 0,
       askCreated: 0,
       messageIntentsQueued: 0,
       outboxClaimReleased: 0,
       outboxDeadLettersRequeued: 0,
-      outboxSuccessorsRequeued: 0
+      outboxSuccessorsRequeued: 0,
+      failures: []
     });
 
     // 状態遷移結果も DB レベルで確認: Session は不変、outbox は PENDING に復帰。
