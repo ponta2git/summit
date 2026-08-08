@@ -4,7 +4,7 @@
 
 export type {
   CreateAskSessionInput
-} from "./sessions.types.js";
+} from "./sessions.types.ts";
 
 export {
   backfillAskMessageId,
@@ -12,7 +12,7 @@ export {
   createAskSession,
   updateAskMessageId,
   updatePostponeMessageId
-} from "./sessions.create.js";
+} from "./sessions.create.ts";
 
 export {
   findDueAskingSessions,
@@ -23,4 +23,4 @@ export {
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   findStrandedCancelledSessions
-} from "./sessions.queries.js";
+} from "./sessions.queries.ts";

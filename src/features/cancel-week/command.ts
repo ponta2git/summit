@@ -7,22 +7,22 @@ import {
   type ChatInputCommandInteraction
 } from "discord.js";
 
-import { logger } from "../../logger.js";
-import { cancelWeekMessages } from "./messages.js";
-import { buildCancelWeekCustomId } from "../../discord/shared/customId.js";
+import { logger } from "../../logger.ts";
+import { cancelWeekMessages } from "./messages.ts";
+import { buildCancelWeekCustomId } from "../../discord/shared/customId.ts";
 import {
   getGuardFailureReason,
   guardChannelId,
   guardGuildId,
   guardMemberUserId,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
+} from "../../discord/shared/guards.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.js";
+} from "../../errors/index.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
 
 // why: /cancel_week は破壊的なので confirmation 必須。nonce を invocation ごとに発行し stale dialog 踏み直しを判別 @see ADR-0023
 const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {

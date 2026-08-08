@@ -1,1 +1,1 @@
-export { registerInteractionHandlers } from "./shared/dispatcher.js";
+export { registerInteractionHandlers } from "./shared/dispatcher.ts";

@@ -9,10 +9,10 @@ import {
   BUTTON_LABEL_POSTPONE_OK,
   BUTTON_STYLE_POSTPONE_NG,
   BUTTON_STYLE_POSTPONE_OK
-} from "./constants.js";
-import { postponeMessages } from "./messages.js";
-import { buildCustomId } from "../../discord/shared/customId.js";
-import type { PostponeMessageViewModel } from "./viewModel.js";
+} from "./constants.ts";
+import { postponeMessages } from "./messages.ts";
+import { buildCustomId } from "../../discord/shared/customId.ts";
+import type { PostponeMessageViewModel } from "./viewModel.ts";
 
 const buildPostponeRow = (
   sessionId: string,

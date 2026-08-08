@@ -1,17 +1,17 @@
 import type { Client } from "discord.js";
 import { okAsync } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import type { SessionRow } from "../db/rows.js";
-import { fromDatabaseCall } from "../errors/result.js";
-import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import type { SettleCancelReason } from "../features/ask-session/messages.js";
-import { logger } from "../logger.js";
+import type { AppContext } from "../appContext.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
+import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
+import type { SettleCancelReason } from "../features/ask-session/messages.ts";
+import { logger } from "../logger.ts";
 import {
   runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerResult
-} from "./scheduler.types.js";
+} from "./scheduler.types.ts";
 
 /**
  * Invariant A: Promote stranded CANCELLED sessions to their next canonical state.

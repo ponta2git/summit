@@ -1,5 +1,5 @@
-export { applyManualSkip } from "./cancelWeek.js";
-export type { SkipWeekOutcome } from "./cancelWeek.js";
-export { evaluateAndApplyDeadlineDecision } from "./askDeadline.js";
-export { settleAskingSession } from "./askSettleCancel.js";
-export { settlePostponeVotingSession } from "./postponeVoting.js";
+export { applyManualSkip } from "./cancelWeek.ts";
+export type { SkipWeekOutcome } from "./cancelWeek.ts";
+export { evaluateAndApplyDeadlineDecision } from "./askDeadline.ts";
+export { settleAskingSession } from "./askSettleCancel.ts";
+export { settlePostponeVotingSession } from "./postponeVoting.ts";

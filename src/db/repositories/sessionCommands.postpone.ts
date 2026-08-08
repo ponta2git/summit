@@ -1,5 +1,5 @@
-import type { DbLike } from "../rows.js";
-import { evaluatePostponeVote } from "../../domain/postponeDecision.js";
+import type { DbLike } from "../rows.ts";
+import { evaluatePostponeVote } from "../../domain/postponeDecision.ts";
 import {
   applyPostponeDecision,
   bumpSessionRevision,
@@ -7,13 +7,13 @@ import {
   lockSession,
   memberExists,
   upsertInteractionResponse
-} from "./sessionCommands.shared.js";
+} from "./sessionCommands.shared.ts";
 import type {
   SettlePostponeVotingInput,
   SettlePostponeVotingResult,
   SubmitPostponeVoteInput,
   SubmitPostponeVoteResult
-} from "./sessionCommands.types.js";
+} from "./sessionCommands.types.ts";
 
 export const submitPostponeVote = async (
   db: DbLike,

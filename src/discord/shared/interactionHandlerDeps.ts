@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../appContext.js";
-import type { SendAskMessageResult } from "../../features/ask-session/send.js";
+import type { AppContext } from "../../appContext.ts";
+import type { SendAskMessageResult } from "../../features/ask-session/send.ts";
 
 export type SendAsk = (args: {
   readonly trigger: "cron" | "command";

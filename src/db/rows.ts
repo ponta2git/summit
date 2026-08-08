@@ -1,5 +1,5 @@
 // source-of-truth: DB Row 型集約 (@see ADR-0014)。
-import type { db as defaultDb } from "./client.js";
+import type { db as defaultDb } from "./client.ts";
 import {
   RESPONSE_CHOICES,
   SESSION_STATUSES,
@@ -9,8 +9,8 @@ import {
   type sessions,
   type ResponseChoice,
   type SessionStatus
-} from "./schema.js";
-import { parseTimestamp } from "../time/index.js";
+} from "./schema.ts";
+import { parseTimestamp } from "../time/index.ts";
 
 export type DbLike = typeof defaultDb;
 

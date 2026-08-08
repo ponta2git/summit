@@ -1,21 +1,21 @@
 import type { Client } from "discord.js";
 import { errAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import type { SessionRow } from "../db/rows.js";
-import { fromDatabaseCall, fromDiscordCall } from "../errors/result.js";
-import { getTextChannel } from "../discord/shared/channels.js";
-import { isUnknownMessageError } from "../discord/shared/discordErrors.js";
-import { renderAskBody } from "../features/ask-session/render.js";
-import { buildAskMessageViewModel } from "../features/ask-session/viewModel.js";
-import { renderPostponeBody } from "../features/postpone-voting/render.js";
-import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.js";
-import { logger } from "../logger.js";
+import type { AppContext } from "../appContext.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { fromDatabaseCall, fromDiscordCall } from "../errors/result.ts";
+import { getTextChannel } from "../discord/shared/channels.ts";
+import { isUnknownMessageError } from "../discord/shared/discordErrors.ts";
+import { renderAskBody } from "../features/ask-session/render.ts";
+import { buildAskMessageViewModel } from "../features/ask-session/viewModel.ts";
+import { renderPostponeBody } from "../features/postpone-voting/render.ts";
+import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.ts";
+import { logger } from "../logger.ts";
 import {
   runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerResult
-} from "./scheduler.types.js";
+} from "./scheduler.types.ts";
 
 /**
  * Invariant D (startup active probe): Detect deleted Discord messages at boot.

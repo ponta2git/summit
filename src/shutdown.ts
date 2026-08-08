@@ -1,4 +1,4 @@
-import { logger } from "./logger.js";
+import { logger } from "./logger.ts";
 
 // single-instance: プロセスローカルな shutdown フラグ。
 //   isShuttingDown は sendAskMessage の入口で参照し、SIGTERM 後の新規送信を抑制する。

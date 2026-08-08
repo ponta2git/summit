@@ -1,6 +1,6 @@
 import { RESTEvents, type Client } from "discord.js";
 
-import { logger } from "../logger.js";
+import { logger } from "../logger.ts";
 
 export const attachRateLimitLogging = (client: Client): void => {
   // why: 429 の route/retryAfter を観測するため購読 → ADR-0019 (M11)

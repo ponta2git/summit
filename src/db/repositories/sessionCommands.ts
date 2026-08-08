@@ -2,12 +2,12 @@ export {
   settleAskingCancellation,
   settleAskingDeadline,
   submitAskResponse
-} from "./sessionCommands.ask.js";
+} from "./sessionCommands.ask.ts";
 export {
   settlePostponeVoting,
   submitPostponeVote
-} from "./sessionCommands.postpone.js";
-export { cancelWeekAtomically } from "./sessionCommands.cancelWeek.js";
+} from "./sessionCommands.postpone.ts";
+export { cancelWeekAtomically } from "./sessionCommands.cancelWeek.ts";
 export type {
   AskResponseChoice,
   AskingDeadlineResult,
@@ -26,4 +26,4 @@ export type {
   SubmitAskResponseResult,
   SubmitPostponeVoteInput,
   SubmitPostponeVoteResult
-} from "./sessionCommands.types.js";
+} from "./sessionCommands.types.ts";

@@ -1,4 +1,4 @@
-import { REMINDER_SKIP_THRESHOLD_MINUTES } from "../../config.js";
+import { REMINDER_SKIP_THRESHOLD_MINUTES } from "../../config.ts";
 
 /**
  * Decide whether the reminder must be skipped because the decision happened too close to the reminder time.

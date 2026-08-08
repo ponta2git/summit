@@ -6,7 +6,7 @@ import type {
   SlashCommandSubcommandsOnlyBuilder
 } from "discord.js";
 
-import type { InteractionHandlerDeps } from "../shared/interactionHandlerDeps.js";
+import type { InteractionHandlerDeps } from "../shared/interactionHandlerDeps.ts";
 
 export type ButtonHandler = (
   interaction: ButtonInteraction,

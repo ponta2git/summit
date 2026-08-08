@@ -1,12 +1,12 @@
 import type { ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import type { AppError } from "../../errors/index.js";
-import { fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
-import { renderPostponeBody } from "./render.js";
-import { buildPostponeMessageViewModel } from "./viewModel.js";
+import type { AppContext } from "../../appContext.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabasePromise, fromDiscordPromise } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
+import { renderPostponeBody } from "./render.ts";
+import { buildPostponeMessageViewModel } from "./viewModel.ts";
 
 export const refreshPostponeMessage = (
   context: AppContext,

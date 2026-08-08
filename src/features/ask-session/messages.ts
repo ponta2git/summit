@@ -1,6 +1,6 @@
-import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.js";
-import { SLOT_TO_LABEL, type SlotKey } from "../../slot.js";
-import { ASK_DEADLINE_HHMM, MEMBER_COUNT_EXPECTED } from "../../config.js";
+import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.ts";
+import { SLOT_TO_LABEL, type SlotKey } from "../../slot.ts";
+import { ASK_DEADLINE_HHMM, MEMBER_COUNT_EXPECTED } from "../../config.ts";
 
 export type SettleCancelReason = "absent" | "deadline_unanswered" | "saturday_cancelled";
 

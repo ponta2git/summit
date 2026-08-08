@@ -7,17 +7,17 @@ import {
 } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { SubmitAskResponseResult } from "../../db/ports.js";
-import type { SessionRow } from "../../db/rows.js";
+import type { AppContext } from "../../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
+import type { SubmitAskResponseResult } from "../../db/ports.ts";
+import type { SessionRow } from "../../db/rows.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
+} from "../../errors/index.ts";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
   guardAbsentConfirmCustomId,
@@ -29,17 +29,17 @@ import {
   guardSessionAskingDeadlineOpen,
   guardSessionExists,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
+} from "../../discord/shared/guards.ts";
 import {
   buildAbsentConfirmCustomId,
   type AbsentConfirmCustomIdChoice
-} from "../../discord/shared/customId.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { askMessages } from "./messages.js";
+} from "../../discord/shared/customId.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
+import { askMessages } from "./messages.ts";
 import {
   reflectAskingCancellation,
   settleAskingSession
-} from "../../orchestration/askSettleCancel.js";
+} from "../../orchestration/askSettleCancel.ts";
 
 interface AbsentConfirmPipelineStart {
   readonly interaction: ButtonInteraction;

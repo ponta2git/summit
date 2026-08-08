@@ -4,7 +4,7 @@ import {
   DatabaseError,
   DiscordApiError,
   type AppResult
-} from "./index.js";
+} from "./index.ts";
 
 export const toResultAsync = <T, E extends AppError>(result: AppResult<T, E>): ResultAsync<T, E> =>
   result.match(

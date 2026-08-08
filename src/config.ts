@@ -1,4 +1,4 @@
-import { appConfig } from "./userConfig.js";
+import { appConfig } from "./userConfig.ts";
 
 type Hhmm = Readonly<{ hour: number; minute: number }>;
 
@@ -40,7 +40,7 @@ export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 // why: 1 分 tick 周期を超える tick を warn で早期検知し noOverlap の健全性を観測する。
 export const TICK_DURATION_WARN_MS = 10_000;
 // why: メンバー数 SSoT → ADR-0012。循環参照回避のため定義は env.ts、消費側は config 経由で import。
-export { MEMBER_COUNT_EXPECTED } from "./env.js";
+export { MEMBER_COUNT_EXPECTED } from "./env.ts";
 
 // why: DB-driven scheduler supervisor is the fallback for missed wake/timer events.
 export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/30 * * * *" as const;

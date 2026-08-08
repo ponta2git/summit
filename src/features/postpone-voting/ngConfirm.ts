@@ -7,17 +7,17 @@ import {
 } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { SubmitPostponeVoteResult } from "../../db/ports.js";
-import type { SessionRow } from "../../db/rows.js";
+import type { AppContext } from "../../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
+import type { SubmitPostponeVoteResult } from "../../db/ports.ts";
+import type { SessionRow } from "../../db/rows.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
+} from "../../errors/index.ts";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
   guardPostponeNgConfirmCustomId,
@@ -29,17 +29,17 @@ import {
   guardSessionPostponeDeadlineOpen,
   guardSessionPostponeVoting,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
+} from "../../discord/shared/guards.ts";
 import {
   buildPostponeNgConfirmCustomId,
   type PostponeNgConfirmCustomIdChoice
-} from "../../discord/shared/customId.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { postponeMessages } from "./messages.js";
+} from "../../discord/shared/customId.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
+import { postponeMessages } from "./messages.ts";
 import {
   applyPostponeTransitionResult,
   buildSaturdaySessionInput
-} from "../../orchestration/postponeVoting.js";
+} from "../../orchestration/postponeVoting.ts";
 
 interface PostponeNgConfirmPipelineStart {
   readonly interaction: ButtonInteraction;

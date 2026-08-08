@@ -12,14 +12,14 @@ import {
   heldEventParticipants,
   heldEvents,
   sessions
-} from "../schema.js";
+} from "../schema.ts";
 import type {
   DbLike,
   HeldEventParticipantRow,
   HeldEventRow,
   SessionRow
-} from "../rows.js";
-import { assertEnum } from "../rows.js";
+} from "../rows.ts";
+import { assertEnum } from "../rows.ts";
 
 const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
   id: row.id,

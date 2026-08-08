@@ -1,12 +1,12 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../appContext.js";
-import type { AppReadyState } from "../discord/shared/dispatcher.js";
-import { logger } from "../logger.js";
-import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../config.js";
-import { runReconciler } from "../scheduler/reconciler.js";
-import { runStartupRecovery } from "../scheduler/index.js";
-import { unwrapResultAsync } from "../errors/result.js";
+import type { AppContext } from "../appContext.ts";
+import type { AppReadyState } from "../discord/shared/dispatcher.ts";
+import { logger } from "../logger.ts";
+import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../config.ts";
+import { runReconciler } from "../scheduler/reconciler.ts";
+import { runStartupRecovery } from "../scheduler/index.ts";
+import { unwrapResultAsync } from "../errors/result.ts";
 
 export interface AppReadiness {
   readonly state: AppReadyState;

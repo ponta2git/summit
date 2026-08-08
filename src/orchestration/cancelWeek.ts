@@ -3,21 +3,21 @@ import { randomUUID } from "node:crypto";
 import type { Client } from "discord.js";
 import { type ResultAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import type { SessionRow } from "../db/rows.js";
-import { type AppError, okResult } from "../errors/index.js";
-import { fromDatabasePromise } from "../errors/result.js";
-import { askMessages } from "../features/ask-session/messages.js";
-import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
-import { logger } from "../logger.js";
+import type { AppContext } from "../appContext.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { type AppError, okResult } from "../errors/index.ts";
+import { fromDatabasePromise } from "../errors/result.ts";
+import { askMessages } from "../features/ask-session/messages.ts";
+import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
+import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
+import { logger } from "../logger.ts";
 import {
   candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
   isoWeekKey
-} from "../time/index.js";
-import { appConfig } from "../userConfig.js";
+} from "../time/index.ts";
+import { appConfig } from "../userConfig.ts";
 
 export interface SkipWeekOutcome {
   readonly skippedCount: number;

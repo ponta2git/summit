@@ -1,9 +1,9 @@
-import { appConfig } from "../../userConfig.js";
+import { appConfig } from "../../userConfig.ts";
 import type {
   ViewModelMemberInput,
   ViewModelResponseInput,
   ViewModelSessionInput
-} from "../../discord/shared/viewModelInputs.js";
+} from "../../discord/shared/viewModelInputs.ts";
 
 export interface PostponeMemberStatus {
   readonly userId: string;

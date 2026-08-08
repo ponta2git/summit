@@ -1,25 +1,25 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import { type ResultAsync } from "neverthrow";
 
-import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.js";
-import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.js";
+import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
+import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { fromDatabasePromise, toResultAsync } from "../../errors/result.js";
-import { logger } from "../../logger.js";
+} from "../../errors/index.ts";
+import { fromDatabasePromise, toResultAsync } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
   guardChannelId,
   guardGuildId,
   guardMemberUserId,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.js";
-import { rejectMessages } from "../interaction-reject/messages.js";
-import { buildStatusViewModel, renderStatusText } from "./viewModel.js";
+} from "../../discord/shared/guards.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
+import { rejectMessages } from "../interaction-reject/messages.ts";
+import { buildStatusViewModel, renderStatusText } from "./viewModel.ts";
 
 interface StatusPipelineStart {
   readonly interaction: ChatInputCommandInteraction;

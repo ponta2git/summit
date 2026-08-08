@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { SubmitPostponeVoteResult } from "../../db/ports.js";
-import type { ResponseChoice, SessionRow } from "../../db/rows.js";
+import type { AppContext } from "../../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
+import type { SubmitPostponeVoteResult } from "../../db/ports.ts";
+import type { ResponseChoice, SessionRow } from "../../db/rows.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
-import { postponeMessages } from "./messages.js";
+} from "../../errors/index.ts";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
+import { postponeMessages } from "./messages.ts";
 import {
   guardChannelId,
   guardGuildId,
@@ -23,16 +23,16 @@ import {
   guardSessionExists,
   guardSessionPostponeDeadlineOpen,
   guardSessionPostponeVoting
-} from "../../discord/shared/guards.js";
+} from "../../discord/shared/guards.ts";
 import {
   applyPostponeTransitionResult,
   buildSaturdaySessionInput
-} from "../../orchestration/postponeVoting.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import type { PostponeCustomIdChoice } from "../../discord/shared/customId.js";
-import { buildPostponeNgConfirmRow } from "./ngConfirm.js";
-import { handlePostponePipelineError } from "./buttonError.js";
-import { refreshPostponeMessage } from "./messageRefresh.js";
+} from "../../orchestration/postponeVoting.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
+import type { PostponeCustomIdChoice } from "../../discord/shared/customId.ts";
+import { buildPostponeNgConfirmRow } from "./ngConfirm.ts";
+import { handlePostponePipelineError } from "./buttonError.ts";
+import { refreshPostponeMessage } from "./messageRefresh.ts";
 
 const POSTPONE_CUSTOM_ID_TO_DB_CHOICE = {
   ok: "POSTPONE_OK",

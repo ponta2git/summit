@@ -1,4 +1,4 @@
-import type { ResponseRow, SessionRow } from "../db/rows.js";
+import type { ResponseRow, SessionRow } from "../db/rows.ts";
 
 export type PostponeDecisionResult =
   | { readonly kind: "all_ok" }

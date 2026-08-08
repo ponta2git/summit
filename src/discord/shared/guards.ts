@@ -1,7 +1,7 @@
 import { MessageFlags } from "discord.js";
 
-import type { SessionRow } from "../../db/rows.js";
-import { appConfig } from "../../userConfig.js";
+import type { SessionRow } from "../../db/rows.ts";
+import { appConfig } from "../../userConfig.ts";
 import {
   InvariantViolationError,
   NotFoundError,
@@ -10,7 +10,7 @@ import {
   okResult,
   type AppError,
   type AppResult
-} from "../../errors/index.js";
+} from "../../errors/index.ts";
 import {
   parseCancelWeekCustomId,
   parseAbsentConfirmCustomId,
@@ -21,7 +21,7 @@ import {
   type CancelWeekCustomIdChoice,
   type PostponeCustomIdChoice,
   type PostponeNgConfirmCustomIdChoice
-} from "./customId.js";
+} from "./customId.ts";
 
 export const buildEphemeralReject = (content: string) => ({
   content,
@@ -250,7 +250,7 @@ export const getGuardFailureReason = (error: AppError): GuardFailureReason | und
   return isGuardFailureReason(reason) ? reason : undefined;
 };
 
-export { GUARD_REASON_TO_MESSAGE } from "./guards.messages.js";
+export { GUARD_REASON_TO_MESSAGE } from "./guards.messages.ts";
 
 export const cheapFirstGuard = (
   guildId: string | null,

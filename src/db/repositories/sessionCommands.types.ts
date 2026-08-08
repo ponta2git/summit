@@ -2,7 +2,7 @@ import type {
   ResponseChoice,
   ResponseRow,
   SessionRow
-} from "../rows.js";
+} from "../rows.ts";
 
 export type AskResponseChoice = Exclude<
   ResponseChoice,

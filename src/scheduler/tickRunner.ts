@@ -1,8 +1,8 @@
 import type { Logger } from "pino";
 import type { ResultAsync } from "neverthrow";
 
-import { TICK_DURATION_WARN_MS } from "../config.js";
-import { AppError, type AppError as AppErrorType } from "../errors/index.js";
+import { TICK_DURATION_WARN_MS } from "../config.ts";
+import { AppError, type AppError as AppErrorType } from "../errors/index.ts";
 
 export interface RunTickSafelyOptions {
   readonly name: string;

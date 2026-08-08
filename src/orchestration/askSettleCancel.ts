@@ -1,12 +1,12 @@
 import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise } from "../errors/result.js";
-import type { CancelReason } from "../features/ask-session/cancelReason.js";
-import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import { logger } from "../logger.js";
+import type { AppContext } from "../appContext.ts";
+import type { AppError } from "../errors/index.ts";
+import { fromDatabasePromise } from "../errors/result.ts";
+import type { CancelReason } from "../features/ask-session/cancelReason.ts";
+import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
+import { logger } from "../logger.ts";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 

@@ -1,15 +1,15 @@
 import type { Client } from "discord.js";
 import { okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import { reconcileMissingAsk } from "./reconciler.missingAsk.js";
-import { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.js";
-import { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
-import { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.js";
-import { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.js";
-import { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.js";
-import type { ReconcileReport, ReconcileScope } from "./reconciler.types.js";
-import type { SchedulerBatchReport, SchedulerResult } from "./scheduler.types.js";
+import type { AppContext } from "../appContext.ts";
+import { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
+import { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.ts";
+import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
+import { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.ts";
+import { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.ts";
+import { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.ts";
+import type { ReconcileReport, ReconcileScope } from "./reconciler.types.ts";
+import type { SchedulerBatchReport, SchedulerResult } from "./scheduler.types.ts";
 
 /**
  * Run all reconciliation invariants for the given scope.

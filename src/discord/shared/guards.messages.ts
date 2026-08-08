@@ -1,6 +1,6 @@
-import type { GuardFailureReason } from "./guards.js";
+import type { GuardFailureReason } from "./guards.ts";
 
-import { rejectMessages } from "../../features/interaction-reject/messages.js";
+import { rejectMessages } from "../../features/interaction-reject/messages.ts";
 
 // invariant: 全 GuardFailureReason に対して reject 文言が網羅されていることを Record<> 型で担保する。
 export const GUARD_REASON_TO_MESSAGE: Record<GuardFailureReason, string> = {

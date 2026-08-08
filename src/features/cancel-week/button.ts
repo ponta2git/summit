@@ -1,8 +1,8 @@
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 
-import { logger } from "../../logger.js";
-import { cancelWeekMessages } from "./messages.js";
-import { applyManualSkip } from "../../orchestration/index.js";
+import { logger } from "../../logger.ts";
+import { cancelWeekMessages } from "./messages.ts";
+import { applyManualSkip } from "../../orchestration/index.ts";
 import {
   getGuardFailureReason,
   guardCancelWeekCustomId,
@@ -10,13 +10,13 @@ import {
   guardGuildId,
   guardMemberUserId,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+} from "../../discord/shared/guards.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
+} from "../../errors/index.ts";
 
 interface CancelWeekButtonStart {
   readonly interaction: ButtonInteraction;

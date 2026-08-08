@@ -1,17 +1,17 @@
-import { isSlotKey, slotKeySchema } from "../../slot.js";
-import { appConfig } from "../../userConfig.js";
-import { askMessages, type SettleCancelReason } from "./messages.js";
+import { isSlotKey, slotKeySchema } from "../../slot.ts";
+import { appConfig } from "../../userConfig.ts";
+import { askMessages, type SettleCancelReason } from "./messages.ts";
 import {
   decidedStartAt,
   parseCandidateDateIso,
   type AskTimeChoice
-} from "../../time/index.js";
+} from "../../time/index.ts";
 import type {
   ViewModelMemberInput,
   ViewModelResponseInput,
   ViewModelSessionInput
-} from "../../discord/shared/viewModelInputs.js";
-import type { AskResponseChoice } from "./constants.js";
+} from "../../discord/shared/viewModelInputs.ts";
+import type { AskResponseChoice } from "./constants.ts";
 
 export interface AskMessageViewModel {
   readonly sessionId: string;

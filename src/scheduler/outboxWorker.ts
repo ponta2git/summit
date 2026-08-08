@@ -1,24 +1,24 @@
 import type { Client } from "discord.js";
 import { okAsync } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_BACKOFF_MS_SEQUENCE,
   OUTBOX_CLAIM_DURATION_MS,
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_WORKER_BATCH_LIMIT
-} from "../config.js";
-import type { OutboxEntry } from "../db/ports.js";
-import { AppError, InvariantViolationError } from "../errors/index.js";
-import { fromAppCall, fromDatabaseCall } from "../errors/result.js";
-import { logger } from "../logger.js";
-import { getTextChannel } from "../discord/shared/channels.js";
+} from "../config.ts";
+import type { OutboxEntry } from "../db/ports.ts";
+import { AppError, InvariantViolationError } from "../errors/index.ts";
+import { fromAppCall, fromDatabaseCall } from "../errors/result.ts";
+import { logger } from "../logger.ts";
+import { getTextChannel } from "../discord/shared/channels.ts";
 import {
   completeReminderDelivery
-} from "../features/reminder/send.js";
-import { addMs } from "../time/index.js";
-import { renderOutboxPayload } from "./outboxRenderers.js";
-import type { SchedulerResult } from "./scheduler.types.js";
+} from "../features/reminder/send.ts";
+import { addMs } from "../time/index.ts";
+import { renderOutboxPayload } from "./outboxRenderers.ts";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.

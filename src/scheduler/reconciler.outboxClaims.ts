@@ -1,7 +1,7 @@
-import type { AppContext } from "../appContext.js";
-import { fromDatabaseCall } from "../errors/result.js";
-import { logger } from "../logger.js";
-import type { SchedulerResult } from "./scheduler.types.js";
+import type { AppContext } from "../appContext.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
+import { logger } from "../logger.ts";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 /**
  * Invariant F: Release IN_FLIGHT outbox rows past their claim deadline.

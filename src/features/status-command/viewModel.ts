@@ -1,18 +1,18 @@
 import { format } from "date-fns";
-import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.js";
-import type { SessionStatus } from "../../db/rows.js";
+import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.ts";
+import type { SessionStatus } from "../../db/rows.ts";
 import {
   isoWeekKey,
   postponeDeadlineFor,
   parseCandidateDateIso
-} from "../../time/index.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
+} from "../../time/index.ts";
+import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
 import {
   checkStrandedCancelledSessions,
   checkStrandedOutboxEntries,
   collectInvariantWarnings,
   type InvariantWarning
-} from "./invariantChecks.js";
+} from "./invariantChecks.ts";
 
 // jst: TZ=Asia/Tokyo 前提。date-fns format は getHours() 等を使うため TZ が反映される @see ADR-0002
 const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");

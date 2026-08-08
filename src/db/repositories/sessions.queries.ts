@@ -3,10 +3,10 @@
 
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 
-import { sessions } from "../schema.js";
-import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.js";
-import type { SchedulerSessionHints } from "../ports.js";
-import { NON_TERMINAL_STATUSES, mapSession } from "./sessions.internal.js";
+import { sessions } from "../schema.ts";
+import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.ts";
+import type { SchedulerSessionHints } from "../ports.ts";
+import { NON_TERMINAL_STATUSES, mapSession } from "./sessions.internal.ts";
 
 export const findSessionByWeekKeyAndPostponeCount = async (
   db: DbLike,

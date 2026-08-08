@@ -3,7 +3,7 @@ import type {
   CommandRoute,
   FeatureModule,
   SlashBuilder
-} from "./types.js";
+} from "./types.ts";
 
 export interface FeatureRegistry {
   readonly resolveButton: (customId: string) => ButtonRoute | undefined;

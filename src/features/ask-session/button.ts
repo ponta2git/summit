@@ -2,21 +2,21 @@ import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../../config.js";
-import type { SubmitAskResponseResult } from "../../db/ports.js";
-import type { SessionRow } from "../../db/rows.js";
+import type { AppContext } from "../../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
+import type { SubmitAskResponseResult } from "../../db/ports.ts";
+import type { SessionRow } from "../../db/rows.ts";
 import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.js";
-import { logger } from "../../logger.js";
-import { askMessages } from "./messages.js";
-import { renderAskBody } from "./render.js";
-import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.js";
-import { buildAskMessageViewModel } from "./viewModel.js";
+} from "../../errors/index.ts";
+import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
+import { askMessages } from "./messages.ts";
+import { renderAskBody } from "./render.ts";
+import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.ts";
+import { buildAskMessageViewModel } from "./viewModel.ts";
 import {
   guardAskCustomId,
   guardChannelId,
@@ -26,10 +26,10 @@ import {
   guardSessionAsking,
   guardSessionAskingDeadlineOpen,
   guardSessionExists
-} from "../../discord/shared/guards.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
-import { buildAbsentConfirmRow } from "./absentConfirm.js";
-import { handleAskPipelineError } from "./buttonError.js";
+} from "../../discord/shared/guards.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
+import { buildAbsentConfirmRow } from "./absentConfirm.ts";
+import { handleAskPipelineError } from "./buttonError.ts";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;

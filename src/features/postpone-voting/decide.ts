@@ -3,4 +3,4 @@ export {
   evaluatePostponeVote,
   type EvaluatePostponeVoteOptions,
   type PostponeDecisionResult
-} from "../../domain/postponeDecision.js";
+} from "../../domain/postponeDecision.ts";

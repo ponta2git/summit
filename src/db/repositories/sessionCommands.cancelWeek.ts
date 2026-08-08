@@ -13,13 +13,13 @@ import {
   discordOutbox,
   heldEvents,
   sessions
-} from "../schema.js";
-import type { DbLike, SessionRow, SessionStatus } from "../rows.js";
-import { mapSession } from "./sessions.internal.js";
+} from "../schema.ts";
+import type { DbLike, SessionRow, SessionStatus } from "../rows.ts";
+import { mapSession } from "./sessions.internal.ts";
 import type {
   CancelWeekInput,
   CancelWeekResult
-} from "./sessionCommands.types.js";
+} from "./sessionCommands.types.ts";
 
 const CANCELLABLE_WEEK_STATUSES = [
   "ASKING",

@@ -1,11 +1,11 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../../appContext.js";
-import type { ResponseChoice, ResponseRow, SessionRow } from "../../db/rows.js";
-import { buildReminderIntent } from "../../db/repositories/sessionOutboxIntents.js";
-import { logger } from "../../logger.js";
-import { appConfig } from "../../userConfig.js";
-import { reminderMessages } from "./messages.js";
+import type { AppContext } from "../../appContext.ts";
+import type { ResponseChoice, ResponseRow, SessionRow } from "../../db/rows.ts";
+import { buildReminderIntent } from "../../db/repositories/sessionOutboxIntents.ts";
+import { logger } from "../../logger.ts";
+import { appConfig } from "../../userConfig.ts";
+import { reminderMessages } from "./messages.ts";
 
 // jst: TZ=Asia/Tokyo 前提で getHours() は JST を返す @see ADR-0002
 const formatJstHhmm = (instant: Date): string => {

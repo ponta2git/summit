@@ -1,6 +1,6 @@
-import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.js";
-import { MEMBER_COUNT_EXPECTED, POSTPONE_DEADLINE_HHMM } from "../../config.js";
-import { SLOT_TO_LABEL } from "../../slot.js";
+import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.ts";
+import { MEMBER_COUNT_EXPECTED, POSTPONE_DEADLINE_HHMM } from "../../config.ts";
+import { SLOT_TO_LABEL } from "../../slot.ts";
 
 interface PostponeBodyParams {
   candidateDateIso: string;

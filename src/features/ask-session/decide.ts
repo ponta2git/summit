@@ -4,4 +4,4 @@ export {
   type DecisionResult,
   type EvaluateDeadlineOptions,
   type SlotKey
-} from "../../domain/askDecision.js";
+} from "../../domain/askDecision.ts";

@@ -5,41 +5,41 @@
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   CRON_ASK_SCHEDULE,
   CRON_OUTBOX_RETENTION_SCHEDULE,
   CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
   MEMBER_COUNT_EXPECTED
-} from "../config.js";
-import type { SessionRow } from "../db/rows.js";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.js";
+} from "../config.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
 import {
   sendAskMessage,
   type SendAskMessageContext,
   type SendAskMessageResult
-} from "../features/ask-session/send.js";
-import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.js";
-import { sendReminderForSession } from "../features/reminder/send.js";
-import { logger } from "../logger.js";
-import { runOutboxMetricsTick } from "./outboxMetrics.js";
-import { runOutboxRetentionTick } from "./outboxRetention.js";
+} from "../features/ask-session/send.ts";
+import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.ts";
+import { sendReminderForSession } from "../features/reminder/send.ts";
+import { logger } from "../logger.ts";
+import { runOutboxMetricsTick } from "./outboxMetrics.ts";
+import { runOutboxRetentionTick } from "./outboxRetention.ts";
 import {
   createSchedulerController,
   runSchedulerSupervisorTick,
   type SchedulerController
-} from "./controller.js";
+} from "./controller.ts";
 import {
   runResultTickSafely
-} from "./tickRunner.js";
+} from "./tickRunner.ts";
 import {
   type SchedulerFailure,
   type SchedulerResult,
   type SchedulerBatchReport,
   runSchedulerBatchResult
-} from "./scheduler.types.js";
+} from "./scheduler.types.ts";
 
-export { runStartupRecovery } from "./startupRecovery.js";
+export { runStartupRecovery } from "./startupRecovery.ts";
 
 type SendAsk = (context: SendAskMessageContext) => Promise<SendAskMessageResult>;
 

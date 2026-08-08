@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import type { AppContext } from "../../appContext.js";
-import { ShutdownError } from "../../errors/index.js";
-import { logger } from "../../logger.js";
-import { buildAskBodyIntent } from "../../db/repositories/sessionOutboxIntents.js";
-import { isShuttingDown } from "../../shutdown.js";
+import type { AppContext } from "../../appContext.ts";
+import { ShutdownError } from "../../errors/index.ts";
+import { logger } from "../../logger.ts";
+import { buildAskBodyIntent } from "../../db/repositories/sessionOutboxIntents.ts";
+import { isShuttingDown } from "../../shutdown.ts";
 import {
   candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
   isoWeekKey
-} from "../../time/index.js";
-import { appConfig } from "../../userConfig.js";
+} from "../../time/index.ts";
+import { appConfig } from "../../userConfig.ts";
 
 export interface SendAskMessageContext {
   readonly trigger: "cron" | "command";

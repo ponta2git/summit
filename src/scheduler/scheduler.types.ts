@@ -1,7 +1,7 @@
 import type { ResultAsync } from "neverthrow";
 
-import { AppError, InvariantViolationError } from "../errors/index.js";
-import { fromAppCall } from "../errors/result.js";
+import { AppError, InvariantViolationError } from "../errors/index.ts";
+import { fromAppCall } from "../errors/result.ts";
 
 export interface SchedulerFailure {
   readonly phase: string;

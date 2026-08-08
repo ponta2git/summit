@@ -1,7 +1,7 @@
 // source-of-truth: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue。
 // @see ADR-0018
 
-import type { DbLike } from "./rows.js";
+import type { DbLike } from "./rows.ts";
 import {
   createAskSession,
   findDueAskingSessions,
@@ -16,8 +16,8 @@ import {
   updatePostponeMessageId,
   backfillAskMessageId,
   backfillPostponeMessageId
-} from "./repositories/sessions.js";
-import { listResponses } from "./repositories/responses.js";
+} from "./repositories/sessions.ts";
+import { listResponses } from "./repositories/responses.ts";
 import {
   cancelWeekAtomically,
   settleAskingCancellation,
@@ -25,15 +25,15 @@ import {
   settlePostponeVoting,
   submitAskResponse,
   submitPostponeVote
-} from "./repositories/sessionCommands.js";
+} from "./repositories/sessionCommands.ts";
 import {
   findMemberIdByUserId,
   listMembers
-} from "./repositories/members.js";
+} from "./repositories/members.ts";
 import {
   completeDecidedSessionAsHeld,
   findHeldEventBySessionId
-} from "./repositories/heldEvents.js";
+} from "./repositories/heldEvents.ts";
 import {
   claimNextOutboxBatch,
   enqueueOutbox,
@@ -45,7 +45,7 @@ import {
   pruneOutbox,
   requeueFailedOutboxChains,
   releaseExpiredOutboxClaims
-} from "./repositories/outbox.js";
+} from "./repositories/outbox.ts";
 import type {
   AppPorts,
   HeldEventsPort,
@@ -54,7 +54,7 @@ import type {
   ResponsesPort,
   SessionCommandsPort,
   SessionsPort
-} from "./ports.js";
+} from "./ports.ts";
 
 const makeSessionsPort = (db: DbLike): SessionsPort => ({
   createAskSession: (input) => createAskSession(db, input),

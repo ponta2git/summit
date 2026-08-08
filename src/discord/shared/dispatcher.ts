@@ -6,18 +6,18 @@ import {
   MessageFlags
 } from "discord.js";
 
-import type { AppContext } from "../../appContext.js";
-import { logger } from "../../logger.js";
-import { rejectMessages } from "../../features/interaction-reject/messages.js";
-import { sendAskMessage } from "../../features/ask-session/send.js";
-import { buildFeatureRegistry, type FeatureRegistry } from "../registry/index.js";
-import { featureModules } from "../registry/modules.js";
-import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.js";
+import type { AppContext } from "../../appContext.ts";
+import { logger } from "../../logger.ts";
+import { rejectMessages } from "../../features/interaction-reject/messages.ts";
+import { sendAskMessage } from "../../features/ask-session/send.ts";
+import { buildFeatureRegistry, type FeatureRegistry } from "../registry/index.ts";
+import { featureModules } from "../registry/modules.ts";
+import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.ts";
 import type {
   AppReadyState,
   InteractionHandlerDeps,
   SendAsk
-} from "./interactionHandlerDeps.js";
+} from "./interactionHandlerDeps.ts";
 
 export type { AppReadyState, InteractionHandlerDeps, SendAsk };
 

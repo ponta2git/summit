@@ -1,13 +1,13 @@
 import type { Client } from "discord.js";
 import { ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import type { ResponseRow, SessionRow } from "../../db/rows.js";
-import type { AppError } from "../../errors/index.js";
-import { fromDatabaseCall, fromDiscordCall } from "../../errors/result.js";
-import { getTextChannel } from "../../discord/shared/channels.js";
-import { renderPostponeBody } from "./render.js";
-import { buildPostponeMessageViewModel } from "./viewModel.js";
+import type { AppContext } from "../../appContext.ts";
+import type { ResponseRow, SessionRow } from "../../db/rows.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabaseCall, fromDiscordCall } from "../../errors/result.ts";
+import { getTextChannel } from "../../discord/shared/channels.ts";
+import { renderPostponeBody } from "./render.ts";
+import { buildPostponeMessageViewModel } from "./viewModel.ts";
 
 export const updatePostponeMessage = (
   client: Client,

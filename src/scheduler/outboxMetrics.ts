@@ -1,11 +1,11 @@
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_METRICS_PENDING_AGE_WARN_MS,
   OUTBOX_METRICS_PENDING_WARN_DEPTH
-} from "../config.js";
-import { logger } from "../logger.js";
-import { fromDatabaseCall } from "../errors/result.js";
-import type { SchedulerResult } from "./scheduler.types.js";
+} from "../config.ts";
+import { logger } from "../logger.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 /**
  * Snapshot outbox depth/age and emit a structured log line for observability.

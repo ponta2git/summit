@@ -1,18 +1,18 @@
 import type { Client } from "discord.js";
 
-import type { AppContext } from "../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../config.js";
-import type { SessionRow } from "../db/rows.js";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.js";
-import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.js";
-import { sendReminderForSession } from "../features/reminder/send.js";
-import { logger } from "../logger.js";
+import type { AppContext } from "../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../config.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
+import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.ts";
+import { sendReminderForSession } from "../features/reminder/send.ts";
+import { logger } from "../logger.ts";
 import {
   runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerFailure,
   type SchedulerResult
-} from "./scheduler.types.js";
+} from "./scheduler.types.ts";
 
 const logSchedulerFailure = (failure: SchedulerFailure): void => {
   logger.error(

@@ -1,11 +1,11 @@
-import type { ResponseRow, SessionRow } from "../db/rows.js";
-import { isSlotKey } from "../slot.js";
+import type { ResponseRow, SessionRow } from "../db/rows.ts";
+import { isSlotKey } from "../slot.ts";
 import {
   decidedStartAt,
   latestChoice,
   parseCandidateDateIso,
   type AskTimeChoice
-} from "../time/index.js";
+} from "../time/index.ts";
 
 export type SlotKey = AskTimeChoice;
 

@@ -1,8 +1,8 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 
-import { discordOutbox } from "../schema.js";
-import { parseDbTimestamp, type DbLike } from "../rows.js";
-import { mapOutboxRow, type OutboxEntry } from "./outbox.types.js";
+import { discordOutbox } from "../schema.ts";
+import { parseDbTimestamp, type DbLike } from "../rows.ts";
+import { mapOutboxRow, type OutboxEntry } from "./outbox.types.ts";
 
 /**
  * Return stranded outbox rows for `/status` invariant warning.

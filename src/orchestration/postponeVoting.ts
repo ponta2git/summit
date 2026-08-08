@@ -3,23 +3,23 @@ import { randomUUID } from "node:crypto";
 import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import { MEMBER_COUNT_EXPECTED } from "../config.js";
+import type { AppContext } from "../appContext.ts";
+import { MEMBER_COUNT_EXPECTED } from "../config.ts";
 import type {
   PostponeTransitionOutcome,
   SaturdaySessionInput
-} from "../db/repositories/sessionCommands.js";
-import type { SessionRow } from "../db/rows.js";
-import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise } from "../errors/result.js";
-import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.js";
-import { logger } from "../logger.js";
+} from "../db/repositories/sessionCommands.ts";
+import type { SessionRow } from "../db/rows.ts";
+import type { AppError } from "../errors/index.ts";
+import { fromDatabasePromise } from "../errors/result.ts";
+import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
+import { logger } from "../logger.ts";
 import {
   deadlineFor,
   formatCandidateDateIso,
   parseCandidateDateIso,
   saturdayCandidateFrom
-} from "../time/index.js";
+} from "../time/index.ts";
 
 type PersistedPostponeTransition = {
   readonly kind: "transitioned";

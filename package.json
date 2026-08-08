@@ -9,7 +9,7 @@
   },
   "packageManager": "pnpm@11.20.0",
   "scripts": {
-    "dev": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx watch src/index.ts'",
+    "dev": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node --watch --watch-preserve-output src/index.ts'",
     "build": "tsc -p tsconfig.build.json",
     "start": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node dist/index.js'",
     "typecheck": "tsc --noEmit",
@@ -20,10 +20,10 @@
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
     "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm verify:forbidden && pnpm verify:file-size",
-    "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/seed.ts'",
-    "db:reset": "dotenv -e .env.local -- tsx scripts/dev/reset.ts",
-    "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx scripts/dev/scenario.ts'",
-    "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec tsx src/commands/sync.ts'",
+    "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/seed.ts'",
+    "db:reset": "dotenv -e .env.local -- node scripts/dev/reset.ts",
+    "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/scenario.ts'",
+    "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node src/commands/sync.ts'",
     "setup": "cd ../momo-db && pnpm install && pnpm build && pnpm db:up && pnpm db:migrate && cd ../summit && pnpm install && pnpm db:seed"
   },
   "dependencies": {
@@ -43,7 +43,6 @@
     "@types/node": "^24.13.3",
     "dotenv-cli": "^11.0.0",
     "oxlint": "^1.77.0",
-    "tsx": "^4.23.9",
     "typescript": "~7.0.0",
     "vitest": "^4.1.10"
   }

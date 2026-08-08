@@ -8,10 +8,10 @@ process.env["TZ"] = "Asia/Tokyo";
 
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { closeDb, db } from "../../src/db/client.js";
-import { responses, sessions } from "../../src/db/schema.js";
-import { env } from "../../src/env.js";
-import { logger } from "../../src/logger.js";
+import { closeDb, db } from "../../src/db/client.ts";
+import { responses, sessions } from "../../src/db/schema.ts";
+import { env } from "../../src/env.ts";
+import { logger } from "../../src/logger.ts";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
 

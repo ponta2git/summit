@@ -1,4 +1,4 @@
-import type { SchedulerFailure } from "./scheduler.types.js";
+import type { SchedulerFailure } from "./scheduler.types.ts";
 
 export interface ReconcileReport {
   readonly cancelledPromoted: number;

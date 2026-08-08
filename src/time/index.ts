@@ -11,12 +11,12 @@ import { ja } from "date-fns/locale";
 import {
   ASK_DEADLINE_HHMM,
   REMINDER_LEAD_MINUTES
-} from "../config.js";
+} from "../config.ts";
 import {
   SLOT_TO_LABEL,
   SLOT_TO_MINUTES,
   type SlotKey
-} from "../slot.js";
+} from "../slot.ts";
 
 export interface Clock {
   now(): Date;

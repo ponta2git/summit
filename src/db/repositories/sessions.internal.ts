@@ -1,12 +1,12 @@
 // source-of-truth: sessions repository 内部 helper。barrel (sessions.ts) からは re-export しない。
 // @see ADR-0051
 
-import { SESSION_STATUSES, type sessions } from "../schema.js";
+import { SESSION_STATUSES, type sessions } from "../schema.ts";
 import type {
   SessionRow,
   SessionStatus
-} from "../rows.js";
-import { assertEnum } from "../rows.js";
+} from "../rows.ts";
+import { assertEnum } from "../rows.ts";
 
 export const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
   "ASKING",

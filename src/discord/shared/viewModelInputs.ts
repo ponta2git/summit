@@ -1,5 +1,5 @@
 // why: DB 行型と UI ビルダーを decouple する契約。真に cross-feature。
-import type { ResponseChoice, SessionStatus } from "../../db/rows.js";
+import type { ResponseChoice, SessionStatus } from "../../db/rows.ts";
 
 export interface ViewModelMemberInput {
   readonly id: string;

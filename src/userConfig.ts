@@ -1,7 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
-import { env } from "./env.js";
+import { env } from "./env.ts";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 const hhmm = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);

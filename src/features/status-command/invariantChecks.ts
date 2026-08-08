@@ -1,4 +1,4 @@
-import type { OutboxEntry, SessionRow } from "../../db/ports.js";
+import type { OutboxEntry, SessionRow } from "../../db/ports.ts";
 
 export interface InvariantWarning {
   readonly kind: string;

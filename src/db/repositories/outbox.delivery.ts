@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, or } from "drizzle-orm";
 
-import type { DbLike } from "../rows.js";
-import { discordOutbox } from "../schema.js";
+import type { DbLike } from "../rows.ts";
+import { discordOutbox } from "../schema.ts";
 
 export const markOutboxDelivered = async (
   db: DbLike,

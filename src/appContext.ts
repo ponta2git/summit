@@ -1,10 +1,10 @@
 // why: composition root。AppContext を受け取る factory は、ここ以外から依存を解決しない。
 // @see ADR-0018
 
-import { db as defaultDb } from "./db/client.js";
-import type { AppPorts } from "./db/ports.js";
-import { makeRealPorts } from "./db/ports.real.js";
-import { systemClock, type Clock } from "./time/index.js";
+import { db as defaultDb } from "./db/client.ts";
+import type { AppPorts } from "./db/ports.ts";
+import { makeRealPorts } from "./db/ports.real.ts";
+import { systemClock, type Clock } from "./time/index.ts";
 
 export interface AppContext {
   readonly ports: AppPorts;

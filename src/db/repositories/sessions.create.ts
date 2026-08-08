@@ -5,10 +5,10 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 
-import { discordOutbox, sessions } from "../schema.js";
-import type { DbLike, SessionRow } from "../rows.js";
-import { mapSession } from "./sessions.internal.js";
-import type { CreateAskSessionInput } from "./sessions.types.js";
+import { discordOutbox, sessions } from "../schema.ts";
+import type { DbLike, SessionRow } from "../rows.ts";
+import { mapSession } from "./sessions.internal.ts";
+import type { CreateAskSessionInput } from "./sessions.types.ts";
 
 /**
  * Create an ASKING session for the given `(weekKey, postponeCount)`.

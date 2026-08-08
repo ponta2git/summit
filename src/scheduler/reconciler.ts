@@ -1,13 +1,13 @@
 // source-of-truth: reconciler public surface。実装 helper は各 submodule に閉じる。
 // @see ADR-0039
 
-export type { ReconcileReport, ReconcileScope } from "./reconciler.types.js";
+export type { ReconcileReport, ReconcileScope } from "./reconciler.types.ts";
 
-export { runReconciler } from "./reconciler.run.js";
+export { runReconciler } from "./reconciler.run.ts";
 
-export { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.js";
-export { reconcileMissingAsk } from "./reconciler.missingAsk.js";
-export { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.js";
-export { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.js";
-export { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
-export { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.js";
+export { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.ts";
+export { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
+export { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.ts";
+export { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.ts";
+export { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
+export { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.ts";

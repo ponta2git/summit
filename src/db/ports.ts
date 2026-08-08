@@ -10,20 +10,20 @@ import type {
   ResponseRow,
   SessionRow,
   SessionStatus
-} from "./rows.js";
+} from "./rows.ts";
 import type {
   CreateAskSessionInput
-} from "./repositories/sessions.js";
+} from "./repositories/sessions.ts";
 import type {
   CompleteDecidedSessionAsHeldInput,
   CompleteDecidedSessionAsHeldResult
-} from "./repositories/heldEvents.js";
+} from "./repositories/heldEvents.ts";
 import type {
   EnqueueOutboxInput,
   EnqueueResult,
   OutboxEntry,
   OutboxPayload
-} from "./repositories/outbox.js";
+} from "./repositories/outbox.ts";
 import type {
   AskingDeadlineResult,
   CancelWeekInput,
@@ -37,7 +37,7 @@ import type {
   SubmitAskResponseResult,
   SubmitPostponeVoteInput,
   SubmitPostponeVoteResult
-} from "./repositories/sessionCommands.js";
+} from "./repositories/sessionCommands.ts";
 
 export type {
   HeldEventParticipantRow,
@@ -67,7 +67,7 @@ export type {
   SubmitPostponeVoteResult
 };
 
-export type { ResponseChoice } from "./rows.js";
+export type { ResponseChoice } from "./rows.ts";
 
 export interface SchedulerSessionHints {
   readonly nextAskingDeadlineAt: Date | null;

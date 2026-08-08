@@ -1,11 +1,11 @@
-import type { AppContext } from "../appContext.js";
-import { ASK_DEADLINE_HHMM, ASK_START_HHMM } from "../config.js";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.js";
-import { sendAskMessage } from "../features/ask-session/send.js";
-import { logger } from "../logger.js";
-import { isoWeekKey } from "../time/index.js";
+import type { AppContext } from "../appContext.ts";
+import { ASK_DEADLINE_HHMM, ASK_START_HHMM } from "../config.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
+import { sendAskMessage } from "../features/ask-session/send.ts";
+import { logger } from "../logger.ts";
+import { isoWeekKey } from "../time/index.ts";
 import { okAsync } from "neverthrow";
-import type { SchedulerResult } from "./scheduler.types.js";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 const FRIDAY_JS_DAY = 5;
 

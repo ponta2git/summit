@@ -3,9 +3,9 @@ import { MessageFlags, type ButtonInteraction } from "discord.js";
 import {
   getGuardFailureReason,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
-import type { AppError } from "../../errors/index.js";
-import { logger } from "../../logger.js";
+} from "../../discord/shared/guards.ts";
+import type { AppError } from "../../errors/index.ts";
+import { logger } from "../../logger.ts";
 
 export const handleAskPipelineError = async (
   interaction: ButtonInteraction,

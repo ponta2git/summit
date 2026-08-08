@@ -4,12 +4,12 @@ import { eq } from "drizzle-orm";
 import {
   RESPONSE_CHOICES,
   responses
-} from "../schema.js";
+} from "../schema.ts";
 import type {
   DbLike,
   ResponseRow
-} from "../rows.js";
-import { assertEnum } from "../rows.js";
+} from "../rows.ts";
+import { assertEnum } from "../rows.ts";
 export const mapResponse = (row: typeof responses.$inferSelect): ResponseRow => ({
   id: row.id,
   sessionId: row.sessionId,

@@ -1,12 +1,12 @@
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_RETENTION_DELIVERED_MS,
   OUTBOX_RETENTION_FAILED_MS
-} from "../config.js";
-import { logger } from "../logger.js";
-import { subMs } from "../time/index.js";
-import { fromDatabaseCall } from "../errors/result.js";
-import type { SchedulerResult } from "./scheduler.types.js";
+} from "../config.ts";
+import { logger } from "../logger.ts";
+import { subMs } from "../time/index.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 /**
  * Prune terminal outbox rows past their retention deadline.

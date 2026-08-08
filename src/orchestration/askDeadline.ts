@@ -1,16 +1,16 @@
 import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
-import type { AskingDeadlineResult } from "../db/ports.js";
-import type { SessionRow } from "../db/rows.js";
-import type { AppError } from "../errors/index.js";
-import { fromDatabasePromise } from "../errors/result.js";
-import type { EvaluateDeadlineOptions } from "../features/ask-session/decide.js";
-import { updateAskMessage } from "../features/ask-session/messageEditor.js";
-import { skipReminderAndComplete } from "../features/reminder/send.js";
-import { shouldSkipReminder } from "../features/reminder/time.js";
-import { reflectAskingCancellation } from "./askSettleCancel.js";
+import type { AppContext } from "../appContext.ts";
+import type { AskingDeadlineResult } from "../db/ports.ts";
+import type { SessionRow } from "../db/rows.ts";
+import type { AppError } from "../errors/index.ts";
+import { fromDatabasePromise } from "../errors/result.ts";
+import type { EvaluateDeadlineOptions } from "../features/ask-session/decide.ts";
+import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
+import { skipReminderAndComplete } from "../features/reminder/send.ts";
+import { shouldSkipReminder } from "../features/reminder/time.ts";
+import { reflectAskingCancellation } from "./askSettleCancel.ts";
 
 const applyDecidedSideEffects = (
   client: Client,

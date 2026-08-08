@@ -1,10 +1,10 @@
-import { SLOT_TO_LABEL, slotKeySchema } from "../../slot.js";
-import { appConfig } from "../../userConfig.js";
+import { SLOT_TO_LABEL, slotKeySchema } from "../../slot.ts";
+import { appConfig } from "../../userConfig.ts";
 import type {
   ViewModelMemberInput,
   ViewModelResponseInput,
   ViewModelSessionInput
-} from "../../discord/shared/viewModelInputs.js";
+} from "../../discord/shared/viewModelInputs.ts";
 
 export interface DecidedAnnouncementViewModel {
   readonly startTimeLabel: string;

@@ -1,4 +1,4 @@
-import { REMINDER_LEAD_MINUTES } from "../../config.js";
+import { REMINDER_LEAD_MINUTES } from "../../config.ts";
 
 interface ReminderBodyParams {
   startTimeLabel: string;

@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2023",
     "module": "NodeNext",
+    "rewriteRelativeImportExtensions": true,
     "lib": ["ES2023"],
     "verbatimModuleSyntax": true,
     "strict": true,

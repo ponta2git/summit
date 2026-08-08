@@ -2,22 +2,22 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, sql } from "drizzle-orm";
 
-import { discordOutbox, members, responses, sessions } from "../schema.js";
+import { discordOutbox, members, responses, sessions } from "../schema.ts";
 import type {
   DbLike,
   ResponseChoice,
   ResponseRow,
   SessionRow
-} from "../rows.js";
-import { mapResponse } from "./responses.js";
-import { mapSession } from "./sessions.internal.js";
-import type { EnqueueOutboxInput } from "./outbox.js";
+} from "../rows.ts";
+import { mapResponse } from "./responses.ts";
+import { mapSession } from "./sessions.internal.ts";
+import type { EnqueueOutboxInput } from "./outbox.ts";
 import type {
   PostponeTransitionOutcome,
   SaturdaySessionInput
-} from "./sessionCommands.types.js";
-import { buildAskBodyIntent } from "./sessionOutboxIntents.js";
-import type { PostponeDecisionResult } from "../../domain/postponeDecision.js";
+} from "./sessionCommands.types.ts";
+import { buildAskBodyIntent } from "./sessionOutboxIntents.ts";
+import type { PostponeDecisionResult } from "../../domain/postponeDecision.ts";
 
 export type DbTransaction =
   Parameters<Parameters<DbLike["transaction"]>[0]>[0];

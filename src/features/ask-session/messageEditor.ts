@@ -1,15 +1,15 @@
 import type { Client } from "discord.js";
 import { errAsync, ResultAsync, okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../../appContext.js";
-import type { SessionRow } from "../../db/rows.js";
-import { fromDatabaseCall, fromDiscordCall } from "../../errors/result.js";
-import { isUnknownMessageError } from "../../discord/shared/discordErrors.js";
-import { logger } from "../../logger.js";
-import { getTextChannel } from "../../discord/shared/channels.js";
-import { renderAskBody } from "./render.js";
-import { buildAskMessageViewModel } from "./viewModel.js";
-import type { AppError } from "../../errors/index.js";
+import type { AppContext } from "../../appContext.ts";
+import type { SessionRow } from "../../db/rows.ts";
+import { fromDatabaseCall, fromDiscordCall } from "../../errors/result.ts";
+import { isUnknownMessageError } from "../../discord/shared/discordErrors.ts";
+import { logger } from "../../logger.ts";
+import { getTextChannel } from "../../discord/shared/channels.ts";
+import { renderAskBody } from "./render.ts";
+import { buildAskMessageViewModel } from "./viewModel.ts";
+import type { AppError } from "../../errors/index.ts";
 
 const recreateAskMessage = (
   channel: Awaited<ReturnType<typeof getTextChannel>>,

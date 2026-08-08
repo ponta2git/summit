@@ -1,5 +1,5 @@
-import type { SessionRow } from "../rows.js";
-import type { EnqueueOutboxInput } from "./outbox.js";
+import type { SessionRow } from "../rows.ts";
+import type { EnqueueOutboxInput } from "./outbox.ts";
 
 export type AskCancellationReason =
   | "absent"

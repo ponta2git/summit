@@ -7,9 +7,9 @@ process.env["TZ"] = "Asia/Tokyo";
 
 import { sql } from "drizzle-orm";
 
-import { closeDb, db } from "../../src/db/client.js";
-import { env } from "../../src/env.js";
-import { logger } from "../../src/logger.js";
+import { closeDb, db } from "../../src/db/client.ts";
+import { env } from "../../src/env.ts";
+import { logger } from "../../src/logger.ts";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
 

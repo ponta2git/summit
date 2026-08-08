@@ -1,20 +1,20 @@
 import { okAsync, safeTry } from "neverthrow";
 
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   buildAskBodyIntent,
   buildPostponeVoteIntent,
   OUTBOX_RECOVERY_ORDINALS
-} from "../db/repositories/sessionOutboxIntents.js";
-import type { EnqueueOutboxInput } from "../db/ports.js";
-import type { SessionRow } from "../db/rows.js";
-import { fromDatabaseCall } from "../errors/result.js";
-import { logger } from "../logger.js";
+} from "../db/repositories/sessionOutboxIntents.ts";
+import type { EnqueueOutboxInput } from "../db/ports.ts";
+import type { SessionRow } from "../db/rows.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
+import { logger } from "../logger.ts";
 import {
   runSchedulerBatchResult,
   type SchedulerBatchReport,
   type SchedulerResult
-} from "./scheduler.types.js";
+} from "./scheduler.types.ts";
 
 const buildMissingMessageIntents = (
   session: SessionRow

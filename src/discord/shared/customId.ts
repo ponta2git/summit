@@ -2,7 +2,7 @@
 //   SlotKey の意味論は src/slot.ts、DB は SlotKey を verbatim 保存するため DB 側の wire 変換は不要。
 // @see docs/adr/0016-customid-codec-hmac-rejected.md
 import { z } from "zod";
-import type { SlotKey } from "../../slot.js";
+import type { SlotKey } from "../../slot.ts";
 
 // invariant: SlotKey と 1:1 対応する lowercase wire 表現。
 const CUSTOM_ID_SLOT_CHOICES = ["t2200", "t2230", "t2300", "t2330"] as const;

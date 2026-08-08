@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits } from "discord.js";
 
-import { appConfig } from "../userConfig.js";
+import { appConfig } from "../userConfig.ts";
 
 // invariant: 最小権限。Guilds intent のみで運用する。
 // @see docs/adr/0005-operations-policy.md

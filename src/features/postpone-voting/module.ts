@@ -1,7 +1,7 @@
-import type { FeatureModule } from "../../discord/registry/types.js";
-import { handlePostponeButton } from "./button.js";
-import { handlePostponeNgConfirmButton } from "./ngConfirm.js";
-import { POSTPONE_NG_CUSTOM_ID_PREFIX } from "../../discord/shared/customId.js";
+import type { FeatureModule } from "../../discord/registry/types.ts";
+import { handlePostponeButton } from "./button.ts";
+import { handlePostponeNgConfirmButton } from "./ngConfirm.ts";
+import { POSTPONE_NG_CUSTOM_ID_PREFIX } from "../../discord/shared/customId.ts";
 
 export const postponeVotingModule: FeatureModule = {
   id: "postpone-voting",

@@ -1,5 +1,5 @@
-import { decidedMessages } from "./messages.js";
-import type { DecidedAnnouncementViewModel } from "./viewModel.js";
+import { decidedMessages } from "./messages.ts";
+import type { DecidedAnnouncementViewModel } from "./viewModel.ts";
 
 /** Render the standalone decided announcement (mentions line + body). */
 export const renderDecidedAnnouncement = (

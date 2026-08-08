@@ -5,19 +5,19 @@ import {
   type AppError,
   type AppResult,
   okResult
-} from "../../errors/index.js";
-import { fromDiscordPromise, toResultAsync } from "../../errors/result.js";
-import { logger } from "../../logger.js";
-import { askMessages } from "./messages.js";
-import { assertNever } from "../../util/assertNever.js";
+} from "../../errors/index.ts";
+import { fromDiscordPromise, toResultAsync } from "../../errors/result.ts";
+import { logger } from "../../logger.ts";
+import { askMessages } from "./messages.ts";
+import { assertNever } from "../../util/assertNever.ts";
 import {
   getGuardFailureReason,
   guardChannelId,
   guardGuildId,
   guardMemberUserId,
   GUARD_REASON_TO_MESSAGE
-} from "../../discord/shared/guards.js";
-import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.js";
+} from "../../discord/shared/guards.ts";
+import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
 
 interface AskCommandPipelineStart {
   readonly interaction: ChatInputCommandInteraction;

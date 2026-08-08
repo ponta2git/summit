@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { appConfig } from "./userConfig.js";
+import { appConfig } from "./userConfig.ts";
 
 // source-of-truth: SlotKey は DB enum 値・time 計算・UI ラベル・customId wire が参照する正典。
 //   customId の wire 表現は src/discord/shared/customId.ts。DB は SlotKey を verbatim に保存。

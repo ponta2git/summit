@@ -1,9 +1,9 @@
 import { SlashCommandBuilder } from "discord.js";
 
-import type { FeatureModule } from "../../discord/registry/types.js";
-import { CANCEL_WEEK_CUSTOM_ID_PREFIX } from "../../discord/shared/customId.js";
-import { handleCancelWeekButton } from "./button.js";
-import { handleCancelWeekCommand } from "./command.js";
+import type { FeatureModule } from "../../discord/registry/types.ts";
+import { CANCEL_WEEK_CUSTOM_ID_PREFIX } from "../../discord/shared/customId.ts";
+import { handleCancelWeekButton } from "./button.ts";
+import { handleCancelWeekCommand } from "./command.ts";
 
 const cancelWeekSlashBuilder = new SlashCommandBuilder()
   .setName("cancel_week")

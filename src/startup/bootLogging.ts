@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger.ts";
 
 export type BootPhase = "boot_start" | "db_connect" | "reconcile" | "login" | "ready";
 

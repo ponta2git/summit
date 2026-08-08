@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 
-import type { DbLike } from "../db/rows.js";
-import { members } from "../db/schema.js";
-import { logger } from "../logger.js";
-import type { MemberReconcileInput } from "./inputs.js";
+import type { DbLike } from "../db/rows.ts";
+import { members } from "../db/schema.ts";
+import { logger } from "../logger.ts";
+import type { MemberReconcileInput } from "./inputs.ts";
 
 interface ExistingMemberRow {
   readonly id: string;

@@ -1,9 +1,9 @@
 import { REST, Routes } from "discord.js";
 
-import { env } from "../env.js";
-import { logger } from "../logger.js";
-import { appConfig } from "../userConfig.js";
-import { slashCommands } from "./definitions.js";
+import { env } from "../env.ts";
+import { logger } from "../logger.ts";
+import { appConfig } from "../userConfig.ts";
+import { slashCommands } from "./definitions.ts";
 
 // why: Discord token の第一セグメント (base64url) がそのまま application ID を表す仕様。
 //   追加の HTTP 呼び出しをせずに sync 実行できるため CI / pnpm commands:sync で使える。

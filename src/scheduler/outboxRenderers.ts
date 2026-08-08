@@ -1,20 +1,20 @@
 import type { MessageCreateOptions } from "discord.js";
 import { z } from "zod";
 
-import type { AppContext } from "../appContext.js";
-import type { OutboxEntry } from "../db/ports.js";
-import { cancelWeekMessages } from "../features/cancel-week/messages.js";
-import { renderAskBody } from "../features/ask-session/render.js";
+import type { AppContext } from "../appContext.ts";
+import type { OutboxEntry } from "../db/ports.ts";
+import { cancelWeekMessages } from "../features/cancel-week/messages.ts";
+import { renderAskBody } from "../features/ask-session/render.ts";
 import {
   buildAskMessageViewModel,
   buildSettleNoticeViewModel,
   renderSettleNotice
-} from "../features/ask-session/viewModel.js";
-import { renderDecidedAnnouncement } from "../features/decided-announcement/render.js";
-import { buildDecidedAnnouncementViewModel } from "../features/decided-announcement/viewModel.js";
-import { renderPostponeBody } from "../features/postpone-voting/render.js";
-import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.js";
-import { buildReminderContent } from "../features/reminder/send.js";
+} from "../features/ask-session/viewModel.ts";
+import { renderDecidedAnnouncement } from "../features/decided-announcement/render.ts";
+import { buildDecidedAnnouncementViewModel } from "../features/decided-announcement/viewModel.ts";
+import { renderPostponeBody } from "../features/postpone-voting/render.ts";
+import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.ts";
+import { buildReminderContent } from "../features/reminder/send.ts";
 
 type Renderer = (input: {
   readonly ctx: AppContext;

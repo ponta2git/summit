@@ -11,14 +11,14 @@ import {
   BUTTON_STYLE_ASK_ABSENT,
   BUTTON_STYLE_ASK_TIME,
   SLOT_KEY_TO_ASK_BUTTON_LABEL
-} from "./constants.js";
-import { askMessages } from "./messages.js";
+} from "./constants.ts";
+import { askMessages } from "./messages.ts";
 import {
   buildCustomId,
   slotKeyFromCustomIdChoice,
   type AskCustomIdChoice
-} from "../../discord/shared/customId.js";
-import type { AskMessageViewModel } from "./viewModel.js";
+} from "../../discord/shared/customId.ts";
+import type { AskMessageViewModel } from "./viewModel.ts";
 
 // invariant: custom_id 末尾は `AskCustomIdChoice` の小文字値と一致させる。codec / choiceMap と同時更新。
 const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const satisfies readonly AskCustomIdChoice[];

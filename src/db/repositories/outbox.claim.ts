@@ -13,10 +13,10 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import { addMs } from "../../time/index.js";
-import type { DbLike } from "../rows.js";
-import { discordOutbox } from "../schema.js";
-import { mapOutboxRow, type OutboxEntry } from "./outbox.types.js";
+import { addMs } from "../../time/index.ts";
+import type { DbLike } from "../rows.ts";
+import { discordOutbox } from "../schema.ts";
+import { mapOutboxRow, type OutboxEntry } from "./outbox.types.ts";
 
 /** Claim a fenced, per-session ordered batch and cancel successors of dead letters. */
 export const claimNextOutboxBatch = async (

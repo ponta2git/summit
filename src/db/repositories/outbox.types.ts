@@ -6,8 +6,8 @@ import {
   type discordOutbox,
   type OutboxKind,
   type OutboxStatus
-} from "../schema.js";
-import { assertEnum } from "../rows.js";
+} from "../schema.ts";
+import { assertEnum } from "../rows.ts";
 
 // invariant: worker が新規投稿 payload を rehydrate する際の schema。
 //   既存 message の編集は DB 正本からの best-effort 経路であり outbox へ混在させない。

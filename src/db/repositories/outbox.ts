@@ -2,19 +2,19 @@ import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
-import type { DbLike } from "../rows.js";
-import { discordOutbox } from "../schema.js";
+import type { DbLike } from "../rows.ts";
+import { discordOutbox } from "../schema.ts";
 import type {
   EnqueueOutboxInput,
   EnqueueResult
-} from "./outbox.types.js";
+} from "./outbox.types.ts";
 
 export type {
   EnqueueOutboxInput,
   EnqueueResult,
   OutboxEntry,
   OutboxPayload
-} from "./outbox.types.js";
+} from "./outbox.types.ts";
 export {
   findStrandedOutboxEntries,
   getNextOutboxDispatchAt,
@@ -22,19 +22,19 @@ export {
   pruneOutbox,
   type OutboxMetricsResult,
   type PruneOutboxResult
-} from "./outbox.metrics.js";
+} from "./outbox.metrics.ts";
 export {
   claimNextOutboxBatch,
   releaseExpiredOutboxClaims
-} from "./outbox.claim.js";
+} from "./outbox.claim.ts";
 export {
   markOutboxDelivered,
   markOutboxFailed
-} from "./outbox.delivery.js";
+} from "./outbox.delivery.ts";
 export {
   requeueFailedOutboxChains,
   type RequeueFailedOutboxChainsResult
-} from "./outbox.recovery.js";
+} from "./outbox.recovery.ts";
 
 /** Insert an outbox row; idempotent across every status for the dedupe key. */
 export const enqueueOutbox = async (

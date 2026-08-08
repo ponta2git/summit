@@ -1,8 +1,8 @@
 import { and, eq, exists, lt, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import type { DbLike } from "../rows.js";
-import { discordOutbox } from "../schema.js";
+import type { DbLike } from "../rows.ts";
+import { discordOutbox } from "../schema.ts";
 
 export interface RequeueFailedOutboxChainsResult {
   readonly deadLettersRequeued: number;

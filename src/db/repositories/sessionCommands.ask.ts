@@ -1,20 +1,20 @@
 import { eq, sql } from "drizzle-orm";
 
-import { sessions } from "../schema.js";
-import type { DbLike, SessionRow } from "../rows.js";
-import { evaluateDeadline } from "../../domain/askDecision.js";
+import { sessions } from "../schema.ts";
+import type { DbLike, SessionRow } from "../rows.ts";
+import { evaluateDeadline } from "../../domain/askDecision.ts";
 import {
   parseCandidateDateIso,
   postponeDeadlineFor,
   reminderAtFor
-} from "../../time/index.js";
-import { mapSession } from "./sessions.internal.js";
+} from "../../time/index.ts";
+import { mapSession } from "./sessions.internal.ts";
 import {
   buildDecidedAnnouncementIntent,
   buildPostponeVoteIntent,
   buildSettleNoticeIntent,
   type AskCancellationReason
-} from "./sessionOutboxIntents.js";
+} from "./sessionOutboxIntents.ts";
 import {
   bumpSessionRevision,
   enqueueSessionIntents,
@@ -23,7 +23,7 @@ import {
   memberExists,
   upsertInteractionResponse,
   type DbTransaction
-} from "./sessionCommands.shared.js";
+} from "./sessionCommands.shared.ts";
 import type {
   AskingDeadlineResult,
   SettleAskingCancellationInput,
@@ -31,7 +31,7 @@ import type {
   SettleDeadlineInput,
   SubmitAskResponseInput,
   SubmitAskResponseResult
-} from "./sessionCommands.types.js";
+} from "./sessionCommands.types.ts";
 
 const resolveCancellationReason = (
   session: SessionRow,

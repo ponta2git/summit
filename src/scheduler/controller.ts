@@ -1,19 +1,19 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
 
-import type { AppContext } from "../appContext.js";
+import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_WORKER_ACTIVE_INTERVAL_MS,
   SCHEDULER_MIN_TIMER_DELAY_MS,
   SCHEDULER_WAKE_DEBOUNCE_MS
-} from "../config.js";
-import { AppError, InvariantViolationError } from "../errors/index.js";
-import { fromAppCall, fromDatabaseCall, unwrapResultAsync } from "../errors/result.js";
-import { logger as defaultLogger } from "../logger.js";
-import { reconcileOutboxClaims } from "./reconciler.outboxClaims.js";
-import { runOutboxWorkerTick } from "./outboxWorker.js";
-import { runResultTickSafely } from "./tickRunner.js";
-import type { SchedulerResult } from "./scheduler.types.js";
+} from "../config.ts";
+import { AppError, InvariantViolationError } from "../errors/index.ts";
+import { fromAppCall, fromDatabaseCall, unwrapResultAsync } from "../errors/result.ts";
+import { logger as defaultLogger } from "../logger.ts";
+import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
+import { runOutboxWorkerTick } from "./outboxWorker.ts";
+import { runResultTickSafely } from "./tickRunner.ts";
+import type { SchedulerResult } from "./scheduler.types.ts";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
