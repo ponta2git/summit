@@ -57,7 +57,6 @@ export const createFakeSessionQueryMethods = (
       .filter(
         (session) =>
           session.status === "DECIDED" &&
-          session.reminderSentAt === null &&
           session.reminderAt !== null &&
           session.reminderAt <= now
       )
@@ -87,7 +86,6 @@ export const createFakeSessionQueryMethods = (
           .filter(
             (session) =>
               session.status === "DECIDED" &&
-              session.reminderSentAt === null &&
               session.reminderAt !== null
           )
           .map((session) => session.reminderAt as Date)

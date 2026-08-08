@@ -126,10 +126,9 @@ export const sendReminderForSession = async (
     // idempotent: 既に COMPLETED など、他ハンドラが済ませていれば no-op。
     return;
   }
-  if (fresh.reminderSentAt !== null) {
-    // idempotent: 既に送信済みなら再送しない。
-    return;
-  }
+  // compatibility: the former claim-first path wrote reminderSentAt before Discord accepted
+  // the message. A DECIDED row with that marker is therefore ambiguous, not complete. The
+  // outbox provides the dedupe boundary and the worker completes the Session transactionally.
   if (fresh.decidedStartAt === null) {
     logger.warn(
       { sessionId: fresh.id, weekKey: fresh.weekKey },

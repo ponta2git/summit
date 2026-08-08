@@ -1,7 +1,7 @@
 // source-of-truth: sessions repository のクエリ群。write なし。
 // @see ADR-0051
 
-import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.js";
 import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.js";
@@ -63,10 +63,13 @@ export const findDuePostponeVotingSessions = async (
 };
 
 /**
- * Find DECIDED sessions whose reminder is due and not yet sent.
+ * Find DECIDED sessions whose reminder is due.
  *
  * @remarks
  * idempotent: scheduler と起動時リカバリ双方から呼ばれるが、outbox dedupe が重複 intent を吸収する。
+ *   `reminder_sent_at` は旧 claim-first 経路の途中 marker として残る場合があるため、
+ *   DECIDED 行の再配送判定には使わない。新経路では配送完了時に DECIDED→COMPLETED と
+ *   同一 transaction で marker を書く。
  * @see requirements/base.md §5.2, ADR-0051
  */
 export const findDueReminderSessions = async (
@@ -79,7 +82,6 @@ export const findDueReminderSessions = async (
     .where(
       and(
         eq(sessions.status, "DECIDED"),
-        isNull(sessions.reminderSentAt),
         lte(sessions.reminderAt, now)
       )
     );
@@ -110,8 +112,7 @@ export const getSchedulerSessionHints = async (
     .from(sessions)
     .where(
       and(
-        eq(sessions.status, "DECIDED"),
-        isNull(sessions.reminderSentAt)
+        eq(sessions.status, "DECIDED")
       )
     );
 

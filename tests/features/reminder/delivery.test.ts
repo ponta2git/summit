@@ -46,7 +46,7 @@ describe("sendReminderForSession", () => {
     });
   });
 
-  it("does nothing when the reminder completion marker is already present", async () => {
+  it("recovers a legacy claim marker through the outbox", async () => {
     const completedAt = new Date("2026-04-24T12:44:00.000Z");
     const session = decidedSession({ reminderSentAt: completedAt });
     const ctx = createTestAppContext({
@@ -57,9 +57,14 @@ describe("sendReminderForSession", () => {
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
 
-    expect(send).not.toHaveBeenCalled();
-    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
-    expect(ctx.ports.heldEvents.listHeldEvents()).toStrictEqual([]);
+    await runOutboxWorkerTick(client, ctx);
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(ctx.ports.sessions.listSessions()[0]).toMatchObject({
+      status: "COMPLETED",
+      reminderSentAt: TEST_NOW
+    });
+    expect(ctx.ports.heldEvents.listHeldEvents()).toHaveLength(1);
   });
 
   it("dispatches and persists exactly once under concurrent calls", async () => {

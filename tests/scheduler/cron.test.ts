@@ -162,7 +162,7 @@ describe("ask scheduler", () => {
     scheduler.stop();
   });
 
-  it("dispatches reminders only for DECIDED sessions whose reminderAt has passed", async () => {
+  it("dispatches due DECIDED reminders, including legacy claim markers", async () => {
     const now = new Date("2026-04-24T12:45:00.000Z");
     const decidedStartAt = new Date("2026-04-24T13:00:00.000Z");
     const dueSession = buildSessionRow({
@@ -205,13 +205,18 @@ describe("ask scheduler", () => {
 
     expect(send).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries().map((entry) => entry.dedupeKey)).toStrictEqual([
-      `reminder-${dueSession.id}`
+      `reminder-${dueSession.id}`,
+      `reminder-${alreadySentSession.id}`
     ]);
     await runOutboxWorkerTick(client, ctx);
 
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2);
     const persistedDue = ctx.ports.sessions.listSessions().find((s) => s.id === dueSession.id);
     expect(persistedDue?.status).toBe("COMPLETED");
+    const persistedLegacy = ctx.ports.sessions
+      .listSessions()
+      .find((s) => s.id === alreadySentSession.id);
+    expect(persistedLegacy?.status).toBe("COMPLETED");
     const persistedFuture = ctx.ports.sessions
       .listSessions()
       .find((s) => s.id === futureSession.id);

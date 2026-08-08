@@ -42,9 +42,9 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 ### Fail-closed preflight を持つ migration
 
-Session aggregate / ordered outbox migration は、旧 reminder claim、重複 dedupe key、未対応 outbox kind を検出すると transaction を中断する。これは監査履歴を migration が独断で修復しないための安全装置である。
+Session aggregate / ordered outbox migration は、重複 dedupe key と未対応 outbox kind を検出すると transaction を中断する。旧 reminder claim marker は監査値を保持したまま migration を通し、アプリ側の outbox recovery で再配送する（ADR-0054）。
 
-- guard を削除・迂回して再実行しない。
+- dedupe key / outbox kind の guard を削除・迂回して再実行しない。
 - 対象行を read-only query で特定し、backup を確認する。
 - 解消方法を別 migration としてレビューし、`generate` + `migrate` の手順を守る。
 - preflight 失敗時は application deploy を進めない。
