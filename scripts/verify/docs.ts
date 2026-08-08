@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WRITE_ADAPTERS_ARG = "--write-adapters";
-const AGENTS_MAX_BYTES = 16 * 1_024;
+const AGENTS_MAX_BYTES = 4 * 1_024;
 const GENERATED_HEADER =
   "<!-- Generated from AGENTS.md by `pnpm docs:sync-agent`. Do not edit directly. -->\n\n";
 

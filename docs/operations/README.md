@@ -20,7 +20,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | `docs/time-rule.md` |
 | [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | `docs/db-rule.md` |
 | [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | `docs/db-rule.md` |
-| [secrets-rotation.md](./secrets-rotation.md) | Fly secrets 更新時の手順と影響範囲 | `AGENTS.md`, `docs/architecture.md` |
+| [secrets-rotation.md](./secrets-rotation.md) | Fly secrets 更新時の手順と影響範囲 | `docs/dev-rule.md`, `docs/architecture.md` |
 
 ## 症状逆引き
 
@@ -39,8 +39,8 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 ## 共通原則 (再掲)
 
 1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない。
-2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は `AGENTS.md` §2 で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
-3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない (AGENTS.md)。
+2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は `docs/db-rule.md` で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
+3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない。本書を運用上の正本とする。
 4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない。
 5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可。
 

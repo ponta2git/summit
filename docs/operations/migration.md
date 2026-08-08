@@ -11,7 +11,7 @@ drizzle-kit を用いた schema migration の生成・適用・ロールバッ�
 
 - migration は `drizzle-kit generate` + `drizzle-kit migrate` のみ。**`drizzle-kit push` は禁止**。設計契約は `docs/db-rule.md` を参照する。
 - `DIRECT_URL` は momo-db の `drizzle.config.ts` 専用 (アプリ code から参照禁止)。
-- 金 17:30〜土 01:00 JST は migration 禁止 (AGENTS.md deploy 禁止窓)。
+- 金 17:30〜土 01:00 JST は migration 禁止 (`docs/operations/README.md`のdeploy禁止窓)。
 - `momo-db` CI の `db:check` ジョブで migration 履歴の整合性を自動検出する。
 
 ## 新規 migration の作り方
@@ -65,7 +65,7 @@ cd ../momo-db
 pnpm db:migrate  # momo-db の .env.local から DIRECT_URL を読む
 ```
 
-**禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`AGENTS.md` §2)。
+**禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
 
 ## ローカル開発 (setup 経由)
 

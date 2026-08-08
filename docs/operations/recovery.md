@@ -78,7 +78,7 @@ fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
 
 **自動復旧**: 新 instance 起動時に reconciler / `runStartupRecovery` が DB から再計算。outbox の claim 時刻が `OUTBOX_CLAIM_DURATION_MS` より stale なら release → worker が retry。
 
-**人手作業**: 不要。**ただし金 17:30〜土 01:00 JST の deploy 禁止窓に該当 deploy をしないこと** (AGENTS.md)。
+**人手作業**: 不要。**ただし金 17:30〜土 01:00 JST のdeploy禁止窓に該当deployをしないこと** (`docs/operations/README.md`)。
 
 ## 復旧不能ケース
 

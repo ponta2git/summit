@@ -1,6 +1,6 @@
 # Secrets Rotation
 
-Fly secrets として管理される秘匿値の rotation 手順と影響範囲。安全境界は `AGENTS.md`、設定と logging の設計は `docs/architecture.md` を参照する。
+Fly secrets として管理される秘匿値の rotation 手順と影響範囲。secretとloggingの実装規則は`docs/dev-rule.md`、設定境界は`docs/architecture.md`を参照する。
 
 ## 対象 secrets
 
