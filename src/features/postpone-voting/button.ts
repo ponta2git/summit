@@ -179,7 +179,6 @@ const recordResponseStep = (
  * @remarks
  * cheap-first validation → DB-backed pipeline。再描画は常に DB から再構築。
  * NG は不可逆なため確認 dialog を ephemeral で提示し、confirm ボタンで記録する。
- * @see ADR-0001
  */
 export const handlePostponeButton = async (
   interaction: ButtonInteraction,

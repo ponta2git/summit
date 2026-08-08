@@ -124,7 +124,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
     // boot-2: 別 boot を模した再実行。DB は前回の収束結果を保持しているので全 invariant は no-op。
     //   regression: bootId 跨ぎで CAS-on-NULL / claim release が二重発火しないことを保証する
-    //   (ADR-0051 startup recovery の冪等性契約)。
+    //   startup recovery の冪等性契約を固定する。
     const boot2 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));
     expect(boot2).toStrictEqual({
       cancelledPromoted: 0,

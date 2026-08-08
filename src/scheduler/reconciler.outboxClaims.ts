@@ -9,7 +9,6 @@ import type { SchedulerResult } from "./scheduler.types.ts";
  * @remarks
  * race: worker が claim 中に crash すると IN_FLIGHT で stuck する。startup/reconnect で
  * PENDING に戻し次 worker tick で再配送させる。
- * @see ADR-0051
  */
 export const reconcileOutboxClaims = (
   ctx: AppContext

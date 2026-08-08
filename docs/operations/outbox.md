@@ -1,11 +1,11 @@
 # Outbox Operations
 
-outbox は Discord への副作用を at-least-once で配送し、Session 内の意味順序を守る仕組み (ADR-0051、起点は ADR-0035)。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
+outbox は Discord への副作用を at-least-once で配送し、Session 内の意味順序を守る仕組み。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
 
-関連 ADR: 0051 (現行 outbox・順序・claim fencing) / 0042 (retention) / 0043 (observability metrics) / 0047 (DB-driven scheduler) / 0035 (superseded origin)
+設計正本: `docs/db-rule.md`。scheduler との接続は `docs/architecture.md`。
 関連定数 SSoT: `src/config.ts` (定数名のみ参照、実値は SSoT 側で確認)
 
-## 観測値 (ADR-0043)
+## 観測値
 
 `scheduler_supervisor` tick 内で `event=outbox.metrics` として出力される構造化ログ。頻度は `CRON_SCHEDULER_SUPERVISOR_SCHEDULE` を確認する。
 
@@ -58,7 +58,7 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 
 **SOP**: pending depth と同じ flow。一行だけ古い場合は、payload 不正または FAILED 先行 intent による順序 block を構造化ログで特定する。
 
-## Retention (ADR-0042)
+## Retention
 
 専用 cron `outbox_retention` (`CRON_OUTBOX_RETENTION_SCHEDULE`) が以下を prune:
 

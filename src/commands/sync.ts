@@ -26,7 +26,7 @@ const run = async (): Promise<void> => {
   const rest = new REST({ version: "10" }).setToken(env.DISCORD_TOKEN);
 
   // why: guild-scoped bulk overwrite で冪等に同期する。global 登録は伝播に最大 1 時間かかるため使わない。
-  // @see docs/adr/0004-discord-interaction-architecture.md
+  // @see docs/discord-rule.md
   await rest.put(
     Routes.applicationGuildCommands(applicationId, appConfig.discord.guildId),
     { body: slashCommands }

@@ -1,6 +1,6 @@
 // why: custom_id の 3-segment codec と slot の wire 表現（lowercase）をここで所有する。
 //   SlotKey の意味論は src/slot.ts、DB は SlotKey を verbatim 保存するため DB 側の wire 変換は不要。
-// @see docs/adr/0016-customid-codec-hmac-rejected.md
+// @see docs/discord-rule.md
 import { z } from "zod";
 import type { SlotKey } from "../../slot.ts";
 
@@ -69,7 +69,6 @@ export const buildCustomId = (spec: CustomIdSpec): string =>
 
 // why: cancel_week は session を持たない独立フロー。nonce で stale dialog を識別し、
 //   ask/postpone codec と衝突させないため別 schema にする。
-// @see docs/adr/0023-cancel-week-command-flow.md
 const cancelWeekCustomIdSpecSchema = z.object({
   kind: z.literal("cancel_week"),
   nonce: z.uuid(),

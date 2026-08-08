@@ -5,11 +5,11 @@ drizzle-kit を用いた schema migration の生成・適用・ロールバッ�
 > **重要**: schema 定義・migration ファイル・drizzle.config.ts は `../momo-db` リポジトリで管理する。
 > summit の `src/db/schema.ts` は `momo-db` の re-export shim になった。
 
-関連 ADR: 0008 (Drizzle 採用) / 0049 (momo-db 分離)。
+設計正本: `docs/db-rule.md`。schema と migration 履歴の正本は `../momo-db`。
 
 ## 原則 (常時ルール再掲)
 
-- migration は `drizzle-kit generate` + `drizzle-kit migrate` のみ。**`drizzle-kit push` は禁止** (`.github/instructions/db-review.instructions.md`)。
+- migration は `drizzle-kit generate` + `drizzle-kit migrate` のみ。**`drizzle-kit push` は禁止**。設計契約は `docs/db-rule.md` を参照する。
 - `DIRECT_URL` は momo-db の `drizzle.config.ts` 専用 (アプリ code から参照禁止)。
 - 金 17:30〜土 01:00 JST は migration 禁止 (AGENTS.md deploy 禁止窓)。
 - `momo-db` CI の `db:check` ジョブで migration 履歴の整合性を自動検出する。
@@ -42,7 +42,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
 ### Fail-closed preflight を持つ migration
 
-Session aggregate / ordered outbox migration は、重複 dedupe key と未対応 outbox kind を検出すると transaction を中断する。旧 reminder claim marker は監査値を保持したまま migration を通し、アプリ側の outbox recovery で再配送する（ADR-0054）。
+Session aggregate / ordered outbox migration は、重複 dedupe key と未対応 outbox kind を検出すると transaction を中断する。旧 reminder claim marker は監査値を保持したまま migration を通し、アプリ側の outbox recovery で再配送する。
 
 - dedupe key / outbox kind の guard を削除・迂回して再実行しない。
 - 対象行を read-only query で特定し、backup を確認する。
@@ -65,7 +65,7 @@ cd ../momo-db
 pnpm db:migrate  # momo-db の .env.local から DIRECT_URL を読む
 ```
 
-**禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (AGENTS.md `prohibited_actions`)。
+**禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`AGENTS.md` §2)。
 
 ## ローカル開発 (setup 経由)
 
@@ -104,15 +104,14 @@ drizzle-kit は **down migration を自動生成しない**。ロールバック
 
 **SOP**:
 
-1. **焦らない**。Fly.toml に `release_command` はないため migration 失敗で deploy は止まらないが、schema 不整合が残る
-2. Neon dashboard で schema 実体と `__drizzle_migrations` の状態を確認
-3. 中断地点が明確なら:
-   - 中断より前の部分のみが適用された → 残りの SQL を手動で流す (Neon SQL Editor) → `__drizzle_migrations` に該当行を手 INSERT して整合を取る
-   - 中断より後の部分まで壊れている → Neon PITR で migration 直前に戻し、migration を修正して再度 `pnpm db:migrate`
-4. 整合後、`pnpm db:check` で確認 (momo-db で)
-5. 事後に ADR 候補として経緯を記録 (AGENTS.md ADR プロトコル)
+1. **焦らない**。application deploy を止め、失敗した migration をその場で再実行しない
+2. Neon dashboard の read-only inspection で schema 実体と `__drizzle_migrations` の状態を確認する
+3. transaction が rollback 済みなら、momo-db で migration を修正し、local DB と CI で再検証してから通常手順で適用する
+4. 部分適用や data loss が疑われる場合は、手動 SQL や `__drizzle_migrations` への手 INSERT を行わず、[backup.md](./backup.md) の PITR で新 branch へ復元する。前進修復が必要なら、momo-db の review 済み追加 migration として作成する
+5. 整合後、momo-db の `pnpm db:check`、Summit integration test、`/status`、構造化ログを確認する
+6. 事後に PR または incident 記録へ原因と再発防止を残す。設計不変条件や SOP が変わる場合は `docs/db-rule.md` と本書を同時に更新する
 
-**原則**: 本番 migration 失敗は **事故案件**。事後に必ず ADR か PR 説明で再発防止を記録する。
+**原則**: 本番 migration 失敗は **事故案件**。復旧のためでも production DB の手動 mutation を行わない。
 
 ## CI での検査
 

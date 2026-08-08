@@ -62,7 +62,7 @@ const buildAskContent = (vm: AskMessageViewModel): string => {
   );
 
   // why: suppressMentions=true のとき mention 行を行ごと除去する（`filter(Boolean)` だと後続の
-  //   意図した空行まで潰れるため条件付き push で組み立てる）。@see ADR-0011
+  //   意図した空行まで潰れるため条件付き push で組み立てる）。
   const lines: string[] = [];
   if (!vm.suppressMentions) {
     const mentions = vm.memberUserIds.map((userId) => `<@${userId}>`).join(" ");

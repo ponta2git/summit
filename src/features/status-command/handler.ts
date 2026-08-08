@@ -103,7 +103,6 @@ const replyStatusError = async (
  * @remarks
  * 非終端セッションを DB から読み上げ ephemeral で状態サマリを返す。
  * ack: 複数 DB read が 3 秒を超えうるため deferReply。
- * @see ADR-0032 ADR-0041
  */
 export const handleStatusCommand = async (
   interaction: ChatInputCommandInteraction,

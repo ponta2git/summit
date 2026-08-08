@@ -1,6 +1,6 @@
 // source-of-truth: sessions repository の barrel。public API のみ named re-export。
 // 内部 helper (sessions.internal) は外部に露出しない。
-// @see ADR-0051
+// @see docs/db-rule.md
 
 export type {
   CreateAskSessionInput

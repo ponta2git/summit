@@ -129,7 +129,7 @@ export const buildSettleNoticeViewModel = (
 
 export const renderSettleNotice = (vm: SettleNoticeViewModel): { content: string } => {
   // why: suppressMentions=true のとき mention 行を省く。単純連結だと先頭改行が残るため空文字を
-  //   `filter` で除いてから join する。@see ADR-0011
+  //   `filter` で除いてから join する。
   const lines = [
     vm.suppressMentions ? "" : vm.memberUserIds.map((id) => `<@${id}>`).join(" "),
     vm.cancelText

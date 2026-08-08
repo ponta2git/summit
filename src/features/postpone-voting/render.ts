@@ -49,7 +49,7 @@ export const renderPostponeBody = (
           .join("\n")
       : "";
 
-  // why: filter(Boolean) だと意図した空行まで消えるため条件付き push で mention 行を制御する @see ADR-0011
+  // why: filter(Boolean) だと意図した空行まで消えるため条件付き push で mention 行を制御する。
   const lines: string[] = [];
   if (!vm.suppressMentions) {
     lines.push(vm.memberUserIds.map((id) => `<@${id}>`).join(" "));

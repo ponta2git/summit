@@ -1,7 +1,7 @@
 // source-of-truth: HeldEvent (実開催履歴) 集約ルート。
 //   DECIDED→COMPLETED CAS と HeldEvent 挿入を **単一 tx** で行う。COMPLETED は終端で起動時リカバリが
 //   拾わないため、別 tx にすると「COMPLETED なのに HeldEvent 無し」の永続不整合が残る。
-// @see requirements/base.md §8.3, §8.4, ADR-0031
+// @see requirements/base.md §8.3, §8.4
 
 import { randomUUID } from "node:crypto";
 
@@ -62,7 +62,6 @@ export interface CompleteDecidedSessionAsHeldResult {
  *   呼び出し側の入力を信用すると session と不整合な HeldEvent を作り得る。
  * idempotent: `held_events.session_id` unique + `onConflictDoNothing` で二重挿入防止。
  *   participants も複合 PK 衝突で no-op。
- * @see ADR-0031
  */
 export const completeDecidedSessionAsHeld = async (
   db: DbLike,

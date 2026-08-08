@@ -1,5 +1,5 @@
 // source-of-truth: reconciler public surface。実装 helper は各 submodule に閉じる。
-// @see ADR-0039
+// @see docs/architecture.md
 
 export type { ReconcileReport, ReconcileScope } from "./reconciler.types.ts";
 

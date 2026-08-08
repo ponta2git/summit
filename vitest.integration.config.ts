@@ -11,7 +11,7 @@ if (!process.env.SUMMIT_CONFIG_YAML) {
 // invariant: 統合テストは実 DB (localhost 想定) を前提にする。
 //   vitest.config.ts のようなダミー DATABASE_URL 注入は行わない。
 //   test 側の `INTEGRATION_DB=1` gate と localhost guard で二重防御する。
-// @see docs/adr/0003-postgres-drizzle-operations.md
+// @see docs/db-rule.md
 
 export default defineConfig({
   test: {

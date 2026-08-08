@@ -1,6 +1,6 @@
 // Scheduler entry: register all cron tasks once per process (Fly single-instance).
 // Each tick is wrapped by `runTickSafely` for failure isolation; literal schedules
-// live in src/config.ts (CRON_*). @see ADR-0001, ADR-0007, ADR-0051.
+// live in src/config.ts (CRON_*). @see docs/architecture.md
 
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
@@ -130,7 +130,6 @@ export const runDeadlineTick = (
  * @remarks
  * source-of-truth: DB から期限切れセッションを再計算して処理する。
  * idempotent: settlePostponeVotingSession は内部 CAS で重複呼び出し安全。
- * @see ADR-0001
  */
 export const runPostponeDeadlineTick = (
   client: Client,
@@ -157,7 +156,6 @@ export const runPostponeDeadlineTick = (
  * @remarks
  * source-of-truth: reminder intent を outbox に積み、配送成功後に DECIDED→COMPLETED へ遷移する。
  * 送信失敗時は outbox backoff で再試行する。
- * @see ADR-0051
  */
 export const runReminderTick = (
   client: Client,
@@ -191,7 +189,6 @@ export const runReminderTick = (
  * source-of-truth: 各 tick は DB から再計算する。in-memory 状態に依存しない。
  * idempotent: `noOverlap: true` で次 tick が現 tick と重なった場合は後続をスキップする。
  * 戻り値は shutdown 時に `stop()` で cron と in-memory timer をまとめて停止する。
- * @see ADR-0001
  */
 export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   const { context, client } = deps;
@@ -208,7 +205,6 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
 
   // why: 新 feature の tick 追加箇所を registry に集約する。cron 式と JST 前提は src/config.ts の CRON_* に集約。
   const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
-    // @see ADR-0007
     {
       schedule: CRON_ASK_SCHEDULE,
       tick: () =>
@@ -218,7 +214,6 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
           () => controller.wake("ask_dispatch")
         )
     },
-    // @see ADR-0042
     {
       schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
       tick: () =>
@@ -227,7 +222,6 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
           () => runOutboxRetentionTick(context)
         )
     },
-    // @see ADR-0047
     {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       tick: () =>

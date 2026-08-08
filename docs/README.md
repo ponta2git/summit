@@ -37,6 +37,17 @@ Summit の現行仕様と設計を、必要な範囲だけ安全に読むため�
 | `src/config.ts`, `src/env.ts`, `src/userConfig.ts`, `src/time/` | 実行される設定値・parse・時刻計算 | 判断の長い説明 |
 | `../momo-db/src/schema.ts`, `../momo-db/drizzle/` | 共有 schema と migration 履歴 | Summit 固有の workflow |
 
+### Agent adapter
+
+`AGENTS.md`をagent protocolの唯一の論理正本とする。toolごとの入口は内容を独自管理せず、次のthin adapterだけを置く。
+
+- `CLAUDE.md`は`@AGENTS.md`だけをimportする。
+- `.github/copilot-instructions.md`は`AGENTS.md`の生成mirrorとする。GitHub Copilotの一部surfaceが専用fileだけを読むため、削除せず自動同期する。
+- `AGENTS.md`を変えたら`pnpm docs:sync-agent`を実行し、`pnpm verify:docs`で完全一致を確認する。
+- 新しいagent tool向け入口が必要になっても、独立した規則集を増やさず、importまたは決定論的生成で接続する。
+
+adapterは配送形式であり正本ではない。生成fileを直接編集した差分はCIでrejectする。
+
 ## 3. 正本の判定
 
 単一の「常にコードが最優先」という規則は使わない。情報の種類で正本を決める。

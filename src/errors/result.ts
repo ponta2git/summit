@@ -27,7 +27,7 @@ export const fromDatabaseCall = <T>(
 ): ResultAsync<T, DatabaseError> =>
   ResultAsync.fromThrowable(call, (cause) => new DatabaseError(message, { cause }))();
 
-// why: Discord API 失敗を DB 失敗と同格の AppError に揃える → ADR-0015
+// why: Discord API 失敗を DB 失敗と同じ AppError 境界に揃える。
 export const fromDiscordPromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DiscordApiError> =>
   ResultAsync.fromPromise(promise, (cause) => new DiscordApiError(message, { cause }));
 

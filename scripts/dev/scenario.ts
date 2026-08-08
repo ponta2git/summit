@@ -2,7 +2,7 @@
 //   業務仕様の週次 cron (金 21:30 / 土 00:00) を待たず、DB を直接操作して締切を巻き戻し、
 //   bot 再起動時の startup recovery 経由で settle を発火させる。
 // invariant: localhost 限定ガードを reset.ts と同じロジックで適用する。
-// @see AGENTS.md "開発中の DB 操作 (ローカル限定)"
+// @see docs/dev-rule.md
 // @see scripts/dev/reset.ts
 process.env["TZ"] = "Asia/Tokyo";
 

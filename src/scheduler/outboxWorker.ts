@@ -26,7 +26,6 @@ import type { SchedulerResult } from "./scheduler.types.ts";
  * @remarks
  * state: `attemptCount >= OUTBOX_MAX_ATTEMPTS` で `null` を返し dead letter (FAILED)。
  * `attemptCount` は claim で +1 された後の値。
- * @see ADR-0051
  */
 export const computeOutboxBackoff = (
   attemptCount: number,
@@ -197,7 +196,6 @@ const deliverOne = async (
  *
  * @remarks
  * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runResultTickSafely`) が閉じ込める。
- * @see ADR-0051
  */
 export const runOutboxWorkerTick = (
   client: Client,

@@ -28,7 +28,6 @@ export interface PostponeMessageViewModel {
  * @remarks
  * Pure. memberRows 省略時は memberStatuses=[]（初期投稿互換）。指定時は user config の member 順で
  * 各メンバーの最新 response を反映。
- * @see ADR-0014
  */
 export const buildPostponeMessageViewModel = (
   session: Pick<ViewModelSessionInput, "id" | "candidateDateIso">,

@@ -1,6 +1,6 @@
 # Secrets Rotation
 
-Fly secrets として管理される秘匿値の rotation 手順と影響範囲。関連 instruction: `.github/instructions/secrets-review.instructions.md`。
+Fly secrets として管理される秘匿値の rotation 手順と影響範囲。安全境界は `AGENTS.md`、設定と logging の設計は `docs/architecture.md` を参照する。
 
 ## 対象 secrets
 
@@ -14,10 +14,10 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 
 ## 共通原則 (再掲)
 
-- 実値を **コード / fixture / ログ / PR / コミットに載せない** (`.github/instructions/secrets-review.instructions.md`)
+- 実値を **コード / fixture / ログ / PR / コミットに載せない**
 - commit 可能な env は `.env.example` の placeholder のみ
 - `fly secrets unset` / 既存 secrets **上書きは不可逆変更** — ad-hoc 禁止、事前通知 + 停止窓外 + 手順書でのみ
-- ログに実値を出さないため `logger.redact` で token / 接続文字列 / `Authorization` を除去 (ADR / `src/logger.ts`)
+- ログに実値を出さないため `src/logger.ts` の redact で token / 接続文字列 / `Authorization` を除去
 
 ## rotation の基本手順
 
@@ -72,7 +72,7 @@ PR / ログ / commit に実値が混入してしまった場合:
    - Discord: Bot activity (不正 login / API call)
    - Neon: DB access log、不審クエリ有無
    - Fly: `fly logs` で不審 deploy / SSH の有無
-4. 事後に PR 説明か ADR で経緯を記録 (AGENTS.md ADR プロトコル)
+4. 事後に incident 記録または PR 説明へ経緯と再発防止を残す。設計不変条件や SOP が変わる場合は対応する living document と本書を更新する
 
 ## 禁止窓
 

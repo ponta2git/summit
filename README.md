@@ -99,23 +99,20 @@ Discord token、DB URL の実値は commit しないでください。
 | `pnpm test:integration` | DB 統合テスト |
 | `pnpm run ci` | 主要な CI 検証を直列実行 |
 | `pnpm db:seed` | 設定からローカル members を seed |
-| `pnpm db:reset` | ローカル sessions / responses をリセット |
+| `pnpm db:reset` | ローカルの週次 transient state をリセット |
 | `pnpm commands:sync` | guild-scoped slash commands を同期 |
 
 > スキーマ変更・migration は [`momo-db`](../momo-db/) リポジトリで管理します（`pnpm db:generate` / `pnpm db:migrate` / `pnpm db:check`）。`drizzle-kit push` は使いません。
 
 ## Development workflow（開発）
 
-PR 前は次の順で検証します。
+PR 前は統合品質ゲートを実行します。
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
+pnpm run ci
 ```
 
-運用ガード、migration、CI に触れた場合は `pnpm verify:forbidden` も確認します。
+DB 契約に触れた場合は、これに加えて local PostgreSQL を使う integration test と momo-db の check を実行します。
 
 ローカルで週次フローをやり直す場合は、専用コマンドで transient state をリセットします。
 
@@ -149,10 +146,10 @@ deploy 前の基本手順:
 | 知りたいこと | 入口 |
 |---|---|
 | 業務仕様・ユーザーに見える挙動 | [`requirements/base.md`](./requirements/base.md) |
+| 設計文書の選び方・正本の境界 | [`docs/README.md`](./docs/README.md) |
+| 現在の設計・領域別の実装規則 | [`docs/architecture.md`](./docs/architecture.md) と [`docs/*-rule.md`](./docs/) |
 | 運用・障害対応 | [`docs/operations/README.md`](./docs/operations/README.md) |
-| 設計判断・背景 | [`docs/adr/README.md`](./docs/adr/README.md) |
 | AI エージェント向け作業手順 | [`AGENTS.md`](./AGENTS.md) |
-| 領域別の実装規約 | [`.github/instructions/`](./.github/instructions/) |
 
 ## License
 

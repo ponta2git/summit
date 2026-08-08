@@ -1,4 +1,4 @@
-// why: outbox retention worker (ADR-0042) の prune 振る舞いを fake port 経由で検証する。
+// why: outbox retention worker の prune 振る舞いを fake port 経由で検証する。
 //   real repository は同 port 契約 (ports.ts) を満たすため、ここでのカバレッジが production 挙動の保証。
 
 import { describe, expect, it } from "vitest";

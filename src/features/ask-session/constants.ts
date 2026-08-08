@@ -1,4 +1,4 @@
-// why: ask-session 固有の UI cosmetic。@see ADR-0026
+// why: ask-session 固有の UI cosmetic。user-facing 文言とは所有者が異なる。
 //   user-facing 文言は src/messages.ts が担当。
 import { ButtonStyle } from "discord.js";
 import { SLOT_TO_LABEL, type SlotKey } from "../../slot.ts";

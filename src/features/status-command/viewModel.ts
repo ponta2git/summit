@@ -14,7 +14,7 @@ import {
   type InvariantWarning
 } from "./invariantChecks.ts";
 
-// jst: TZ=Asia/Tokyo 前提。date-fns format は getHours() 等を使うため TZ が反映される @see ADR-0002
+// jst: TZ=Asia/Tokyo 前提。date-fns format は getHours() 等を使うため TZ が反映される。
 const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");
 const fmtJstFull = (d: Date): string => format(d, "yyyy-MM-dd HH:mm");
 

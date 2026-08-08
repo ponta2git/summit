@@ -1,6 +1,6 @@
 # Scheduler Operations
 
-Summit は Fly の Bot process を常時起動し、Neon DB への idle polling を抑えるため DB-driven scheduler controller を使う (ADR-0047)。
+Summit は Fly の Bot process を常時起動し、Neon DB への idle polling を抑えるため DB-driven scheduler controller を使う。設計正本は `docs/architecture.md`。
 
 関連定数 SSoT: `src/config.ts`。本 runbook では実値を書き写さず、定数名のみ参照する。
 

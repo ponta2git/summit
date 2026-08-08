@@ -30,7 +30,7 @@ registerInteractionHandlers(client, appContext, {
 
 // race: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
 //   auto-start するため、top-level 生成すると startup recovery と reminder tick が並行し
-//   recovery と scheduler の重複 enqueue を増やす → ADR-0051
+//   recovery と scheduler の重複 enqueue を増やす。
 let scheduler: AppScheduler | undefined;
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
@@ -66,7 +66,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 // why: 起動フェーズごとの構造化ログで「どこで止まったか」を診断可能にする。bootId はプロセス単位。
-// @see ADR-0051
 const bootId = randomUUID();
 const bootStartedAt = Date.now();
 const logBootPhase = createBootPhaseLogger(bootId, bootStartedAt);
@@ -95,7 +94,7 @@ const run = async (): Promise<void> => {
 
   attachRateLimitLogging(client);
 
-  // why: 本番 invariant (OFF) を覆している状態を起動時 1 回だけ warn で明示する → ADR-0011
+  // why: 本番 invariant (OFF) を覆している状態を起動時 1 回だけ warn で明示する。
   if (appConfig.dev.suppressMentions) {
     logger.warn(
       { devMentionSuppression: true, mentionSuppression: "client-default" },
@@ -104,7 +103,6 @@ const run = async (): Promise<void> => {
   }
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
-  // @see ADR-0051
   const report = await unwrapResultAsync(runReconciler(client, appContext, { scope: "startup" }));
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,

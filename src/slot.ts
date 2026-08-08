@@ -4,7 +4,7 @@ import { appConfig } from "./userConfig.ts";
 
 // source-of-truth: SlotKey は DB enum 値・time 計算・UI ラベル・customId wire が参照する正典。
 //   customId の wire 表現は src/discord/shared/customId.ts。DB は SlotKey を verbatim に保存。
-// @see ADR-0026
+// @see docs/discord-rule.md
 
 export type SlotKey = "T2200" | "T2230" | "T2300" | "T2330";
 

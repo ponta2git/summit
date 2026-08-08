@@ -101,7 +101,7 @@ const handleButton = async (
  * Dispatch a Discord interaction to its registered feature handler.
  *
  * @remarks
- * registry-driven。新 feature 追加時にこの関数の編集は不要 (ADR-0041)。
+ * registry-driven。新 feature 追加時にこの関数の編集は不要。
  * registry を DI 可能にしてあり、テストでは差し替え可能。
  */
 export const handleInteraction = async (

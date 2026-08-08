@@ -1,5 +1,4 @@
 // source-of-truth: sessions repository の公開 input 型。
-// @see ADR-0051
 
 import type { EnqueueOutboxInput } from "./outbox.ts";
 

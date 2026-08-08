@@ -12,7 +12,7 @@ import { asDiscordClient } from "../../helpers/discord.js";
 import { buildSessionRow } from "../factories/session.js";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
-// why: render は pure builder (ADR-0028) なので stub 不要。Fake ports の state と outbox entries を直接検証する。
+// why: render は pure builder なので stub 不要。Fake ports の state と outbox entries を直接検証する。
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index}`,
   userId,

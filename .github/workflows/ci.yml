@@ -67,6 +67,10 @@ jobs:
         run: pnpm build
         working-directory: summit
 
+      - name: Documentation topology
+        run: pnpm verify:docs
+        working-directory: summit
+
       - name: Forbidden patterns
         run: pnpm verify:forbidden
         working-directory: summit

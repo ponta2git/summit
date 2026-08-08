@@ -68,7 +68,7 @@ export const computeMemberReconcilePlan = (
  * @remarks
  * user config は identity (userId) の SSoT、DB は display_name の正本。config から消えた行は DELETE しない
  * （履歴保全）。起動時に cron 登録・login より前に呼び、失敗時は起動中止。
- * @see ADR-0012
+ * @see docs/architecture.md
  */
 export const reconcileMembers = async (
   memberInputs: ReadonlyArray<MemberReconcileInput>,

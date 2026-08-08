@@ -3,7 +3,7 @@ import { RESTEvents, type Client } from "discord.js";
 import { logger } from "../logger.ts";
 
 export const attachRateLimitLogging = (client: Client): void => {
-  // why: 429 の route/retryAfter を観測するため購読 → ADR-0019 (M11)
+  // why: 429 の route と retryAfter を構造化ログで観測するため購読する。
   client.rest.on(RESTEvents.RateLimited, (info) => {
     try {
       logger.warn(

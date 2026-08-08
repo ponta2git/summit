@@ -40,7 +40,7 @@ export const isoWeekKey = (value: Date): string => {
 };
 
 // why: 送信時点の now をそのまま候補日とする恒等関数。日付境界を跨ぐ操作が必要になった場合のみ拡張。
-// @see ADR-0007
+// @see docs/time-rule.md
 export const candidateDateForAsk = (now: Date): Date => now;
 
 export const formatCandidateJa = (value: Date): string =>

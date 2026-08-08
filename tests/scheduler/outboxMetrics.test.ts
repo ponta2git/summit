@@ -1,4 +1,4 @@
-// why: outbox observability metrics (ADR-0043) の depth/age snapshot と warn 昇格条件を fake port 経由で検証。
+// why: outbox observability metrics の depth/age snapshot と warn 昇格条件を fake port 経由で検証。
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -78,7 +78,7 @@ describe("runOutboxMetricsTick", () => {
     });
   });
 
-  // invariant: failed > 0 のみで warn に昇格する (ADR-0043)。
+  // invariant: failed > 0 のみで warn に昇格する。
   it("escalates to warn when any FAILED row is present", async () => {
     const session = buildSessionRow({ id: "sm2" });
     const now = new Date("2026-04-25T01:00:00Z");

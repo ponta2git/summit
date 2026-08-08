@@ -15,7 +15,7 @@ interface SessionInvariant {
 
 const shortId = (id: string): string => id.slice(0, 8);
 
-// invariant: 新規 invariant の追加は SESSION_INVARIANTS に 1 行加えるだけで collectInvariantWarnings に伝播する @see ADR-0051
+// invariant: 新規 invariant の追加は SESSION_INVARIANTS に 1 行加えるだけで collectInvariantWarnings に伝播する。
 const SESSION_INVARIANTS = {
   askingPastDeadline: {
     kind: "asking_past_deadline",
@@ -58,8 +58,6 @@ const evaluate = (
  *
  * @remarks
  * CANCELLED は短命中間状態。警告が返る場合は reconciler 未稼働を示す。
- * @see ADR-0001
- * @see ADR-0051
  */
 export const checkStrandedCancelledSessions = (
   strandedSessions: readonly SessionRow[]
@@ -78,7 +76,6 @@ export const checkStrandedCancelledSessions = (
  * @remarks
  * attempt_count が `OUTBOX_STRANDED_ATTEMPTS_THRESHOLD` を超えた行や FAILED 行は運用介入が必要。
  * 最古 entry の dedupeKey を含め一次切り分けを容易にする。
- * @see ADR-0051
  */
 export const checkStrandedOutboxEntries = (
   entries: readonly OutboxEntry[]

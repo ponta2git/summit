@@ -1,5 +1,5 @@
 // why: composition root。AppContext を受け取る factory は、ここ以外から依存を解決しない。
-// @see ADR-0018
+// @see docs/architecture.md
 
 import { db as defaultDb } from "./db/client.ts";
 import type { AppPorts } from "./db/ports.ts";

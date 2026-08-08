@@ -7,7 +7,7 @@ import { logger } from "../../logger.ts";
 import { appConfig } from "../../userConfig.ts";
 import { reminderMessages } from "./messages.ts";
 
-// jst: TZ=Asia/Tokyo 前提で getHours() は JST を返す @see ADR-0002
+// jst: TZ=Asia/Tokyo 前提で getHours() は JST を返す。
 const formatJstHhmm = (instant: Date): string => {
   const hh = String(instant.getHours()).padStart(2, "0");
   const mm = String(instant.getMinutes()).padStart(2, "0");
@@ -33,7 +33,7 @@ const extractHeldParticipantMemberIds = (
 
 export const buildReminderContent = (startAt: Date): string => {
   const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });
-  // why: dev.suppressMentions=true なら mention 行を省く @see ADR-0011
+  // why: dev.suppressMentions=true なら mention 行を省く。
   if (appConfig.dev.suppressMentions) {
     return body;
   }
@@ -60,7 +60,7 @@ const completeAfterReminder = async (
 
   // tx: DECIDED→COMPLETED CAS と HeldEvent/participants 挿入を単一 tx にまとめ、
   //   「COMPLETED なのに HeldEvent 無し」の永続不整合を避ける。COMPLETED は終端で
-  //   起動時リカバリが拾わないため、別 tx だと失敗時に自然回復しない @see ADR-0031
+  //   起動時リカバリが拾わないため、別 tx だと失敗時に自然回復しない。
   const completed = await ctx.ports.heldEvents.completeDecidedSessionAsHeld({
     sessionId: session.id,
     reminderSentAt: now,
@@ -112,7 +112,6 @@ export const completeReminderDelivery = async (
  * worker は Discord 投稿後、claim を DELIVERED にする前に DECIDED→COMPLETED と
  * HeldEvent 作成を同一 transaction で確定する。crash 時は重複を許して欠落を防ぐ。
  * @see requirements/base.md §5.2, §9.1
- * @see ADR-0051
  */
 export const sendReminderForSession = async (
   _client: Client,

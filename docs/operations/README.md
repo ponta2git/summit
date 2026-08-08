@@ -2,24 +2,25 @@
 
 Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rotation / backup / 時刻 skew 等の SOP を集約する。AI/人間どちらも `症状 → 該当 SOP` で逆引きできることを目的とする。
 
-仕様 (`requirements/base.md`)・常時ルール (`AGENTS.md` / `.github/copilot-instructions.md`)・判断根拠 (`docs/adr/`) との関係は次の通り:
+仕様・設計・AI の入口との関係は次の通り:
 
 - **What**: `requirements/base.md`
-- **Why**: `docs/adr/`
+- **Why / design contract**: `docs/architecture.md` と `docs/*-rule.md`
 - **How (運用)**: 本ディレクトリ ← ここ
-- **How (実装)**: `.github/instructions/*.md`
+- **How (実装)**: production code と test。探索入口は `docs/README.md`
+- **AI protocol**: `AGENTS.md`
 
 ## 構成
 
-| ファイル | 主題 | 主な参照 ADR |
+| ファイル | 主題 | 設計正本 |
 |---|---|---|
-| [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | 0001, 0033, 0035, 0051 |
-| [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | 0047 |
-| [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | 0035, 0042, 0043, 0051 |
-| [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | 0044 |
-| [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | 0008, 0019 |
-| [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | 0008 |
-| [secrets-rotation.md](./secrets-rotation.md) | Fly secrets 更新時の手順と影響範囲 | (env / secrets-review) |
+| [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | `docs/architecture.md`, `docs/db-rule.md` |
+| [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | `docs/architecture.md` |
+| [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | `docs/db-rule.md` |
+| [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | `docs/time-rule.md` |
+| [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | `docs/db-rule.md` |
+| [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | `docs/db-rule.md` |
+| [secrets-rotation.md](./secrets-rotation.md) | Fly secrets 更新時の手順と影響範囲 | `AGENTS.md`, `docs/architecture.md` |
 
 ## 症状逆引き
 
@@ -37,15 +38,15 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 
 ## 共通原則 (再掲)
 
-1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない (ADR-0001)。
-2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は AGENTS.md `prohibited_actions` で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
+1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない。
+2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は `AGENTS.md` §2 で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
 3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない (AGENTS.md)。
-4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない (ADR-0001, ADR-0051)。
-5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可 (`.github/instructions/secrets-review.instructions.md`)。
+4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない。
+5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可。
 
 ## 連絡先 / 監視
 
-- 運用観測: 構造化ログと `/status`。外部pingはアプリから送信しない (ADR-0052)
+- 運用観測: 構造化ログと `/status`。外部pingはアプリから送信しない
 - ログ: `fly logs -a summit-momotetsu` (構造化 JSON、`event` で grep)
 - DB console: Neon dashboard
 - Discord guild / channel: `SUMMIT_CONFIG_YAML` (from `summit.config.production.yml`)

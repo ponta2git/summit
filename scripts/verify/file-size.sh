@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Warn on TypeScript source files exceeding the soft split threshold.
 #
-# Rationale: AGENTS.md instructs "300 行超で分割検討" (cohesion reminder).
+# Rationale: docs/dev-rule.md defines the 300-line cohesion review threshold.
 # This script is advisory — it emits warnings so that drift toward very large
 # files stays visible in CI output without blocking progress. Never exits
 # non-zero on threshold violations (reviewers decide when a split is worth it).
@@ -28,4 +28,3 @@ done < <(find src tests -type f -name '*.ts' -not -path '*/node_modules/*' -not 
 echo "--- summary ---"
 echo "warn (>${WARN_LINES}): ${warn_count}"
 echo "✅ file-size: advisory only (never fails)"
-

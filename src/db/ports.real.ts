@@ -1,5 +1,5 @@
 // source-of-truth: 契約は src/db/ports.ts、実装は src/db/repositories/*.ts。本ファイルは thin glue。
-// @see ADR-0018
+// @see docs/architecture.md
 
 import type { DbLike } from "./rows.ts";
 import {

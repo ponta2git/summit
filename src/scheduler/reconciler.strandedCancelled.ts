@@ -17,10 +17,9 @@ import {
  * Invariant A: Promote stranded CANCELLED sessions to their next canonical state.
  *
  * @remarks
- * state: CANCELLED は短命中間状態 (ADR-0001)。crash 等で宙づり行が残った場合に収束させる。
+ * state: CANCELLED は短命中間状態。crash 等で宙づり行が残った場合に収束させる。
  * 土曜 (postponeCount=1) は COMPLETED、金曜は順延期限前なら POSTPONE_VOTING、期限後は COMPLETED。
  * CANCELLED→SKIPPED は許可遷移に無いため終端は COMPLETED を採用する。
- * @see ADR-0051
  */
 export const reconcileStrandedCancelled = (
   client: Client,

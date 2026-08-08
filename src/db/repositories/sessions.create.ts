@@ -1,5 +1,4 @@
 // source-of-truth: sessions repository の生成・message id 書き戻し。
-// @see ADR-0051
 
 import { randomUUID } from "node:crypto";
 
@@ -84,7 +83,6 @@ export const updatePostponeMessageId = async (
  * @remarks
  * idempotent: outbox 配送成功後に呼ばれる。expired claim の競合配送や recovery が別 id を
  *   セット済みなら上書きせず、canonical message の drift を防ぐ。CAS 勝で `true`。
- * @see ADR-0051
  */
 export const backfillAskMessageId = async (
   db: DbLike,

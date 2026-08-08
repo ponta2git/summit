@@ -12,11 +12,14 @@
 
 ## リスク
 
+## 更新した仕様・設計文書
+
 ## チェックリスト
+
 - [ ] deploy 禁止窓（金 17:30〜土 01:00 JST）外での運用を確認した
 - [ ] 秘匿値（token / DATABASE_URL / DIRECT_URL）を混入していない
 - [ ] `drizzle-kit push` を使用していない（generate + migrate のみ）
-- [ ] `TODO(ai): spec clarification needed - ...` の残置有無を明示した
-- [ ] `requirements/base.md` の該当 § を本文に明記した
-- [ ] `pnpm verify:forbidden` が pass した
-- [ ] `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` が pass した
+- [ ] `todo(ai): spec clarification needed - ...` の残置有無を明示した
+- [ ] 変更対象の正本文書を確認し、必要なものを同じ PR で更新した
+- [ ] `git diff --check` が pass した
+- [ ] `pnpm run ci` が pass した

@@ -44,7 +44,6 @@ export interface PruneOutboxResult {
  *   実装は status 別に DELETE を分け、混在不可能にする。CANCELLED は失敗系と同じ
  *   retention window を使い、先行 intent の dead-letter 後も監査期間を確保する。
  * idempotent: 削除のみで状態遷移なし。同一 tick の重複呼び出しに安全。
- * @see ADR-0042
  */
 export const pruneOutbox = async (
   db: DbLike,
@@ -100,7 +99,6 @@ export interface OutboxMetricsResult {
  *
  * @remarks
  * idempotent: read-only snapshot。observability 用途で同一 tick の重複呼び出しに副作用なし。
- * @see ADR-0043
  */
 export const getOutboxMetrics = async (
   db: DbLike,

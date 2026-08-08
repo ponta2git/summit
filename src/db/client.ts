@@ -14,7 +14,7 @@ import * as schema from "./schema.ts";
  * why: `connect_timeout` は接続不良時のハングを抑え、`idle_timeout` / `max_lifetime` で stale
  *   接続を定期更新。`max` は単一インスタンス + cron + interaction の並走上限に十分で pooler への
  *   過剰接続を避ける閾値。
- * @see ADR-0003
+ * @see docs/db-rule.md
  */
 const client = postgres(env.DATABASE_URL, {
   connect_timeout: 10,

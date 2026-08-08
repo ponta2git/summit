@@ -24,7 +24,7 @@ import {
 } from "../../errors/index.ts";
 import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
 
-// why: /cancel_week は破壊的なので confirmation 必須。nonce を invocation ごとに発行し stale dialog 踏み直しを判別 @see ADR-0023
+// why: /cancel_week は破壊的なので confirmation 必須。nonce を invocation ごとに発行し stale dialog 踏み直しを判別する。
 const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {
   const confirmButton = new ButtonBuilder()
     .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", nonce, choice: "confirm" }))

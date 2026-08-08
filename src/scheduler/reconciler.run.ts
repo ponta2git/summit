@@ -15,12 +15,10 @@ import type { SchedulerBatchReport, SchedulerResult } from "./scheduler.types.ts
  * Run all reconciliation invariants for the given scope.
  *
  * @remarks
- * idempotent: いずれの scope も DB を正本として冪等に収束させる (ADR-0001)。
+ * idempotent: いずれの scope も DB を正本として冪等に収束させる。
  * - `startup`: A〜C + F + invariant D (active probe)。
  * - `reconnect`: A〜C + F (D は毎再接続で fetch させないため除外)。
- *    in-flight lock / debounce は呼び出し側が保証する (ADR-0036)。
- * @see ADR-0051
- * @see ADR-0036
+ *    in-flight lock / debounce は呼び出し側が保証する。
  */
 export const runReconciler = (
   client: Client,

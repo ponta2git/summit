@@ -50,7 +50,6 @@ interface AskPipelineReady extends AskPipelineParsed {
 const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelineParsed, AppError> =>
   okResult(context)
     // invariant: cheap-first の検証順序を ask ハンドラ単体でも維持する。
-    //   @see .github/instructions/interaction-review.instructions.md
     .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
     .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
     .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))

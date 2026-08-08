@@ -1,5 +1,5 @@
 // why: AppPorts の domain fake を組み合わせ、production と同じ AppContext shape を作る。
-// @see docs/adr/0018-port-wiring-and-factory-injection.md
+// @see docs/test-rule.md
 
 import type {
   AppPorts,

@@ -2,7 +2,7 @@ import { appConfig } from "./userConfig.ts";
 
 type Hhmm = Readonly<{ hour: number; minute: number }>;
 
-// why: runtime tunables 集約 → ADR-0013
+// source-of-truth: runtime tuning の実行値をこの module に集約する。
 
 const parseHhmm = (value: string): Hhmm => {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
@@ -39,7 +39,7 @@ export const REMINDER_LEAD_MINUTES = -appConfig.schedule.reminderLeadMinutes;
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 // why: 1 分 tick 周期を超える tick を warn で早期検知し noOverlap の健全性を観測する。
 export const TICK_DURATION_WARN_MS = 10_000;
-// why: メンバー数 SSoT → ADR-0012。循環参照回避のため定義は env.ts、消費側は config 経由で import。
+// source-of-truth: メンバー数は env.ts で定義する。循環参照回避のため消費側は config 経由で import。
 export { MEMBER_COUNT_EXPECTED } from "./env.ts";
 
 // why: DB-driven scheduler supervisor is the fallback for missed wake/timer events.
@@ -66,16 +66,15 @@ export const OUTBOX_MAX_ATTEMPTS = 10 as const;
 // why: /status の invariant 警告で多重失敗疑いとして拾う閾値。
 export const OUTBOX_STRANDED_ATTEMPTS_THRESHOLD = 5 as const;
 // why: 終端行 (DELIVERED / FAILED) の retention。週次運用前提で DELIVERED は直近週の audit 用、
-//   FAILED は dead letter 調査用としてより長く保持する。@see ADR-0042
+//   FAILED は dead letter 調査用としてより長く保持する。
 export const OUTBOX_RETENTION_DELIVERED_MS = 7 * 24 * 60 * 60 * 1_000;
 export const OUTBOX_RETENTION_FAILED_MS = 30 * 24 * 60 * 60 * 1_000;
 // jst: オフピーク帯 (4:00 JST) で 1 日 1 回 prune。deploy 禁止窓 (金 17:30〜土 01:00 JST) と重ならない。
 export const CRON_OUTBOX_RETENTION_SCHEDULE = "0 4 * * *" as const;
 
-// why: outbox 観測メトリクスの warn 昇格しきい値。warn 条件は OR で評価される。@see ADR-0043
+// why: outbox 観測メトリクスの warn 昇格しきい値。warn 条件は OR で評価される。
 export const OUTBOX_METRICS_PENDING_WARN_DEPTH = 50 as const;
 export const OUTBOX_METRICS_PENDING_AGE_WARN_MS = 5 * 60 * 1_000;
 
 // why: shardReady 再接続時の replay debounce。in-flight lock + 時刻 debounce 併用。
-// @see ADR-0036
 export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;

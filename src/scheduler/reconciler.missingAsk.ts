@@ -11,7 +11,7 @@ const FRIDAY_JS_DAY = 5;
 
 // jst: Date#getDay/getHours は process.env.TZ=Asia/Tokyo 前提で JST を返す。
 // source-of-truth: 窓境界は src/config.ts の ASK_START_HHMM / ASK_DEADLINE_HHMM。
-// @see ADR-0002
+// @see docs/time-rule.md
 const isFridayAskWindow = (now: Date): boolean => {
   if (now.getDay() !== FRIDAY_JS_DAY) {return false;}
   const hour = now.getHours();
@@ -31,7 +31,6 @@ const isFridayAskWindow = (now: Date): boolean => {
  * @remarks
  * 金曜の ASK 窓 (src/config.ts ASK_START_HHMM / ASK_DEADLINE_HHMM) 内で
  * `(weekKey, postponeCount=0)` Session が無い場合のみ通常経路で作成する。窓外では no-op。
- * @see ADR-0051
  */
 export const reconcileMissingAsk = (
   ctx: AppContext

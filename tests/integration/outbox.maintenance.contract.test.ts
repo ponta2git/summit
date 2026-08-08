@@ -57,7 +57,7 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     });
   });
 
-  // invariant: DELIVERED / FAILED の期限切れだけを削除し、PENDING は保持する。@see ADR-0042
+  // invariant: DELIVERED / FAILED の期限切れだけを削除し、PENDING は保持する。
   it("pruneOutbox deletes only expired terminal rows", async () => {
     const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
     const recent = new Date("2026-04-23T00:00:00.000Z");
@@ -132,7 +132,7 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     expect(remainingIds).toStrictEqual(new Set([recentDeliveredId, pendingId]));
   });
 
-  // invariant: status 別件数と最古 age の基準列を固定する。@see ADR-0043
+  // invariant: status 別件数と最古 age の基準列を固定する。
   it("getOutboxMetrics reports exact non-delivered counts and ages", async () => {
     const now = new Date("2026-04-25T01:00:00.000Z");
     const oldPendingAt = new Date(now.getTime() - 10 * 60_000);

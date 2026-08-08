@@ -30,7 +30,6 @@ export interface SendAskMessageResult {
 // race: キーは `${weekKey}:${postponeCount}`。金 (0) / 土 (1) は別キーで独立に並走。
 // idempotent: ロック外でも `findSessionByWeekKeyAndPostponeCount` + unique で重複は防がれる。
 //   このマップは Discord API 呼び出し前の無駄な往復を省く最適化。
-// @see ADR-0001
 const inFlightSends = new Map<string, Promise<unknown>>();
 
 const withInFlight = <T>(
@@ -144,7 +143,6 @@ const doSendAskMessage = async (
  * @remarks
  * race / idempotent: in-flight マップ + DB の `(weekKey, postponeCount)` unique 制約の二段構えで
  *   cron × /ask の並走を吸収する。Session と outbox intent は同一 transaction で作成する。
- * @see ADR-0001
  */
 export const sendAskMessage = async (
   context: SendAskMessageContext

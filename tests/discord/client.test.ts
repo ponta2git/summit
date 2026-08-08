@@ -12,7 +12,6 @@ describe("createDiscordClient", () => {
   });
 
   // regression: dev.suppressMentions=false では Client-level allowedMentions が全抑止にならない。discord.js は未指定時の値に `{}`/`undefined` のぶれがあるため `parse !== []` だけを invariant として検証。
-  // @see ADR-0011
   it("does not suppress mentions when dev.suppressMentions is false", async () => {
     vi.stubEnv("SUMMIT_CONFIG_YAML", withSuppressMentions(false));
     vi.resetModules();

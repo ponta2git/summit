@@ -1,7 +1,7 @@
 // source-of-truth: DB 境界契約。repository 実装はここを `satisfies` し、テストは Fake で満たす。
 //   db ハンドルは port 実装が closure で保持し、call-site を db 非依存にする。
-//   Discord client は抽象化しない (ADR-0017, ADR-0026)。
-// @see ADR-0018
+//   Discord client は rich type を保つため抽象化しない。
+// @see docs/architecture.md
 
 import type {
   HeldEventParticipantRow,
@@ -81,7 +81,6 @@ export interface SchedulerSessionHints {
  * @remarks
  * Read models, initial creation, and Discord message-id maintenance only. Business
  * transitions belong to {@link SessionCommandsPort}, which owns aggregate locking.
- * @see ADR-0001, ADR-0051
  */
 export interface SessionsPort {
   createAskSession(input: CreateAskSessionInput): Promise<SessionRow | undefined>;
@@ -99,7 +98,6 @@ export interface SessionsPort {
    * Returns `true` on CAS win, `false` if another delivery or recovery path populated it.
    * An expired claimant and its replacement can both reach Discord, so this elects one
    * canonical message without overwriting it. Intent finalization is fenced separately.
-   * @see ADR-0051
    */
   backfillAskMessageId(id: string, messageId: string): Promise<boolean>;
   /**
@@ -117,8 +115,7 @@ export interface SessionsPort {
    * Returns sessions currently in `CANCELLED` status (startup reconciler target).
    *
    * @remarks
-   * `CANCELLED` は短命中間状態 (ADR-0001)。通常時は空。crash 由来の宙づり回収に使う。
-   * @see ADR-0051
+   * `CANCELLED` は短命中間状態。通常時は空。crash 由来の宙づり回収に使う。
    */
   findStrandedCancelledSessions(): Promise<readonly SessionRow[]>;
   findNonTerminalSessions(): Promise<readonly SessionRow[]>;
@@ -160,7 +157,6 @@ export interface MembersPort {
  * @remarks
  * §8.3 の実開催履歴を扱う。中止回 (§8.4) では作成しないため、唯一の作成経路は
  * `completeDecidedSessionAsHeld` (DECIDED→COMPLETED CAS と同一 tx)。
- * @see ADR-0031
  */
 export interface HeldEventsPort {
   completeDecidedSessionAsHeld(
@@ -177,7 +173,6 @@ export interface HeldEventsPort {
  * `enqueue` は recovery などの単独 intent 用。業務遷移は SessionCommandsPort、初回募集は
  * createAskSession が同一 transaction で intent を永続化する。Session 内順序は
  * aggregateRevision / ordinal、claim 所有権は claimToken で fence する。
- * @see ADR-0051
  */
 export interface OutboxPort {
   enqueue(input: EnqueueOutboxInput): Promise<EnqueueResult>;
@@ -231,7 +226,7 @@ export interface OutboxPort {
  * Aggregate port bundle supplied to handlers / scheduler / workflow via AppContext.
  *
  * @remarks
- * Discord client は抽象化しない (ADR-0017)。discord.js の Client / ButtonInteraction を
+ * Discord client は抽象化しない。discord.js の Client / ButtonInteraction を
  * 直接扱う方がシンプルで、追加抽象は便益を生まない。
  */
 export interface AppPorts {

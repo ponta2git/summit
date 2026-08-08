@@ -1,4 +1,4 @@
-// why: postpone-voting feature 固有の UI cosmetic @see ADR-0026
+// why: postpone-voting feature 固有の UI cosmetic。
 import { ButtonStyle } from "discord.js";
 
 export const BUTTON_LABEL_POSTPONE_OK = "明日も募集OK" as const;

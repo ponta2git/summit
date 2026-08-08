@@ -1,4 +1,4 @@
-// source-of-truth: DB Row 型集約 (@see ADR-0014)。
+// source-of-truth: DB Row 型と schema 値の runtime narrowing を集約する。
 import type { db as defaultDb } from "./client.ts";
 import {
   RESPONSE_CHOICES,

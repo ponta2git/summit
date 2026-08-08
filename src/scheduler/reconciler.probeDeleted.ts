@@ -25,7 +25,6 @@ import {
  * 無いため ask / postpone メッセージが削除されたまま放置される。startup 時のみ能動的に fetch し、
  * Unknown Message (10008) 検知で新規投稿して ID を差し替える。tick scope では毎分 fetch コストに
  * 見合わないため実施しない。
- * @see ADR-0051
  */
 export const probeDeletedMessagesAtStartup = (
   client: Client,

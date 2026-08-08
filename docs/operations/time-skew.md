@@ -1,12 +1,12 @@
 # Time Skew SOP
 
-サーバ clock (Fly host の時計) が JST 基準時刻から大きくずれた場合の運用手順。契約と設計根拠は **ADR-0044** に集約、本ファイルは運用者視点の SOP のみを扱う。
+サーバ clock (Fly host の時計) が JST 基準時刻から大きくずれた場合の運用手順。時刻契約は `docs/time-rule.md` を正本とし、本ファイルは運用者視点の SOP のみを扱う。
 
 ## 前提
 
-- Summit は Fly host の NTP 同期を信頼する (独自 NTP query 無し、ADR-0044)
-- 時刻依存ロジックはすべて `src/time/` 経由で JST 解釈される (ADR-0002)
-- `new Date()` を `src/time/` 外で使うことは禁止 (`.github/instructions/time-review.instructions.md`)
+- Summit は Fly host の NTP 同期を信頼する (独自 NTP query 無し)
+- 時刻依存ロジックは `src/time/` と注入された `Clock` 経由で JST 解釈される
+- production code で現在時刻を得るときは `ctx.clock` / `systemClock` の定義済み境界を使う
 
 ## 検知
 
@@ -20,7 +20,7 @@ Discord で `/status` を実行 → 応答の `now` フィールドが現在の 
 
 ## skew 規模別 SOP
 
-ADR-0044 の挙動表と対応:
+skew の規模ごとの挙動と対応:
 
 | skew 規模 | 業務影響 | SOP |
 |---|---|---|
@@ -40,16 +40,16 @@ fly machine restart <machine_id> -a summit-momotetsu
 
 ## 取りこぼし防止の設計 (参考)
 
-自動復旧が効く理由 (詳細は ADR-0044):
+自動復旧が効く理由 (詳細は `docs/architecture.md` と `docs/db-rule.md`):
 
-- **reconciler invariants**: 未投稿の金曜募集 / 締切超過の session を次の回復経路で再収束 (ADR-0051)
-- **Session aggregate command**: Session lock 後の同一 snapshot で締切判定と遷移を確定する (ADR-0051)
-- **ordered outbox at-least-once**: 表示遅延や重複はあり得るが、必須投稿の欠落と順序逆転を抑止する (ADR-0051)
-- **`(weekKey, postpone_count)` unique**: 週キーが誤算定されても同一週キーで重複 session が作れない (ADR-0009)
+- **reconciler invariants**: 未投稿の金曜募集 / 締切超過の session を次の回復経路で再収束
+- **Session aggregate command**: Session lock 後の同一 snapshot で締切判定と遷移を確定する
+- **ordered outbox at-least-once**: 表示遅延や重複はあり得るが、必須投稿の欠落と順序逆転を抑止する
+- **`(weekKey, postpone_count)` unique**: 週キーが誤算定されても同一週キーで重複 session が作れない
 
 ## 自動検知を実装しない理由
 
-ADR-0044 §Alternatives A/B/C で代替案 (起動時 NTP query / tick 相対 skew 監視 / postgres `now()` SSoT) を却下した経緯を参照。再評価 trigger が満たされたら再検討する。
+起動時 NTP query / tick 相対 skew 監視 / PostgreSQL `now()` の時刻正本化は、現在の規模では追加の障害点と複数時刻源を生むため採用しない。複数 host の clock drift が実際に観測される、または provider の時刻同期保証が変わった場合は `docs/time-rule.md` の再評価条件に従って再検討する。
 
 ## 実施後のフォロー
 

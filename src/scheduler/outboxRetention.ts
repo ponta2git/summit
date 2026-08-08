@@ -13,8 +13,7 @@ import type { SchedulerResult } from "./scheduler.types.ts";
  *
  * @remarks
  * idempotent: 削除のみで状態遷移なし。同一 tick の重複呼び出しに安全。
- * invariant: PENDING / IN_FLIGHT は repository 側で除外済 (ADR-0042)。
- * @see ADR-0042
+ * invariant: PENDING / IN_FLIGHT は repository 側で除外済。
  */
 export const runOutboxRetentionTick = (ctx: AppContext): SchedulerResult<{
   readonly deliveredPruned: number;

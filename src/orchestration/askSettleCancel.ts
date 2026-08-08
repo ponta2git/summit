@@ -37,7 +37,6 @@ export const reflectAskingCancellation = (
  * state: ASKING → CANCELLED → canonical state を一つの aggregate transaction で収束させる。
  * source-of-truth: settle / postpone の新規投稿は同 transaction の ordered outbox intent。
  *   この関数は既存 ask message の再描画だけを best-effort で行う。
- * @see ADR-0040
  */
 export const settleAskingSession = (
   client: Client,

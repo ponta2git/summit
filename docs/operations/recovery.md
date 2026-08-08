@@ -1,6 +1,6 @@
 # Recovery SOP
 
-13-recoverability.md で整理した **case 1〜7 (自動復旧経路)** と **復旧不能ケース** の運用手順。状態の正本は DB であることを大前提に、「何もしない / 待つ / Fly redeploy」が第一選択。
+自動復旧経路の **case 1〜7** と **復旧不能ケース** の運用手順。状態の正本は DB であることを大前提に、「何もしない / 待つ / Fly redeploy」が第一選択。設計上の復旧不変条件は `docs/architecture.md` と `docs/db-rule.md` を参照する。
 
 ## 共通: 何を見るか
 
@@ -11,7 +11,7 @@ fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
 主な `event`:
 
 - `phase=reconcile|login|startupRecovery|scheduler|ready` — 起動 phase
-- `outbox.metrics` — 5 分毎の depth/age (ADR-0043)
+- `outbox.metrics` — scheduler supervisor 実行時の depth/age
 - `outbox.dispatch.*` — 個別 dispatch
 - `reconciler.*` — invariant 収束ログ
 - `interaction.*` — interaction 入口 / reject 理由
@@ -68,7 +68,7 @@ fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
 
 **症状**: reminder intent が IN_FLIGHT のまま送信完了しない、または Discord 受理後に process が停止する。
 
-**自動復旧**: claim が `OUTBOX_CLAIM_DURATION_MS` を超えると startup / supervisor が PENDING へ戻し、worker が再取得する。claim token が古い worker の遅延確定を拒否する。Discord 受理と DB 完了の間で停止した場合は、欠落を避けるため再投稿される可能性がある (ADR-0051)。
+**自動復旧**: claim が `OUTBOX_CLAIM_DURATION_MS` を超えると startup / supervisor が PENDING へ戻し、worker が再取得する。claim token が古い worker の遅延確定を拒否する。Discord 受理と DB 完了の間で停止した場合は、欠落を避けるため再投稿される可能性がある。
 
 **人手作業**: 不要。
 
@@ -76,7 +76,7 @@ fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
 
 **症状**: 旧 instance 停止中に outbox の未完了 claim が残る。
 
-**自動復旧**: 新 instance 起動時に reconciler / `runStartupRecovery` が DB から再計算。outbox の claim 時刻が `OUTBOX_CLAIM_DURATION_MS` より stale なら release → worker が retry (ADR-0051)。
+**自動復旧**: 新 instance 起動時に reconciler / `runStartupRecovery` が DB から再計算。outbox の claim 時刻が `OUTBOX_CLAIM_DURATION_MS` より stale なら release → worker が retry。
 
 **人手作業**: 不要。**ただし金 17:30〜土 01:00 JST の deploy 禁止窓に該当 deploy をしないこと** (AGENTS.md)。
 
