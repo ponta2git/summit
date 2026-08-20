@@ -74,6 +74,9 @@ interface AppContext {
 - repository、DB client、`systemClock` をこれらの call-site から直接 import しない。
 - production は `makeRealPorts`、test は `createTestAppContext` が同じ `AppPorts` 契約を実装する。
 - port interface を変更したら real と fake を同じ変更で更新する。
+- `/status` は `StatusPort.loadCurrentWeekSnapshot` が current-week Session と画面用の Response / HeldEvent を
+  batch 取得する。ResponsesPort / HeldEventsPort に汎用 batch API を増やさず、read model の結合知識を status
+  repository 内へ隠す。
 - Discord client は意図的に port 化しない。discord.js の rich type を薄い独自抽象へ写す利益が現在の規模では小さいためである。
 - DI container は使わない。resource graph が factory 合成で追跡できなくなった場合にだけ再評価する。
 

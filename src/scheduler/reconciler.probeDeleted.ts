@@ -31,8 +31,8 @@ export const probeDeletedMessagesAtStartup = (
   ctx: AppContext
 ): SchedulerResult<SchedulerBatchReport> =>
   fromDatabaseCall(
-    () => ctx.ports.sessions.findNonTerminalSessions(),
-    "Failed to find non-terminal sessions for message probing."
+    () => ctx.ports.sessions.findMessageRecoveryCandidates(),
+    "Failed to find message recovery candidates for probing."
   ).andThen((nonTerminal) =>
     runSchedulerBatchResult(
       "message_probe",

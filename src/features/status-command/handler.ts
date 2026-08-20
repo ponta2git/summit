@@ -2,7 +2,12 @@ import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import { type ResultAsync } from "neverthrow";
 
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
-import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.ts";
+import type {
+  CurrentWeekStatusSnapshot,
+  OutboxEntry,
+  SessionRow,
+  StatusSessionSnapshot
+} from "../../db/ports.ts";
 import {
   type AppError,
   type AppResult,
@@ -19,6 +24,7 @@ import {
 } from "../../discord/shared/guards.ts";
 import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
 import { rejectMessages } from "../interaction-reject/messages.ts";
+import { isoWeekKey } from "../../time/index.ts";
 import { buildStatusViewModel, renderStatusText } from "./viewModel.ts";
 
 interface StatusPipelineStart {
@@ -27,11 +33,11 @@ interface StatusPipelineStart {
 }
 
 interface StatusSnapshot {
+  readonly now: Date;
   readonly sessions: readonly SessionRow[];
   readonly strandedCancelled: readonly SessionRow[];
   readonly strandedOutbox: readonly OutboxEntry[];
-  readonly responsesNested: readonly (readonly ResponseRow[])[];
-  readonly heldEventsNested: readonly (HeldEventRow | undefined)[];
+  readonly sessionDetails: readonly StatusSessionSnapshot[];
 }
 
 const validateStatusCommand = (
@@ -45,35 +51,23 @@ const validateStatusCommand = (
 const loadStatusSnapshot = (
   context: StatusPipelineStart
 ): ResultAsync<StatusSnapshot, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.deps.context.ports.sessions.findNonTerminalSessions(),
-      context.deps.context.ports.sessions.findStrandedCancelledSessions(),
-      context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
-    ]),
-    "Failed to load /status session summary."
-  )
-    .andThen(([sessions, strandedCancelled, strandedOutbox]) =>
-      fromDatabasePromise(
-        Promise.all([
-          Promise.all(sessions.map((s) => context.deps.context.ports.responses.listResponses(s.id))),
-          Promise.all(
-            sessions.map((s) =>
-              s.status === "DECIDED"
-                ? context.deps.context.ports.heldEvents.findBySessionId(s.id)
-                : Promise.resolve(undefined)
-            )
-          )
-        ]),
-        "Failed to load /status session details."
-      ).map(([responsesNested, heldEventsNested]) => ({
-        sessions,
-        strandedCancelled,
-        strandedOutbox,
-        responsesNested,
-        heldEventsNested
-      }))
-    );
+  (() => {
+    const now = context.deps.context.clock.now();
+    const weekKey = isoWeekKey(now);
+    return fromDatabasePromise(
+      Promise.all([
+        context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
+        context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
+      ]),
+      "Failed to load /status snapshot."
+    ).map(([statusSnapshot, strandedOutbox]: [CurrentWeekStatusSnapshot, readonly OutboxEntry[]]) => ({
+      now,
+      sessions: statusSnapshot.sessions.map(({ session }) => session),
+      strandedCancelled: statusSnapshot.strandedCancelled,
+      strandedOutbox,
+      sessionDetails: statusSnapshot.sessions
+    }));
+  })();
 
 const replyStatusError = async (
   interaction: ChatInputCommandInteraction,
@@ -108,7 +102,6 @@ export const handleStatusCommand = async (
   interaction: ChatInputCommandInteraction,
   deps: InteractionHandlerDeps
 ): Promise<void> => {
-  const ctx = deps.context;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const pipelineStart: StatusPipelineStart = { interaction, deps };
@@ -116,17 +109,14 @@ export const handleStatusCommand = async (
     .andThen(loadStatusSnapshot);
 
   await result.match(
-    async ({ sessions, strandedCancelled, strandedOutbox, responsesNested, heldEventsNested }) => {
-      const now = ctx.clock.now();
-
+    async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
       const responsesBySessionId = new Map(
-        sessions.map((s, i) => [s.id, responsesNested[i] ?? []])
+        sessionDetails.map(({ session, responses }) => [session.id, responses])
       );
       const heldEventBySessionId = new Map(
-        sessions.flatMap((s, i) => {
-          const he = heldEventsNested[i];
-          return he ? [[s.id, he] as const] : [];
-        })
+        sessionDetails.flatMap(({ session, heldEvent }) =>
+          heldEvent ? [[session.id, heldEvent] as const] : []
+        )
       );
 
       const vm = buildStatusViewModel({

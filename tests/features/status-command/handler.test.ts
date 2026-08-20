@@ -30,6 +30,8 @@ const buildInteraction = (override: {
 const editReplyContent = (interaction: ReturnType<typeof buildInteraction>): string =>
   callArg<{ content: string }>(interaction.editReply).content;
 
+const STATUS_NOW = new Date("2026-04-25T12:30:00.000Z");
+
 const buildDeps = (context: AppContext): InteractionHandlerDeps => ({
   context,
   client: createClientWithChannel(undefined),
@@ -58,12 +60,46 @@ describe("handleStatusCommand", () => {
 
   it("returns session info for an ASKING session", async () => {
     const session = makeSession({ status: "ASKING", askMessageId: "msg-1" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [session] } });
     const interaction = buildInteraction();
 
     await handleStatus(interaction, ctx);
 
     expect(editReplyContent(interaction)).toContain("[ASKING]");
+  });
+
+  it("limits the main status read model to the current week and batches details", async () => {
+    const current = makeSession({ id: "current-asking", weekKey: "2026-W17", status: "ASKING" });
+    const old = makeSession({ id: "old-asking", weekKey: "2026-W16", status: "ASKING" });
+    const terminalPostponed = makeSession({
+      id: "current-postponed",
+      weekKey: "2026-W17",
+      status: "POSTPONED"
+    });
+    const cancelled = makeSession({
+      id: "current-cancelled",
+      weekKey: "2026-W17",
+      status: "CANCELLED"
+    });
+    const ctx = createTestAppContext({
+      now: new Date("2026-04-24T12:00:00.000Z"),
+      seed: { sessions: [current, old, terminalPostponed, cancelled] }
+    });
+    const interaction = buildInteraction();
+
+    await handleStatus(interaction, ctx);
+
+    const content = editReplyContent(interaction);
+    expect(content).toContain("current-");
+    expect(content).not.toContain("old-asking");
+    expect(content).not.toContain("current-postponed");
+    expect(content).toContain("宙づり CANCELLED");
+    expect(ctx.ports.status.calls).toStrictEqual([{
+      name: "loadCurrentWeekSnapshot",
+      args: { weekKey: "2026-W17" }
+    }]);
+    expect(ctx.ports.responses.calls.filter((call) => call.name === "listResponses")).toHaveLength(0);
+    expect(ctx.ports.heldEvents.calls.filter((call) => call.name === "findBySessionId")).toHaveLength(0);
   });
 
   it("rejects a non-member user ephemerally", async () => {
@@ -75,7 +111,7 @@ describe("handleStatusCommand", () => {
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
     );
-    expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
+    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it("rejects a wrong channel interaction ephemerally", async () => {
@@ -85,7 +121,7 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongChannel);
-    expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
+    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it("rejects a wrong guild interaction ephemerally", async () => {
@@ -95,13 +131,13 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongGuild);
-    expect(ctx.ports.sessions.calls.some((c) => c.name === "findNonTerminalSessions")).toBe(false);
+    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it("returns an internal error message when status DB loading fails", async () => {
     const ctx = createTestAppContext({ seed: {} });
-    Object.assign(ctx.ports.sessions, {
-      findNonTerminalSessions: vi.fn(async () => {
+    Object.assign(ctx.ports.status, {
+      loadCurrentWeekSnapshot: vi.fn(async () => {
         throw new Error("database unavailable");
       })
     });
@@ -138,7 +174,7 @@ describe("handleStatusCommand", () => {
 
   it("shows stranded CANCELLED section and warning when stranded sessions exist", async () => {
     const strandedSession = makeSession({ id: "cancelled-session-1a", status: "CANCELLED" });
-    const ctx = createTestAppContext({ seed: { sessions: [strandedSession] } });
+    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [strandedSession] } });
     const interaction = buildInteraction();
 
     await handleStatus(interaction, ctx);
@@ -152,20 +188,23 @@ describe("handleStatusCommand", () => {
   it("includes stranded CANCELLED in total warning count", async () => {
     const strandedSession1 = makeSession({ id: "cancelled-s1-xxxx", status: "CANCELLED" });
     const strandedSession2 = makeSession({ id: "cancelled-s2-xxxx", status: "CANCELLED" });
-    const ctx = createTestAppContext({ seed: { sessions: [strandedSession1, strandedSession2] } });
+    const ctx = createTestAppContext({
+      now: STATUS_NOW,
+      seed: { sessions: [strandedSession1, strandedSession2] }
+    });
     const interaction = buildInteraction();
 
     await handleStatus(interaction, ctx);
 
     expect(
-      ctx.ports.sessions.calls.some((c) => c.name === "findStrandedCancelledSessions")
+      ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")
     ).toBe(true);
     expect(editReplyContent(interaction)).toContain("2");
   });
 
   it("renders stranded outbox rows returned by the status snapshot", async () => {
     const session = makeSession({ id: "outbox-session-1a", status: "DECIDED" });
-    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [session] } });
     ctx.ports.outbox.seedEntry(
       makeOutboxEntry({
         id: "outbox-failed-1a",

@@ -1,5 +1,5 @@
 import type { SessionsPort } from "../../src/db/ports.js";
-import { NON_TERMINAL_STATUSES, recordCall } from "./ports.shared.js";
+import { MESSAGE_RECOVERY_STATUSES, recordCall } from "./ports.shared.js";
 import type { FakeSessionsState } from "./ports.sessions.state.js";
 
 type SessionQueryMethods = Pick<
@@ -9,8 +9,9 @@ type SessionQueryMethods = Pick<
   | "findDueAskingSessions"
   | "findDuePostponeVotingSessions"
   | "findDueReminderSessions"
+  | "findDueStartupRecoverySessions"
   | "getSchedulerSessionHints"
-  | "findNonTerminalSessions"
+  | "findMessageRecoveryCandidates"
   | "findStrandedCancelledSessions"
 >;
 
@@ -63,6 +64,20 @@ export const createFakeSessionQueryMethods = (
       .map(state.clone);
   },
 
+  findDueStartupRecoverySessions: async (now) => {
+    recordCall(state.calls, "findDueStartupRecoverySessions", { now });
+    return Array.from(state.byId.values())
+      .filter(
+        (session) =>
+          ((session.status === "ASKING" || session.status === "POSTPONE_VOTING") &&
+            session.deadlineAt <= now) ||
+          (session.status === "DECIDED" &&
+            session.reminderAt !== null &&
+            session.reminderAt <= now)
+      )
+      .map(state.clone);
+  },
+
   getSchedulerSessionHints: async (now) => {
     recordCall(state.calls, "getSchedulerSessionHints", { now });
     const minDate = (dates: Date[]): Date | null =>
@@ -93,10 +108,10 @@ export const createFakeSessionQueryMethods = (
     };
   },
 
-  findNonTerminalSessions: async () => {
-    recordCall(state.calls, "findNonTerminalSessions", {});
+  findMessageRecoveryCandidates: async () => {
+    recordCall(state.calls, "findMessageRecoveryCandidates", {});
     return Array.from(state.byId.values())
-      .filter((session) => NON_TERMINAL_STATUSES.includes(session.status))
+      .filter((session) => MESSAGE_RECOVERY_STATUSES.includes(session.status))
       .map(state.clone);
   },
 

@@ -3,7 +3,7 @@ import type { SessionStatus } from "../../src/db/ports.js";
 export type FakeClock = { readonly now: () => Date };
 export const DEFAULT_CLOCK: FakeClock = { now: () => new Date() };
 
-export const NON_TERMINAL_STATUSES: readonly SessionStatus[] = [
+export const MESSAGE_RECOVERY_STATUSES: readonly SessionStatus[] = [
   "ASKING",
   "POSTPONE_VOTING",
   "POSTPONED",

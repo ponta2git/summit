@@ -51,17 +51,9 @@ export const runStartupRecovery = (
 ): SchedulerResult<SchedulerBatchReport> => {
   const now = ctx.clock.now();
   return fromDatabaseCall(
-    () => ctx.ports.sessions.findNonTerminalSessions(),
-    "Failed to find non-terminal sessions for startup recovery."
-  ).andThen((sessions) => {
-    const due = sessions.filter((session) =>
-      ((session.status === "ASKING" || session.status === "POSTPONE_VOTING") &&
-        session.deadlineAt.getTime() <= now.getTime()) ||
-      (session.status === "DECIDED" &&
-        session.reminderAt !== null &&
-        session.reminderAt.getTime() <= now.getTime() &&
-        session.reminderSentAt === null)
-    );
+    () => ctx.ports.sessions.findDueStartupRecoverySessions(now),
+    "Failed to find due sessions for startup recovery."
+  ).andThen((due) => {
     return runSchedulerBatchResult(
       "startup_recovery",
       due,

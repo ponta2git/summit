@@ -24,6 +24,7 @@ import {
 } from "./ports.sessionCommands.js";
 import { DEFAULT_CLOCK, type FakeClock } from "./ports.shared.js";
 import { createFakeSessionsPort, type FakeSessionsPort } from "./ports.sessions.js";
+import { createFakeStatusPort, type FakeStatusPort } from "./ports.status.js";
 
 export interface FakePorts extends AppPorts {
   readonly sessions: FakeSessionsPort;
@@ -31,6 +32,7 @@ export interface FakePorts extends AppPorts {
   readonly responses: FakeResponsesPort;
   readonly members: FakeMembersPort;
   readonly heldEvents: FakeHeldEventsPort;
+  readonly status: FakeStatusPort;
   readonly outbox: FakeOutboxPort;
 }
 
@@ -72,7 +74,8 @@ const createFakePorts = (
     heldEvents,
     outbox
   );
-  return { sessions, sessionCommands, responses, members, heldEvents, outbox };
+  const status = createFakeStatusPort(sessions, responses, heldEvents);
+  return { sessions, sessionCommands, responses, members, heldEvents, status, outbox };
 };
 
 export interface TestAppContext {

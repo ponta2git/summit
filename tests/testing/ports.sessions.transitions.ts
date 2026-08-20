@@ -1,6 +1,6 @@
 import type { EnqueueOutboxInput, SessionRow } from "../../src/db/ports.js";
 import { makeSession } from "./fixtures.js";
-import { NON_TERMINAL_STATUSES, recordCall } from "./ports.shared.js";
+import { MESSAGE_RECOVERY_STATUSES, recordCall } from "./ports.shared.js";
 import type { FakeSessionsState } from "./ports.sessions.state.js";
 
 interface EdgeInput {
@@ -121,7 +121,7 @@ export const createFakeSessionTransitionMethods = (
   skipSession: async (input) => {
     recordCall(state.calls, "skipSession", { input });
     const found = state.byId.get(input.id);
-    if (!found || !NON_TERMINAL_STATUSES.includes(found.status)) {return undefined;}
+    if (!found || !MESSAGE_RECOVERY_STATUSES.includes(found.status)) {return undefined;}
     const next = makeSession({
       ...found,
       status: "SKIPPED",

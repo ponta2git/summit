@@ -51,8 +51,8 @@ export const reconcileMissingMessageIntents = (
   ctx: AppContext
 ): SchedulerResult<SchedulerBatchReport> =>
   fromDatabaseCall(
-    () => ctx.ports.sessions.findNonTerminalSessions(),
-    "Failed to find non-terminal sessions for message recovery."
+    () => ctx.ports.sessions.findMessageRecoveryCandidates(),
+    "Failed to find message recovery candidates."
   ).andThen((nonTerminal) =>
     runSchedulerBatchResult(
       "missing_message_intents",

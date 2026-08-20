@@ -18,8 +18,9 @@ export {
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
+  findDueStartupRecoverySessions,
   getSchedulerSessionHints,
-  findNonTerminalSessions,
+  findMessageRecoveryCandidates,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   findStrandedCancelledSessions

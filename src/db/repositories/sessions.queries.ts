@@ -1,11 +1,11 @@
 // source-of-truth: sessions repository のクエリ群。write なし。
 
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.ts";
 import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.ts";
 import type { SchedulerSessionHints } from "../ports.ts";
-import { NON_TERMINAL_STATUSES, mapSession } from "./sessions.internal.ts";
+import { mapSession, MESSAGE_RECOVERY_STATUSES } from "./sessions.internal.ts";
 
 export const findSessionByWeekKeyAndPostponeCount = async (
   db: DbLike,
@@ -88,6 +88,36 @@ export const findDueReminderSessions = async (
 };
 
 /**
+ * Find every session that startup recovery can settle or enqueue.
+ *
+ * @remarks
+ * `reminderSentAt` is a legacy claim marker and is deliberately not a due predicate: a DECIDED
+ * row carrying that marker may still have no delivered outbox message. The outbox dedupe key and
+ * DECIDED→COMPLETED CAS provide the recovery boundary.
+ */
+export const findDueStartupRecoverySessions = async (
+  db: DbLike,
+  now: Date
+): Promise<SessionRow[]> => {
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      or(
+        and(
+          inArray(sessions.status, ["ASKING", "POSTPONE_VOTING"]),
+          lte(sessions.deadlineAt, now)
+        ),
+        and(
+          eq(sessions.status, "DECIDED"),
+          lte(sessions.reminderAt, now)
+        )
+      )
+    );
+  return rows.map(mapSession);
+};
+
+/**
  * Return the nearest session-driven scheduler wakeups.
  *
  * @remarks
@@ -98,46 +128,37 @@ export const getSchedulerSessionHints = async (
   db: DbLike,
   _now: Date
 ): Promise<SchedulerSessionHints> => {
-  const [asking] = await db
-    .select({ next: sql<unknown>`min(${sessions.deadlineAt})` })
-    .from(sessions)
-    .where(eq(sessions.status, "ASKING"));
-  const [postpone] = await db
-    .select({ next: sql<unknown>`min(${sessions.deadlineAt})` })
-    .from(sessions)
-    .where(eq(sessions.status, "POSTPONE_VOTING"));
-  const [reminder] = await db
-    .select({ next: sql<unknown>`min(${sessions.reminderAt})` })
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.status, "DECIDED")
-      )
-    );
+  const [row] = await db
+    .select({
+      nextAsking: sql<unknown>`min(case when ${sessions.status} = 'ASKING' then ${sessions.deadlineAt} end)`,
+      nextPostpone: sql<unknown>`min(case when ${sessions.status} = 'POSTPONE_VOTING' then ${sessions.deadlineAt} end)`,
+      nextReminder: sql<unknown>`min(case when ${sessions.status} = 'DECIDED' then ${sessions.reminderAt} end)`
+    })
+    .from(sessions);
 
   return {
     nextAskingDeadlineAt: parseDbTimestamp(
-      asking?.next ?? null,
+      row?.nextAsking ?? null,
       "next asking deadline timestamp"
     ),
     nextPostponeDeadlineAt: parseDbTimestamp(
-      postpone?.next ?? null,
+      row?.nextPostpone ?? null,
       "next postpone deadline timestamp"
     ),
     nextReminderAt: parseDbTimestamp(
-      reminder?.next ?? null,
+      row?.nextReminder ?? null,
       "next reminder timestamp"
     )
   };
 };
 
-export const findNonTerminalSessions = async (
+export const findMessageRecoveryCandidates = async (
   db: DbLike
 ): Promise<SessionRow[]> => {
   const rows = await db
     .select()
     .from(sessions)
-    .where(inArray(sessions.status, [...NON_TERMINAL_STATUSES]));
+    .where(inArray(sessions.status, [...MESSAGE_RECOVERY_STATUSES]));
   return rows.map(mapSession);
 };
 

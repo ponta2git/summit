@@ -73,6 +73,28 @@ export interface SchedulerSessionHints {
   readonly nextReminderAt: Date | null;
 }
 
+export interface StatusSessionSnapshot {
+  readonly session: SessionRow;
+  readonly responses: readonly ResponseRow[];
+  readonly heldEvent: HeldEventRow | undefined;
+}
+
+export interface CurrentWeekStatusSnapshot {
+  readonly sessions: readonly StatusSessionSnapshot[];
+  readonly strandedCancelled: readonly SessionRow[];
+}
+
+/**
+ * Read model owned by `/status`.
+ *
+ * @remarks
+ * 現在週の Session と、その画面に必要な Response / HeldEvent を一括取得する。
+ * 個別 port の汎用 batch API を増やさず、status query の結合知識をここへ隠す。
+ */
+export interface StatusPort {
+  loadCurrentWeekSnapshot(weekKey: string): Promise<CurrentWeekStatusSnapshot>;
+}
+
 /**
  * Session repository operations exposed as a DI port.
  *
@@ -108,7 +130,9 @@ export interface SessionsPort {
   findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
   findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;
+  findDueStartupRecoverySessions(now: Date): Promise<readonly SessionRow[]>;
   getSchedulerSessionHints(now: Date): Promise<SchedulerSessionHints>;
+  findMessageRecoveryCandidates(): Promise<readonly SessionRow[]>;
   /**
    * Returns sessions currently in `CANCELLED` status (startup reconciler target).
    *
@@ -116,7 +140,6 @@ export interface SessionsPort {
    * `CANCELLED` は短命中間状態。通常時は空。crash 由来の宙づり回収に使う。
    */
   findStrandedCancelledSessions(): Promise<readonly SessionRow[]>;
-  findNonTerminalSessions(): Promise<readonly SessionRow[]>;
 }
 
 export interface ResponsesPort {
@@ -233,5 +256,6 @@ export interface AppPorts {
   readonly responses: ResponsesPort;
   readonly members: MembersPort;
   readonly heldEvents: HeldEventsPort;
+  readonly status: StatusPort;
   readonly outbox: OutboxPort;
 }

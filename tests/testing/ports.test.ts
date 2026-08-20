@@ -96,6 +96,35 @@ describe("tests/testing helpers", () => {
       .toStrictEqual(["due-pv"]);
   });
 
+  it("returns startup-due DECIDED sessions even when a legacy reminder marker exists", async () => {
+    const now = new Date("2026-04-24T12:30:00.000Z");
+    const legacyMarked = makeSession({
+      id: "legacy-marked",
+      status: "DECIDED",
+      reminderAt: new Date("2026-04-24T12:29:59.000Z"),
+      reminderSentAt: new Date("2026-04-24T12:00:00.000Z")
+    });
+    const future = makeSession({
+      id: "future-reminder",
+      status: "DECIDED",
+      reminderAt: new Date("2026-04-24T12:30:01.000Z")
+    });
+    const sessions = createFakeSessionsPort([legacyMarked, future]);
+
+    expect((await sessions.findDueStartupRecoverySessions(now)).map((row) => row.id))
+      .toStrictEqual(["legacy-marked"]);
+  });
+
+  it("keeps POSTPONED in the message recovery candidate set", async () => {
+    const sessions = createFakeSessionsPort([
+      makeSession({ id: "postponed", status: "POSTPONED" }),
+      makeSession({ id: "completed", status: "COMPLETED" })
+    ]);
+
+    expect((await sessions.findMessageRecoveryCandidates()).map((row) => row.id))
+      .toStrictEqual(["postponed"]);
+  });
+
   it("overwrites the ask deadline when postpone voting starts", async () => {
     const initial = makeSession({
       id: "s1",

@@ -7,8 +7,9 @@ import {
   findDueAskingSessions,
   findDuePostponeVotingSessions,
   findDueReminderSessions,
+  findDueStartupRecoverySessions,
+  findMessageRecoveryCandidates,
   getSchedulerSessionHints,
-  findNonTerminalSessions,
   findSessionById,
   findSessionByWeekKeyAndPostponeCount,
   findStrandedCancelledSessions,
@@ -17,6 +18,7 @@ import {
   backfillAskMessageId,
   backfillPostponeMessageId
 } from "./repositories/sessions.ts";
+import { loadCurrentWeekSnapshot } from "./repositories/status.ts";
 import { listResponses } from "./repositories/responses.ts";
 import {
   cancelWeekAtomically,
@@ -53,7 +55,8 @@ import type {
   OutboxPort,
   ResponsesPort,
   SessionCommandsPort,
-  SessionsPort
+  SessionsPort,
+  StatusPort
 } from "./ports.ts";
 
 const makeSessionsPort = (db: DbLike): SessionsPort => ({
@@ -68,8 +71,9 @@ const makeSessionsPort = (db: DbLike): SessionsPort => ({
   findDueAskingSessions: (now) => findDueAskingSessions(db, now),
   findDuePostponeVotingSessions: (now) => findDuePostponeVotingSessions(db, now),
   findDueReminderSessions: (now) => findDueReminderSessions(db, now),
+  findDueStartupRecoverySessions: (now) => findDueStartupRecoverySessions(db, now),
   getSchedulerSessionHints: (now) => getSchedulerSessionHints(db, now),
-  findNonTerminalSessions: () => findNonTerminalSessions(db),
+  findMessageRecoveryCandidates: () => findMessageRecoveryCandidates(db),
   findStrandedCancelledSessions: () => findStrandedCancelledSessions(db)
 });
 
@@ -96,6 +100,10 @@ const makeHeldEventsPort = (db: DbLike): HeldEventsPort => ({
   findBySessionId: (sessionId) => findHeldEventBySessionId(db, sessionId)
 });
 
+const makeStatusPort = (db: DbLike): StatusPort => ({
+  loadCurrentWeekSnapshot: (weekKey) => loadCurrentWeekSnapshot(db, weekKey)
+});
+
 const makeOutboxPort = (db: DbLike): OutboxPort => ({
   enqueue: (input) => enqueueOutbox(db, input),
   claimNextBatch: (options) => claimNextOutboxBatch(db, options),
@@ -115,5 +123,6 @@ export const makeRealPorts = (db: DbLike): AppPorts => ({
   responses: makeResponsesPort(db),
   members: makeMembersPort(db),
   heldEvents: makeHeldEventsPort(db),
+  status: makeStatusPort(db),
   outbox: makeOutboxPort(db)
 });
