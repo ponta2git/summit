@@ -1,6 +1,6 @@
 # Backup & Restore
 
-Summit の DB は Neon PostgreSQL 16 を使用する。本ファイルは backup / restore 方針と想定 RPO/RTO をまとめる。
+Summit の DB は Neon PostgreSQL 18 を使用する。本ファイルは backup / restore 方針と想定 RPO/RTO をまとめる。
 
 設計正本: `docs/db-rule.md`
 
