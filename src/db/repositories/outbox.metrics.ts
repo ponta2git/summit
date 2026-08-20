@@ -104,30 +104,15 @@ export const getOutboxMetrics = async (
   db: DbLike,
   now: Date
 ): Promise<OutboxMetricsResult> => {
-  const grouped = await db
+  const [row] = await db
     .select({
-      status: discordOutbox.status,
-      n: sql<number>`count(*)::int`
+      pending: sql<number>`count(*) filter (where ${discordOutbox.status} = 'PENDING')::int`,
+      inFlight: sql<number>`count(*) filter (where ${discordOutbox.status} = 'IN_FLIGHT')::int`,
+      failed: sql<number>`count(*) filter (where ${discordOutbox.status} = 'FAILED')::int`,
+      oldestPending: sql<unknown>`min(${discordOutbox.createdAt}) filter (where ${discordOutbox.status} = 'PENDING')`,
+      oldestFailed: sql<unknown>`min(${discordOutbox.updatedAt}) filter (where ${discordOutbox.status} = 'FAILED')`
     })
-    .from(discordOutbox)
-    .where(inArray(discordOutbox.status, ["PENDING", "IN_FLIGHT", "FAILED"]))
-    .groupBy(discordOutbox.status);
-
-  const counts = { pending: 0, inFlight: 0, failed: 0 };
-  for (const row of grouped) {
-    if (row.status === "PENDING") {counts.pending = Number(row.n);}
-    else if (row.status === "IN_FLIGHT") {counts.inFlight = Number(row.n);}
-    else if (row.status === "FAILED") {counts.failed = Number(row.n);}
-  }
-
-  const [oldestPendingRow] = await db
-    .select({ oldest: sql<unknown>`min(${discordOutbox.createdAt})` })
-    .from(discordOutbox)
-    .where(eq(discordOutbox.status, "PENDING"));
-  const [oldestFailedRow] = await db
-    .select({ oldest: sql<unknown>`min(${discordOutbox.updatedAt})` })
-    .from(discordOutbox)
-    .where(eq(discordOutbox.status, "FAILED"));
+    .from(discordOutbox);
 
   const ageMs = (value: unknown, label: string): number | null => {
     const date = parseDbTimestamp(value, label);
@@ -135,11 +120,11 @@ export const getOutboxMetrics = async (
   };
 
   return {
-    pending: counts.pending,
-    inFlight: counts.inFlight,
-    failed: counts.failed,
-    oldestPendingAgeMs: ageMs(oldestPendingRow?.oldest ?? null, "oldest pending outbox timestamp"),
-    oldestFailedAgeMs: ageMs(oldestFailedRow?.oldest ?? null, "oldest failed outbox timestamp")
+    pending: Number(row?.pending ?? 0),
+    inFlight: Number(row?.inFlight ?? 0),
+    failed: Number(row?.failed ?? 0),
+    oldestPendingAgeMs: ageMs(row?.oldestPending ?? null, "oldest pending outbox timestamp"),
+    oldestFailedAgeMs: ageMs(row?.oldestFailed ?? null, "oldest failed outbox timestamp")
   };
 };
 
