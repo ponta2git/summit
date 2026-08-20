@@ -26,7 +26,7 @@ const outboxSendMessagePayloadSchema = outboxPayloadBaseSchema.extend({
   renderer: z.string()
 });
 
-export const outboxPayloadSchema = outboxSendMessagePayloadSchema;
+const outboxPayloadSchema = outboxSendMessagePayloadSchema;
 
 export type OutboxPayload = z.infer<typeof outboxPayloadSchema>;
 

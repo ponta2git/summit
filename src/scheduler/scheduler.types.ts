@@ -25,7 +25,7 @@ export interface SchedulerItemIdentity {
   readonly outboxId?: string;
 }
 
-export const runSchedulerBatch = async <TItem, TValue>(
+const runSchedulerBatch = async <TItem, TValue>(
   phase: string,
   items: readonly TItem[],
   run: (item: TItem) => SchedulerResult<TValue>,

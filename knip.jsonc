@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreExportsUsedInFile": true,
+  // why: type/interface export は owning module の port/view contract を構成し、同一fileの
+  //   interface/type から参照される。value export は同一file利用でも未使用検出を維持する。
+  "ignoreExportsUsedInFile": {
+    "interface": true,
+    "type": true
+  },
   "entry": [
     "src/index.ts",
     "src/commands/sync.ts",

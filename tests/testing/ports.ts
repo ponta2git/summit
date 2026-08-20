@@ -93,7 +93,4 @@ export const createTestAppContext = (options: {
   };
 };
 
-export {
-  createFakeResponsesPort,
-  createFakeSessionsPort
-};
+export { createFakeSessionsPort };

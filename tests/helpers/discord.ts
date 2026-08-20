@@ -28,7 +28,7 @@ export const createEditableMessage = (
   return asDiscordMessage({ id, edit });
 };
 
-export const createSendableTextChannel = (
+const createSendableTextChannel = (
   sendImpl: SendImpl = async () => ({ id: "discord-message-1" }),
   options: {
     readonly fetchedMessage?: Message;
