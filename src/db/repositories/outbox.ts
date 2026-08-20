@@ -19,9 +19,7 @@ export {
   findStrandedOutboxEntries,
   getNextOutboxDispatchAt,
   getOutboxMetrics,
-  pruneOutbox,
-  type OutboxMetricsResult,
-  type PruneOutboxResult
+  pruneOutbox
 } from "./outbox.metrics.ts";
 export {
   claimNextOutboxBatch,
@@ -32,8 +30,7 @@ export {
   markOutboxFailed
 } from "./outbox.delivery.ts";
 export {
-  requeueFailedOutboxChains,
-  type RequeueFailedOutboxChainsResult
+  requeueFailedOutboxChains
 } from "./outbox.recovery.ts";
 
 /** Insert an outbox row; idempotent across every status for the dedupe key. */

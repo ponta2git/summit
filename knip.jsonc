@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "entry": [
+    "src/index.ts",
+    "src/commands/sync.ts",
+    "scripts/dev/{seed,reset,scenario}.ts",
+    "vitest.integration.config.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "vitest*.config.ts"
+  ]
+}

@@ -59,6 +59,10 @@ jobs:
         run: pnpm lint
         working-directory: summit
 
+      - name: Knip
+        run: pnpm lint:knip
+        working-directory: summit
+
       - name: Test
         run: pnpm test
         working-directory: summit

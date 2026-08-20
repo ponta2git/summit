@@ -23,6 +23,7 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm dev` | native TypeScript + Node watchで起動 |
 | `pnpm typecheck` | TypeScript型検査 |
 | `pnpm lint` | oxlint |
+| `pnpm lint:knip` | 未使用ファイル・export・依存関係の検査 |
 | `pnpm test` | unit/application tests |
 | `pnpm test:integration` | local guarded DB integration |
 | `pnpm build` | production JavaScript生成 |

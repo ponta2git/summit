@@ -94,6 +94,7 @@ Discord token、DB URL の実値は commit しないでください。
 | `pnpm start` | ビルド済みアプリをローカル実行 |
 | `pnpm typecheck` | TypeScript 型検査 |
 | `pnpm lint` | oxlint |
+| `pnpm lint:knip` | 未使用ファイル・export・依存関係の検査 |
 | `pnpm lint:fix` | oxlint の自動修正 |
 | `pnpm test` | 単体テスト |
 | `pnpm test:integration` | DB 統合テスト |

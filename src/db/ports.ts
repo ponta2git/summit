@@ -21,8 +21,7 @@ import type {
 import type {
   EnqueueOutboxInput,
   EnqueueResult,
-  OutboxEntry,
-  OutboxPayload
+  OutboxEntry
 } from "./repositories/outbox.ts";
 import type {
   AskingDeadlineResult,
@@ -52,7 +51,6 @@ export type {
   EnqueueOutboxInput,
   EnqueueResult,
   OutboxEntry,
-  OutboxPayload,
   AskingDeadlineResult,
   CancelWeekInput,
   CancelWeekResult,

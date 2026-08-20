@@ -80,20 +80,6 @@ export const makeMessage = (id: string): Message => {
   return asDiscordMessage({ id, edit });
 };
 
-export const makeSendableClient = (): Client => {
-  // why: sendAskMessage は getTextChannel を経由せず client.channels.fetch を直接呼ぶ。
-  const channel = {
-    type: 0,
-    isSendable: () => true,
-    send: async (payload: unknown) => {
-      const id = `sent-${String(state.nextSentMessageId++)}`;
-      sentMessages.push({ channelId: "fake-channel", payload });
-      return asDiscordMessage({ id });
-    }
-  };
-  return asDiscordClient({ channels: { fetch: async () => channel } });
-};
-
 export const extractContent = (payload: unknown): string | undefined => {
   if (payload && typeof payload === "object" && "content" in payload) {
     const content = (payload as { content?: unknown }).content;

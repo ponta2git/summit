@@ -9,12 +9,9 @@ export {
 } from "./sessionCommands.postpone.ts";
 export { cancelWeekAtomically } from "./sessionCommands.cancelWeek.ts";
 export type {
-  AskResponseChoice,
   AskingDeadlineResult,
   CancelWeekInput,
   CancelWeekResult,
-  InteractionCommandRejection,
-  PostponeResponseChoice,
   PostponeTransitionOutcome,
   SaturdaySessionInput,
   SettleAskingCancellationInput,

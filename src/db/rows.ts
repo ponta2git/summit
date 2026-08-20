@@ -1,8 +1,6 @@
 // source-of-truth: DB Row 型と schema 値の runtime narrowing を集約する。
 import type { db as defaultDb } from "./client.ts";
 import {
-  RESPONSE_CHOICES,
-  SESSION_STATUSES,
   type heldEvents,
   type heldEventParticipants,
   type responses,
@@ -68,11 +66,6 @@ export const parseDbTimestamp = (
     if (parsed) { return parsed; }
   }
   throw new Error(`Invalid ${label}: expected timestamp-compatible value`);
-};
-
-export {
-  RESPONSE_CHOICES,
-  SESSION_STATUSES
 };
 
 export type {

@@ -14,6 +14,7 @@
     "start": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node dist/index.js'",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
+    "lint:knip": "knip",
     "lint:fix": "oxlint . --fix",
     "test": "vitest run --passWithNoTests",
     "test:integration": "INTEGRATION_DB=1 dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec vitest run --config vitest.integration.config.ts'",
@@ -21,7 +22,7 @@
     "verify:docs": "node scripts/verify/docs.ts",
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
-    "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm verify:docs && pnpm verify:forbidden && pnpm verify:file-size",
+    "ci": "pnpm typecheck && pnpm lint && pnpm lint:knip && pnpm test && pnpm build && pnpm verify:docs && pnpm verify:forbidden && pnpm verify:file-size",
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- node scripts/dev/reset.ts",
     "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/scenario.ts'",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "dotenv-cli": "^11.0.0",
+    "knip": "^6.32.2",
     "oxlint": "^1.77.0",
     "typescript": "~7.0.0",
     "vitest": "^4.1.10"
