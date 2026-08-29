@@ -55,3 +55,10 @@
 - 主要なfailure、race、recovery caseが考慮・検証されている
 - secret露出、production破壊、運用禁止事項への違反がない
 - 未解決事項、置いた仮定、baseline failureを明示している
+
+---
+
+## 7. Linear と PR
+
+- Linearチケットの実装と必要な確認が完了し、PRのmergeをもってDoneにする場合、PR本文に `Fixes <issue ID>` を記載する
+- `Refs <issue ID>` は、merge後も追加作業または受け入れ確認が残る場合だけ使用する
