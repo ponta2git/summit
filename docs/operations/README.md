@@ -18,7 +18,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | `docs/architecture.md` |
 | [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | `docs/db-rule.md` |
 | [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | `docs/time-rule.md` |
-| [migration.md](./migration.md) | drizzle migration の生成・適用・ロールバック | `docs/db-rule.md` |
+| [migration.md](./migration.md) | momo-db migration と Summit consumer の連携・適用・復旧 | `docs/db-rule.md`, `../momo-db/docs/development.md` |
 | [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | `docs/db-rule.md` |
 | [secrets-rotation.md](./secrets-rotation.md) | Fly secrets 更新時の手順と影響範囲 | `docs/dev-rule.md`, `docs/architecture.md` |
 

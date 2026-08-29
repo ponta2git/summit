@@ -4,9 +4,10 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 
 ## 1. Schema と migration の所有権
 
+- `../momo-db` の schema、migration、Drizzle 設定・script、または DB の migration state を変更する前に、`../momo-db/docs/development.md` を最初から最後まで読み、その手順に従う。checkout / 文書の欠落や Summit 規約との矛盾があれば停止し、Summit 側で独自の authoring 手順を補わない。
 - schema、constraint、migration SQL、Drizzle設定は `../momo-db/src/schema.ts`、`../momo-db/drizzle/`、`../momo-db/drizzle.config.ts` が所有する。
 - Summit の `src/db/schema.ts` は `@momo/db` のre-export shimであり、独自schemaを追加しない。
-- migrationはmomo-dbでgenerateし、生成SQLをreviewしてからmigrateする。
+- 通常の schema migration と custom SQL migration の作り分け、履歴の不変性、data safety、検証、rollback は momo-db の正規文書だけを正本とする。
 - `drizzle-kit push`は使用しない。migration履歴を飛ばすschema同期は再現性とreviewを失うためである。
 - 本番migrationはdeployから独立して先行適用する。SummitのFly deployにrelease commandを追加しない。
 - applicationはpooled `DATABASE_URL`、migrationだけがunpooled `DIRECT_URL`を使う。Summit runtimeに`DIRECT_URL`を導入しない。
@@ -148,12 +149,10 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 ## 9. Migration protocol
 
 1. `requirements/base.md`と設計文書で必要な契約を確認する。
-2. momo-dbでschemaを変更しmigrationをgenerateする。
-3. SQLをreviewし、destructive operation、constraint、backfill、lock範囲を確認する。
-4. momo-dbのcontract checkを通す。
-5. Summit側のconsumer codeとreal DB integration testを更新する。
-6. backupとdeploy禁止窓を確認する。
-7. 本番migrationを先行適用してからapplicationをdeployする。
+2. `../momo-db/docs/development.md` に従って migration の分類、生成、SQL review、fresh / existing DB 検証、commit を行う。
+3. Summit側のconsumer codeとreal DB integration testを更新する。
+4. backupとdeploy禁止窓を確認する。
+5. momo-db の production approval と migration 完了を確認してからapplicationをdeployする。
 
 互換期間が必要な変更はexpand→application→contractの順で行う。migrationに曖昧なbusiness state修復を混ぜず、危険な既存dataはfail-closed preflightで停止する。
 
@@ -164,5 +163,5 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - concurrent interaction、deadline、cancelが一つのwinnerへ収束する。
 - outbox dedupe、Session内順序、claim lost、dead-letter cancellation/recoveryを確認する。
 - Discord受理後のcompletion失敗で欠落ではなくretryへ進む。
-- migrationはmomo-dbのSQL reviewとcontract checkを通す。
+- migrationはmomo-dbの正規文書が要求する証拠と、Summit consumerのcontract checkを通す。
 - `pnpm verify:forbidden`でraw SQL、runtime DIRECT_URL、pushを検出する。

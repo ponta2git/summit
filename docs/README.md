@@ -11,7 +11,7 @@ Summit の現行仕様と設計を、必要な範囲だけ安全に読むため�
 | Discord Interaction / custom ID / 表示 | `docs/discord-rule.md` | `requirements/base.md`, `docs/architecture.md`, `docs/test-rule.md` |
 | scheduler / startup / reconnect / outbox worker | `docs/architecture.md` | `docs/db-rule.md`, `docs/time-rule.md`, `docs/test-rule.md`, `docs/operations/scheduler.md` |
 | DB repository / transaction / outbox | `docs/db-rule.md` | `docs/architecture.md`, `docs/test-rule.md`, `docs/operations/migration.md` |
-| schema / migration | `docs/db-rule.md` と `../momo-db` | `docs/operations/migration.md`, `docs/test-rule.md` |
+| schema / migration | `../momo-db/docs/development.md` と `docs/db-rule.md` | `docs/operations/migration.md`, `docs/test-rule.md` |
 | JST / deadline / ISO week / clock | `docs/time-rule.md` | `requirements/base.md`, `src/time/`, `docs/operations/time-skew.md` |
 | テスト / CI / fake | `docs/test-rule.md` | `docs/architecture.md`, `docs/dev-rule.md` |
 | toolchain / command / naming / comment | `docs/dev-rule.md` | `docs/test-rule.md` |
@@ -34,6 +34,7 @@ Summit の現行仕様と設計を、必要な範囲だけ安全に読むため�
 | `docs/test-rule.md` | 変更種別ごとのテスト、fake、race、assertion の契約 | 実行コマンドの詳細、production 設計の再説明 |
 | `docs/dev-rule.md` | toolchain、コマンド、source layout、命名、コメント、Git | 業務仕様、運用障害 SOP |
 | `docs/operations/` | 現在実行可能な運用 SOP | 実装規約、過去の検討メモ |
+| `../momo-db/docs/development.md` | momo-db の schema / migration 開発、custom SQL の分離、検証、rollback | Summit 固有の consumer / deploy 手順 |
 | `src/config.ts`, `src/env.ts`, `src/userConfig.ts`, `src/time/` | 実行される設定値・parse・時刻計算 | 判断の長い説明 |
 | `../momo-db/src/schema.ts`, `../momo-db/drizzle/` | 共有 schema と migration 履歴 | Summit 固有の workflow |
 
