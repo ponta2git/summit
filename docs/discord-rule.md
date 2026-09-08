@@ -111,6 +111,8 @@ DiscordとPostgreSQLを同じtransactionにできないため、exactly-onceは�
 
 ## 9. 変更時の検証
 
+変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。
+
 - ackがDB/API処理より先であること。
 - wrong guild/channel/member、malformed custom ID、stale stateがwriteしないこと。
 - registryのduplicate/prefix包含がfail-fastすること。

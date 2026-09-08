@@ -75,6 +75,8 @@ hostのNTP同期を信頼し、applicationから独自NTP queryや自動clock補
 
 ## 7. テスト必須境界
 
+時刻契約の変更が影響する境界を次から選び、`docs/test-rule.md` の品質 gate と合わせて検証する。
+
 - ISO week yearの年跨ぎ
 - 金曜/土曜Sessionのweek key共有
 - `24:00`の翌日境界と不正な24時超表記

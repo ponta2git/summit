@@ -158,6 +158,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 
 ## 10. 変更時の検証
 
+変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。DB 契約変更の real DB 検証は省略しない。
+
 - real portとfake portのcontractが一致する。
 - unique、CAS、transaction rollback、lock orderをreal DB integration testで確認する。
 - concurrent interaction、deadline、cancelが一つのwinnerへ収束する。

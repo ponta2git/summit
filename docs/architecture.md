@@ -164,6 +164,8 @@ OpenTelemetry は、単一 service のログ調査に collector / backend 運用
 
 ## 9. 変更時の検証
 
+変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。
+
 - dependency direction: `pnpm verify:forbidden`
 - type/error/port contract: `pnpm typecheck` と unit tests
 - scheduler: fake clock、明示同期点、due-kind一回制約、wake/supervisor fallback

@@ -36,10 +36,16 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | Neon インスタンスを restore したい | [backup.md](./backup.md) |
 | Bot が応答しない / 起動状態を確認したい | [recovery.md](./recovery.md) case 1 + `/status` |
 
-## 共通原則 (再掲)
+## 実行権限と準備
+
+運用手順の調査・文書修正と、production での実行を区別する。runbook に command が載っていることや tool が利用可能なことは、実行許可ではない。production の変更には `AGENTS.md` の明示権限が必要で、同じ対象・操作について既に得た許可は再確認しない。
+
+実行前に対象環境、操作範囲、該当 SOP、禁止窓、成功判定、復旧方法を照合する。許可が未取得なら、許可済みの範囲で差分・手順・検証結果を具体化してから対象操作の承認を求める。調査中に運用境界の不明点・矛盾を見つけた場合は、対象操作を止めて根拠と必要な判断を示す。独立した文書確認は継続できる。
+
+## 共通原則
 
 1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない。
-2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は `docs/db-rule.md` で禁止。復旧は基本「Fly redeploy で再起動 → reconciler が収束」。
+2. **本番 DB 破壊操作禁止** — `DROP` / `TRUNCATE` / `fly ssh` 経由の生 SQL / 手動 `UPDATE` は `docs/db-rule.md` で禁止。再起動による reconciler の復旧を選ぶ場合も、該当 SOP・実行権限・禁止窓に従う。
 3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない。本書を運用上の正本とする。
 4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない。
 5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可。
