@@ -15,7 +15,7 @@ export interface IntegrationDb {
   readonly client: postgres.Sql;
 }
 
-export const createIntegrationDb = (): IntegrationDb => {
+export const createIntegrationDb = (options: { readonly maxConnections?: number } = {}): IntegrationDb => {
   const url = process.env["DATABASE_URL"] ?? "";
   // secret: 本番誤爆防止。localhost / docker compose 内 hostname のみ許可。
   if (url && !LOCAL_HOSTS.has(new URL(url).hostname)) {
@@ -24,8 +24,8 @@ export const createIntegrationDb = (): IntegrationDb => {
     );
   }
   // tx: src/db/client.ts の singleton は流用しない。close 競合・並列時の脆さを避ける。
-  //   invariant: single worker (vitest.integration.config.ts) 前提。max: 1 で十分。
-  const client = postgres(url, { prepare: false, max: 1 });
+  // Concurrency contracts explicitly opt into enough independent connections.
+  const client = postgres(url, { prepare: false, max: options.maxConnections ?? 1 });
   const db = drizzle(client, { schema, casing: "snake_case" });
   return { db, client };
 };

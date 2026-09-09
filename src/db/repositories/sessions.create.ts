@@ -3,7 +3,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.ts";
-import { enqueueOutbox } from "./outbox.ts";
+import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type { DbLike, SessionRow } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
 import type { CreateAskSessionInput } from "./sessions.types.ts";
@@ -38,7 +38,7 @@ export const createAskSession = async (
     const row = rows[0];
     if (!row) {return undefined;}
     for (const entry of input.outbox ?? []) {
-      await enqueueOutbox(tx, entry);
+      await enqueueOutboxInTransaction(tx, entry);
     }
     return mapSession(row);
   });

@@ -61,14 +61,16 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 
 ### 共有通知への停止切替
 
-共有通知への再構成では旧 table が削除されるため、DB と対応する Summit を同じ停止期間で切り替える。
+共有通知への再構成と通知業務関数の撤去は、DB・Summit・momo-result APIを同じ停止期間で切り替える。0044/0045以降は取消triggerと通知SQL関数がなく、全writerのアプリcommandが更新境界を所有する。
 
 1. momo-db の [通知契約](../../../momo-db/docs/discord-notifications.md) と対応 commit を確認し、利用者への通知後に API・worker・Summit の全 writer / 配送を停止する。
 2. 復元確認済み backup と、直前の開催・参加者・試合の ID / 値・参照を比較する基準を揃える。進行中 Session と未配送・再試行対象の通知を再確認する。
-3. 通常の production approval / preflight を通じて migration を適用し、対応する `@momo/db` を含む Summit を切り替える。
+3. 通常のproduction approval / preflightでmigrationを適用し、対応する`@momo/db`を含むSummitと、通知取消を同じ業務transactionへ含めるmomo-result APIを切り替える。旧通知関数を呼ぶconsumerを残さない。
 4. 開催履歴の保全と、募集・週取消・リマインド配送後の開催 / 参加者作成を確認してから再開する。新しい A/B は設定・HTTP 受付・配送対応が揃ってから producer を有効化する。
 
 停止中に戻す場合は DB と consumer を整合する組合せで復元する。再開後は新規データを守る forward fix を原則とする。過去の Session から不明な開催を補完せず、現存する開催履歴を維持する。
+
+A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。旧計画のdelivery contextが不明な場合は推測せず[通知運用](result-notifications.md#移行とrenderer互換性)に従う。
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
 

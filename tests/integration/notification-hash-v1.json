@@ -1,0 +1,14 @@
+[
+  {
+    "raw": "{\"n\":2.000,\"tiny\":-0.0001000,\"zero\":-0.00}",
+    "hash": "194536e61636a90b6a56d54f523d73bfa99eff50d4e3e97c6ceb48ed9c56df3f"
+  },
+  {
+    "raw": "{\"z\":9007199254740993.1000,\"a\":[1e3,1e-20,true,null,{\"text\":\"1.2300 \\\"quoted\\\" 日本語\"}]}",
+    "hash": "494f26f798a885e2e9a0fc217d71614c876904193a4cb53e9d558cd8b1886a80"
+  },
+  {
+    "raw": "{\"duplicate\":1,\"duplicate\":2.00,\"emoji\":\"😀\",\"escaped\":\"\\n\\t\\\\\",\"nested\":[[],{}]}",
+    "hash": "d33491a36e863088211bb0f67c200b79f0c66c2888aa29e8deea39c5d5db3ff3"
+  }
+]

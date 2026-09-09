@@ -1,43 +1,20 @@
-import { sql } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
+import { notificationTransaction } from "./notifications.storage.ts";
+import { beginNotificationPart, completeNotificationPart, failNotification } from "./notifications.delivery.ts";
 
-/** Recheck ownership and cancellation immediately before the external send. */
-export const beginOutboxDelivery = async (
-  db: DbLike,
-  id: string,
-  options: { readonly claimToken: string; readonly now: Date }
-): Promise<boolean> => {
-  const [row] = await db.execute<{ ok: boolean }>(sql`
-    SELECT public.begin_discord_notification_part(
-      ${id}, 0, ${options.claimToken}::uuid, ${options.now.toISOString()}
-    ) AS ok
-  `);
-  return row?.ok ?? false;
-};
+export const beginOutboxDelivery = (
+  db: DbLike, id: string, options: { readonly claimToken: string; readonly now: Date }
+): Promise<boolean> => notificationTransaction(db, "attendance", tx =>
+  beginNotificationPart(tx, id, 0, options.claimToken, options.now));
 
-export const markOutboxDelivered = async (
-  db: DbLike,
-  id: string,
+export const markOutboxDelivered = (
+  db: DbLike, id: string,
   options: { readonly claimToken: string; readonly deliveredMessageId: string | null; readonly now: Date }
-): Promise<boolean> => {
-  const [row] = await db.execute<{ ok: boolean }>(sql`
-    SELECT public.complete_discord_notification_part(
-      ${id}, 0, ${options.claimToken}::uuid, ${options.deliveredMessageId}, ${options.now.toISOString()}
-    ) AS ok
-  `);
-  return row?.ok ?? false;
-};
+): Promise<boolean> => notificationTransaction(db, "attendance", tx =>
+  completeNotificationPart(tx, id, 0, options.claimToken, options.deliveredMessageId, options.now));
 
-export const markOutboxFailed = async (
-  db: DbLike,
-  id: string,
+export const markOutboxFailed = (
+  db: DbLike, id: string,
   options: { readonly error: string; readonly claimToken: string; readonly now: Date; readonly nextAttemptAt: Date | null }
-): Promise<boolean> => {
-  const [row] = await db.execute<{ ok: boolean }>(sql`
-    SELECT public.fail_discord_notification(
-      ${id}, ${options.claimToken}::uuid, ${options.error},
-      ${options.nextAttemptAt?.toISOString() ?? null}, ${options.now.toISOString()}
-    ) AS ok
-  `);
-  return row?.ok ?? false;
-};
+): Promise<boolean> => notificationTransaction(db, "attendance", tx =>
+  failNotification(tx, id, options.claimToken, options.error, options.nextAttemptAt, options.now));

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { members, responses, sessions } from "../schema.ts";
-import { enqueueOutbox } from "./outbox.ts";
+import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type {
   DbLike,
   ResponseChoice,
@@ -137,7 +137,7 @@ export const enqueueSessionIntents = async (
   entries: readonly EnqueueOutboxInput[]
 ): Promise<void> => {
   for (const entry of entries) {
-    await enqueueOutbox(tx, entry);
+    await enqueueOutboxInTransaction(tx, entry);
   }
 };
 

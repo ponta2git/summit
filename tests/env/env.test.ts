@@ -46,6 +46,22 @@ describe("envSchema", () => {
     expectTypeOf(parsed.SUMMIT_CONFIG_YAML).toEqualTypeOf<string>();
   });
 
+  it("requires complete notification configuration, separate credentials and a private bind", () => {
+    const notifications = { ...validEnvInput, RESULT_NOTIFICATION_TOKEN: "p".repeat(32),
+      RESULT_NOTIFICATION_OPERATIONS_TOKEN: "o".repeat(32), RESULT_NOTIFICATION_WEB_ORIGIN: "https://example.test" };
+    expect(envSchema.safeParse(notifications).success).toBe(true);
+    const invalid = [
+      { ...validEnvInput, RESULT_NOTIFICATION_TOKEN: "p".repeat(32) },
+      { ...notifications, RESULT_NOTIFICATION_OPERATIONS_TOKEN: notifications.RESULT_NOTIFICATION_TOKEN },
+      { ...notifications, RESULT_NOTIFICATION_TOKEN: "short" },
+      { ...notifications, RESULT_NOTIFICATION_BIND_HOST: "0.0.0.0" },
+      { ...notifications, RESULT_NOTIFICATION_BIND_HOST: "::" },
+      { ...notifications, RESULT_NOTIFICATION_WEB_ORIGIN: "https://example.test/path" },
+      { ...notifications, RESULT_NOTIFICATION_PORT: "0" }
+    ];
+    for (const input of invalid) { expect(envSchema.safeParse(input).success).toBe(false); }
+  });
+
   it("does not expose DIRECT_URL in env type", () => {
     type Env = z.infer<typeof envSchema>;
     type HasDirectUrl = "DIRECT_URL" extends keyof Env ? true : false;

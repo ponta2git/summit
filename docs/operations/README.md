@@ -17,6 +17,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | [recovery.md](./recovery.md) | 障害ケース 1〜7 + 復旧不能ケースの SOP | `docs/architecture.md`, `docs/db-rule.md` |
 | [scheduler.md](./scheduler.md) | DB-driven scheduler / Neon compute cost / missed wake 対応 | `docs/architecture.md` |
 | [outbox.md](./outbox.md) | outbox 観測値 / retention / stranded 対応 | `docs/db-rule.md` |
+| [result-notifications.md](./result-notifications.md) | OCR・分析通知の状態確認、再試行、ON/OFF、互換性 | `docs/db-rule.md`, `docs/discord-rule.md` |
 | [time-skew.md](./time-skew.md) | サーバ clock 異常時の SOP | `docs/time-rule.md` |
 | [migration.md](./migration.md) | momo-db migration と Summit consumer の連携・適用・復旧 | `docs/db-rule.md`, `../momo-db/docs/development.md` |
 | [backup.md](./backup.md) | Neon PITR / 想定 RPO/RTO / restore 手順 | `docs/db-rule.md` |
@@ -29,6 +30,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 | Discord 表示が更新されない | [recovery.md](./recovery.md) case 4 / 5 + [outbox.md](./outbox.md) |
 | `/status` の `now` が JST と数分以上ずれている | [time-skew.md](./time-skew.md) |
 | outbox metrics の `level=warn` が来た | [outbox.md](./outbox.md) §警告対応 |
+| OCR・分析通知が届かない、同じ通知を再試行したい | [result-notifications.md](./result-notifications.md) |
 | scheduler wake / timer / worker の挙動を確認したい | [scheduler.md](./scheduler.md) |
 | 起動時に `reconciler` が連発 / 締切再計算が暴れる | [recovery.md](./recovery.md) case 1 / 7 |
 | `pnpm db:migrate` が途中で失敗した | [migration.md](./migration.md) §ロールバック (`momo-db` リポジトリで対応) |

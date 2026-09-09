@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../../src/db/schema.ts";
 import { makeRealPorts } from "../../src/db/ports.real.js";
 import { runReconciler } from "../../src/scheduler/reconciler.js";
 import type { Clock } from "../../src/time/index.js";
@@ -72,31 +73,30 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
     // seed (b): IN_FLIGHT outbox row past claim_expires_at → invariant F で release 対象。
     const expiredClaimAt = new Date(bootNow.getTime() - 60 * 1000);
-    await integrationDb.db.execute(sql`
-      SELECT * FROM public.enqueue_discord_attendance_notification(
-        'outbox-stuck', 'sess-outbox-parent',
-        '{"kind":"send_message","renderer":"ask_body","channelId":"999000000000000001"}'::jsonb,
-        'sess-outbox-parent:ask-send', 0, 0::smallint, ${expiredClaimAt.toISOString()}
-      )
-    `);
-    await integrationDb.db.execute(sql`
-      SELECT * FROM public.claim_discord_notifications('attendance', 1, ${expiredClaimAt.toISOString()}, 1000)
-    `);
-    for (const [id, ordinal] of [["outbox-dead-letter", 0], ["outbox-cancelled-successor", 1]] as const) {
-      await integrationDb.db.execute(sql`
-        SELECT * FROM public.enqueue_discord_attendance_notification(
-          ${id}, 'sess-outbox-parent',
-          '{"kind":"send_message","renderer":"ask_body","channelId":"999000000000000001"}'::jsonb,
-          ${"sess-outbox-parent:" + id}, 1, ${ordinal}::smallint, ${bootNow.toISOString()}
-        )
-      `);
-    }
-    await integrationDb.db.execute(sql`UPDATE discord_notifications SET status = 'FAILED',
-      attempt_count = 10, last_error = 'fixed by deployment', terminal_at = ${bootNow.toISOString()}
-      WHERE id = 'outbox-dead-letter'`);
-    await integrationDb.db.execute(sql`SELECT public.cancel_discord_notification(
-      'outbox-cancelled-successor', 'predecessor_failed', ${bootNow.toISOString()}
-    )`);
+    await integrationDb.db.transaction(async tx => {
+      for (const fixture of [
+        { id: "outbox-stuck", revision: 0, ordinal: 0, status: "IN_FLIGHT" },
+        { id: "outbox-dead-letter", revision: 1, ordinal: 0, status: "FAILED" },
+        { id: "outbox-cancelled-successor", revision: 1, ordinal: 1, status: "CANCELLED" }
+      ]) {
+        const sending = fixture.status === "IN_FLIGHT";
+        const token = sending ? "11111111-1111-4111-8111-111111111111" : null;
+        await tx.insert(discordNotifications).values({
+          id: fixture.id, family: "attendance", kind: "send_message", dedupeKey: fixture.id,
+          payload: { kind: "send_message", renderer: "ask_body", channelId: "999000000000000001" },
+          payloadHash: "f".repeat(64), partCount: 1, rendererVersion: 1, status: fixture.status,
+          attemptCount: sending ? 1 : 10, claimToken: token,
+          claimExpiresAt: sending ? new Date(expiredClaimAt.getTime() + 1_000) : null,
+          nextAttemptAt: bootNow, terminalAt: sending ? null : bootNow,
+          cancelReason: fixture.status === "CANCELLED" ? "predecessor_failed" : null
+        });
+        await tx.insert(discordNotificationAttendance).values({ notificationId: fixture.id,
+          sessionId: "sess-outbox-parent", aggregateRevision: fixture.revision, ordinal: fixture.ordinal });
+        await tx.insert(discordNotificationParts).values({ notificationId: fixture.id, partNo: 0,
+          status: fixture.status === "FAILED" ? "PENDING" : fixture.status,
+          claimToken: token, sendStartedAt: sending ? expiredClaimAt : null });
+      }
+    });
 
     // boot-1: 初回 startup reconcile。expired outbox claim が収束する。
     const boot1 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));

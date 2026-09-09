@@ -3,6 +3,9 @@ import { discordNotifications } from "../schema.ts";
 import { parseDbTimestamp, type DbLike } from "../rows.ts";
 import { findAttendanceNotifications } from "./outbox.storage.ts";
 import type { OutboxEntry } from "./outbox.types.ts";
+import { notificationTransaction } from "./notifications.storage.ts";
+import { purgeNotifications } from "./notifications.retention.ts";
+import { systemClock } from "../../time/index.ts";
 
 const retainedAttendance = and(eq(discordNotifications.family, "attendance"), isNull(discordNotifications.purgedAt));
 
@@ -24,11 +27,8 @@ export const pruneOutbox = async (
   db: DbLike,
   options: { readonly deliveredOlderThan: Date; readonly failedOlderThan: Date }
 ): Promise<PruneOutboxResult> => {
-  const rows = await db.execute<{ status: string }>(sql`
-    SELECT status FROM public.purge_discord_notifications(
-      clock_timestamp(), 'attendance', ${options.deliveredOlderThan.toISOString()}, ${options.failedOlderThan.toISOString()}
-    )
-  `);
+  const rows = await notificationTransaction(db, "attendance", tx =>
+    purgeNotifications(tx, "attendance", systemClock.now(), options));
   return {
     deliveredPruned: rows.filter(row => row.status === "DELIVERED").length,
     failedPruned: rows.filter(row => row.status === "FAILED").length,

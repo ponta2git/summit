@@ -13,7 +13,8 @@ import {
 } from "../schema.ts";
 import type { DbLike, SessionRow, SessionStatus } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
-import { enqueueOutbox } from "./outbox.ts";
+import { enqueueOutboxInTransaction } from "./outbox.ts";
+import { cancelNotification, lockNotificationFamily } from "./notifications.storage.ts";
 import type {
   CancelWeekInput,
   CancelWeekResult
@@ -155,6 +156,7 @@ export const cancelWeekAtomically = async (
         ...alreadySkipped.map((session) => session.id)
       ])
     ];
+    await lockNotificationFamily(tx, "attendance");
     const conflicting = await tx
       .select({ id: discordNotifications.id })
       .from(discordNotifications)
@@ -164,10 +166,10 @@ export const cancelWeekAtomically = async (
         AND ${discordNotifications.dedupeKey} <> ${dedupeKey}`)
       .orderBy(discordNotifications.id);
     for (const row of conflicting) {
-      await tx.execute(sql`SELECT public.cancel_discord_notification(${row.id}, 'manual_skip', ${input.now.toISOString()})`);
+      await cancelNotification(tx, row.id, "manual_skip", input.now);
     }
 
-    const notice = await enqueueOutbox(tx, {
+    const notice = await enqueueOutboxInTransaction(tx, {
         kind: "send_message",
         sessionId: noticeAnchor.id,
         dedupeKey,

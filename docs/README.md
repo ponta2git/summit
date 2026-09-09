@@ -10,6 +10,7 @@ Summit の現行仕様と設計を、必要な範囲だけ安全に読むため�
 | 新しい feature / handler / workflow | `docs/architecture.md` | `docs/discord-rule.md`, `docs/test-rule.md`, `docs/dev-rule.md` |
 | Discord Interaction / custom ID / 表示 | `docs/discord-rule.md` | `requirements/base.md`, `docs/architecture.md`, `docs/test-rule.md` |
 | scheduler / startup / reconnect / outbox worker | `docs/architecture.md` | `docs/db-rule.md`, `docs/time-rule.md`, `docs/test-rule.md`, `docs/operations/scheduler.md` |
+| OCR・分析通知 / private受付 / 運用retry | `requirements/base.md` §11 と `docs/db-rule.md` | `docs/architecture.md`, `docs/discord-rule.md`, `docs/operations/result-notifications.md` |
 | DB repository / transaction / outbox | `docs/db-rule.md` | `docs/architecture.md`, `docs/test-rule.md`, `docs/operations/migration.md` |
 | schema / migration | `../momo-db/docs/development.md` と `docs/db-rule.md` | `docs/operations/migration.md`, `docs/test-rule.md` |
 | JST / deadline / ISO week / clock | `docs/time-rule.md` | `requirements/base.md`, `src/time/`, `docs/operations/time-skew.md` |

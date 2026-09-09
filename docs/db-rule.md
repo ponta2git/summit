@@ -86,7 +86,7 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 
 PostgreSQLとDiscordを同一transactionにできないため、業務上必須の新規投稿はtyped delivery intentとしてDBへ保存し、at-least-onceで配送する。
 
-保存先は共有通知本体とアンケート関連・配送部分の組合せとする。repository adapter が既存の attendance DTO に組み立て、共通の claim / 開始 / 確定 / 整理を DB 関数へ委ねる。A/B は Session を作らず、別 family の契約で接続する。
+保存先は共有通知本体とアンケート関連・配送部分の組合せとする。repository が attendance DTO を組み立て、アプリケーションの command として claim / 開始 / 確定 / 整理を実行する。通知の業務関数・trigger は DB に置かない。A/B は Session を作らず、別 family の契約で接続する。
 
 ### Enqueue と順序
 
@@ -129,13 +129,26 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 
 - active stateはpruneしない。
 - terminal 通知は status 別 policy で本文・配送詳細を整理し、通知 ID / dedupe / 内容照合情報と終端状態を永久保持する。本文整理後の失敗通知を起動時に復帰させない。
-- retention schedule と consumer の cutoff は `src/config.ts`、共有 DB の最低保持期間と整理条件は momo-db の共有通知契約を正本とする。
+- retention schedule と consumer の cutoff は `src/config.ts`、アプリ間の保持期間と整理条件は momo-db の共有通知契約を正本とする。判断・実行はアプリが所有する。
 - metricsはpending/in-flight/failedとoldest ageを構造化logへ出す。
 - warn thresholdは`src/config.ts`が正本。
 - `/status`はstranded Session/outbox/HeldEvent invariantをread-onlyで表示する。
 - 外部healthcheck pingをoutboxやschedulerへ混在させない。
 
 詳細な調査・復旧は`docs/operations/outbox.md`と`docs/operations/recovery.md`を参照する。
+
+### A/Bの受付・取消・配送
+
+`ResultNotificationsPort`は生JSON受付、設定、配送、状態照会、明示再試行、保持を所有する。real/fakeに共通の契約testを適用し、数値精度・transaction・競合は実DBで検証する。本文形式と取消・再試行判断は`src/domain/`、更新境界は`resultNotifications.*`と`notifications.*`のrepositoryに置く。
+
+- 受付は親・固定payload・結果関連・取消対象とPENDINGまたはCANCELLEDを一つのcommandで保存する。既存IDの内容照合を新規version検証より先に行う。hashは旧JSONB数値正規化と互換にし、JSの数値丸めを使わない。
+- 設定変更はON/OFF・世代・未開始部分取消を同じcommitに含める。対象変更はmomo-resultの業務commandの末尾で通知を取り消す。transactionの集約単位とlock順はアプリの契約であり、DBの機能に判断を任せない。
+- `notificationTransaction`はREAD COMMITTEDとfamily gateを指定する。対象writerは業務行を書いてからresult gateを取得する。gate取得後は業務行のlockを取らず、Discord I/Oを行わない。全writerの取得順は[共有契約](../../momo-db/docs/discord-notifications.md#アプリケーションの更新境界)を守る。
+- 初回描画でrenderer・部分数・リンクorigin・チャンネルを保存する。各partの開始・結果確定は有効なclaimと順序を再検査する。取消時は開始済みpartの確定だけを許し、親を復帰させない。
+- A/BのFAILEDは起動時に復帰させず、保持中で取消条件のない行だけを明示retryする。期限回収・保持もfamilyを限定し、既存Session回復と混ぜない。
+- DB driverの例外には生payloadやSQL bindが含まれ得るため、result portは安全な分類だけを境界へ返し、元のcauseをlog・HTTPへ渡さない。
+
+旧resultの部分計画にdelivery contextがない場合は宛先を推測して再送しない。旧rendererを撤去する条件と移行手順は[通知運用](operations/result-notifications.md)に従う。
 
 ## 8. Legacy reminder marker bridge
 

@@ -2,7 +2,7 @@
 
 outbox は Discord への副作用を at-least-once で配送し、Session 内の意味順序を守る仕組み。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
 
-ここで扱う OutboxPort・metrics・起動時回復は共通通知 DB の attendance family に限定する。A/B の固定通知は [共有通知契約](../../../momo-db/docs/discord-notifications.md) を参照する。
+ここで扱う OutboxPort・metrics・起動時回復は共通通知 DB の attendance family に限定する。A/Bの状態確認・再試行は[通知運用](result-notifications.md)を参照する。
 
 設計正本: `docs/db-rule.md`。scheduler との接続は `docs/architecture.md`。
 関連定数 SSoT: `src/config.ts` (定数名のみ参照、実値は SSoT 側で確認)
@@ -67,7 +67,7 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 - DELIVERED 行: `OUTBOX_RETENTION_DELIVERED_MS` 超過
 - FAILED / CANCELLED 行: `OUTBOX_RETENTION_FAILED_MS` 超過
 
-prune は本文・配送部分・最終エラーを整理し、親の ID / dedupe / 内容照合と終端状態は残す。metrics は整理済み行を除外する。DB の最低保持期間を短縮する cutoff は受け付けず、本文整理後の古い通知を再送しない。
+pruneはアプリの保持policyで本文・配送部分・最終エラーを整理し、親のID / dedupe / 内容照合と終端状態を残す。metricsは整理済み行を除外する。最低保持期間を短縮するcutoffは受け付けず、本文整理後の古い通知を再送しない。
 
 **PENDING / IN_FLIGHT は経過時間に関わらず絶対に削除しない** (at-least-once と message-id back-fill の正本性を保護)。
 

@@ -37,6 +37,8 @@ import type {
   SubmitPostponeVoteInput,
   SubmitPostponeVoteResult
 } from "./repositories/sessionCommands.ts";
+import type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
+export type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
 
 export type {
   HeldEventParticipantRow,
@@ -259,4 +261,5 @@ export interface AppPorts {
   readonly heldEvents: HeldEventsPort;
   readonly status: StatusPort;
   readonly outbox: OutboxPort;
+  readonly resultNotifications: ResultNotificationsPort;
 }

@@ -44,6 +44,7 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm docs:sync-agent` | `AGENTS.md` から agent adapter を生成し文書検査 |
 | `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
 | `pnpm commands:sync` | guild-scoped slash command同期 |
+| `pnpm notifications inspect/retry/settings ...` | 稼働中private receiverでOCR・分析通知を操作。権限・使い方は`docs/operations/result-notifications.md` |
 | `pnpm db:seed` | local member seed |
 | `pnpm db:reset` | local transient state reset |
 

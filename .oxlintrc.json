@@ -71,6 +71,7 @@
         "src/env.ts",
         "src/index.ts",
         "src/commands/sync.ts",
+        "src/notifications/cli.ts",
         "scripts/dev/seed.ts",
         "scripts/dev/reset.ts",
         "tests/integration/**/*.ts"

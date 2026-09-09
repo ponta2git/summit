@@ -70,6 +70,7 @@ export interface AskSchedulerDeps {
   readonly context: AppContext;
   readonly sendAsk?: SendAsk;
   readonly cronAdapter?: CronAdapter;
+  readonly wakeResultNotifications?: (reason: string) => void;
 }
 
 export interface AppScheduler {
@@ -216,22 +217,29 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     },
     {
       schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
-      tick: () =>
+      tick: () => {
         void runResultTickSafely(
           { name: "outbox_retention", logger },
           () => runOutboxRetentionTick(context)
-        )
+        );
+        void runResultTickSafely(
+          { name: "result_notification_retention", logger },
+          () => fromDatabaseCall(() => context.ports.resultNotifications.prune(context.clock.now()), "Failed to prune result notifications.")
+        );
+      }
     },
     {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
-      tick: () =>
+      tick: () => {
+        deps.wakeResultNotifications?.("supervisor");
         void runResultTickSafely(
           { name: "scheduler_supervisor", logger },
           () =>
             runOutboxMetricsTick(context).andThen(() =>
               runSchedulerSupervisorTick(context, controller)
             )
-        )
+        );
+      }
     }
   ];
 

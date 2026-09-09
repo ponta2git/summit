@@ -2,6 +2,7 @@
 // @see docs/architecture.md
 
 import type { DbLike } from "./rows.ts";
+import { makeResultNotificationsPort } from "./repositories/resultNotifications.ts";
 import {
   createAskSession,
   findDueAskingSessions,
@@ -126,5 +127,6 @@ export const makeRealPorts = (db: DbLike): AppPorts => ({
   members: makeMembersPort(db),
   heldEvents: makeHeldEventsPort(db),
   status: makeStatusPort(db),
-  outbox: makeOutboxPort(db)
+  outbox: makeOutboxPort(db),
+  resultNotifications: makeResultNotificationsPort(db)
 });

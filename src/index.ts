@@ -17,15 +17,26 @@ import { appConfig } from "./userConfig.ts";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.ts";
 import { createBootPhaseLogger } from "./startup/bootLogging.ts";
 import { attachRateLimitLogging } from "./startup/rateLimitLogging.ts";
+import { createResultNotificationRuntime } from "./notifications/runtime.ts";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
 const readiness = createAppReadiness();
 let startupCompleted = false;
+const resultNotifications = env.RESULT_NOTIFICATION_TOKEN && env.RESULT_NOTIFICATION_OPERATIONS_TOKEN && env.RESULT_NOTIFICATION_WEB_ORIGIN
+  ? createResultNotificationRuntime({ client, context: appContext,
+    host: env.RESULT_NOTIFICATION_BIND_HOST, port: env.RESULT_NOTIFICATION_PORT,
+    token: env.RESULT_NOTIFICATION_TOKEN, operationsToken: env.RESULT_NOTIFICATION_OPERATIONS_TOKEN,
+    webOrigin: env.RESULT_NOTIFICATION_WEB_ORIGIN, channelId: appConfig.discord.channelId,
+    canAccept: () => startupCompleted }) : undefined;
+const wakeSchedulers = (reason: string): void => {
+  scheduler?.wake(reason);
+  resultNotifications?.wake(reason);
+};
 
 registerInteractionHandlers(client, appContext, {
   getReadyState: () => readiness.state,
-  wakeScheduler: (reason) => scheduler?.wake(reason)
+  wakeScheduler: wakeSchedulers
 });
 
 // race: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
@@ -37,12 +48,10 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
     stopScheduler: () => {
-      if (!scheduler) {
-        return;
-      }
-      scheduler.stop();
+      resultNotifications?.stop();
+      scheduler?.stop();
     },
-    waitForInFlightSend,
+    waitForInFlightSend: async () => { await Promise.all([waitForInFlightSend(), resultNotifications?.drain()]); },
     closeDb,
     destroyClient: () => client.destroy()
   })
@@ -76,7 +85,7 @@ registerReconnectReplayHandlers({
   readiness,
   isStartupCompleted: () => startupCompleted,
   bootId,
-  wakeScheduler: (reason) => scheduler?.wake(reason)
+  wakeScheduler: wakeSchedulers
 });
 
 const run = async (): Promise<void> => {
@@ -88,6 +97,7 @@ const run = async (): Promise<void> => {
     db
   );
   logBootPhase("db_connect");
+  await resultNotifications?.start();
 
   await client.login(env.DISCORD_TOKEN);
   logBootPhase("login");
@@ -122,8 +132,10 @@ const run = async (): Promise<void> => {
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({
     client,
-    context: appContext
+    context: appContext,
+    wakeResultNotifications: reason => resultNotifications?.wake(reason)
   });
+  resultNotifications?.wake("startup");
 
   // why: Fly 自動挿入の FLY_IMAGE_REF → CI inject の GIT_SHA → 'unknown' の優先順で commit を識別する。
   const commitSha = env.FLY_IMAGE_REF ?? env.GIT_SHA ?? "unknown";
