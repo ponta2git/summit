@@ -73,42 +73,30 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     // seed (b): IN_FLIGHT outbox row past claim_expires_at → invariant F で release 対象。
     const expiredClaimAt = new Date(bootNow.getTime() - 60 * 1000);
     await integrationDb.db.execute(sql`
-      INSERT INTO discord_outbox (
-        id, kind, session_id, payload, dedupe_key,
-        status, attempt_count, claim_expires_at, next_attempt_at,
-        aggregate_revision, ordinal,
-        created_at, updated_at
-      ) VALUES (
-        'outbox-stuck',
-        'send_message',
-        'sess-outbox-parent',
-        '{}'::jsonb,
-        'sess-outbox-parent:ask-send',
-        'IN_FLIGHT',
-        1,
-        ${expiredClaimAt.toISOString()},
-        ${expiredClaimAt.toISOString()},
-        0, 0,
-        ${bootNow.toISOString()}, ${bootNow.toISOString()}
+      SELECT * FROM public.enqueue_discord_attendance_notification(
+        'outbox-stuck', 'sess-outbox-parent',
+        '{"kind":"send_message","renderer":"ask_body","channelId":"999000000000000001"}'::jsonb,
+        'sess-outbox-parent:ask-send', 0, 0::smallint, ${expiredClaimAt.toISOString()}
       )
     `);
     await integrationDb.db.execute(sql`
-      INSERT INTO discord_outbox (
-        id, kind, session_id, payload, dedupe_key,
-        status, attempt_count, last_error, next_attempt_at,
-        aggregate_revision, ordinal, created_at, updated_at
-      ) VALUES
-        (
-          'outbox-dead-letter', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
-          'sess-outbox-parent:dead-letter', 'FAILED', 10, 'fixed by deployment',
-          ${bootNow.toISOString()}, 1, 0, ${bootNow.toISOString()}, ${bootNow.toISOString()}
-        ),
-        (
-          'outbox-cancelled-successor', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
-          'sess-outbox-parent:cancelled-successor', 'CANCELLED', 0, NULL,
-          ${bootNow.toISOString()}, 1, 1, ${bootNow.toISOString()}, ${bootNow.toISOString()}
-        )
+      SELECT * FROM public.claim_discord_notifications('attendance', 1, ${expiredClaimAt.toISOString()}, 1000)
     `);
+    for (const [id, ordinal] of [["outbox-dead-letter", 0], ["outbox-cancelled-successor", 1]] as const) {
+      await integrationDb.db.execute(sql`
+        SELECT * FROM public.enqueue_discord_attendance_notification(
+          ${id}, 'sess-outbox-parent',
+          '{"kind":"send_message","renderer":"ask_body","channelId":"999000000000000001"}'::jsonb,
+          ${"sess-outbox-parent:" + id}, 1, ${ordinal}::smallint, ${bootNow.toISOString()}
+        )
+      `);
+    }
+    await integrationDb.db.execute(sql`UPDATE discord_notifications SET status = 'FAILED',
+      attempt_count = 10, last_error = 'fixed by deployment', terminal_at = ${bootNow.toISOString()}
+      WHERE id = 'outbox-dead-letter'`);
+    await integrationDb.db.execute(sql`SELECT public.cancel_discord_notification(
+      'outbox-cancelled-successor', 'predecessor_failed', ${bootNow.toISOString()}
+    )`);
 
     // boot-1: 初回 startup reconcile。expired outbox claim が収束する。
     const boot1 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));
@@ -147,7 +135,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     const outbox = await integrationDb.db.execute<{
       status: string;
       claim_expires_at: Date | null;
-    }>(sql`SELECT status, claim_expires_at FROM discord_outbox WHERE id='outbox-stuck'`);
+    }>(sql`SELECT status, claim_expires_at FROM discord_notifications WHERE id='outbox-stuck'`);
     expect(outbox[0]?.status).toBe("PENDING");
     expect(outbox[0]?.claim_expires_at).toBeNull();
   });

@@ -5,7 +5,7 @@ import {
   type OutboxPayload
 } from "../../src/db/repositories/outbox.js";
 import { createAskSession } from "../../src/db/repositories/sessions.js";
-import { discordOutbox } from "../../src/db/schema.js";
+import { discordNotifications } from "../../src/db/schema.js";
 import {
   assertSchemaReady,
   createIntegrationDb,
@@ -35,9 +35,9 @@ export const createOutboxContractHarness = () => {
 
   const forceNextAttemptAt = async (dedupeKey: string, at: Date): Promise<void> => {
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ nextAttemptAt: at })
-      .where(sql`${discordOutbox.dedupeKey} = ${dedupeKey}`);
+      .where(sql`${discordNotifications.dedupeKey} = ${dedupeKey}`);
   };
 
   const enqueueWithNextAttempt = async (

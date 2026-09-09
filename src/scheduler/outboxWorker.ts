@@ -91,6 +91,14 @@ const deliverOne = async (
     }
 
     const channel = await getTextChannel(client, payload.channelId);
+    const canSend = await ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() });
+    if (!canSend) {
+      logger.info(
+        { event: "outbox.send_not_started", outboxId: entry.id },
+        "Notification was cancelled or its claim expired before send."
+      );
+      return;
+    }
     const sent = await channel.send(body);
     if (payload.renderer === "reminder") {
       const completed = await completeReminderDelivery(

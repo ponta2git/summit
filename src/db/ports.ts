@@ -202,6 +202,7 @@ export interface OutboxPort {
     readonly now: Date;
     readonly claimDurationMs: number;
   }): Promise<readonly OutboxEntry[]>;
+  beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }): Promise<boolean>;
   markDelivered(
     id: string,
     options: {

@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { and, eq, sql } from "drizzle-orm";
 
-import { discordOutbox, members, responses, sessions } from "../schema.ts";
+import { members, responses, sessions } from "../schema.ts";
+import { enqueueOutbox } from "./outbox.ts";
 import type {
   DbLike,
   ResponseChoice,
@@ -138,18 +137,7 @@ export const enqueueSessionIntents = async (
   entries: readonly EnqueueOutboxInput[]
 ): Promise<void> => {
   for (const entry of entries) {
-    await tx
-      .insert(discordOutbox)
-      .values({
-        id: randomUUID(),
-        kind: entry.kind,
-        sessionId: entry.sessionId,
-        payload: entry.payload,
-        dedupeKey: entry.dedupeKey,
-        aggregateRevision: entry.aggregateRevision,
-        ordinal: entry.ordinal
-      })
-      .onConflictDoNothing({ target: discordOutbox.dedupeKey });
+    await enqueueOutbox(tx, entry);
   }
 };
 

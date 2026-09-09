@@ -1,21 +1,19 @@
-import { randomUUID } from "node:crypto";
-
 import {
-  and,
   asc,
   eq,
   inArray,
-  ne,
   sql
 } from "drizzle-orm";
 
 import {
-  discordOutbox,
+  discordNotifications,
+  discordNotificationAttendance,
   heldEvents,
   sessions
 } from "../schema.ts";
 import type { DbLike, SessionRow, SessionStatus } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
+import { enqueueOutbox } from "./outbox.ts";
 import type {
   CancelWeekInput,
   CancelWeekResult
@@ -157,26 +155,19 @@ export const cancelWeekAtomically = async (
         ...alreadySkipped.map((session) => session.id)
       ])
     ];
-    await tx
-      .update(discordOutbox)
-      .set({
-        status: "CANCELLED",
-        claimExpiresAt: null,
-        claimToken: null,
-        updatedAt: input.now
-      })
-      .where(
-        and(
-          inArray(discordOutbox.sessionId, skippedIds),
-          inArray(discordOutbox.status, ["PENDING", "IN_FLIGHT", "FAILED"]),
-          ne(discordOutbox.dedupeKey, dedupeKey)
-        )
-      );
+    const conflicting = await tx
+      .select({ id: discordNotifications.id })
+      .from(discordNotifications)
+      .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
+      .where(sql`${inArray(discordNotificationAttendance.sessionId, skippedIds)}
+        AND ${discordNotifications.status} IN ('PENDING','IN_FLIGHT','FAILED')
+        AND ${discordNotifications.dedupeKey} <> ${dedupeKey}`)
+      .orderBy(discordNotifications.id);
+    for (const row of conflicting) {
+      await tx.execute(sql`SELECT public.cancel_discord_notification(${row.id}, 'manual_skip', ${input.now.toISOString()})`);
+    }
 
-    const notice = await tx
-      .insert(discordOutbox)
-      .values({
-        id: randomUUID(),
+    const notice = await enqueueOutbox(tx, {
         kind: "send_message",
         sessionId: noticeAnchor.id,
         dedupeKey,
@@ -191,9 +182,7 @@ export const cancelWeekAtomically = async (
             suppressMentions: input.suppressMentions
           }
         }
-      })
-      .onConflictDoNothing({ target: discordOutbox.dedupeKey })
-      .returning({ id: discordOutbox.id });
+    });
 
     return {
       kind:
@@ -203,6 +192,6 @@ export const cancelWeekAtomically = async (
       weekKey: input.weekKey,
       skippedSessions,
       sentinelCreated,
-      noticeEnqueued: notice.length > 0
+      noticeEnqueued: !notice.skipped
     };
   });

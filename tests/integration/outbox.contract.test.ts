@@ -1,13 +1,14 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   claimNextOutboxBatch,
+  beginOutboxDelivery,
   enqueueOutbox,
   markOutboxDelivered,
   markOutboxFailed
 } from "../../src/db/repositories/outbox.js";
-import { discordOutbox } from "../../src/db/schema.js";
+import { discordNotifications, discordNotificationParts } from "../../src/db/schema.js";
 
 import { createOutboxContractHarness } from "./_outboxContract.js";
 import { isIntegration } from "./_support.js";
@@ -27,19 +28,12 @@ describeDb("discord_outbox repository contract (integration)", () => {
   const harness = createOutboxContractHarness();
   const { db, baseSession, basePayload, enqueueWithNextAttempt } = harness;
 
-  beforeAll(async () => {
-    await harness.initialize();
-  });
+  beforeAll(() => harness.initialize());
 
-  beforeEach(async () => {
-    await harness.reset();
-  });
+  beforeEach(() => harness.reset());
 
-  afterAll(async () => {
-    await harness.close();
-  });
+  afterAll(() => harness.close());
 
-  // idempotent: dedupe_key global unique index により 2 回目以降は skipped=true。
   it("enqueueOutbox: second enqueue for same dedupeKey returns skipped=true", async () => {
     const first = await enqueueOutbox(db, {
       kind: "send_message",
@@ -63,7 +57,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
     expect(second.id).toBe(first.id);
   });
 
-  // race: claimNextOutboxBatch は PENDING & next_attempt_at <= now を限定件数だけ CAS で IN_FLIGHT に。
   it("claimNextOutboxBatch: transitions PENDING rows to IN_FLIGHT with claim_expires_at", async () => {
     const readyAt = new Date("2026-04-24T12:30:00.000Z");
     await enqueueWithNextAttempt("ask-dedupe-claim", readyAt);
@@ -83,7 +76,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
     );
   });
 
-  // invariant: nextAttemptAt > now のものは claim されない (backoff 中)。
   it("claimNextOutboxBatch: skips rows whose nextAttemptAt is in the future", async () => {
     await enqueueWithNextAttempt(
       "ask-dedupe-future",
@@ -99,7 +91,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
     expect(claimed).toHaveLength(0);
   });
 
-  // race: 並行 claim で同一行を 2 ワーカーが二重に IN_FLIGHT にしない。UPDATE の status CAS で一方は除外される。
   it("claimNextOutboxBatch: concurrent claims do not double-claim the same row", async () => {
     await enqueueWithNextAttempt(
       "ask-dedupe-race",
@@ -134,9 +125,9 @@ describeDb("discord_outbox repository contract (integration)", () => {
       ordinal: 0
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ nextAttemptAt: readyAt })
-      .where(sql`${discordOutbox.id} IN (${first.id}, ${second.id})`);
+      .where(sql`${discordNotifications.id} IN (${first.id}, ${second.id})`);
 
     const now = new Date("2026-04-24T12:35:00.000Z");
     const firstBatch = await claimNextOutboxBatch(db, {
@@ -145,6 +136,7 @@ describeDb("discord_outbox repository contract (integration)", () => {
       claimDurationMs: 30_000
     });
     expect(firstBatch.map((row) => row.id)).toStrictEqual([first.id]);
+    expect(await beginOutboxDelivery(db, first.id, { claimToken: claimTokenOf(firstBatch), now })).toBe(true);
     await markOutboxDelivered(db, first.id, {
       claimToken: claimTokenOf(firstBatch),
       deliveredMessageId: "ordered-message-1",
@@ -174,7 +166,7 @@ describeDb("discord_outbox repository contract (integration)", () => {
     ).rejects.toMatchObject({
       cause: {
         code: "23505",
-        constraint_name: "uq_discord_outbox_session_order"
+        constraint_name: "discord_notification_attendance_order_unique"
       }
     });
   });
@@ -198,6 +190,12 @@ describeDb("discord_outbox repository contract (integration)", () => {
     const expiredToken = claimTokenOf(expired);
     const currentToken = claimTokenOf(current);
     expect(currentToken).not.toBe(expiredToken);
+    expect(await beginOutboxDelivery(db, id, {
+      claimToken: expiredToken, now: new Date("2026-04-24T12:35:31.000Z")
+    })).toBe(false);
+    expect(await beginOutboxDelivery(db, id, {
+      claimToken: currentToken, now: new Date("2026-04-24T12:35:31.000Z")
+    })).toBe(true);
 
     expect(await markOutboxDelivered(db, id, {
       claimToken: expiredToken,
@@ -211,7 +209,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
     })).toBe(true);
   });
 
-  // state: IN_FLIGHT→DELIVERED CAS。既に DELIVERED なら false。
   it("markOutboxDelivered: transitions IN_FLIGHT→DELIVERED and is idempotent", async () => {
     const { id } = await enqueueWithNextAttempt(
       "ask-dedupe-deliver",
@@ -224,10 +221,11 @@ describeDb("discord_outbox repository contract (integration)", () => {
     );
     const claimToken = claimTokenOf(claimed);
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ lastError: "previous transient failure" })
-      .where(sql`${discordOutbox.id} = ${id}`);
+      .where(sql`${discordNotifications.id} = ${id}`);
 
+    expect(await beginOutboxDelivery(db, id, { claimToken, now })).toBe(true);
     const first = await markOutboxDelivered(db, id, {
       claimToken,
       deliveredMessageId: "msg-1",
@@ -236,12 +234,13 @@ describeDb("discord_outbox repository contract (integration)", () => {
     expect(first).toBe(true);
     const [delivered] = await db
       .select({
-        status: discordOutbox.status,
-        lastError: discordOutbox.lastError,
-        deliveredMessageId: discordOutbox.deliveredMessageId
+        status: discordNotifications.status,
+        lastError: discordNotifications.lastError,
+        deliveredMessageId: discordNotificationParts.deliveredMessageId
       })
-      .from(discordOutbox)
-      .where(sql`${discordOutbox.id} = ${id}`);
+      .from(discordNotifications)
+      .innerJoin(discordNotificationParts, eq(discordNotificationParts.notificationId, discordNotifications.id))
+      .where(sql`${discordNotifications.id} = ${id}`);
     expect(delivered).toStrictEqual({
       status: "DELIVERED",
       lastError: null,
@@ -256,7 +255,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
     expect(second).toBe(false);
   });
 
-  // state: nextAttemptAt!==null なら PENDING に戻す (backoff 再試行), null なら FAILED 終端。
   it("markOutboxFailed: routes to PENDING when retry scheduled, FAILED when dead-lettered", async () => {
     const { id } = await enqueueWithNextAttempt(
       "ask-dedupe-fail",
@@ -292,9 +290,8 @@ describeDb("discord_outbox repository contract (integration)", () => {
 
     const rows = await db
       .select()
-      .from(discordOutbox)
-      .where(sql`${discordOutbox.id} = ${id}`);
+      .from(discordNotifications)
+      .where(sql`${discordNotifications.id} = ${id}`);
     expect(rows[0]?.status).toBe("FAILED");
   });
-
 });

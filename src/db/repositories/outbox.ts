@@ -1,63 +1,27 @@
 import { randomUUID } from "node:crypto";
-
-import { eq } from "drizzle-orm";
-
+import { sql } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
-import { discordOutbox } from "../schema.ts";
-import type {
-  EnqueueOutboxInput,
-  EnqueueResult
-} from "./outbox.types.ts";
+import type { EnqueueOutboxInput, EnqueueResult } from "./outbox.types.ts";
 
-export type {
-  EnqueueOutboxInput,
-  EnqueueResult,
-  OutboxEntry,
-  OutboxPayload
-} from "./outbox.types.ts";
-export {
-  findStrandedOutboxEntries,
-  getNextOutboxDispatchAt,
-  getOutboxMetrics,
-  pruneOutbox
-} from "./outbox.metrics.ts";
-export {
-  claimNextOutboxBatch,
-  releaseExpiredOutboxClaims
-} from "./outbox.claim.ts";
-export {
-  markOutboxDelivered,
-  markOutboxFailed
-} from "./outbox.delivery.ts";
-export {
-  requeueFailedOutboxChains
-} from "./outbox.recovery.ts";
+export type { EnqueueOutboxInput, EnqueueResult, OutboxEntry, OutboxPayload } from "./outbox.types.ts";
+export { findStrandedOutboxEntries, getNextOutboxDispatchAt, getOutboxMetrics, pruneOutbox } from "./outbox.metrics.ts";
+export { claimNextOutboxBatch, releaseExpiredOutboxClaims } from "./outbox.claim.ts";
+export { beginOutboxDelivery, markOutboxDelivered, markOutboxFailed } from "./outbox.delivery.ts";
+export { requeueFailedOutboxChains } from "./outbox.recovery.ts";
 
-/** Insert an outbox row; idempotent across every status for the dedupe key. */
+/** Persist attendance context and shared delivery state in the caller's transaction. */
 export const enqueueOutbox = async (
-  db: DbLike,
+  db: Pick<DbLike, "execute">,
   input: EnqueueOutboxInput
 ): Promise<EnqueueResult> => {
-  const id = randomUUID();
-  const rows = await db
-    .insert(discordOutbox)
-    .values({
-      id,
-      kind: input.kind,
-      sessionId: input.sessionId,
-      payload: input.payload,
-      dedupeKey: input.dedupeKey,
-      aggregateRevision: input.aggregateRevision,
-      ordinal: input.ordinal
-    })
-    .onConflictDoNothing({ target: discordOutbox.dedupeKey })
-    .returning({ id: discordOutbox.id });
-  if (rows[0]) {return { id: rows[0].id, skipped: false };}
-
-  const existing = await db
-    .select({ id: discordOutbox.id })
-    .from(discordOutbox)
-    .where(eq(discordOutbox.dedupeKey, input.dedupeKey))
-    .limit(1);
-  return { id: existing[0]?.id ?? id, skipped: true };
+  const [row] = await db.execute<{ notification_id: string; skipped: boolean }>(sql`
+    SELECT * FROM public.enqueue_discord_attendance_notification(
+      ${randomUUID()}, ${input.sessionId}, ${JSON.stringify(input.payload)}::jsonb,
+      ${input.dedupeKey}, ${input.aggregateRevision}::bigint, ${input.ordinal}::smallint
+    )
+  `);
+  if (!row) {
+    throw new Error("Attendance notification was not persisted");
+  }
+  return { id: row.notification_id, skipped: row.skipped };
 };

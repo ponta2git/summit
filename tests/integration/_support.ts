@@ -40,7 +40,7 @@ export const assertSchemaReady = async (
   await db.execute(sql`SELECT 1 FROM sessions LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM members LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM responses LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM discord_outbox LIMIT 0`);
+  await db.execute(sql`SELECT 1 FROM discord_notifications LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM held_events LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM held_event_participants LIMIT 0`);
 };
@@ -64,7 +64,7 @@ export const seedBaseMembers = async (
 
 /**
  * Truncate all per-test tables. `members` は fixture として保持する。
- * `held_event_participants` → `held_events` → `responses` → `discord_outbox` → `sessions` の順で
+ * `held_event_participants` → `held_events` → `responses` → `discord_notifications` → `sessions` の順で
  * 依存関係を考慮するが `CASCADE` で一括対処する。
  */
 export const truncatePerTestTables = async (
@@ -75,7 +75,7 @@ export const truncatePerTestTables = async (
       held_event_participants,
       held_events,
       responses,
-      discord_outbox,
+      discord_notifications,
       sessions
     RESTART IDENTITY CASCADE
   `);

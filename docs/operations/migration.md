@@ -59,6 +59,17 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 
 通常運用で CI approval / preflight を手動実行により迂回しない。CI 自体を復旧できない緊急時だけ、momo-db README と `docs/development.md` の明示承認・backup・preflight 条件に従う。
 
+### 共有通知への停止切替
+
+共有通知への再構成では旧 table が削除されるため、DB と対応する Summit を同じ停止期間で切り替える。
+
+1. momo-db の [通知契約](../../../momo-db/docs/discord-notifications.md) と対応 commit を確認し、利用者への通知後に API・worker・Summit の全 writer / 配送を停止する。
+2. 復元確認済み backup と、直前の開催・参加者・試合の ID / 値・参照を比較する基準を揃える。進行中 Session と未配送・再試行対象の通知を再確認する。
+3. 通常の production approval / preflight を通じて migration を適用し、対応する `@momo/db` を含む Summit を切り替える。
+4. 開催履歴の保全と、募集・週取消・リマインド配送後の開催 / 参加者作成を確認してから再開する。新しい A/B は設定・HTTP 受付・配送対応が揃ってから producer を有効化する。
+
+停止中に戻す場合は DB と consumer を整合する組合せで復元する。再開後は新規データを守る forward fix を原則とする。過去の Session から不明な開催を補完せず、現存する開催履歴を維持する。
+
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
 
 ## ローカル開発 (setup 経由)
@@ -72,6 +83,8 @@ pnpm setup
 ```
 
 postgres コンテナ（`compose.yaml`）は momo-db で管理する。`db:up`/`db:down` は momo-db で実行。
+
+ローカルの `pnpm db:reset` は Session・開催・参照する試合に加え、共通通知の本文と dedupe も初期化する開発専用操作である。履歴を保全する migration の検証には使わない。
 
 ## ロールバック
 

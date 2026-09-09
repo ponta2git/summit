@@ -68,8 +68,9 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 
 ### `OutboxPort`
 
-- recovery用の単独enqueue、claim、delivery確定、retry、retention、metrics、next dispatch hintを扱う。
+- 共通通知 DB の attendance family に限定し、recovery用の単独enqueue、claim、送信開始、delivery確定、retry、retention、metrics、next dispatch hintを扱う。
 - business transitionからのenqueueは、可能な限り`SessionCommandsPort`またはSession作成transaction内で行う。
+- A/B の設定・固定 payload・取消は [momo-db の共有通知契約](../../momo-db/docs/discord-notifications.md) に従う。既存アンケートの設定・順序・起動時回復を A/B へ適用しない。
 
 ## 5. Transaction とrace
 
@@ -81,9 +82,11 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 - `/cancel_week`は対象Sessionを決定論的順序でlockし、skip、競合intent取消、通知intentを一つのtransactionで確定する。Session未作成時はsentinelで後続作成を抑止する。
 - transaction中にDiscord APIを待たない。
 
-## 6. Ordered Discord outbox
+## 6. アンケートの Discord 配送
 
 PostgreSQLとDiscordを同一transactionにできないため、業務上必須の新規投稿はtyped delivery intentとしてDBへ保存し、at-least-onceで配送する。
+
+保存先は共有通知本体とアンケート関連・配送部分の組合せとする。repository adapter が既存の attendance DTO に組み立て、共通の claim / 開始 / 確定 / 整理を DB 関数へ委ねる。A/B は Session を作らず、別 family の契約で接続する。
 
 ### Enqueue と順序
 
@@ -97,7 +100,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 ### Claim とdelivery
 
 - claimごとに所有権tokenを発行する。
-- delivered/failedの確定は同じtokenのownerだけが成功できる。
+- Discord 呼出し直前に beginDelivery を行う。取消・期限切れ・所有権喪失なら送らない。
+- delivered/failedの確定は同じ有効tokenのownerだけが成功できる。
 - claim expiry後は旧workerと新workerの両方がDiscord受理へ到達し得る。古いownerのDB確定はno-opにするが、外部投稿の重複までは排除できない。
 - message ID backfillはCAS-on-NULLでcanonical messageを決める。
 - Discord受理後・DB確定前のcrashでは、欠落より重複を選ぶ。
@@ -113,8 +117,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 
 ### Recovery
 
-- expired claimはreconcilerがPENDINGへ戻す。
-- poison payloadのFAILED chain復帰はstartupだけで行い、attemptと後続cancelを同じtransactionでresetする。
+- expired claimはreconcilerが回復し、試行上限内ならPENDING、上限到達ならFAILEDにする。
+- poison payloadのFAILED chain復帰はstartupだけで行い、attemptと先行失敗に由来する後続cancelを同じtransactionでresetする。手動週取消と A/B の通知は復帰させない。
 - reconnectや定期supervisorでFAILEDを無条件復帰させずhot loopを防ぐ。
 - non-terminal Sessionのmessage IDがNULLなら、直接sendせず予約ordinalのrecovery intentをenqueueする。
 - Discord上で既存messageが削除済みと確認できた場合のedit対象再生成はbest-effort reconcilerが担う。
@@ -124,8 +128,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 ## 7. Retention とobservability
 
 - active stateはpruneしない。
-- terminal outbox rowはstatus別policyで削除し、dead letterは調査に必要な期間を確保する。
-- retention scheduleと期間は`src/config.ts`が正本。
+- terminal 通知は status 別 policy で本文・配送詳細を整理し、通知 ID / dedupe / 内容照合情報と終端状態を永久保持する。本文整理後の失敗通知を起動時に復帰させない。
+- retention schedule と consumer の cutoff は `src/config.ts`、共有 DB の最低保持期間と整理条件は momo-db の共有通知契約を正本とする。
 - metricsはpending/in-flight/failedとoldest ageを構造化logへ出す。
 - warn thresholdは`src/config.ts`が正本。
 - `/status`はstranded Session/outbox/HeldEvent invariantをread-onlyで表示する。
@@ -155,6 +159,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 5. momo-db の production approval と migration 完了を確認してからapplicationをdeployする。
 
 互換期間が必要な変更はexpand→application→contractの順で行う。migrationに曖昧なbusiness state修復を混ぜず、危険な既存dataはfail-closed preflightで停止する。
+
+所有者が停止切替を選んだ共有通知の再構成は、momo-db の正規文書に従い全 writer・配送を止めて DB と consumer を一括で切り替える。開催履歴・参加者・試合を保全し、既存アンケートの reminder completion を確認してから再開する。
 
 ## 10. 変更時の検証
 
