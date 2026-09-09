@@ -1,8 +1,8 @@
 # MOM-18 実施計画
 
-作成日: 2026-09-09。状態: 確認事項は確定。ローカルの実装基準準備は完了。新機能の実装は未着手。
+作成日: 2026-09-09。状態: 実装中。業務ルールと集約の更新境界をアプリケーション側へ移す方針で、MOM-14・momo-resultを含む修正範囲も承認済み。
 
-対象: [MOM-18: 通知Webhookを永続受付し、Discord配送・再送をSummitで担う](https://linear.app/ponta/issue/MOM-18)。今回の作業は、確定した計画の保存と、MOM-14を含む作業branch・依存DB・検証環境の準備まで。A/Bの新規port・HTTP・renderer・consumerは次工程とする。
+対象: [MOM-18: 通知Webhookを永続受付し、Discord配送・再送をSummitで担う](https://linear.app/ponta/issue/MOM-18)。ユーザーは基準準備後の実装・検証・適宜commitまで依頼済み。DBに業務ルールを実装しないという追加方針を優先し、従来の通知SQL関数を呼び出すだけの実装は行わない。
 
 本書は着手から受け入れまでの作業を管理する。仕様を独立して定義する正本にはしない。実装完了時に確定した契約を既存の要求・設計・runbookへ反映し、計画の役割が終わったら本書を整理する。
 
@@ -40,13 +40,13 @@ flowchart LR
 | MOM-14のSummit対応 | `feat/mom-14-shared-notifications`、`5fc528b`。元のmaster `8a19c85`に対して1 commit先 | MOM-18のbranchに取り込み済み |
 | momo-db | ローカルmasterは`e719f73` | この共有契約または互換な後続commitを使う |
 | MOM-14の進行状態 | LinearはIn Review。共有契約とローカル検証の完了報告がある | 報告済み検証と、今回実行する検証を区別する |
-| 共有DB契約 | 親通知、用途別関連、取消対象、部分配送、設定世代、ID・hash、保持・明示再試行を実装済み | 保存契約を新設せず、`family=result`のadapterを作る |
+| 共有DB契約 | 保存構造に加え、設定・取消・受付・再試行の業務ルールもSQL関数・triggerに含まれる | 業務ルールをアプリケーション側へ移す契約改訂が必要。既存関数の呼出しを実装基準にしない |
 | 既存Summit consumer | MOM-14の`OutboxPort`は`family=attendance`に限定 | Sessionの順序、後続取消、最新状態rendererをA/Bへ流用しない |
 | scheduler | one-shot timer、受付以外のwake、作業中のburst、低頻度supervisorがある | A/Bのwake・次回時刻・回収を接続する |
-| 新規部分 | 内部HTTP受付、A/B renderer、A/B consumer、運用への接続は未実装 | MOM-18の主要実装とする |
+| 新規部分 | 固定payloadのrendererを先行実装。内部HTTP受付、A/B consumer、運用への接続は未実装 | DB契約の修正と独立した表示検証を進める |
 | CIの依存取得 | Summit CIはmomo-dbの既定branchをcheckoutする。GitHub上のmasterは`fca0e42`で、必要な`e719f73`の取得は404 | ローカル検証を進める。リモートCIは依存commitの共有後に確認する |
 
-準備で実行した検証と結果:
+基準準備時の検証と結果（MOM-18の追加実装を検証した結果ではない）:
 
 | 対象 | 結果 |
 | --- | --- |
@@ -57,13 +57,13 @@ flowchart LR
 | DB integration | `pnpm test:integration`が成功。8 file・33 testが成功 |
 | 文書の最終確認 | 計画書の更新後に`pnpm verify:docs`と`git diff --check`を確認 |
 
-導入済み`@momo/db`で欠けていた`notifications`の生成fileは、lockfileどおりの再installで揃えた。追跡対象のcode・依存定義・migrationに追加修正はない。file-size検査には既存の`src/scheduler/controller.ts`について312行のadvisoryが1件あり、今回の新規warningではない。
+基準準備時に導入済み`@momo/db`で欠けていた`notifications`の生成fileは、lockfileどおりの再installで揃えた。その時点では追跡対象のcode・依存定義・migrationに追加修正はない。file-size検査には既存の`src/scheduler/controller.ts`について312行のadvisoryが1件あった。
 
-検証はgit管理対象と本計画書の一時コピーで実施し、dummy設定と専用DBを使用した。検証用PostgreSQLは終了後に破棄した。実際のlocal secret・保存対象DBは使用していない。ローカルでは共有adapterの実装に進める状態であり、リモートCIの確認は上記の依存commit取得が可能になってから行う。
+基準検証はgit管理対象と本計画書の一時コピーで実施し、dummy設定と専用DBを使用した。検証用PostgreSQLは終了後に破棄した。実際のlocal secret・保存対象DBは使用していない。DB側の業務ルールを採用する前提は変更されており、契約を改訂してからconsumerを接続する。リモートCIの確認には依存commitの共有も必要。
 
 共有契約の正本はmomo-dbの`docs/discord-notifications.md`、`src/schema.ts`、`src/notifications.ts`。payload例は`docs/examples/ocr-completed-v1.json`と`analysis-completed-v1.json`。
 
-現行のMOM-18本文・初期連携文書には、MOM-14の共通保存への切替前の説明が残る。物理保存と取消・保持の具体契約は、MOM-14で実装された上記の正本に合わせる。業務仕様をこの差分から推測して変更しない。
+現行のMOM-18本文・初期連携文書には、MOM-14の共通保存への切替前の説明が残る。保存済みidentity・取消・部分配送・保持の意味は維持し、業務判断の実装場所を改訂する。現在のmomo-db文書は改訂前の実装を説明しているため、そのSQL関数・triggerを今後も採用する根拠にはしない。
 
 MOM-15が設定画面・API、MOM-16がOCR producerと共通HTTP送信部、MOM-17が分析snapshotとproducerを担当する。MOM-18ではそれらの実装を取り込まず、共有payloadとfixtureを使って受信側を完成させる。実際のWorker・6PN・Discordを通した受け入れは[MOM-19](https://linear.app/ponta/issue/MOM-19)へ引き渡す。
 
@@ -73,6 +73,7 @@ MOM-15が設定画面・API、MOM-16がOCR producerと共通HTTP送信部、MOM-
 | --- | --- | --- |
 | Bの確認リンク | 現在のWebは作品の最新分析を表示する。既存の認証付き画面を利用する | Discord本文に分析時点を明記し、「最新の分析を確認」と対象試合の詳細へリンクする |
 | 運用の状態確認・再試行 | 通知IDを指定する運用操作として扱う | 運用コマンドとrunbookで、通知IDによる状態確認・同じ通知の明示再試行を行う |
+| 業務ルールの実装場所 | 現行MOM-14のSQL関数・triggerが業務判断を持っている | 通知の可否・取消・再試行などの判断はアプリケーション側へ置く。DBの一意制約・外部キー・transaction・排他は維持する |
 
 2026-09-09にユーザーが両方の推奨案を承認した。通知本文の固定とリンク先の最新表示を区別し、通知時点の分析を固定して開く画面やDiscord管理者コマンドは追加しない。
 
@@ -80,25 +81,36 @@ MOM-15が設定画面・API、MOM-16がOCR producerと共通HTTP送信部、MOM-
 
 ## 4. 実施手順
 
-### 1. MOM-14を含む実装基準と共有adapterを整える
+### 0. DB側の業務ルールを移す修正範囲を確定する
 
-今回の実装基準準備は、MOM-14を含むbranch、依存packageの一致、専用DBへの既存migration適用、既存Summitの品質gateまでとする。次の共有adapter追加から新機能の実装に入る。
+- 承認済みの追加対象は、momo-dbの通知関数・trigger、Summitの既存アンケートconsumer、momo-resultの下書き確定・取消・削除と試合削除の処理。
+- 通知可否、設定世代、取消理由、payloadの業務検証、状態遷移、再試行・保持の方針をアプリケーション側で判断する。DB関数を別名の業務procedureへ置き換えない。
+- DBでは一意性・参照整合性を制約で守る。どの処理を一つの集約更新として確定するか、何をどの順序でlockするかはアプリケーションのcommandとrepositoryに明示する。業務側の変更と通知取消を同じtransactionに含める接続を、triggerを撤去する前に揃える。
+- 撤去はmomo-dbの正規migrationで行う。既存の共有済みmigrationを書き換えず、保存済みpayload・identity・送達証跡・取消状態を保つ。
+- 設定・成功時snapshotを取得するAPI/Worker向けの連携契約も更新する。言語を跨ぐ処理をTypeScript packageの利用で代替できると仮定しない。
+- 対象変更・受付・送信開始の競合、OFF→ON、古いclaim、再起動、途中配送、保持後のdedupeをアプリケーションとreal DBの接続で再検証する。
 
-- `5fc528b`を含むMOM-18用branchで作業し、momo-dbの共有型・export・DB関数が同じ契約で揃っていることを確認する。
+**完了条件:** 業務判断の所有者と全書込経路が確定し、通知の意味を変えずにDB側の業務関数・triggerを撤去できる。
+
+### 1. 修正後の共有契約に合わせてadapterを整える
+
+完了済みの実装基準準備を出発点にし、手順0の契約改訂を反映してから共有adapterを追加する。
+
+- `5fc528b`を含むMOM-18用branchで作業し、改訂後のmomo-dbの共有型・export・schemaとconsumerが揃っていることを確認する。
 - `AppPorts`へA/B専用の通知portを追加する。受付、claim、parts計画、送信開始、結果確定、失敗、期限延長、次回時刻、期限切れ回収、状態照会、手動再試行、保持を必要な責務でまとめる。
-- 実装は`src/db/repositories/`に置き、共有DB関数を利用する。handlerやschedulerからSQLへ直接アクセスしない。fakeも同じ契約で更新する。
+- 業務判断はアプリケーション側のpure policy、永続化とtransactionは`src/db/repositories/`へ置く。handlerやschedulerからSQLへ直接アクセスしない。fakeも同じ契約で更新する。
 - A/B IDは共有の`result:<kind>:<sourceJobId>`に従い、内容照合はDBのhashを使用する。独自hashや別inboxへ本文を複製しない。
-- schema追加は現時点では不要。追加が必要と判明した場合は、不足する契約と影響を具体化してmomo-db側の変更として扱う。
+- DB側の業務関数・triggerを撤去するmigrationはmomo-db側で扱う。追加のschema変更は、維持する不変条件と不足する保存契約から判断する。
 
-**完了条件:** 共有関数をSummitのreal/fake portから同じ型で扱え、既存attendanceとのfamily混同を防げる。
+**完了条件:** 改訂後の保存契約をreal/fake portで扱え、既存attendanceとのfamily混同を防げる。
 
 ### 2. 内部HTTPと永続受付を実装する
 
 - Node.js標準HTTPを基本案とし、`src/http/`にlistener・認証・制限、feature側に通知の受付処理を配置する。
 - `POST /internal/notifications`で専用Bearer、JSON形式、envelope、version、ID、構造・サイズを検証する。任意の投稿先、URL、本文コマンドは受け付けない。
-- payloadをcoerce・補完・項目削除して内容照合を変えない。既存IDの照合と、新規payloadのversion検証の順序は共有受付関数に合わせる。
+- payloadをcoerce・補完・項目削除して内容照合を変えない。既存IDの内容照合と、新規payloadのversion検証の順序をアプリケーション側の受付契約として維持する。
 - request byte数、同時受付数、読み込み・DB待ち時間を制限する。DB側のJSONBサイズ上限とHTTP側の制限の関係を明文化し、正常な複数試合・メモを通す。
-- `receive_discord_result_notification`を短いtransactionで呼び、commit完了後だけ受付結果を返す。commit後の切断やwake失敗でも、保存済み通知を失敗扱いに変更しない。
+- 短いtransaction内でアプリケーション側が検証・受付・取消判定と保存を行い、commit完了後だけ受付結果を返す。commit後の切断やwake失敗でも、保存済み通知を失敗扱いに変更しない。
 - 本番bindは`fly-local-6pn`または6PN IPv6。ローカルtestはloopbackを明示する。既存Machine内で起動し、公開HTTPサービスを追加しない。[Flyのprivate networking仕様](https://fly.io/docs/networking/private-networking/)
 - 専用token、bind、port、リンクの許可originを既存の設定境界に配置する。secretの実値は求めず、exampleにはplaceholderを置く。
 - 受付の準備状態はDBへ保存できることを基準にする。起動準備中・停止中は拒否し、稼働開始後のDiscord一時不調だけで永続受付を失わない構造にする。
@@ -134,7 +146,7 @@ Discordの通常本文は2000文字、nonceは25文字までという現在の�
 
 ### 4. 部分配送・claim・再試行を接続する
 
-- A/B専用consumerを`src/scheduler/`に追加する。既存のbackoff、tickの失敗隔離、共通DB関数を再利用し、Session固有のrenderer・後続取消を持ち込まない。
+- A/B専用consumerを`src/scheduler/`に追加する。既存のbackoff、tickの失敗隔離、改訂後のpersistence契約を利用し、Session固有のrenderer・後続取消を持ち込まない。
 - `claim`→描画・parts計画→`begin`のcommit→Discord送信→`complete`を進める。各部分の直前に最新のclockと所有権・設定世代・取消を確認する。
 - Discord待機中にDB transactionを保持しない。送信中のclaimは必要時だけ延長し、所有権を失った処理は後続送信・結果確定を止める。
 - 同じ通知内の部分順を守る。1通知の長い配送や失敗がA/Bの別通知・開催アンケートを停止させないよう、同時処理とbatchに上限を設ける。
@@ -150,7 +162,7 @@ Discordの通常本文は2000文字、nonceは25文字までという現在の�
 - A/Bの次回試行・claim期限をone-shot timerへ接続する。稼働中とidle移行中のwakeを記録して再確認し、lost wakeやworkerの重複実行を防ぐ。
 - 起動、DB操作の復旧検知、既存supervisorでPENDINGと期限切れclaimを回収する。DB復旧確認のためだけの常時pollを追加しない。
 - 既知の仕事の処理中は上限付きで進め、次回が未来なら期限まで待ち、仕事がなければ停止する。
-- A/BのFAILEDを起動のたびに自動復帰させない。attendanceのFAILED chain復旧と分け、A/Bは共有の明示再試行関数を使う。
+- A/BのFAILEDを起動のたびに自動復帰させない。attendanceのFAILED chain復旧と分け、A/Bはアプリケーション側の明示再試行commandを使う。
 - 既存retentionへresult familyを接続する。本文・partsを整理しても永久dedupeを残し、処理中や有効claimを整理しない。
 - renderer・リンク設定・投稿先設定の変更時は、保持中の分割通知を途中で別内容・別送信先にしない互換性を確認する。
 

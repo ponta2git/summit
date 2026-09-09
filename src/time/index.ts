@@ -49,6 +49,9 @@ export const formatCandidateJa = (value: Date): string =>
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
 
+export const formatTimestampJst = (value: Date): string =>
+  `${format(value, "yyyy-MM-dd HH:mm:ss")} JST`;
+
 export type AskTimeChoice = SlotKey;
 
 /**
