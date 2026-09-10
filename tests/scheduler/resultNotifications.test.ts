@@ -49,17 +49,27 @@ describe("result notification dispatcher", () => {
     expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
   });
 
-  it("uses bounded DB recovery attempts, then recovers on a supervisor wake", async () => {
-    const h = resultWorkerHarness(); const id = await h.enqueue("recover", "Short summary");
-    const claim = h.port.claim; const failed = vi.fn(async () => { throw new Error("private DB value"); }); h.port.claim = failed;
+  it.each(["claim", "getNextDispatchAt"] as const)("bounds consecutive %s failures, then recovers on a supervisor wake", async operation => {
+    const h = resultWorkerHarness();
+    const original = h.port[operation];
+    const failed = vi.fn(async () => { throw new Error("private DB value"); }); h.port[operation] = failed;
     dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("receipt"); await tick();
     for (const delay of RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS) { await vi.advanceTimersByTimeAsync(delay); }
     expect(failed).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1);
     await vi.advanceTimersByTimeAsync(3_600_000);
     expect(failed).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1);
-    h.port.claim = claim; dispatcher.wake("supervisor"); await tick(); await tick();
+    Object.assign(h.port, { [operation]: original });
+    const id = await h.enqueue("recover", "Short summary");
+    dispatcher.wake("supervisor"); await tick(); await tick();
     expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
     expect(JSON.stringify(h.logger.warn.mock.calls)).not.toContain("private DB value");
+    // A successful cycle restores the complete recovery budget for a later outage.
+    h.port[operation] = failed;
+    dispatcher.wake("supervisor"); await tick();
+    for (const delay of RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS) { await vi.advanceTimersByTimeAsync(delay); }
+    expect(failed).toHaveBeenCalledTimes(2 * (RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1));
+    await vi.advanceTimersByTimeAsync(3_600_000);
+    expect(failed).toHaveBeenCalledTimes(2 * (RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1));
   });
 
   it("schedules a future retry once and does no DB work while waiting", async () => {

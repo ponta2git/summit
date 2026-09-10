@@ -43,7 +43,6 @@ export const createResultNotificationDispatcher = (deps: {
         if (capacity <= 0) { return; }
         const batch = await deps.port.claim({ limit: capacity, now: deps.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS,
           excludeIds: [...active.keys()] });
-        recoveryAttempt = 0;
         if (stopped) { return; }
         for (const entry of batch) {
           const delivery = deliverResultNotification({ ...deps, logger, isStopping: () => stopped }, entry)
@@ -55,6 +54,8 @@ export const createResultNotificationDispatcher = (deps: {
           const next = await deps.port.getNextDispatchAt([...active.keys()]);
           if (next !== null) { schedule(Math.max(SCHEDULER_MIN_TIMER_DELAY_MS, next.getTime() - deps.clock.now().getTime())); }
         }
+        // invariant: 次回時刻の取得まで成功して初めて、DB 障害の連続回数を戻す。
+        recoveryAttempt = 0;
       } catch {
         logger.warn({ event: "result_notification.dispatch_unavailable", recoveryAttempt });
         const delay = RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[recoveryAttempt++];

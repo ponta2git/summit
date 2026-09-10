@@ -139,6 +139,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - `ResultNotificationsPort`を通して受付commandをcommitしてから2xxとwakeを返す。HTTP deadlineを過ぎても実行中commandの受付枠を返さず、commit後の切断でも配送状態を失敗へ変更しない。
 - startup完了前は503。一度startupが完了すれば一時的なDiscord再接続中もDBへ受付でき、外部配送失敗はconsumerが処理する。
 - dispatcherは上限付きの独立slot、完了ごとのwake、次回retry/claim期限のone-shotを持つ。処理中・idleへの移行中のwakeを保持する。DB障害は有限backoff後に停止し、新しいwakeまたは既存supervisorで再開する。
+- DB障害の連続回数は、claimと必要な次回配送時刻の取得がすべて成功してから戻す。時刻取得だけの障害でも再試行上限を維持する。
 - supervisorのA/B wakeをattendance処理より先に呼び、一方の障害で他方を抑止しない。retentionもfamilyごとに独立させる。idle中に短周期DB pollingを追加しない。
 - Discord待機中はclaimを延長するがDB transactionを保持しない。開始・確定時のCASが失効ownerを排除する。部分数・renderer・宛先・リンクを初回計画から変更しない。
 - shutdownはreceiverとdispatcherの新規仕事を止め、受付と送信を上限付きでdrainしてDB・Discordを閉じる。未完了claimは次の起動で回収する。値は`src/config.ts`と`src/notifications/config.ts`を参照する。
