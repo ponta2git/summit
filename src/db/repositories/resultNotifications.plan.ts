@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts } from "../schema.ts";
 import type { ResultDeliveryContext } from "../ports.resultNotifications.ts";
-import { ownsNotificationClaim } from "../../domain/notification.ts";
-import { buildNotificationLinks } from "../../features/result-notifications/links.ts";
+import { ownsNotificationClaim, parseNotificationWebOrigin } from "../../domain/notification.ts";
 import { lockNotification, type NotificationDb } from "./notifications.storage.ts";
 import { readDeliveryContext } from "./resultNotifications.state.ts";
 
@@ -16,7 +15,7 @@ export const planResultNotification = async (
     || !Number.isInteger(options.rendererVersion) || options.rendererVersion < 1 || !options.context.channelId) {
     throw new Error("Invalid notification part plan");
   }
-  buildNotificationLinks(options.context.webOrigin);
+  parseNotificationWebOrigin(options.context.webOrigin);
   if (n.partCount > 0) {
     const existing = readDeliveryContext(n.deliveryContext);
     if (n.partCount !== options.count || n.rendererVersion !== options.rendererVersion

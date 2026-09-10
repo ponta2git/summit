@@ -1,3 +1,5 @@
+import { parseNotificationWebOrigin } from "../../domain/notification.ts";
+
 export interface NotificationLinks {
   draft(id: string): string;
   match(id: string): string;
@@ -5,12 +7,7 @@ export interface NotificationLinks {
 }
 
 export const buildNotificationLinks = (webOrigin: string): NotificationLinks => {
-  const origin = new URL(webOrigin);
-  const local = origin.hostname === "localhost" || origin.hostname === "127.0.0.1" || origin.hostname === "[::1]";
-  if ((origin.protocol !== "https:" && !(local && origin.protocol === "http:"))
-    || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) {
-    throw new Error("Notification links require an application origin.");
-  }
+  const origin = parseNotificationWebOrigin(webOrigin);
   const link = (path: string): string => {
     const url = new URL(path, origin).href;
     // A confirmation URL must fit intact in one message, including its label.

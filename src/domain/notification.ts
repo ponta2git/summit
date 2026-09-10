@@ -1,6 +1,17 @@
 export type NotificationStatus = "PENDING" | "IN_FLIGHT" | "DELIVERED" | "FAILED" | "CANCELLED";
 export type ResultCancellationReason = "setting_off" | "stale_generation" | "draft_unavailable" | "match_deleted";
 
+/** Accept only an application origin, shared by configuration, stored plans and links. */
+export const parseNotificationWebOrigin = (value: string): URL => {
+  const origin = new URL(value);
+  const local = origin.hostname === "localhost" || origin.hostname === "127.0.0.1" || origin.hostname === "[::1]";
+  if ((origin.protocol !== "https:" && !(local && origin.protocol === "http:"))
+    || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) {
+    throw new Error("Notification links require an application origin.");
+  }
+  return origin;
+};
+
 /** The application defines which changes invalidate the whole notification. */
 export const resultCancellationReason = (context: {
   readonly enabled: boolean;

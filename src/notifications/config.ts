@@ -1,12 +1,12 @@
 import { isIP } from "node:net";
-import { buildNotificationLinks } from "../features/result-notifications/links.ts";
+import { parseNotificationWebOrigin } from "../domain/notification.ts";
 
 export const isPrivateNotificationBind = (host: string): boolean =>
   ["fly-local-6pn", "127.0.0.1", "::1", "localhost"].includes(host)
   || (isIP(host) === 6 && host.toLowerCase().startsWith("fdaa:"));
 
 export const isNotificationWebOrigin = (origin: string): boolean => {
-  try { buildNotificationLinks(origin); return true; } catch { return false; }
+  try { parseNotificationWebOrigin(origin); return true; } catch { return false; }
 };
 
 // Result notification I/O is bounded separately from attendance and calendar work.

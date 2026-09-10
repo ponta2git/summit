@@ -111,4 +111,9 @@ const barrier = () => {
       expect((await normalizeNotificationJson(h.db, vector.raw)).hash).toBe(vector.hash);
     }
   });
+
+  it("measures canonical JSON in UTF-8 bytes, including non-BMP characters", async () => {
+    const normalized = await normalizeNotificationJson(h.db, '{"text":"日本😀"}');
+    expect({ text: normalized.text, bytes: normalized.bytes }).toEqual({ text: '{"text": "日本😀"}', bytes: 22 });
+  });
 });

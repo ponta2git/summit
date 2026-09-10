@@ -120,6 +120,50 @@ export const resultNotificationContract = (
       expect((await claim(1_902)).attemptCount).toBe(2);
     });
 
+    it("keeps each snapshot and its ordered parts distinct when reclaiming a mixed batch", async () => {
+      const ocr = ocrReceiptPayload(); const analysis = analysisNotification();
+      await port.receive(JSON.stringify(ocr), notificationNow);
+      await port.receive(JSON.stringify(analysis), at(1));
+      const first = await port.claim({ limit: 3, now: at(2), claimDurationMs: 1_000 });
+      expect(first.map(entry => entry.id)).toEqual([ocr.notificationId, analysis.notificationId]);
+      for (const entry of first) {
+        await plan(entry.id, entry.claimToken, entry.kind === "ocr_completed" ? 2 : 1, 3);
+        await port.begin(entry.id, 0, entry.claimToken, at(4));
+        if (entry.kind === "ocr_completed") { await port.complete(entry.id, 0, entry.claimToken, "ocr-sent", at(5)); }
+        await port.fail(entry.id, entry.claimToken, "delivery_uncertain", at(5_000), at(6));
+      }
+      const newPayload = { ...ocr, notificationId: "result:ocr_completed:unplanned", sourceJobId: "unplanned" };
+      await port.receive(JSON.stringify(newPayload), at(4_999));
+      const batch = await port.claim({ limit: 3, now: at(5_000), claimDurationMs: 1_000 });
+      expect(batch).toHaveLength(3);
+      expect(new Set(batch.map(entry => entry.claimToken)).size).toBe(3);
+      const byId = new Map(batch.map(entry => [entry.id, entry]));
+      expect(byId.get(ocr.notificationId)).toMatchObject({ payload: ocr, attemptCount: 2, partCount: 2, deliveryContext: context,
+        parts: [{ partNo: 0, status: "DELIVERED", deliveredMessageId: "ocr-sent" }, { partNo: 1, status: "PENDING", deliveredMessageId: null }] });
+      expect(byId.get(analysis.notificationId)).toMatchObject({ payload: analysis, attemptCount: 2, partCount: 1,
+        parts: [{ partNo: 0, status: "PENDING", deliveredMessageId: null }] });
+      expect(byId.get(newPayload.notificationId)).toMatchObject({ payload: newPayload, attemptCount: 1, partCount: 0, parts: [] });
+    });
+
+    it("discovers the earlier retry or cancelled send expiry and excludes active IDs", async () => {
+      const id = await receive(); const sending = await claim(); await plan(id, sending.claimToken);
+      await port.begin(id, 0, sending.claimToken, at(1));
+      await port.setSetting("ocr_completed", false, at(2));
+      const analysis = analysisNotification(); await port.receive(JSON.stringify(analysis), at(3));
+      const other = await claim(4);
+      await port.fail(other.id, other.claimToken, "discord_unavailable", at(1_500), at(5));
+      expect(await port.getNextDispatchAt()).toEqual(at(1_000));
+      expect(await port.getNextDispatchAt([id])).toEqual(at(1_500));
+      expect(await port.getNextDispatchAt([other.id])).toEqual(at(1_000));
+      expect(await port.getNextDispatchAt([id, other.id])).toBeNull();
+      await port.complete(id, 0, sending.claimToken, "accepted-before-off", at(6));
+      expect(await port.getNextDispatchAt()).toEqual(at(1_500));
+      const resumed = await claim(1_500);
+      expect(await port.getNextDispatchAt()).toEqual(at(2_500));
+      await port.fail(resumed.id, resumed.claimToken, "invalid_payload", null, at(1_501));
+      expect(await port.getNextDispatchAt()).toBeNull();
+    });
+
     it("keeps backoff and refuses to change destinations, renderer or part count on retry", async () => {
       const id = await receive(); const entry = await claim(); await plan(id, entry.claimToken);
       await port.begin(id, 0, entry.claimToken, notificationNow); await port.complete(id, 0, entry.claimToken, "sent", at(1));

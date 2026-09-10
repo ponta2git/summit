@@ -74,13 +74,14 @@ const analysisSchema = z.object({ ...envelope, kind: z.literal("analysis_complet
 }).refine(value => new Set(value.matches.map(m => m.matchId)).size === value.matches.length
   && new Set(value.seasons.map(season => season.seasonId)).size === value.seasons.length
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();
+const notificationSchema = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]);
 
 /** Existing IDs are compared before this version-specific validator is called. */
 export const validateNewNotification = (value: unknown): DiscordResultNotification => {
   if (typeof value !== "object" || value === null || !("schemaVersion" in value) || value.schemaVersion !== 1) {
     throw new NotificationInputError("unsupported_version");
   }
-  const parsed = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]).safeParse(value);
+  const parsed = notificationSchema.safeParse(value);
   if (!parsed.success || parsed.data.notificationId !== buildDiscordNotificationId(parsed.data.kind, parsed.data.sourceJobId)) {
     throw new NotificationInputError("invalid_input");
   }

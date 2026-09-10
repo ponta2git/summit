@@ -11,9 +11,10 @@ export const splitNotificationText = (text: string): readonly string[] => {
   while (start < text.length) {
     let end = Math.min(start + CONTENT_LIMIT, text.length);
     if (end < text.length) {
-      const newline = text.lastIndexOf("\n", end - 1);
-      if (newline >= start) {
-        end = newline + 1;
+      // why: 長い一行でも、送信済みの prefix を繰り返し走査しない。
+      const newline = text.slice(start, end).lastIndexOf("\n");
+      if (newline >= 0) {
+        end = start + newline + 1;
       } else {
         const last = text.charCodeAt(end - 1);
         if (last >= 0xd800 && last <= 0xdbff) { end -= 1; }

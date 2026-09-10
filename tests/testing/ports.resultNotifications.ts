@@ -3,9 +3,8 @@ import type { ResultNotificationKind } from "@momo/db";
 import type { ClaimedResultNotification, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/config.ts";
 import { NotificationInputError, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
-import { ownsNotificationClaim, afterDeliveryFailure } from "../../src/domain/notification.ts";
+import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
 import { addMs } from "../../src/time/index.ts";
-import { buildNotificationLinks } from "../../src/features/result-notifications/links.ts";
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.ts";
 import { createFakeResultState, semanticJson, type FakeResultEntry } from "./ports.resultNotifications.state.ts";
 
@@ -85,7 +84,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         || !Number.isInteger(options.rendererVersion) || options.rendererVersion < 1 || !options.context.channelId) {
         throw new Error("Invalid notification part plan");
       }
-      buildNotificationLinks(options.context.webOrigin);
+      parseNotificationWebOrigin(options.context.webOrigin);
       if (n.partCount > 0) {
         if (n.partCount !== options.count || n.rendererVersion !== options.rendererVersion || semanticJson(n.deliveryContext) !== semanticJson(options.context)) { throw new Error("Plan conflict"); }
         return true;

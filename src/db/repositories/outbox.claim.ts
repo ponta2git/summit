@@ -15,7 +15,7 @@ export const claimNextOutboxBatch = async (
   if (ids.length === 0) {
     return [];
   }
-  return findAttendanceNotifications(tx, inArray(discordNotifications.id, ids.map(row => row.id)));
+  return findAttendanceNotifications(tx, inArray(discordNotifications.id, [...ids]));
 });
 
 export const releaseExpiredOutboxClaims = (db: DbLike, now: Date): Promise<number> =>

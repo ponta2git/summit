@@ -107,6 +107,8 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - Discord受理後・DB確定前のcrashでは、欠落より重複を選ぶ。
 - payload/state mismatchや未対応rendererは握りつぶさずdead letterへ送る。
 - retry/backoff/max attempt/claim duration/batch sizeの実値は`src/config.ts`が正本。
+- claim制御・part更新・状態照会では必要な状態列だけを読む。配送本文はclaimが確定したバッチから一度取得し、取消確認のために本文を読み直さない。対象の生存確認とclaim fencingは省略しない。
+- 次回配送時刻はPENDINGのretry時刻と残存claimの期限を別々に検索する。永久保持する終端履歴の全走査を避け、family・処理中IDの除外を共通の`notifications.dispatch.ts`で扱う。
 
 ### Reminder completion
 
@@ -130,6 +132,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - active stateはpruneしない。
 - terminal 通知は status 別 policy で本文・配送詳細を整理し、通知 ID / dedupe / 内容照合情報と終端状態を永久保持する。本文整理後の失敗通知を起動時に復帰させない。
 - retention schedule と consumer の cutoff は `src/config.ts`、アプリ間の保持期間と整理条件は momo-db の共有通知契約を正本とする。判断・実行はアプリが所有する。
+- 保持期限とconsumer cutoffの両方を満たす行だけをlockし、上限付きの一括更新で詳細を整理する。複数バッチでも一つのcommandとしてrollbackでき、IDと内容照合情報を残す。
 - metricsはpending/in-flight/failedとoldest ageを構造化logへ出す。
 - warn thresholdは`src/config.ts`が正本。
 - `/status`はstranded Session/outbox/HeldEvent invariantをread-onlyで表示する。
@@ -145,6 +148,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - 設定変更はON/OFF・世代・未開始部分取消を同じcommitに含める。対象変更はmomo-resultの業務commandの末尾で通知を取り消す。transactionの集約単位とlock順はアプリの契約であり、DBの機能に判断を任せない。
 - `notificationTransaction`はREAD COMMITTEDとfamily gateを指定する。対象writerは業務行を書いてからresult gateを取得する。gate取得後は業務行のlockを取らず、Discord I/Oを行わない。全writerの取得順は[共有契約](../../momo-db/docs/discord-notifications.md#アプリケーションの更新境界)を守る。
 - 初回描画でrenderer・部分数・リンクorigin・チャンネルを保存する。各partの開始・結果確定は有効なclaimと順序を再検査する。取消時は開始済みpartの確定だけを許し、親を復帰させない。
+- リンクoriginの検証はdomainの共通制約を使い、設定・保存計画・rendererで同じ判定にする。DB repositoryは表示用のリンクbuilderへ依存しない。
 - A/BのFAILEDは起動時に復帰させず、保持中で取消条件のない行だけを明示retryする。期限回収・保持もfamilyを限定し、既存Session回復と混ぜない。
 - DB driverの例外には生payloadやSQL bindが含まれ得るため、result portは安全な分類だけを境界へ返し、元のcauseをlog・HTTPへ渡さない。
 

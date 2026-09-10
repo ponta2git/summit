@@ -5,6 +5,7 @@ import { findAttendanceNotifications } from "./outbox.storage.ts";
 import type { OutboxEntry } from "./outbox.types.ts";
 import { notificationTransaction } from "./notifications.storage.ts";
 import { purgeNotifications } from "./notifications.retention.ts";
+import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { systemClock } from "../../time/index.ts";
 
 const retainedAttendance = and(eq(discordNotifications.family, "attendance"), isNull(discordNotifications.purgedAt));
@@ -63,10 +64,5 @@ export const getOutboxMetrics = async (db: DbLike, now: Date): Promise<OutboxMet
   };
 };
 
-export const getNextOutboxDispatchAt = async (db: DbLike, _now: Date): Promise<Date | null> => {
-  const [row] = await db.select({ next: sql<unknown>`min(case
-    when ${discordNotifications.status} = 'PENDING' then ${discordNotifications.nextAttemptAt}
-    when ${discordNotifications.claimToken} is not null then ${discordNotifications.claimExpiresAt}
-    else null end)` }).from(discordNotifications).where(retainedAttendance);
-  return parseDbTimestamp(row?.next ?? null, "next notification dispatch");
-};
+export const getNextOutboxDispatchAt = (db: DbLike, _now: Date): Promise<Date | null> =>
+  findNextNotificationDispatchAt(db, "attendance");

@@ -17,9 +17,7 @@ const hashJsonbText = (text: string): string => createHash("sha256").update(
 export const normalizeNotificationJson = async (
   tx: Pick<NotificationDb, "execute">, text: string
 ): Promise<{ readonly text: string; readonly hash: string; readonly bytes: number }> => {
-  const [row] = await tx.execute<{ body: string; bytes: number }>(sql`
-    SELECT ${text}::jsonb::text AS body, octet_length(${text}::jsonb::text) AS bytes
-  `);
+  const [row] = await tx.execute<{ body: string }>(sql`SELECT ${text}::jsonb::text AS body`);
   if (!row) { throw new Error("Notification JSON normalization failed"); }
-  return { text: row.body, hash: hashJsonbText(row.body), bytes: row.bytes };
+  return { text: row.body, hash: hashJsonbText(row.body), bytes: Buffer.byteLength(row.body, "utf8") };
 };
