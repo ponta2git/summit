@@ -44,7 +44,7 @@ const rankComparison = z.object({
 const ranks = z.tuple([rankComparison, rankComparison, rankComparison, rankComparison])
   .refine(values => new Set(values.map(value => value.memberId)).size === 4);
 const analysisIdentity = z.object({
-  jobId: id, inputRevision: decimal, algorithmVersion: z.string(),
+  artifactId: id, inputRevision: decimal, algorithmVersion: z.string(),
   artifactSchemaVersion: z.number().int().positive(), validationContractId: z.string().nullable()
 });
 const player = z.object({ memberId: id, displayName: z.string(), rank: z.union([

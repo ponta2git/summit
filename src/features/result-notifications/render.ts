@@ -47,7 +47,7 @@ const renderMatch = (match: AnalysisNotificationMatch, links: NotificationLinks)
   ...[...match.players].sort((left, right) => left.rank - right.rank)
     .map((player) => `${player.rank}位 ${plain(player.displayName)} / 銀次 ${player.ginjiCount}回`),
   `この試合の銀次合計: ${match.ginjiTotal}回`,
-  match.note === null ? "メモ: なし" : `メモ:\n${plain(match.note)}`,
+  ...(match.note === null ? [] : [`メモ:\n${plain(match.note)}`]),
   `試合を確認: ${links.match(match.matchId)}`
 ].join("\n");
 
@@ -68,6 +68,8 @@ const renderAnalysis = (notification: AnalysisCompletedNotification, links: Noti
       ""
     ]),
     `追加・変更試合: ${data.matches.length === 0 ? "なし" : `${data.matches.length}試合`}`,
+    ...(data.matches.length > 0 && data.matches.every(match => match.ginjiTotal === 0)
+      ? ["今回の対象試合は銀次なし（全員0回）"] : []),
     ...data.matches.flatMap((match, index) => [
       "", `掲載試合 ${index + 1}/${data.matches.length}`, renderMatch(match, links)
     ]),

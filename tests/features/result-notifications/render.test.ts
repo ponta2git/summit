@@ -105,6 +105,23 @@ describe("fixed result notification rendering", () => {
     expect(text).not.toContain("銀次");
   });
 
+  it("summarizes all-zero ginji and omits an unentered memo", () => {
+    const input = analysisNotification();
+    const result = renderResultNotification({ ...input, data: {
+      ...input.data, matches: input.data.matches.map(match => ({
+        ...match, note: null, ginjiTotal: 0,
+        players: [
+          { ...match.players[0], ginjiCount: 0 }, { ...match.players[1], ginjiCount: 0 },
+          { ...match.players[2], ginjiCount: 0 }, { ...match.players[3], ginjiCount: 0 }
+        ]
+      }))
+    } }, origin);
+    const text = result.parts.map(part => part.content).join("\n");
+    expect(text).toContain("今回の対象試合は銀次なし（全員0回）");
+    expect(text).toContain("この試合の銀次合計: 0回");
+    expect(text).not.toContain("メモ:");
+  });
+
   it("keeps long Markdown and Unicode notes across numbered parts with mentions disabled", () => {
     const input = analysisNotification();
     const match = input.data.matches[0];

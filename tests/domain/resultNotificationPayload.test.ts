@@ -21,6 +21,20 @@ describe("result notification payload v1", () => {
     expect(() => validateNewNotification({ ...payload, data: { ...payload.data, context: { ...payload.data.context, heldDateIso: "2026-02-30" } } })).toThrow("invalid_input");
   });
 
+  it("identifies reused results independently of the new logical job", () => {
+    const original = analysisNotification();
+    const reused = { ...original, data: {
+      ...original.data, disposition: "reused", previousAnalysis: original.data.currentAnalysis,
+      matches: [], overall: original.data.overall.map(rank => ({
+        ...rank, before: rank.after, delta: 0, comparison: "reused"
+      })), seasons: []
+    } };
+    expect(validateNewNotification(reused)).toEqual(reused);
+    expect(() => validateNewNotification({ ...original, data: {
+      ...original.data, currentAnalysis: { ...original.data.currentAnalysis, artifactId: undefined }
+    } })).toThrow("invalid_input");
+  });
+
   it("rejects incomplete or inconsistent B snapshots without recomputing analytics", () => {
     const original = analysisNotification();
     const payloads = [

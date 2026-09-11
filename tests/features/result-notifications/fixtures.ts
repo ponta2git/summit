@@ -24,8 +24,8 @@ export const ocrNotification = (): OcrCompletedNotification => ({
   }
 });
 
-const analysisIdentity = (jobId: string): AnalysisIdentity => ({
-  jobId,
+const analysisIdentity = (artifactId: string): AnalysisIdentity => ({
+  artifactId,
   inputRevision: "9007199254740993",
   algorithmVersion: "test-v4",
   artifactSchemaVersion: 4,
@@ -50,8 +50,8 @@ export const analysisNotification = (): AnalysisCompletedNotification => ({
     gameTitleId: "title-1",
     gameTitleName: "テスト作品",
     disposition: "published",
-    previousAnalysis: analysisIdentity("previous-job"),
-    currentAnalysis: analysisIdentity("analysis-job-1"),
+    previousAnalysis: analysisIdentity("previous-artifact"),
+    currentAnalysis: analysisIdentity("current-artifact"),
     overall: rankComparisons(),
     seasons: [{ seasonId: "season-1", seasonName: "2026年度", ranks: rankComparisons() }],
     matches: [{
