@@ -7,6 +7,7 @@ import { notificationTransaction, cancelNotification, lockNotificationFamily } f
 import { receiveResultNotification } from "../../src/db/repositories/resultNotifications.receipt.ts";
 import { setResultSetting } from "../../src/db/repositories/resultNotifications.state.ts";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
+import { purgeNotifications } from "../../src/db/repositories/notifications.retention.ts";
 import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { ocrReceiptPayload, notificationNow as now } from "../contracts/resultNotifications.ts";
 import { createResultNotificationHarness } from "./_resultNotifications.ts";
@@ -148,6 +149,17 @@ const barrier = () => {
     expect(await h.port.complete(sending.id, 1, sending.claimToken, "started-message", now)).toBe(true);
     expect(await h.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED" });
     expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING" });
+    const expired = new Date(now.getTime() + 31 * 86_400_000);
+    await expect(notificationTransaction(h.db, "result", async tx => {
+      await purgeNotifications(tx, "result", expired, { deliveredOlderThan: expired, failedOlderThan: expired });
+      throw new Error("abort purge after all batches");
+    })).rejects.toThrow("abort purge");
+    expect((await h.client`SELECT id FROM discord_notifications WHERE purged_at IS NOT NULL`).length).toBe(0);
+    expect(await h.port.prune(expired)).toBe(300);
+    expect(await h.port.prune(expired)).toBe(0);
+    expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING", purgedAt: null });
+    expect(await h.port.receive(JSON.stringify({ ...payload, sourceJobId: "backlog-000",
+      notificationId: "result:ocr_completed:backlog-000" }), expired)).toMatchObject({ disposition: "duplicate", status: "CANCELLED" });
   });
 
   it("matches hashes produced by the historical SQL contract without losing decimals or escaped text", async () => {

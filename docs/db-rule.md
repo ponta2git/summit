@@ -149,6 +149,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - `notificationTransaction`はREAD COMMITTEDとfamily gateを指定する。対象writerは業務行を書いてからresult gateを取得する。gate取得後は業務行のlockを取らず、Discord I/Oを行わない。全writerの取得順は[共有契約](../../momo-db/docs/discord-notifications.md#アプリケーションの更新境界)を守る。
 - 初回描画でrenderer・部分数・リンクorigin・チャンネルを保存する。各partの開始・結果確定は有効なclaimと順序を再検査する。取消時は開始済みpartの確定だけを許し、親を復帰させない。
 - 設定OFFの取消はID順の上限付きbatchで親をlockし、単件取消と同じ更新を使う。対象を全件メモリへ載せず、開始済みpartの判定は親lock取得後のstatementで行う。全batchを設定と同じtransactionに保ち、途中commitで原子性を分割しない。
+- 保持期限後の整理も上限付きbatchで処理し、呼出元へは状態別件数だけを返す。batchを跨いで対象行を蓄積せず、元の保持期限・進行中の除外・恒久identityの保全を維持する。
 - 通知IDの生成・入力検証・運用pathの検証は`@momo/db/notifications`の共通helperを使う。payload versionと既存IDの内容照合は受付の責務として分離する。
 - リンクoriginの検証はdomainの共通制約を使い、設定・保存計画・rendererで同じ判定にする。DB repositoryは表示用のリンクbuilderへ依存しない。
 - A/BのFAILEDは起動時に復帰させず、保持中で取消条件のない行だけを明示retryする。期限回収・保持もfamilyを限定し、既存Session回復と混ぜない。
