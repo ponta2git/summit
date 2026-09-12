@@ -39,7 +39,8 @@ import { isIntegration } from "./_support.ts";
     expect(await h.db.select({ id: notifications.id }).from(notifications).where(isNull(notifications.purgedAt))).toHaveLength(1_003);
     expect(await h.db.select({ id: parts.notificationId }).from(parts)).toHaveLength(1_003);
 
-    expect(await notificationTransaction(h.db, "attendance", prune)).toHaveLength(1_002);
+    expect(await notificationTransaction(h.db, "attendance", prune))
+      .toEqual({ deliveredPruned: 1_002, failedPruned: 0, cancelledPruned: 0 });
     const [counts] = await h.db.execute<{ total: number; purged: number }>(sql`SELECT count(*)::int AS total,
       count(*) FILTER (WHERE purged_at IS NOT NULL AND payload IS NULL AND payload_hash = ${hash})::int AS purged
       FROM discord_notifications`);

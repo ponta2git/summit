@@ -10,6 +10,7 @@ describe("notification operations CLI", () => {
     expect(buildNotificationOperation(["retry", "result:ocr_completed:job-1"]))
       .toEqual({ path: "/internal/discord-notifications/result%3Aocr_completed%3Ajob-1/retry", method: "POST" });
     expect(() => buildNotificationOperation(["retry", "../../../other"])).toThrow("Usage");
+    expect(() => buildNotificationOperation(["retry", "result:ocr_completed:job\n"])).toThrow("Usage");
     expect(() => buildNotificationOperation(["settings", "ocr_completed", "maybe"])).toThrow("Usage");
   });
   it("refuses to send its token to a public endpoint or a credential-bearing URL", async () => {

@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Logger } from "pino";
 import { z } from "zod";
+import { parseDiscordNotificationId } from "@momo/db/notifications";
 import type { ResultNotificationsPort } from "../db/ports.resultNotifications.ts";
 import type { Clock } from "../time/index.ts";
 import { readNotificationBody, NotificationHttpError } from "./http.body.ts";
@@ -81,7 +82,7 @@ export const routeNotificationRequest = async (
   if (target?.[1]) {
     let id: string;
     try { id = decodeURIComponent(target[1]); } catch { throw new NotificationHttpError(400, "invalid_input"); }
-    if (!/^result:(ocr_completed|analysis_completed):[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(id)) {
+    if (!parseDiscordNotificationId(id)) {
       throw new NotificationHttpError(400, "invalid_input");
     }
     if (!target[2] && request.method === "GET") {

@@ -40,7 +40,10 @@ export const makeResultNotificationsPort = (db: DbLike): ResultNotificationsPort
     getNextDispatchAt: excludeIds => findNextNotificationDispatchAt(db, "result", excludeIds).catch(sanitizeFailure),
     inspect: id => run(tx => inspectResultNotification(tx, id)),
     retry: (id, now) => run(tx => retryResultNotification(tx, id, now)),
-    prune: now => run(async tx => (await purgeNotifications(tx, "result", now, { deliveredOlderThan: now, failedOlderThan: now })).length),
+    prune: now => run(async tx => {
+      const counts = await purgeNotifications(tx, "result", now, { deliveredOlderThan: now, failedOlderThan: now });
+      return counts.deliveredPruned + counts.failedPruned + counts.cancelledPruned;
+    }),
     getSetting: kind => run(tx => getResultSetting(tx, kind)),
     setSetting: (kind, enabled, now) => run(tx => setResultSetting(tx, kind, enabled, now))
   };

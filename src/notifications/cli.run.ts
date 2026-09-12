@@ -1,11 +1,12 @@
 import { isPrivateNotificationBind, RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS, RESULT_NOTIFICATION_DEFAULT_PORT } from "./config.ts";
+import { parseDiscordNotificationId } from "@momo/db/notifications";
 
 const usage = "Usage: notifications inspect <notification-id> | retry <notification-id> | settings <ocr_completed|analysis_completed> [on|off]";
 
 export const buildNotificationOperation = (args: readonly string[]): { readonly path: string; readonly method: string; readonly body?: string } => {
   const [command, id, change] = args;
   if ((command === "inspect" || command === "retry") && id && args.length === 2
-    && /^result:(ocr_completed|analysis_completed):[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(id)) {
+    && parseDiscordNotificationId(id)) {
     return { path: `/internal/discord-notifications/${encodeURIComponent(id)}${command === "retry" ? "/retry" : ""}`,
       method: command === "retry" ? "POST" : "GET" };
   }

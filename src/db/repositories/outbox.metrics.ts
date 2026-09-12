@@ -27,15 +27,8 @@ export interface PruneOutboxResult {
 export const pruneOutbox = async (
   db: DbLike,
   options: { readonly deliveredOlderThan: Date; readonly failedOlderThan: Date }
-): Promise<PruneOutboxResult> => {
-  const rows = await notificationTransaction(db, "attendance", tx =>
-    purgeNotifications(tx, "attendance", systemClock.now(), options));
-  return {
-    deliveredPruned: rows.filter(row => row.status === "DELIVERED").length,
-    failedPruned: rows.filter(row => row.status === "FAILED").length,
-    cancelledPruned: rows.filter(row => row.status === "CANCELLED").length
-  };
-};
+): Promise<PruneOutboxResult> => notificationTransaction(db, "attendance", tx =>
+  purgeNotifications(tx, "attendance", systemClock.now(), options));
 
 export interface OutboxMetricsResult {
   readonly pending: number;
