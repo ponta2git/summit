@@ -2,6 +2,7 @@
 // @see docs/architecture.md
 
 import type { DbLike } from "./rows.ts";
+import { makeResultNotificationsPort } from "./repositories/resultNotifications.ts";
 import {
   createAskSession,
   findDueAskingSessions,
@@ -38,6 +39,7 @@ import {
 } from "./repositories/heldEvents.ts";
 import {
   claimNextOutboxBatch,
+  beginOutboxDelivery,
   enqueueOutbox,
   findStrandedOutboxEntries,
   getOutboxMetrics,
@@ -107,6 +109,7 @@ const makeStatusPort = (db: DbLike): StatusPort => ({
 const makeOutboxPort = (db: DbLike): OutboxPort => ({
   enqueue: (input) => enqueueOutbox(db, input),
   claimNextBatch: (options) => claimNextOutboxBatch(db, options),
+  beginDelivery: (id, options) => beginOutboxDelivery(db, id, options),
   markDelivered: (id, options) => markOutboxDelivered(db, id, options),
   markFailed: (id, options) => markOutboxFailed(db, id, options),
   requeueFailedChains: (now) => requeueFailedOutboxChains(db, now),
@@ -124,5 +127,6 @@ export const makeRealPorts = (db: DbLike): AppPorts => ({
   members: makeMembersPort(db),
   heldEvents: makeHeldEventsPort(db),
   status: makeStatusPort(db),
-  outbox: makeOutboxPort(db)
+  outbox: makeOutboxPort(db),
+  resultNotifications: makeResultNotificationsPort(db)
 });

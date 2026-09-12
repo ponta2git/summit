@@ -1,5 +1,6 @@
 import type { OutboxEntry, OutboxPort } from "../../src/db/ports.js";
 import { recordCall, type AnyCall } from "./ports.shared.js";
+import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.js";
 
 type OutboxMaintenancePort = Pick<
   OutboxPort,
@@ -14,7 +15,10 @@ type OutboxMaintenancePort = Pick<
 export const createFakeOutboxMaintenance = (
   byId: Map<string, OutboxEntry>,
   calls: AnyCall[],
-  cloneEntry: (entry: OutboxEntry) => OutboxEntry
+  cloneEntry: (entry: OutboxEntry) => OutboxEntry,
+  cancellationReasons: Map<string, string>,
+  purgedIdentities: Map<string, string>,
+  sendingTokens: Map<string, string>
 ): OutboxMaintenancePort => ({
   requeueFailedChains: async (now) => {
     recordCall(calls, "requeueFailedChains", { now });
@@ -30,7 +34,8 @@ export const createFakeOutboxMaintenance = (
             (predecessor.aggregateRevision === entry.aggregateRevision &&
               predecessor.ordinal < entry.ordinal))
       );
-      if (entry.status === "CANCELLED" && followsFailure) {
+      if (entry.status === "CANCELLED" && entry.claimToken === null
+        && cancellationReasons.get(entry.id) !== "manual_skip" && followsFailure) {
         byId.set(entry.id, {
           ...entry,
           status: "PENDING",
@@ -70,18 +75,19 @@ export const createFakeOutboxMaintenance = (
     let released = 0;
     for (const entry of byId.values()) {
       if (
-        entry.status === "IN_FLIGHT" &&
+        (entry.status === "IN_FLIGHT" || entry.status === "CANCELLED") &&
         entry.claimExpiresAt !== null &&
         entry.claimExpiresAt <= now
       ) {
         byId.set(entry.id, {
           ...entry,
-          status: "PENDING",
+          status: entry.status === "CANCELLED" ? "CANCELLED" : entry.attemptCount >= OUTBOX_MAX_ATTEMPTS ? "FAILED" : "PENDING",
           claimExpiresAt: null,
           claimToken: null,
           nextAttemptAt: now,
           updatedAt: now
         });
+        sendingTokens.delete(entry.id);
         released += 1;
       }
     }
@@ -104,21 +110,25 @@ export const createFakeOutboxMaintenance = (
     let failedPruned = 0;
     let cancelledPruned = 0;
     for (const entry of Array.from(byId.values())) {
+      if (entry.claimToken !== null) {continue;}
       if (
         entry.status === "DELIVERED" &&
         entry.deliveredAt !== null &&
         entry.deliveredAt <= deliveredOlderThan
       ) {
         byId.delete(entry.id);
+        purgedIdentities.set(entry.dedupeKey, entry.id);
         deliveredPruned += 1;
       } else if (entry.status === "FAILED" && entry.updatedAt <= failedOlderThan) {
         byId.delete(entry.id);
+        purgedIdentities.set(entry.dedupeKey, entry.id);
         failedPruned += 1;
       } else if (
         entry.status === "CANCELLED" &&
         entry.updatedAt <= failedOlderThan
       ) {
         byId.delete(entry.id);
+        purgedIdentities.set(entry.dedupeKey, entry.id);
         cancelledPruned += 1;
       }
     }
@@ -161,7 +171,7 @@ export const createFakeOutboxMaintenance = (
     const candidates = Array.from(byId.values())
       .map((entry) => {
         if (entry.status === "PENDING") {return entry.nextAttemptAt;}
-        if (entry.status === "IN_FLIGHT") {return entry.claimExpiresAt;}
+        if (entry.claimToken !== null) {return entry.claimExpiresAt;}
         return null;
       })
       .filter((date): date is Date => date !== null);

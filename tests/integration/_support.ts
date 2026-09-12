@@ -15,7 +15,7 @@ export interface IntegrationDb {
   readonly client: postgres.Sql;
 }
 
-export const createIntegrationDb = (): IntegrationDb => {
+export const createIntegrationDb = (options: { readonly maxConnections?: number } = {}): IntegrationDb => {
   const url = process.env["DATABASE_URL"] ?? "";
   // secret: 本番誤爆防止。localhost / docker compose 内 hostname のみ許可。
   if (url && !LOCAL_HOSTS.has(new URL(url).hostname)) {
@@ -24,8 +24,8 @@ export const createIntegrationDb = (): IntegrationDb => {
     );
   }
   // tx: src/db/client.ts の singleton は流用しない。close 競合・並列時の脆さを避ける。
-  //   invariant: single worker (vitest.integration.config.ts) 前提。max: 1 で十分。
-  const client = postgres(url, { prepare: false, max: 1 });
+  // Concurrency contracts explicitly opt into enough independent connections.
+  const client = postgres(url, { prepare: false, max: options.maxConnections ?? 1 });
   const db = drizzle(client, { schema, casing: "snake_case" });
   return { db, client };
 };
@@ -40,7 +40,7 @@ export const assertSchemaReady = async (
   await db.execute(sql`SELECT 1 FROM sessions LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM members LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM responses LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM discord_outbox LIMIT 0`);
+  await db.execute(sql`SELECT 1 FROM discord_notifications LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM held_events LIMIT 0`);
   await db.execute(sql`SELECT 1 FROM held_event_participants LIMIT 0`);
 };
@@ -64,7 +64,7 @@ export const seedBaseMembers = async (
 
 /**
  * Truncate all per-test tables. `members` は fixture として保持する。
- * `held_event_participants` → `held_events` → `responses` → `discord_outbox` → `sessions` の順で
+ * `held_event_participants` → `held_events` → `responses` → `discord_notifications` → `sessions` の順で
  * 依存関係を考慮するが `CASCADE` で一括対処する。
  */
 export const truncatePerTestTables = async (
@@ -75,7 +75,7 @@ export const truncatePerTestTables = async (
       held_event_participants,
       held_events,
       responses,
-      discord_outbox,
+      discord_notifications,
       sessions
     RESTART IDENTITY CASCADE
   `);

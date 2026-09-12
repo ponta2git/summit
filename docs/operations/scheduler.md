@@ -48,4 +48,6 @@ Summit は Fly の Bot process を常時起動し、Neon DB への idle polling 
 
 ## 注意
 
+A/Bは`src/scheduler/resultNotifications.ts`の独立dispatcherを使う。`result_notification.wake`、`dispatch_unavailable`と通知IDの状態を[通知運用](result-notifications.md)で確認する。attendanceのFAILED起動回復をA/Bへ適用しない。
+
 Fly Machine は止めない。Discord Gateway bot は HTTP auto-start で interaction を受けられないため、停止中は slash command / button を即時受信できない。

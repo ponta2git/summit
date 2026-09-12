@@ -37,6 +37,8 @@ import type {
   SubmitPostponeVoteInput,
   SubmitPostponeVoteResult
 } from "./repositories/sessionCommands.ts";
+import type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
+export type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
 
 export type {
   HeldEventParticipantRow,
@@ -202,6 +204,7 @@ export interface OutboxPort {
     readonly now: Date;
     readonly claimDurationMs: number;
   }): Promise<readonly OutboxEntry[]>;
+  beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }): Promise<boolean>;
   markDelivered(
     id: string,
     options: {
@@ -258,4 +261,5 @@ export interface AppPorts {
   readonly heldEvents: HeldEventsPort;
   readonly status: StatusPort;
   readonly outbox: OutboxPort;
+  readonly resultNotifications: ResultNotificationsPort;
 }

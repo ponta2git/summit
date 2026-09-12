@@ -1,10 +1,9 @@
 // source-of-truth: sessions repository の生成・message id 書き戻し。
 
-import { randomUUID } from "node:crypto";
-
 import { and, eq, isNull, sql } from "drizzle-orm";
 
-import { discordOutbox, sessions } from "../schema.ts";
+import { sessions } from "../schema.ts";
+import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type { DbLike, SessionRow } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
 import type { CreateAskSessionInput } from "./sessions.types.ts";
@@ -39,18 +38,7 @@ export const createAskSession = async (
     const row = rows[0];
     if (!row) {return undefined;}
     for (const entry of input.outbox ?? []) {
-      await tx
-        .insert(discordOutbox)
-        .values({
-          id: randomUUID(),
-          kind: entry.kind,
-          sessionId: entry.sessionId,
-          payload: entry.payload,
-          dedupeKey: entry.dedupeKey,
-          aggregateRevision: entry.aggregateRevision,
-          ordinal: entry.ordinal
-        })
-        .onConflictDoNothing({ target: discordOutbox.dedupeKey });
+      await enqueueOutboxInTransaction(tx, entry);
     }
     return mapSession(row);
   });

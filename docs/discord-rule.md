@@ -81,6 +81,17 @@ DiscordとPostgreSQLを同じtransactionにできないため、exactly-onceは�
 
 ## 6. User-facing copy と通知
 
+### OCR・分析の固定通知
+
+A/Bは`result-notifications` rendererで保存済みsnapshotから描画する。業務内容は`requirements/base.md` §11、保存と取消は`docs/db-rule.md`に従う。
+
+- 本文を上限内の連番partへ分割し、メモ全文・Unicode文字を欠落させない。Markdownをescapeし、allowedMentionsを空に固定する。リンクのembed展開も抑止する。
+- 分析の平均順位と対象数は前→後、差分は丸め前の符号を保つ。初回・対象なし・比較不能・結果再利用は区別する。リンクは「最新の分析」と明記する。
+- nonceは通知IDとpart番号から安定生成し、`enforceNonce`を使う。既送達partは再送しないが、Discord側の短期重複抑止にexactly-onceを依存しない。
+- renderer versionは部分数・宛先・リンクoriginと一緒に固定する。保持中の通知が必要なversionを消さない。内容を更新した新通知へ差し替えてretryしない。
+
+### 出欠アンケート
+
 - ユーザー向け文言はfeature-localな`messages.ts`、button labelはfeature-local constantsに置く。
 - 通常の時刻回答と順延OKは、公開メッセージの回答状況更新を主feedbackとし、成功ephemeralを追加しない。
 - 欠席、順延不可、週取消など結果が大きい操作は、誤押下防止のephemeral confirmationを使う。
@@ -110,6 +121,8 @@ DiscordとPostgreSQLを同じtransactionにできないため、exactly-onceは�
 - rate limit情報はrouteとretryAfterなど必要な値に限定して構造化logへ記録する。
 
 ## 9. 変更時の検証
+
+変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。
 
 - ackがDB/API処理より先であること。
 - wrong guild/channel/member、malformed custom ID、stale stateがwriteしないこと。

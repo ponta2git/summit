@@ -107,13 +107,15 @@ Discord token、DB URL の実値は commit しないでください。
 
 ## Development workflow（開発）
 
-PR 前は統合品質ゲートを実行します。
+ローカルの検証は差分に応じて [`docs/test-rule.md`](./docs/test-rule.md#8-quality-gate) で選びます。code・test・実行設定などを変えた場合は、PR 前に統合品質ゲートを実行します。
 
 ```bash
 pnpm run ci
 ```
 
-DB 契約に触れた場合は、これに加えて local PostgreSQL を使う integration test と momo-db の check を実行します。
+説明・リンク・agent 規約だけの変更では、`git diff --check` と `pnpm verify:docs`、正本との整合確認がローカルの gate です。`AGENTS.md` を変えたら `pnpm docs:sync-agent` で adapter を同期します。CI は文書変更でも全 job を実行します。
+
+DB 契約に触れた場合は local PostgreSQL を使う integration test を追加し、schema / migration に関わる場合は momo-db の必須 check と互換性確認も行います。command の詳細と外部資料の確認方法は [`docs/dev-rule.md`](./docs/dev-rule.md) を参照してください。
 
 ローカルで週次フローをやり直す場合は、専用コマンドで transient state をリセットします。
 

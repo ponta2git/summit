@@ -9,6 +9,7 @@ Summit の現在の runtime 構造、依存方向、scheduler、依存注入、�
 - cron と Discord client は process 起動中に一度だけ登録する。ローカルを含め、同じ設定で Bot を二重起動しない。
 - 永続状態の正本は PostgreSQL。Discord 表示と process 内の timer、lock、cache は再構築可能な派生状態とする。
 - 起動・再接続時は DB から非終端 Session と未配送 intent を再読込し、処理を冪等に収束させる。
+- 同じprocessがA/B通知用のprivate HTTP受信と配送を所有する。公開HTTP serviceや追加Machineを作らず、private bindを設定時と起動時に検査する。
 
 単一インスタンスを採用する理由は、固定4名の個人 Bot に分散 leader election や複数 scheduler の運用コストを持ち込まないためである。ただし DB の unique、CAS、claim token は interaction 同時押下や期限切れ worker の競合を防ぐため、単一 process でも必須とする。
 
@@ -45,6 +46,7 @@ src/db/* ──> persistence boundary
 - `src/domain/` は I/O と global clock を持たない aggregate decision の配置先とする。現在は ASKING と POSTPONE_VOTING の判定を所有する。
 - `src/time/`、`src/scheduler/`、`src/db/`、`src/members/` は横断 infrastructure であり、feature 配下へ分散しない。
 - `src/` は production runtime、`scripts/dev/` は開発用の seed/reset/scenario を所有する。
+- `src/notifications/`はA/BのHTTP認証・受付制限・運用CLIとresource合成、`src/features/result-notifications/`は固定本文、`src/scheduler/resultNotifications*`は配送を所有する。
 - generic な `types.ts` や `util/` に責務を隠さず、型は所有 module、共有 assertion は用途名の module に置く。
 
 `src/features/` を locality 単位にする理由は、変更時に user-facing copy、render、handler、テスト対象を同じ機能名で探索できるようにするためである。shared 抽出で import 数を減らすことより、ownership の明確さを優先する。
@@ -86,7 +88,7 @@ interface AppContext {
 - pure decision は discriminated union を返し、業務上の中止・pending・決定を例外で表現しない。
 - write path は Session aggregate を lock し、同じ snapshot で入力、期限、Response、遷移を評価する。
 - 任意の from/to を受け取る汎用遷移 API は公開しない。edge-specific command と期待状態付き更新で許可遷移を閉じる。
-- `CANCELLED` は外部通知を同じ aggregate commandで確定するための短命中間状態であり、通常時に長時間残らない。起動時 reconciler が stranded row を収束させる。
+- Sessionの`CANCELLED`は外部通知を同じaggregate commandで確定する短命中間状態。通知自体の`CANCELLED`は終端であり、A/Bを起動時に復帰させない。
 
 XState と event sourcing は採用しない。現在の状態数と監査要求では、DB state、pure decision、typed command、CAS の方が小さく直接的である。並行状態、履歴状態、過去時点再生、監査イベントが実要件になったとき再評価する。
 
@@ -103,6 +105,7 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 - batch scheduler は item 単位の recoverable failure を report に集め、query 全体の失敗だけを上位へ返す。
 - config/env parse、`assertNever`、起動不能な impossible state は fail-fast を許可する。
 - fire-and-forget は最外周で明示的に catch し、unhandled rejection を作らない。
+- A/B配送の結果はDB状態へ確定するため、dispatcher境界は`Promise<void>`を受け取る。配送内部が送達不明・恒久失敗・claim失効を分類し、最終保存の失敗も回収可能な状態と安全なlogへ収束させる。
 
 effect system を採用しない理由は、現在の resource graph と failure policy が `AppContext`、typed return、neverthrow の境界利用で表現できるためである。DI、resource lifecycle、fiber cancellation が複数 subsystem で必要になったとき再評価する。
 
@@ -131,6 +134,16 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - Discord message の active probe は API 負荷が高いため startup に限定する。通常 tick は Unknown Message を検出したとき opportunistic に再生成する。
 - poison payload の FAILED 復帰は startup だけで行い、定期 tick や reconnect で hot loop を作らない。
 
+### A/Bの受信と配送
+
+- `ResultNotificationsPort`を通して受付commandをcommitしてから2xxとwakeを返す。HTTP deadlineを過ぎても実行中commandの受付枠を返さず、commit後の切断でも配送状態を失敗へ変更しない。
+- startup完了前は503。一度startupが完了すれば一時的なDiscord再接続中もDBへ受付でき、外部配送失敗はconsumerが処理する。
+- dispatcherは上限付きの独立slot、完了ごとのwake、次回retry/claim期限のone-shotを持つ。処理中・idleへの移行中のwakeを保持する。DB障害は有限backoff後に停止し、新しいwakeまたは既存supervisorで再開する。
+- DB障害の連続回数は、claimと必要な次回配送時刻の取得がすべて成功してから戻す。時刻取得だけの障害でも再試行上限を維持する。
+- supervisorのA/B wakeをattendance処理より先に呼び、一方の障害で他方を抑止しない。retentionもfamilyごとに独立させる。idle中に短周期DB pollingを追加しない。
+- Discord待機中はclaimを延長するがDB transactionを保持しない。開始・確定時のCASが失効ownerを排除する。部分数・renderer・宛先・リンクを初回計画から変更しない。
+- shutdownはreceiverとdispatcherの新規仕事を止め、受付と送信を上限付きでdrainしてDB・Discordを閉じる。未完了claimは次の起動で回収する。値は`src/config.ts`と`src/notifications/config.ts`を参照する。
+
 ## 7. Configuration と logging
 
 設定境界は3層に分ける。
@@ -142,12 +155,13 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 | Internal config | outbox、scheduler、retention、metrics 等の信頼性 tuning | `src/config.ts` |
 
 - application code は parse 済みの `env` / `appConfig` / exported constant だけを使う。
-- `process.env` を直接参照する module を増やさない。
+- `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts`は運用接続設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。
 - user config の member identity を起動時に DB へ reconcile する。過去履歴を守るため、設定から消えた member row は自動削除しない。
 - pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
 - token、接続文字列、Authorization は logger redact から外さない。
 - Interaction payload や SQL bind を丸ごと記録せず、必要な識別子と状態遷移の `from` / `to` / `reason` に限定する。
 - 外部 healthcheck ping はアプリから送信しない。運用観測は構造化ログと `/status` を基本とする。
+- A/B有効化は受信token・別の運用token・Web originの3項目を一組にする。部分設定や同じtokenの兼用を起動時に拒否する。状態・設定・再試行の専用CLIは[通知運用](operations/result-notifications.md)を参照する。
 
 OpenTelemetry は、単一 service のログ調査に collector / backend 運用を追加する価値がないため採用しない。複数 service の trace、SLO、相関 ID 横断が必要になったとき再評価する。
 
@@ -163,6 +177,8 @@ OpenTelemetry は、単一 service のログ調査に collector / backend 運用
 | 外部message broker | PostgreSQL outboxで規模と運用を満たす | outbox量・latency・運用負荷がbroker導入コストを上回る |
 
 ## 9. 変更時の検証
+
+変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。
 
 - dependency direction: `pnpm verify:forbidden`
 - type/error/port contract: `pnpm typecheck` と unit tests

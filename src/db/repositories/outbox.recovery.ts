@@ -1,76 +1,40 @@
-import { and, eq, exists, lt, or } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
-import { discordOutbox } from "../schema.ts";
+import { discordNotifications as notifications, discordNotificationAttendance as attendance, discordNotificationParts as parts } from "../schema.ts";
+import { notificationTransaction } from "./notifications.storage.ts";
 
 export interface RequeueFailedOutboxChainsResult {
   readonly deadLettersRequeued: number;
   readonly successorsRequeued: number;
 }
 
-const resetForRetry = (now: Date) => ({
-  status: "PENDING" as const,
-  attemptCount: 0,
-  lastError: null,
-  claimExpiresAt: null,
-  claimToken: null,
-  nextAttemptAt: now,
-  deliveredAt: null,
-  deliveredMessageId: null,
-  updatedAt: now
+/** Only the application startup command may revive retained attendance chains. */
+export const requeueFailedOutboxChains = (
+  db: DbLike, now: Date
+): Promise<RequeueFailedOutboxChainsResult> => notificationTransaction(db, "attendance", async tx => {
+  const failed = await tx.select({ id: notifications.id }).from(notifications)
+    .innerJoin(attendance, eq(attendance.notificationId, notifications.id))
+    .where(and(eq(notifications.family, "attendance"), eq(notifications.status, "FAILED"),
+      isNull(notifications.purgedAt), isNotNull(attendance.sessionId)))
+    .orderBy(notifications.id).for("update", { of: notifications });
+  if (failed.length === 0) { return { deadLettersRequeued: 0, successorsRequeued: 0 }; }
+  const failedIds = failed.map(row => row.id);
+  const successors = await tx.select({ id: notifications.id }).from(notifications)
+    .innerJoin(attendance, eq(attendance.notificationId, notifications.id))
+    .where(and(eq(notifications.family, "attendance"), eq(notifications.status, "CANCELLED"),
+      isNull(notifications.purgedAt), isNull(notifications.claimToken),
+      or(eq(notifications.cancelReason, "predecessor_failed"), isNull(notifications.cancelReason)),
+      sql`EXISTS (SELECT 1 FROM discord_notification_attendance previous
+        WHERE ${inArray(sql`previous.notification_id`, failedIds)} AND previous.session_id = ${attendance.sessionId}
+          AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal}))`
+    )).orderBy(notifications.id).for("update", { of: notifications });
+  const ids = [...failedIds, ...successors.map(row => row.id)];
+  await tx.update(parts).set({ status: "PENDING", claimToken: null })
+    .where(and(inArray(parts.notificationId, ids), ne(parts.status, "DELIVERED")));
+  await tx.update(notifications).set({
+    status: "PENDING", attemptCount: 0, retryCycle: sql`${notifications.retryCycle} + 1`,
+    lastError: null, cancelReason: null, claimToken: null, claimExpiresAt: null, terminalAt: null,
+    nextAttemptAt: now, updatedAt: now
+  }).where(inArray(notifications.id, ids));
+  return { deadLettersRequeued: failed.length, successorsRequeued: successors.length };
 });
-
-/**
- * Re-open dead-lettered Session chains once at process startup.
- *
- * @remarks
- * The operation is deliberately not part of the periodic worker loop: a permanently invalid
- * payload gets one fresh retry cycle per deployment/restart, without becoming a hot retry loop.
- * Successors cancelled by the failed predecessor are restored in the same transaction.
- */
-export const requeueFailedOutboxChains = async (
-  db: DbLike,
-  now: Date
-): Promise<RequeueFailedOutboxChainsResult> =>
-  db.transaction(async (tx) => {
-    const failedPredecessor = alias(discordOutbox, "recovery_failed_predecessor");
-    const successors = await tx
-      .update(discordOutbox)
-      .set(resetForRetry(now))
-      .where(
-        and(
-          eq(discordOutbox.status, "CANCELLED"),
-          exists(
-            tx
-              .select({ id: failedPredecessor.id })
-              .from(failedPredecessor)
-              .where(
-                and(
-                  eq(failedPredecessor.sessionId, discordOutbox.sessionId),
-                  eq(failedPredecessor.status, "FAILED"),
-                  or(
-                    lt(failedPredecessor.aggregateRevision, discordOutbox.aggregateRevision),
-                    and(
-                      eq(failedPredecessor.aggregateRevision, discordOutbox.aggregateRevision),
-                      lt(failedPredecessor.ordinal, discordOutbox.ordinal)
-                    )
-                  )
-                )
-              )
-          )
-        )
-      )
-      .returning({ id: discordOutbox.id });
-
-    const deadLetters = await tx
-      .update(discordOutbox)
-      .set(resetForRetry(now))
-      .where(eq(discordOutbox.status, "FAILED"))
-      .returning({ id: discordOutbox.id });
-
-    return {
-      deadLettersRequeued: deadLetters.length,
-      successorsRequeued: successors.length
-    };
-  });

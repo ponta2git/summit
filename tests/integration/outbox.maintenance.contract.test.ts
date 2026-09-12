@@ -1,14 +1,16 @@
-import { sql } from "drizzle-orm";
+import { isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   claimNextOutboxBatch,
+  beginOutboxDelivery,
+  enqueueOutbox,
   getOutboxMetrics,
   markOutboxDelivered,
   markOutboxFailed,
   pruneOutbox
 } from "../../src/db/repositories/outbox.js";
-import { discordOutbox } from "../../src/db/schema.js";
+import { discordNotifications } from "../../src/db/schema.js";
 import { createOutboxContractHarness } from "./_outboxContract.js";
 import { isIntegration } from "./_support.js";
 
@@ -25,7 +27,7 @@ const claimTokenOf = (
 
 describeDb("discord_outbox maintenance contract (integration)", () => {
   const harness = createOutboxContractHarness();
-  const { db, baseSession, enqueueWithNextAttempt } = harness;
+  const { db, baseSession, basePayload, enqueueWithNextAttempt } = harness;
 
   beforeAll(async () => {
     await harness.initialize();
@@ -41,24 +43,25 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
 
   it("DB rejects outbox kinds without a delivery implementation", async () => {
     await expect(db.execute(sql`
-      INSERT INTO discord_outbox (id, kind, session_id, payload, dedupe_key)
+      INSERT INTO discord_notifications (id, family, kind, payload, dedupe_key, payload_hash)
       VALUES (
         'unsupported-kind-row',
+        'attendance',
         'edit_message',
-        ${baseSession.id},
         '{"kind":"edit_message"}'::jsonb,
-        'unsupported-kind-dedupe'
+        'unsupported-kind-dedupe',
+        repeat('0', 64)
       )
     `)).rejects.toMatchObject({
       cause: {
         code: "23514",
-        constraint_name: "discord_outbox_kind_check"
+        constraint_name: "discord_notifications_kind_check"
       }
     });
   });
 
-  // invariant: DELIVERED / FAILED の期限切れだけを削除し、PENDING は保持する。
-  it("pruneOutbox deletes only expired terminal rows", async () => {
+  // invariant: 本文整理後も同じ dedupe key から通知を再生成しない。
+  it("pruneOutbox retains permanent identities and only purges expired terminal detail", async () => {
     const oldDelivered = new Date("2026-04-01T00:00:00.000Z");
     const recent = new Date("2026-04-23T00:00:00.000Z");
     const now = new Date("2026-04-24T00:00:00.000Z");
@@ -71,15 +74,18 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
       db,
       { limit: 1, now: oldDelivered, claimDurationMs: 30_000 }
     );
+    await beginOutboxDelivery(db, oldDeliveredId, {
+      claimToken: claimTokenOf(oldDeliveredClaim), now: oldDelivered
+    });
     await markOutboxDelivered(db, oldDeliveredId, {
       claimToken: claimTokenOf(oldDeliveredClaim),
       deliveredMessageId: "msg-1",
       now: oldDelivered
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ deliveredAt: oldDelivered })
-      .where(sql`${discordOutbox.id} = ${oldDeliveredId}`);
+      .where(sql`${discordNotifications.id} = ${oldDeliveredId}`);
 
     const { id: recentDeliveredId } = await enqueueWithNextAttempt(
       "prune-recent-delivered",
@@ -89,15 +95,18 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
       db,
       { limit: 1, now: recent, claimDurationMs: 30_000 }
     );
+    await beginOutboxDelivery(db, recentDeliveredId, {
+      claimToken: claimTokenOf(recentDeliveredClaim), now: recent
+    });
     await markOutboxDelivered(db, recentDeliveredId, {
       claimToken: claimTokenOf(recentDeliveredClaim),
       deliveredMessageId: "msg-2",
       now: recent
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ deliveredAt: recent })
-      .where(sql`${discordOutbox.id} = ${recentDeliveredId}`);
+      .where(sql`${discordNotifications.id} = ${recentDeliveredId}`);
 
     const oldFailedAt = new Date("2026-03-20T00:00:00.000Z");
     const { id: oldFailedId } = await enqueueWithNextAttempt("prune-old-failed", oldFailedAt);
@@ -112,9 +121,9 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
       nextAttemptAt: null
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ updatedAt: oldFailedAt })
-      .where(sql`${discordOutbox.id} = ${oldFailedId}`);
+      .where(sql`${discordNotifications.id} = ${oldFailedId}`);
 
     const { id: pendingId } = await enqueueWithNextAttempt(
       "prune-pending",
@@ -127,9 +136,15 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     })).toStrictEqual({ deliveredPruned: 1, failedPruned: 1, cancelledPruned: 0 });
 
     const remainingIds = new Set(
-      (await db.select({ id: discordOutbox.id }).from(discordOutbox)).map((row) => row.id)
+      (await db.select({ id: discordNotifications.id }).from(discordNotifications)
+        .where(isNull(discordNotifications.purgedAt))).map((row) => row.id)
     );
     expect(remainingIds).toStrictEqual(new Set([recentDeliveredId, pendingId]));
+    expect(await db.select({ id: discordNotifications.id }).from(discordNotifications)).toHaveLength(4);
+    expect(await enqueueOutbox(db, {
+      kind: "send_message", sessionId: baseSession.id, payload: basePayload,
+      dedupeKey: "prune-old-delivered", aggregateRevision: 0, ordinal: 0
+    })).toStrictEqual({ id: oldDeliveredId, skipped: true });
   });
 
   // invariant: status 別件数と最古 age の基準列を固定する。
@@ -140,23 +155,28 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
     const failedAt = new Date(now.getTime() - 5 * 60_000);
 
     const { id: oldPendingId } = await enqueueWithNextAttempt("metrics-pending-old", oldPendingAt);
-    await db.update(discordOutbox).set({ createdAt: oldPendingAt })
-      .where(sql`${discordOutbox.id} = ${oldPendingId}`);
+    await db.update(discordNotifications).set({ createdAt: oldPendingAt })
+      .where(sql`${discordNotifications.id} = ${oldPendingId}`);
 
     const { id: recentPendingId } = await enqueueWithNextAttempt(
       "metrics-pending-recent",
       recentPendingAt
     );
-    await db.update(discordOutbox).set({ createdAt: recentPendingAt })
-      .where(sql`${discordOutbox.id} = ${recentPendingId}`);
+    await db.update(discordNotifications).set({ createdAt: recentPendingAt })
+      .where(sql`${discordNotifications.id} = ${recentPendingId}`);
 
     const { id: failedId } = await enqueueWithNextAttempt("metrics-failed", failedAt);
-    await db.update(discordOutbox).set({ status: "FAILED", updatedAt: failedAt })
-      .where(sql`${discordOutbox.id} = ${failedId}`);
+    await db.update(discordNotifications).set({ status: "FAILED", updatedAt: failedAt })
+      .where(sql`${discordNotifications.id} = ${failedId}`);
 
     const { id: deliveredId } = await enqueueWithNextAttempt("metrics-delivered", now);
-    await db.update(discordOutbox).set({ status: "DELIVERED", deliveredAt: now })
-      .where(sql`${discordOutbox.id} = ${deliveredId}`);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`UPDATE discord_notification_parts SET status = 'DELIVERED',
+        delivered_at = ${now.toISOString()}, delivered_message_id = 'metrics-delivered-message'
+        WHERE notification_id = ${deliveredId}`);
+      await tx.update(discordNotifications).set({ status: "DELIVERED", deliveredAt: now, terminalAt: now })
+        .where(sql`${discordNotifications.id} = ${deliveredId}`);
+    });
 
     expect(await getOutboxMetrics(db, now)).toStrictEqual({
       pending: 2,

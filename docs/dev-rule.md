@@ -16,6 +16,17 @@ Summit のtoolchain、package command、source layout、TypeScript、命名、co
 
 Node native TypeScriptが現在のESM/importを扱えなくなった場合、またはnon-erasable syntaxが実要件になった場合にruntimeを再評価する。単なる好みで複数のdev実行基盤を併存させない。
 
+### 外部 API・tool の資料確認
+
+ライブラリ、framework、SDK、API、CLI、cloud service の構文・設定・移行・固有の不具合を扱う場合は、記憶だけで実装せず現在の資料を確認する。
+
+1. `package.json`、lockfile、toolchain 設定で対象 version を特定する。最新版の説明をそのまま導入済み version に適用しない。
+2. Context7 の `resolve-library-id` に正式名称と具体的な質問を渡し、公式性・version・内容が最も合う ID を選ぶ。ユーザーが正確な `/org/project` 形式の ID を指定した場合だけ解決を省略する。
+3. `query-docs` に選んだ ID と判断したい質問を渡す。取得内容が対象 version・機能を説明しているか確かめる。
+4. Context7 が利用不可、情報不足、または指定された公式ページの内容を確認できない場合は、公式ドキュメントを直接取得する。検索 snippet だけで結論を出さず、根拠の URL と適用 version を必要な説明に添える。
+
+業務ロジックの調査、一般的な refactor、code review、独自 script の作成に、外部仕様の判断がなければ資料取得は不要。質問に secret、私有コード、個人情報を含めない。資料が取れなくても既存実装と test で確かめられる作業は進め、未確認の API 契約に依存する部分だけを保留する。
+
 ## 2. 主要command
 
 | command | 用途 |
@@ -30,12 +41,18 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm verify:forbidden` | 危険patternと依存方向の検査 |
 | `pnpm verify:file-size` | source file size advisory |
 | `pnpm verify:docs` | 文書topologyとagent adapter検査 |
-| `pnpm run ci` | 日常の全static/unit品質ゲート |
+| `pnpm docs:sync-agent` | `AGENTS.md` から agent adapter を生成し文書検査 |
+| `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
 | `pnpm commands:sync` | guild-scoped slash command同期 |
+| `pnpm notifications inspect/retry/settings ...` | 稼働中private receiverでOCR・分析通知を操作。権限・使い方は`docs/operations/result-notifications.md` |
 | `pnpm db:seed` | local member seed |
 | `pnpm db:reset` | local transient state reset |
 
 重要: `pnpm ci`はpackage scriptではなくpnpmのinstall系commandとして解釈される。品質ゲートには必ず`pnpm run ci`を使う。
+
+`package.json` を command の実体とする。`dev`、`start`、`commands:sync` は外部サービスへ接続し、`setup`、DB script、integration test は DB の変更を伴う。検証のためにアプリ起動や command 同期を追加しない。`.env.local` や git 管理外 YAML を読む script は、`AGENTS.md` の読取条件も満たす必要がある。
+
+探索・検証は必要な path に限定する。`verify:docs` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、検証した差分が作業元と一致することを確認する。
 
 ## 3. TypeScript
 
@@ -141,18 +158,22 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 
 ## 9. Git とPR
 
+- 開始時と commit 前に branch、worktree、staged diff を確認する。既存のユーザー差分を編集・revert・stage せず、今回の対象だけを明示して stage する。同じファイルに既存差分がある場合は hunk を分けて確認する。
+- commit を依頼されたら必要な gate と staged diff の確認後に実行し、hash と完了状態を報告する。commit の依頼を push・merge・deploy の許可へ拡張しない。履歴の書換や無関係な変更の破棄は、明示された依頼なしに行わない。
 - commit messageは英語のConventional Commits。
-- PR本文は日本語で、変更点、仮定、要確認事項、影響範囲、テスト、運用影響、リスク、変更した設計文書を書く。
+- PR 本文は日本語で、解決する問題と変更後の挙動、理由、検証結果を先に書く。重要な仮定・要確認事項・影響範囲・運用影響・リスク・更新した正本は、該当するものだけを具体的に添える。小さな変更に空の見出しや定型チェックを増やさない。
+- `.github/PULL_REQUEST_TEMPLATE.md` を使い、実行した command と pass / fail / 未実行を区別する。選んだ gate の理由や、必要な検証を実行できなかった理由を示す。予定の検証を完了済みにしない。
 - 業務仕様変更と文書topology移行など、異なるreview判断を必要とする変更はcommitまたはPRを分ける。
 - 設計変更は対応するliving documentを同じPRで更新する。番号付きの判断履歴文書を追加しない。
 - 理由、非採用案、再評価条件はPRと現在の設計文書に残し、完了済み実装計画をdocsへ蓄積しない。
-- 既存のuser変更があるdirty worktreeでは、無関係な差分を編集・revertしない。
+
+Linear チケットの実装と必要な確認が完了し、PR の merge をもって Done にする場合は、PR 本文に `Fixes <issue ID>` を記載する。`Refs <issue ID>` は merge 後も追加作業または受け入れ確認が残る場合だけ使用し、その残作業を示す。この記法はチケット更新・外部へのメッセージ送信・PR merge 自体の実行権限を与えない。
 
 ## 10. 完了条件
 
 - 仕様、設計文書、code、testが同じcontractを示す。
 - `git diff --check`が通る。
-- `pnpm run ci`が通る。
-- DB契約変更ではintegration test、運用変更では該当runbook確認を完了する。
+- `docs/test-rule.md` で選んだ品質 gate が通る。code・test・実行設定・検証 script の変更は `pnpm run ci`、DB 契約変更は追加の integration test が必要。
+- 運用手順の変更は該当 runbook と実装・設定を照合する。手順の review を理由に production 操作を実行しない。
 - secret、production destructive operation、deploy禁止窓、single-instance逸脱がない。
 - new warningやbaseline failureを隠していない。

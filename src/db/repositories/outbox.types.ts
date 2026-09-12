@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   OUTBOX_KINDS,
   OUTBOX_STATUSES,
-  type discordOutbox,
+  type discordNotifications,
   type OutboxKind,
   type OutboxStatus
 } from "../schema.ts";
@@ -64,7 +64,18 @@ export interface EnqueueResult {
   readonly skipped: boolean;
 }
 
-export const mapOutboxRow = (row: typeof discordOutbox.$inferSelect): OutboxEntry => ({
+type AttendanceNotificationRow = typeof discordNotifications.$inferSelect & {
+  readonly sessionId: string | null;
+  readonly aggregateRevision: number;
+  readonly ordinal: number;
+  readonly deliveredMessageId: string | null;
+};
+
+export const mapOutboxRow = (row: AttendanceNotificationRow): OutboxEntry => {
+  if (row.sessionId === null) {
+    throw new Error("Active attendance notification has no Session");
+  }
+  return {
   id: row.id,
   kind: assertEnum(OUTBOX_KINDS, row.kind, "outbox kind"),
   sessionId: row.sessionId,
@@ -82,4 +93,5 @@ export const mapOutboxRow = (row: typeof discordOutbox.$inferSelect): OutboxEntr
   ordinal: row.ordinal,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
-});
+  };
+};

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "../src/config.ts";
 
 import {
   isShuttingDown,
@@ -9,6 +10,23 @@ import {
 describe("shutdown", () => {
   beforeEach(() => {
     resetShutdownStateForTest();
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("stops new work before draining, then closes resources at the deadline if delivery hangs", async () => {
+    vi.useFakeTimers();
+    const order: string[] = [];
+    const completion = shutdownGracefully({ signal: "SIGTERM",
+      stopScheduler: () => { order.push("stop"); },
+      waitForInFlightSend: async () => { order.push("drain"); await new Promise<void>(() => undefined); },
+      closeDb: async () => { order.push("database"); },
+      destroyClient: () => { order.push("discord"); }
+    });
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_DRAIN_TIMEOUT_MS - 1);
+    expect(order).toEqual(["stop", "drain"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await completion).toBe(true);
+    expect(order).toEqual(["stop", "drain", "database", "discord"]);
   });
 
   it("runs shutdown sequence once and ignores duplicate signals", async () => {

@@ -13,7 +13,7 @@ import {
   completeDecidedSessionAsHeld,
   findHeldEventBySessionId
 } from "../../src/db/repositories/heldEvents.js";
-import { discordOutbox, sessions } from "../../src/db/schema.js";
+import { discordNotifications, discordNotificationAttendance, sessions } from "../../src/db/schema.js";
 import {
   assertSchemaReady,
   createIntegrationDb,
@@ -118,12 +118,13 @@ describeDb("session aggregate command contract (integration)", () => {
     });
     const intents = await primary.db
       .select({
-        aggregateRevision: discordOutbox.aggregateRevision,
-        ordinal: discordOutbox.ordinal,
-        status: discordOutbox.status
+        aggregateRevision: discordNotificationAttendance.aggregateRevision,
+        ordinal: discordNotificationAttendance.ordinal,
+        status: discordNotifications.status
       })
-      .from(discordOutbox)
-      .orderBy(discordOutbox.ordinal);
+      .from(discordNotifications)
+      .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
+      .orderBy(discordNotificationAttendance.ordinal);
     expect(intents).toStrictEqual([
       { aggregateRevision: 2, ordinal: 0, status: "PENDING" },
       { aggregateRevision: 2, ordinal: 1, status: "PENDING" }
@@ -143,7 +144,7 @@ describeDb("session aggregate command contract (integration)", () => {
       .where(eq(sessions.weekKey, baseSession.weekKey));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe("SKIPPED");
-    expect(await primary.db.select().from(discordOutbox)).toHaveLength(1);
+    expect(await primary.db.select().from(discordNotifications)).toHaveLength(1);
   });
 
   it("cancel_week and HeldEvent completion never produce SKIPPED plus HeldEvent", async () => {

@@ -1,4 +1,5 @@
 import { logger } from "./logger.ts";
+import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./config.ts";
 
 // single-instance: プロセスローカルな shutdown フラグ。
 //   isShuttingDown は sendAskMessage の入口で参照し、SIGTERM 後の新規送信を抑制する。
@@ -40,11 +41,17 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
   // invariant: scheduler 停止 → in-flight 待機の順序。逆にすると cron tick が in-flight を積み増す。
   deps.stopScheduler();
 
+  let drainTimer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await deps.waitForInFlightSend();
+    await Promise.race([deps.waitForInFlightSend(), new Promise<void>(resolve => {
+      drainTimer = setTimeout(() => {
+        logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB.");
+        resolve();
+      }, SHUTDOWN_DRAIN_TIMEOUT_MS);
+    })]);
   } catch (error: unknown) {
     logger.error({ error, signal: deps.signal }, "Waiting in-flight send failed during shutdown.");
-  }
+  } finally { clearTimeout(drainTimer); }
 
   try {
     await deps.closeDb();

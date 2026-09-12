@@ -2,6 +2,8 @@
 
 outbox は Discord への副作用を at-least-once で配送し、Session 内の意味順序を守る仕組み。本ファイルは **観測値の読み方 / retention / stranded 対応** をまとめる。
 
+ここで扱う OutboxPort・metrics・起動時回復は共通通知 DB の attendance family に限定する。A/Bの状態確認・再試行は[通知運用](result-notifications.md)を参照する。
+
 設計正本: `docs/db-rule.md`。scheduler との接続は `docs/architecture.md`。
 関連定数 SSoT: `src/config.ts` (定数名のみ参照、実値は SSoT 側で確認)
 
@@ -36,7 +38,7 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 **SOP**:
 
 1. `fly logs` で `event=outbox.retry_scheduled` / `event=outbox.dead_letter` / `event=outbox.unsupported_payload` を遡り、原因を特定する (rate limit / 権限 / 不正 payload)
-2. 原因を直した修正を deploy する。startup reconciler が FAILED 行とそれにより CANCELLED になった後続を同一 transaction で PENDING に戻し、試行回数を初期化する
+2. 原因を直した修正を deploy する。startup reconciler が本文保持中のアンケート FAILED と、それにより CANCELLED になった後続を同一 transaction で PENDING に戻し、試行回数を初期化する。手動の週取消や A/B は復帰させない
 3. `event=reconciler.outbox_dead_letters_requeued` の件数を確認し、その後 `outbox.delivered` へ収束することを確認する。不正 payload を直さず再起動した場合も retry は起動ごとの 1 cycle に限定される
 
 **禁止**: FAILED 行を手動で PENDING に戻す `UPDATE` を本番 DB に流さないこと。冪等性が壊れる。
@@ -64,6 +66,8 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 
 - DELIVERED 行: `OUTBOX_RETENTION_DELIVERED_MS` 超過
 - FAILED / CANCELLED 行: `OUTBOX_RETENTION_FAILED_MS` 超過
+
+pruneはアプリの保持policyで本文・配送部分・最終エラーを整理し、親のID / dedupe / 内容照合と終端状態を残す。metricsは整理済み行を除外する。最低保持期間を短縮するcutoffは受け付けず、本文整理後の古い通知を再送しない。
 
 **PENDING / IN_FLIGHT は経過時間に関わらず絶対に削除しない** (at-least-once と message-id back-fill の正本性を保護)。
 

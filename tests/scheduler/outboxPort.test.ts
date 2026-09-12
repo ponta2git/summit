@@ -94,6 +94,7 @@ describe("outbox port fake", () => {
       id: "in-flight-earlier",
       dedupeKey: "in-flight-earlier",
       status: "IN_FLIGHT",
+      claimToken: "11111111-1111-4111-8111-111111111111",
       claimExpiresAt: new Date(now.getTime() - 1),
       nextAttemptAt: new Date(now.getTime() + 300_000)
     });
@@ -186,6 +187,9 @@ describe("outbox port fake", () => {
     if (!first) {
       throw new Error("expected first ordered entry");
     }
+    expect(await ctx.ports.outbox.beginDelivery(first.id, {
+      claimToken: requireClaimToken(first), now: ctx.clock.now()
+    })).toBe(true);
     await ctx.ports.outbox.markDelivered(first.id, {
       claimToken: requireClaimToken(first),
       deliveredMessageId: null,
@@ -254,6 +258,12 @@ describe("outbox port fake", () => {
     }
 
     expect(requireClaimToken(currentClaim)).not.toBe(requireClaimToken(expiredClaim));
+    expect(await ctx.ports.outbox.beginDelivery(expiredClaim.id, {
+      claimToken: requireClaimToken(expiredClaim), now: new Date(now.getTime() + 30_001)
+    })).toBe(false);
+    expect(await ctx.ports.outbox.beginDelivery(currentClaim.id, {
+      claimToken: requireClaimToken(currentClaim), now: new Date(now.getTime() + 30_001)
+    })).toBe(true);
     expect(await ctx.ports.outbox.markDelivered(expiredClaim.id, {
       claimToken: requireClaimToken(expiredClaim),
       deliveredMessageId: null,

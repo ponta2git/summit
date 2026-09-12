@@ -20,5 +20,7 @@ export const stubChannel = (overrides?: { readonly sendThrows?: boolean }) => {
   return { channel, sentMessages };
 };
 
-export const stubClient = (channel: unknown): Client =>
-  asDiscordClient({ channels: { fetch: vi.fn(async () => channel) } });
+export const stubClient = (
+  channel: unknown,
+  resolveChannel: () => Promise<unknown> = async () => channel
+): Client => asDiscordClient({ channels: { fetch: vi.fn(resolveChannel) } });

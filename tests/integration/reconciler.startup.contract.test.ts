@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../../src/db/schema.ts";
 import { makeRealPorts } from "../../src/db/ports.real.js";
 import { runReconciler } from "../../src/scheduler/reconciler.js";
 import type { Clock } from "../../src/time/index.js";
@@ -72,43 +73,30 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
     // seed (b): IN_FLIGHT outbox row past claim_expires_at → invariant F で release 対象。
     const expiredClaimAt = new Date(bootNow.getTime() - 60 * 1000);
-    await integrationDb.db.execute(sql`
-      INSERT INTO discord_outbox (
-        id, kind, session_id, payload, dedupe_key,
-        status, attempt_count, claim_expires_at, next_attempt_at,
-        aggregate_revision, ordinal,
-        created_at, updated_at
-      ) VALUES (
-        'outbox-stuck',
-        'send_message',
-        'sess-outbox-parent',
-        '{}'::jsonb,
-        'sess-outbox-parent:ask-send',
-        'IN_FLIGHT',
-        1,
-        ${expiredClaimAt.toISOString()},
-        ${expiredClaimAt.toISOString()},
-        0, 0,
-        ${bootNow.toISOString()}, ${bootNow.toISOString()}
-      )
-    `);
-    await integrationDb.db.execute(sql`
-      INSERT INTO discord_outbox (
-        id, kind, session_id, payload, dedupe_key,
-        status, attempt_count, last_error, next_attempt_at,
-        aggregate_revision, ordinal, created_at, updated_at
-      ) VALUES
-        (
-          'outbox-dead-letter', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
-          'sess-outbox-parent:dead-letter', 'FAILED', 10, 'fixed by deployment',
-          ${bootNow.toISOString()}, 1, 0, ${bootNow.toISOString()}, ${bootNow.toISOString()}
-        ),
-        (
-          'outbox-cancelled-successor', 'send_message', 'sess-outbox-parent', '{}'::jsonb,
-          'sess-outbox-parent:cancelled-successor', 'CANCELLED', 0, NULL,
-          ${bootNow.toISOString()}, 1, 1, ${bootNow.toISOString()}, ${bootNow.toISOString()}
-        )
-    `);
+    await integrationDb.db.transaction(async tx => {
+      for (const fixture of [
+        { id: "outbox-stuck", revision: 0, ordinal: 0, status: "IN_FLIGHT" },
+        { id: "outbox-dead-letter", revision: 1, ordinal: 0, status: "FAILED" },
+        { id: "outbox-cancelled-successor", revision: 1, ordinal: 1, status: "CANCELLED" }
+      ]) {
+        const sending = fixture.status === "IN_FLIGHT";
+        const token = sending ? "11111111-1111-4111-8111-111111111111" : null;
+        await tx.insert(discordNotifications).values({
+          id: fixture.id, family: "attendance", kind: "send_message", dedupeKey: fixture.id,
+          payload: { kind: "send_message", renderer: "ask_body", channelId: "999000000000000001" },
+          payloadHash: "f".repeat(64), partCount: 1, rendererVersion: 1, status: fixture.status,
+          attemptCount: sending ? 1 : 10, claimToken: token,
+          claimExpiresAt: sending ? new Date(expiredClaimAt.getTime() + 1_000) : null,
+          nextAttemptAt: bootNow, terminalAt: sending ? null : bootNow,
+          cancelReason: fixture.status === "CANCELLED" ? "predecessor_failed" : null
+        });
+        await tx.insert(discordNotificationAttendance).values({ notificationId: fixture.id,
+          sessionId: "sess-outbox-parent", aggregateRevision: fixture.revision, ordinal: fixture.ordinal });
+        await tx.insert(discordNotificationParts).values({ notificationId: fixture.id, partNo: 0,
+          status: fixture.status === "FAILED" ? "PENDING" : fixture.status,
+          claimToken: token, sendStartedAt: sending ? expiredClaimAt : null });
+      }
+    });
 
     // boot-1: 初回 startup reconcile。expired outbox claim が収束する。
     const boot1 = await unwrapResultAsync(runReconciler(fakeClient, ctx, { scope: "startup" }));
@@ -147,7 +135,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     const outbox = await integrationDb.db.execute<{
       status: string;
       claim_expires_at: Date | null;
-    }>(sql`SELECT status, claim_expires_at FROM discord_outbox WHERE id='outbox-stuck'`);
+    }>(sql`SELECT status, claim_expires_at FROM discord_notifications WHERE id='outbox-stuck'`);
     expect(outbox[0]?.status).toBe("PENDING");
     expect(outbox[0]?.claim_expires_at).toBeNull();
   });

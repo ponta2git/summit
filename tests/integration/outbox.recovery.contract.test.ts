@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -9,7 +9,7 @@ import {
   requeueFailedOutboxChains,
   releaseExpiredOutboxClaims
 } from "../../src/db/repositories/outbox.js";
-import { discordOutbox } from "../../src/db/schema.js";
+import { discordNotifications, discordNotificationAttendance } from "../../src/db/schema.js";
 import { createOutboxContractHarness } from "./_outboxContract.js";
 import { isIntegration } from "./_support.js";
 
@@ -51,9 +51,9 @@ describeDb("discord_outbox recovery contract (integration)", () => {
       ordinal: 1
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ nextAttemptAt: readyAt })
-      .where(sql`${discordOutbox.id} IN (${first.id}, ${existingSuccessor.id})`);
+      .where(sql`${discordNotifications.id} IN (${first.id}, ${existingSuccessor.id})`);
 
     const now = new Date("2026-04-24T12:35:00.000Z");
     const claimed = await claimNextOutboxBatch(db, {
@@ -78,9 +78,9 @@ describeDb("discord_outbox recovery contract (integration)", () => {
       ordinal: 0
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ nextAttemptAt: readyAt })
-      .where(sql`${discordOutbox.id} = ${futureSuccessor.id}`);
+      .where(sql`${discordNotifications.id} = ${futureSuccessor.id}`);
     expect(await claimNextOutboxBatch(db, {
       limit: 10,
       now,
@@ -88,9 +88,9 @@ describeDb("discord_outbox recovery contract (integration)", () => {
     })).toStrictEqual([]);
 
     const statuses = await db
-      .select({ id: discordOutbox.id, status: discordOutbox.status })
-      .from(discordOutbox)
-      .where(sql`${discordOutbox.id} IN (${existingSuccessor.id}, ${futureSuccessor.id})`);
+      .select({ id: discordNotifications.id, status: discordNotifications.status })
+      .from(discordNotifications)
+      .where(sql`${discordNotifications.id} IN (${existingSuccessor.id}, ${futureSuccessor.id})`);
     expect(new Map(statuses.map((row) => [row.id, row.status]))).toStrictEqual(new Map([
       [existingSuccessor.id, "CANCELLED"],
       [futureSuccessor.id, "CANCELLED"]
@@ -124,9 +124,9 @@ describeDb("discord_outbox recovery contract (integration)", () => {
       ordinal: 1
     });
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ nextAttemptAt: readyAt })
-      .where(sql`${discordOutbox.id} IN (${first.id}, ${successor.id})`);
+      .where(sql`${discordNotifications.id} IN (${first.id}, ${successor.id})`);
     const now = new Date("2026-04-24T12:35:00.000Z");
     const claimed = await claimNextOutboxBatch(db, {
       limit: 10,
@@ -150,14 +150,15 @@ describeDb("discord_outbox recovery contract (integration)", () => {
     });
     const rows = await db
       .select({
-        status: discordOutbox.status,
-        attemptCount: discordOutbox.attemptCount,
-        lastError: discordOutbox.lastError,
-        ordinal: discordOutbox.ordinal
+        status: discordNotifications.status,
+        attemptCount: discordNotifications.attemptCount,
+        lastError: discordNotifications.lastError,
+        ordinal: discordNotificationAttendance.ordinal
       })
-      .from(discordOutbox)
-      .where(sql`${discordOutbox.id} IN (${first.id}, ${successor.id})`)
-      .orderBy(discordOutbox.ordinal);
+      .from(discordNotifications)
+      .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
+      .where(sql`${discordNotifications.id} IN (${first.id}, ${successor.id})`)
+      .orderBy(discordNotificationAttendance.ordinal);
     expect(rows.map(({ status, attemptCount, lastError }) => ({
       status,
       attemptCount,
@@ -185,8 +186,8 @@ describeDb("discord_outbox recovery contract (integration)", () => {
     )).toBe(1);
     const [row] = await db
       .select()
-      .from(discordOutbox)
-      .where(sql`${discordOutbox.id} = ${id}`);
+      .from(discordNotifications)
+      .where(sql`${discordNotifications.id} = ${id}`);
     expect({ status: row?.status, claimExpiresAt: row?.claimExpiresAt })
       .toStrictEqual({ status: "PENDING", claimExpiresAt: null });
   });
@@ -214,9 +215,9 @@ describeDb("discord_outbox recovery contract (integration)", () => {
       new Date("2026-04-24T12:30:00.000Z")
     );
     await db
-      .update(discordOutbox)
+      .update(discordNotifications)
       .set({ attemptCount: 9 })
-      .where(sql`${discordOutbox.id} = ${highAttemptId}`);
+      .where(sql`${discordNotifications.id} = ${highAttemptId}`);
 
     const strandedIds = new Set(
       (await findStrandedOutboxEntries(db, 5)).map((row) => row.id)

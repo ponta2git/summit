@@ -10,12 +10,15 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 | `DATABASE_URL` | アプリの DB 接続 (Neon pooled) | 再起動で再接続、cron tick 数回スキップあり |
 | `DIRECT_URL` | migration 専用 (`drizzle.config.ts`) | `momo-db` の migration 実行環境でのみ管理。Fly secrets には設定しない |
 | `SUMMIT_CONFIG_YAML` | 本番 user config 本文 | guild/channel/member/時刻設定。次回 deploy 前に stage 推奨 |
+| `RESULT_NOTIFICATION_TOKEN` | OCR・分析通知のprivate受付 | producer側との同時切替。切替中の受付前欠落に注意 |
+| `RESULT_NOTIFICATION_OPERATIONS_TOKEN` | 状態確認・設定・明示retry | 運用環境側との切替。受信tokenと別値を維持 |
 | `FLY_API_TOKEN` (CI) | GitHub Actions から Fly deploy | app-scoped deploy token のみ。Personal Auth Token 禁止 |
 
 ## 共通原則 (再掲)
 
 - 実値を **コード / fixture / ログ / PR / コミットに載せない**
 - commit 可能な env は `.env.example` の placeholder のみ
+- A/Bのtoken2項目とWeb originは一組で設定する。保存済み通知の本文・宛先はrotationで変更しない。状態と受付可否は[通知運用](result-notifications.md)で確認する。
 - `fly secrets unset` / 既存 secrets **上書きは不可逆変更** — ad-hoc 禁止、事前通知 + 停止窓外 + 手順書でのみ
 - ログに実値を出さないため `src/logger.ts` の redact で token / 接続文字列 / `Authorization` を除去
 

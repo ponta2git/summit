@@ -11,6 +11,8 @@ export const loggerOptions = {
       "DATABASE_URL",
       "DIRECT_URL",
       "DISCORD_TOKEN",
+      "RESULT_NOTIFICATION_TOKEN",
+      "RESULT_NOTIFICATION_OPERATIONS_TOKEN",
       "token",
       "authorization",
       "Authorization",
@@ -23,6 +25,8 @@ export const loggerOptions = {
       "request.headers.X-Access-Token",
       "response.headers.authorization",
       "env.DISCORD_TOKEN",
+      "env.RESULT_NOTIFICATION_TOKEN",
+      "env.RESULT_NOTIFICATION_OPERATIONS_TOKEN",
       "env.DATABASE_URL",
       "env.DIRECT_URL"
     ],

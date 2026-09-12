@@ -17,6 +17,7 @@ import {
 } from "./ports.heldEvents.js";
 import { createFakeMembersPort, type FakeMembersPort } from "./ports.members.js";
 import { createFakeOutboxPort, type FakeOutboxPort } from "./ports.outbox.js";
+import { createFakeResultNotificationsPort, type FakeResultNotificationsPort } from "./ports.resultNotifications.ts";
 import { createFakeResponsesPort, type FakeResponsesPort } from "./ports.responses.js";
 import {
   createFakeSessionCommandsPort,
@@ -34,6 +35,7 @@ export interface FakePorts extends AppPorts {
   readonly heldEvents: FakeHeldEventsPort;
   readonly status: FakeStatusPort;
   readonly outbox: FakeOutboxPort;
+  readonly resultNotifications: FakeResultNotificationsPort;
 }
 
 export interface FakePortsSeed {
@@ -75,7 +77,8 @@ const createFakePorts = (
     outbox
   );
   const status = createFakeStatusPort(sessions, responses, heldEvents);
-  return { sessions, sessionCommands, responses, members, heldEvents, status, outbox };
+  return { sessions, sessionCommands, responses, members, heldEvents, status, outbox,
+    resultNotifications: createFakeResultNotificationsPort(clock) };
 };
 
 export interface TestAppContext {

@@ -86,5 +86,5 @@ dump ファイルは secrets 相当。PR / commit / 共有ドライブに置か�
 個人開発の規模では定期的な restore リハーサルは実施しない。代わりに:
 
 - Neon PITR が有効になっていることを四半期ごとに dashboard で確認
-- migration 時に `momo-db` の `pnpm db:check` で schema drift を自動検出
-- integration テストが `momo-db` の `pnpm db:migrate` を毎 CI 実行で verify
+- migration 時に `momo-db` の `pnpm db:check` で生成 migration 履歴の整合性を検査する。DB 実体の drift、SQL の実行成功、data 保持はこの command の保証外とする
+- integration テストが空の PostgreSQL へ `momo-db` の全 migration を毎 CI 適用し、Summit consumer contract を検証する。既存 data 上の安全性は `../momo-db/docs/development.md` の existing-DB 検証で別に確認する

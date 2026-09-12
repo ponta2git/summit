@@ -26,6 +26,15 @@ export const systemClock: Clock = {
   now: () => new Date()
 };
 
+export const isUtcMillisecondTimestamp = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) { return false; }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+};
+
+export const isIsoDate = (value: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value) && isUtcMillisecondTimestamp(`${value}T00:00:00.000Z`);
+
 /**
  * Returns the ISO-week key in `YYYY-Www` form for a given instant.
  *
@@ -48,6 +57,9 @@ export const formatCandidateJa = (value: Date): string =>
 
 export const formatCandidateDateIso = (value: Date): string =>
   format(value, "yyyy-MM-dd");
+
+export const formatTimestampJst = (value: Date): string =>
+  `${format(value, "yyyy-MM-dd HH:mm:ss")} JST`;
 
 export type AskTimeChoice = SlotKey;
 
