@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { buildDiscordNotificationId, type DiscordResultNotification } from "@momo/db/notifications";
+import { buildDiscordNotificationId, isNotificationSourceJobId, type DiscordResultNotification } from "@momo/db/notifications";
 import { isIsoDate, isUtcMillisecondTimestamp } from "../time/index.ts";
 
 export type NotificationInputCode = "invalid_input" | "unsupported_version" | "identity_conflict" | "payload_too_large";
@@ -16,7 +16,7 @@ const date = z.string().refine(isIsoDate);
 const identitySchema = z.object({
   notificationId: z.string().min(1).max(512),
   kind: z.enum(["ocr_completed", "analysis_completed"]),
-  sourceJobId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/)
+  sourceJobId: z.string().refine(isNotificationSourceJobId)
 });
 
 export const readNotificationIdentity = (value: unknown): z.infer<typeof identitySchema> => {

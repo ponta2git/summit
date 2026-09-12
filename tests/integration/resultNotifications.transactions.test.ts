@@ -104,6 +104,52 @@ const barrier = () => {
     expect(entry?.payload).toEqual(payload);
   });
 
+  it("cancels a backlog atomically across batches while preserving delivered and started parts", async () => {
+    const payload = ocrReceiptPayload();
+    await notificationTransaction(h.db, "result", async tx => {
+      for (let index = 0; index < 300; index += 1) {
+        const sourceJobId = `backlog-${String(index).padStart(3, "0")}`;
+        await receiveResultNotification(tx, JSON.stringify({ ...payload, sourceJobId,
+          notificationId: `result:ocr_completed:${sourceJobId}` }), now);
+      }
+    });
+    const [sending, unstarted, failed] = await h.port.claim({ limit: 3, now, claimDurationMs: 30_000 });
+    if (!sending || !unstarted || !failed) { throw new Error("Expected backlog claims"); }
+    for (const entry of [sending, unstarted]) {
+      await h.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
+        context: { webOrigin: "https://example.test", channelId: "channel" }, now });
+    }
+    await h.port.begin(sending.id, 0, sending.claimToken, now);
+    await h.port.complete(sending.id, 0, sending.claimToken, "first-message", now);
+    await h.port.begin(sending.id, 1, sending.claimToken, now);
+    await h.port.fail(failed.id, failed.claimToken, "delivery_failed", null, now);
+    const analysis = analysisNotification();
+    await h.port.receive(JSON.stringify(analysis), now);
+
+    await expect(notificationTransaction(h.db, "result", async tx => {
+      await setResultSetting(tx, "ocr_completed", false, now);
+      throw new Error("abort OFF after all batches");
+    })).rejects.toThrow("abort OFF");
+    expect(await h.port.getSetting("ocr_completed")).toMatchObject({ enabled: true, generation: "0" });
+    expect((await h.client`SELECT id FROM discord_notifications WHERE status = 'CANCELLED'`).length).toBe(0);
+
+    await h.port.setSetting("ocr_completed", false, now);
+    const [counts] = await h.client`SELECT count(*)::int AS total,
+      count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled,
+      count(*) FILTER (WHERE claim_token IS NOT NULL)::int AS claimed
+      FROM discord_notifications WHERE kind = 'ocr_completed'`;
+    expect({ ...counts }).toEqual({ total: 300, cancelled: 300, claimed: 1 });
+    expect(await h.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED", parts: [
+      { status: "DELIVERED", deliveredMessageId: "first-message" }, { status: "IN_FLIGHT" }
+    ] });
+    expect(await h.port.inspect(unstarted.id)).toMatchObject({ status: "CANCELLED", parts: [
+      { status: "CANCELLED" }, { status: "CANCELLED" }
+    ] });
+    expect(await h.port.complete(sending.id, 1, sending.claimToken, "started-message", now)).toBe(true);
+    expect(await h.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED" });
+    expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING" });
+  });
+
   it("matches hashes produced by the historical SQL contract without losing decimals or escaped text", async () => {
     // Oracle values were checked against migration 0042 in momo-db's backup/restore test.
     const vectors = JSON.parse(readFileSync(new URL("./notification-hash-v1.json", import.meta.url), "utf8")) as { raw: string; hash: string }[];

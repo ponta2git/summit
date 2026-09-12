@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, RESULT_NOTIFICATION_SQL_TIMEOUT_MS } from "../../config.ts";
 import type { DbLike } from "../rows.ts";
 import {
@@ -53,15 +53,42 @@ export const cancelNotification = async (
 ): Promise<boolean> => {
   const row = await lockNotification(tx, id);
   if (!row || row.status === "DELIVERED" || row.status === "CANCELLED" || row.purgedAt) { return false; }
+  await cancelLockedNotifications(tx, [id], reason, now);
+  return true;
+};
+
+/** All selected parents stay locked until the caller commits its setting/source change. */
+export const cancelMatchingResultNotifications = async (
+  tx: NotificationDb, predicate: SQL, reason: ResultCancellationReason, now: Date
+): Promise<void> => {
+  const batchSize = 256;
+  let after: string | undefined;
+  for (;;) {
+    const rows = await tx.select({ id: notifications.id }).from(notifications).where(and(
+      eq(notifications.family, "result"), isNull(notifications.purgedAt),
+      inArray(notifications.status, ["PENDING", "IN_FLIGHT", "FAILED"]), predicate,
+      after === undefined ? undefined : gt(notifications.id, after)
+    )).orderBy(notifications.id).limit(batchSize).for("update");
+    if (rows.length === 0) { return; }
+    await cancelLockedNotifications(tx, rows.map(row => row.id), reason, now);
+    if (rows.length < batchSize) { return; }
+    after = rows.at(-1)?.id;
+  }
+};
+
+/** Parents are already locked; read send evidence in a later statement after any lock wait. */
+const cancelLockedNotifications = async (
+  tx: NotificationDb, ids: readonly string[], reason: string, now: Date
+): Promise<void> => {
   await tx.update(parts).set({ status: "CANCELLED", claimToken: null })
-    .where(and(eq(parts.notificationId, id), eq(parts.status, "PENDING")));
-  const [sending] = await tx.select({ partNo: parts.partNo }).from(parts)
-    .where(and(eq(parts.notificationId, id), eq(parts.status, "IN_FLIGHT"))).limit(1);
+    .where(and(inArray(parts.notificationId, [...ids]), eq(parts.status, "PENDING")));
+  const sending = sql`EXISTS (SELECT 1 FROM ${parts}
+    WHERE ${parts.notificationId} = ${notifications.id} AND ${parts.status} = 'IN_FLIGHT')`;
   await tx.update(notifications).set({
     status: "CANCELLED", cancelReason: reason, terminalAt: now, updatedAt: now,
-    claimToken: sending ? row.claimToken : null, claimExpiresAt: sending ? row.claimExpiresAt : null
-  }).where(eq(notifications.id, id));
-  return true;
+    claimToken: sql`CASE WHEN ${sending} THEN ${notifications.claimToken} END`,
+    claimExpiresAt: sql`CASE WHEN ${sending} THEN ${notifications.claimExpiresAt} END`
+  }).where(inArray(notifications.id, [...ids]));
 };
 
 /** Read cancellation evidence under the command's gate; never take source locks. */

@@ -1,11 +1,11 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { RESULT_NOTIFICATION_KINDS, discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationResults as results, discordNotificationSettings as settings } from "../schema.ts";
 import { assertEnum } from "../rows.ts";
 import type { ResultNotificationKind } from "../schema.ts";
 import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificationPart, ResultNotificationSetting, ResultNotificationState } from "../ports.resultNotifications.ts";
-import { cancelNotification, loadResultCancellationReason, lockNotification, notificationStateColumns, type NotificationDb } from "./notifications.storage.ts";
+import { cancelMatchingResultNotifications, cancelNotification, loadResultCancellationReason, lockNotification, notificationStateColumns, type NotificationDb } from "./notifications.storage.ts";
 
 const deliveryContextSchema = z.object({ webOrigin: z.string(), channelId: z.string().min(1) }).strict();
 export const readDeliveryContext = (value: unknown): ResultDeliveryContext | null => {
@@ -98,11 +98,8 @@ export const setResultSetting = async (
   const generation = BigInt(current.generation) + (current.enabled === enabled ? 0n : 1n);
   await tx.update(settings).set({ enabled, generation, updatedAt: now }).where(eq(settings.kind, kind));
   if (!enabled) {
-    const pending = await tx.select({ id: notifications.id }).from(notifications)
-      .innerJoin(results, eq(results.notificationId, notifications.id))
-      .where(and(eq(results.kind, kind), isNull(notifications.purgedAt), inArray(notifications.status, ["PENDING", "IN_FLIGHT", "FAILED"])))
-      .orderBy(notifications.id);
-    for (const row of pending) { await cancelNotification(tx, row.id, "setting_off", now); }
+    await cancelMatchingResultNotifications(tx, sql`EXISTS (SELECT 1 FROM ${results}
+      WHERE ${results.notificationId} = ${notifications.id} AND ${results.kind} = ${kind})`, "setting_off", now);
   }
   return { kind, enabled, generation: generation.toString() };
 };
