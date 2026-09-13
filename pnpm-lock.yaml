@@ -17,9 +17,6 @@ importers:
       discord.js:
         specifier: ^14.27.0
         version: 14.27.0
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(postgres@3.4.9)

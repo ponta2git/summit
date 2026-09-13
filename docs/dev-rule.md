@@ -143,7 +143,7 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 
 - local secretは`.env.local`、commit可能なのはplaceholderだけの`.env.example`。
 - user向け非secret設定は`*.config.yml`の既定の追跡方針に従う。
-- runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。
+- runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。`src/envSchema.ts`は副作用のないparse定義、`src/env.ts`は注入された環境の検証だけを行う。local fileはpackage commandの`dotenv`で明示的に読む。
 - 機密値の扱いは `AGENTS.md` に従う。monitor URL も同じ扱いとする。
 - `console.*`を残さずpino loggerを使う。
 - redact pathを狭める変更はsecurity-sensitiveとしてreviewする。

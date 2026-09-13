@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
 
-import { envSchema } from "../../src/env.js";
+import { envSchema } from "../../src/envSchema.ts";
 
 const validEnvInput = {
   DISCORD_TOKEN: "dummy-token",
