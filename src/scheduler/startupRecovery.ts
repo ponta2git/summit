@@ -1,17 +1,18 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
 
 import type { AppContext } from "../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../config.ts";
 import type { SessionRow } from "../db/rows.ts";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/effect.ts";
 import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.ts";
 import { sendReminderForSession } from "../features/reminder/send.ts";
 import { logger } from "../logger.ts";
 import {
-  runSchedulerBatchResult,
+  runSchedulerBatchEffect,
   type SchedulerBatchReport,
   type SchedulerFailure,
-  type SchedulerResult
+  type SchedulerEffect
 } from "./scheduler.types.ts";
 
 const logSchedulerFailure = (failure: SchedulerFailure): void => {
@@ -32,7 +33,7 @@ const settleStartupAskingSession = (
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): SchedulerResult<void> =>
+): SchedulerEffect<void> =>
   evaluateAndApplyDeadlineDecision(client, ctx, session, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
@@ -48,13 +49,13 @@ const settleStartupAskingSession = (
 export const runStartupRecovery = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> => {
+): SchedulerEffect<SchedulerBatchReport> => Effect.suspend(() => {
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findDueStartupRecoverySessions(now),
     "Failed to find due sessions for startup recovery."
-  ).andThen((due) => {
-    return runSchedulerBatchResult(
+  ), (due) => {
+    return runSchedulerBatchEffect(
       "startup_recovery",
       due,
       (session) => {
@@ -85,4 +86,4 @@ export const runStartupRecovery = (
       logSchedulerFailure
     );
   });
-};
+});

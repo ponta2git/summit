@@ -1,5 +1,5 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -10,7 +10,7 @@ import {
 } from "../config.ts";
 import type { OutboxEntry } from "../db/ports.ts";
 import { AppError, InvariantViolationError } from "../errors/index.ts";
-import { fromAppCall, fromDatabaseCall } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import { getTextChannel } from "../discord/shared/channels.ts";
 import {
@@ -18,7 +18,7 @@ import {
 } from "../features/reminder/send.ts";
 import { addMs } from "../time/index.ts";
 import { renderOutboxPayload } from "./outboxRenderers.ts";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -42,7 +42,8 @@ export const computeOutboxBackoff = (
 const deliverOne = async (
   client: Client,
   ctx: AppContext,
-  entry: OutboxEntry
+  entry: OutboxEntry,
+  isStopping: () => boolean
 ): Promise<void> => {
   const now = ctx.clock.now();
   const payload = entry.payload;
@@ -60,11 +61,12 @@ const deliverOne = async (
   }
 
   try {
+    if (isStopping()) { return; }
     const body = await renderOutboxPayload(ctx, entry);
     if (body === undefined) {
       // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
       const marked = await ctx.ports.outbox.markFailed(entry.id, {
-        error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.renderer}`,
+        error: "Unsupported outbox payload.",
         claimToken,
         now,
         nextAttemptAt: null
@@ -81,8 +83,6 @@ const deliverOne = async (
           event: "outbox.unsupported_payload",
           outboxId: entry.id,
           sessionId: entry.sessionId,
-          kind: payload.kind,
-          renderer: payload.renderer,
           dedupeKey: entry.dedupeKey
         },
         "Outbox worker: unsupported payload; moved to FAILED."
@@ -91,6 +91,7 @@ const deliverOne = async (
     }
 
     const channel = await getTextChannel(client, payload.channelId);
+    if (isStopping()) { return; }
     const canSend = await ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() });
     if (!canSend) {
       logger.info(
@@ -99,6 +100,7 @@ const deliverOne = async (
       );
       return;
     }
+    if (isStopping()) { return; }
     const sent = await channel.send(body);
     if (payload.renderer === "reminder") {
       const completed = await completeReminderDelivery(
@@ -165,7 +167,8 @@ const deliverOne = async (
   } catch (error: unknown) {
     const failedNow = ctx.clock.now();
     const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
-    const message = error instanceof Error ? error.message : String(error);
+    // redact: 外部例外のmessageにはtokenや接続情報が含まれるため、DBにも固定診断だけを保存する。
+    const message = error instanceof AppError ? `Outbox delivery failed (${error.code}).` : "Outbox delivery failed.";
     const marked = await ctx.ports.outbox.markFailed(entry.id, {
       error: message,
       claimToken,
@@ -178,7 +181,8 @@ const deliverOne = async (
           event: "outbox.claim_lost",
           outboxId: entry.id,
           sessionId: entry.sessionId,
-          error: message
+          error,
+          failureSummary: message
         },
         "Outbox worker lost claim while recording delivery failure."
       );
@@ -192,7 +196,8 @@ const deliverOne = async (
         dedupeKey: entry.dedupeKey,
         attempt: entry.attemptCount,
         nextAttemptAt: nextAttemptAt?.toISOString() ?? null,
-        error: message
+        error,
+        failureSummary: message
       },
       "Outbox worker: send failed."
     );
@@ -203,30 +208,37 @@ const deliverOne = async (
  * Claim a batch of PENDING outbox entries and deliver each.
  *
  * @remarks
- * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runResultTickSafely`) が閉じ込める。
+ * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runEffectTickSafely`) が閉じ込める。
  */
 export const runOutboxWorkerTick = (
   client: Client,
-  ctx: AppContext
-): SchedulerResult<{ readonly claimed: number }> => {
+  ctx: AppContext,
+  isStopping: () => boolean = () => false
+): SchedulerEffect<{ readonly claimed: number }> => Effect.suspend(() => {
+  if (isStopping()) { return Effect.succeed({ claimed: 0 }); }
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.outbox.claimNextBatch({
       limit: OUTBOX_WORKER_BATCH_LIMIT,
       now,
       claimDurationMs: OUTBOX_CLAIM_DURATION_MS
     }),
     "Failed to claim outbox batch."
-  ).andThen((batch) => {
+  ), (batch) => {
     if (batch.length === 0) {
-      return okAsync({ claimed: 0 });
+      return Effect.succeed({ claimed: 0 });
     }
     // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
     return fromAppCall(
-      () => Promise.all(batch.map((entry) => deliverOne(client, ctx, entry))).then(() => ({ claimed: batch.length })),
+      async () => {
+        const results = await Promise.allSettled(batch.map((entry) => deliverOne(client, ctx, entry, isStopping)));
+        const failed = results.find(result => result.status === "rejected");
+        if (failed) { throw new InvariantViolationError("Failed to finalize outbox delivery.", { cause: failed.reason }); }
+        return { claimed: batch.length };
+      },
       (cause: unknown): AppError => cause instanceof AppError
         ? cause
         : new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause })
     );
   });
-};
+});

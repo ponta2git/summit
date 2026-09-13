@@ -1,5 +1,5 @@
-allowBuilds:
-  esbuild: true
-
 # Keep optional peer tools out unless Summit declares them explicitly.
 autoInstallPeers: false
+
+minimumReleaseAgeExclude:
+  - zod@4.6.4

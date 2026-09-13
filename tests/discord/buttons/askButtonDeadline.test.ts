@@ -1,13 +1,13 @@
 import { MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleAskButton } from "../../../src/features/ask-session/button.js";
+import { handleInteraction } from "../../../src/discord/shared/dispatcher.ts";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatcher.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
-import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
+import { asInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext } from "../../testing/index.js";
 
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
@@ -67,10 +67,10 @@ describe("handleAskButton deadline guard", () => {
     });
     const interaction = {
       ...buildButtonInteraction(`ask:${session.id}:t2200`),
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.askMessageId, edit: vi.fn(async () => undefined) }
     };
 
-    await handleAskButton(asButtonInteraction(interaction), buildDeps(context));
+    await handleInteraction(asInteraction(interaction), buildDeps(context));
 
     expect((await context.ports.sessions.findSessionById(session.id))?.status).toBe("ASKING");
     expect(await context.ports.responses.listResponses(session.id)).toHaveLength(4);
@@ -91,11 +91,11 @@ describe("handleAskButton deadline guard", () => {
     });
     const interaction = {
       ...buildButtonInteraction(`ask:${session.id}:t2200`),
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.askMessageId, edit: vi.fn(async () => undefined) }
     };
 
-    await handleAskButton(
-      asButtonInteraction(interaction),
+    await handleInteraction(
+      asInteraction(interaction),
       buildDeps(context)
     );
 

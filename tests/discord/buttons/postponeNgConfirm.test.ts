@@ -11,7 +11,7 @@ import { buildPostponeNgConfirmCustomId } from "../../../src/discord/shared/cust
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
@@ -28,7 +28,7 @@ const postponeSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
     status: "POSTPONE_VOTING",
     postponeCount: 0,
     postponeMessageId: "postpone-msg-1",
-    deadlineAt: new Date("2026-04-25T15:00:00.000Z"),
+    deadlineAt: new Date("2026-04-24T15:00:00.000Z"),
     ...overrides
   });
 
@@ -40,7 +40,7 @@ const postponeResponse = (
   sessionId: testSessionId,
   memberId: seededMembers[index]!.id,
   choice,
-  answeredAt: new Date(`2026-04-25T12:${String(index).padStart(2, "0")}:00.000Z`),
+  answeredAt: new Date(`2026-04-24T12:${String(index).padStart(2, "0")}:00.000Z`),
   sourceInteractionId: null
 });
 
@@ -96,7 +96,7 @@ describe("postpone_ng confirmation button — abort", () => {
     const { client } = createDiscordClient();
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-25T12:00:00.000Z")
+      now: new Date("2026-04-24T12:00:00.000Z")
     });
     const interaction = buildButtonInteraction(abortCustomId);
 
@@ -116,7 +116,7 @@ describe("postpone_ng confirmation button — confirm", () => {
   it("confirm: records POSTPONE_NG, settles session, and confirms with editReply", async () => {
     const session = postponeSession();
     const { client, postponeMessageEdit } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const ctx = createTestAppContext({
       seed: {
         sessions: [session],
@@ -173,7 +173,7 @@ describe("postpone_ng confirmation button — confirm", () => {
   it("confirm: updates an existing OK vote to NG via upsert", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const ctx = createTestAppContext({
       seed: {
         sessions: [session],
@@ -202,7 +202,7 @@ describe("postpone_ng confirmation button — confirm", () => {
     const { client } = createDiscordClient();
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-25T16:00:00.000Z") // after deadlineAt 15:00Z
+      now: new Date("2026-04-24T16:00:00.000Z") // after deadlineAt 15:00Z
     });
     const interaction = buildButtonInteraction(confirmCustomId);
 
@@ -221,7 +221,7 @@ describe("postpone_ng confirmation button — confirm", () => {
     const { client } = createDiscordClient();
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-25T12:00:00.000Z")
+      now: new Date("2026-04-24T12:00:00.000Z")
     });
     const interaction = buildButtonInteraction(confirmCustomId);
 
@@ -240,7 +240,7 @@ describe("postpone_ng confirmation button — confirm", () => {
     const { client } = createDiscordClient();
     const ctx = createTestAppContext({
       seed: { sessions: [session], members: seededMembers },
-      now: new Date("2026-04-25T12:00:00.000Z")
+      now: new Date("2026-04-24T12:00:00.000Z")
     });
     const interaction = buildButtonInteraction(confirmCustomId, {
       user: { id: "non-member-user-999" }

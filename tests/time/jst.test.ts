@@ -28,7 +28,7 @@ describe("time utilities", () => {
     sat: string;
     weekKey: string;
   }>([
-    { label: "2026→2027 boundary (W53)", fri: "2026-12-31", sat: "2027-01-01", weekKey: "2026-W53" },
+    { label: "2027 first pair (previous ISO year W53)", fri: "2027-01-01", sat: "2027-01-02", weekKey: "2026-W53" },
     { label: "2027→2028 boundary (W52)", fri: "2027-12-31", sat: "2028-01-01", weekKey: "2027-W52" },
     { label: "2032→2033 boundary (W53)", fri: "2032-12-31", sat: "2033-01-01", weekKey: "2032-W53" },
     { label: "2025 first week", fri: "2025-01-03", sat: "2025-01-04", weekKey: "2025-W01" },
@@ -39,9 +39,11 @@ describe("time utilities", () => {
     { label: "2035 last week", fri: "2035-12-28", sat: "2035-12-29", weekKey: "2035-W52" }
   ])("Fri/Sat pair shares weekKey: $label", ({ fri, sat, weekKey }) => {
     it(`${fri} (Fri) → ${weekKey}`, () => {
+      expect(new Date(`${fri}T08:00:00+09:00`).getDay()).toBe(5);
       expect(isoWeekKey(new Date(`${fri}T08:00:00+09:00`))).toBe(weekKey);
     });
     it(`${sat} (Sat) → ${weekKey}`, () => {
+      expect(new Date(`${sat}T08:00:00+09:00`).getDay()).toBe(6);
       expect(isoWeekKey(new Date(`${sat}T08:00:00+09:00`))).toBe(weekKey);
     });
   });

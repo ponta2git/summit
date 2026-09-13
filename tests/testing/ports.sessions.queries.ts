@@ -83,9 +83,9 @@ export const createFakeSessionQueryMethods = (
     const minDate = (dates: Date[]): Date | null =>
       dates.length === 0
         ? null
-        : dates.reduce((earliest, current) =>
+        : new Date(dates.reduce((earliest, current) =>
           current.getTime() < earliest.getTime() ? current : earliest
-        );
+        ));
     const sessions = Array.from(state.byId.values());
     return {
       nextAskingDeadlineAt: minDate(

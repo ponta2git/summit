@@ -62,7 +62,7 @@ wire format とcodecの実装正本は `src/discord/shared/customId.ts`。
 - 文字列の split/regexを handler ごとに実装せず、encode/decodeを一箇所へ集約する。
 - parse成功後のdiscriminated unionだけを業務処理へ渡す。
 - slotの意味は `src/slot.ts`、wire上のchoice対応はcustom ID codecが所有する。
-- `/cancel_week` のnonce付きconfirmationはSession IDを中央要素とするrouteとは意味が異なるため、独立codecとして扱う。
+- `/cancel_week` は`cancel_week:<weekKey>:<nonce>:<choice>`の独立codecとし、dialog作成時の週を固定する。confirm時に同じclock snapshotで現在週と照合し、週跨ぎは副作用なしで再実行を促す。週を持たない旧dialogはstaleとして拒否する。nonceはinvocationの区別に使い、再押下の冪等性は週単位のDB commandが担う。
 - formatを変える場合は、既存メッセージ上のstale button、後方互換、拒否文言を同時に設計する。
 
 HMAC署名は現在採用しない。private guild・固定4名では、actorはDiscord側で認証され、改変されたsession/stateはDB検証とCASで拒否できるためである。外部guild展開、信頼できないmember、custom IDだけで権限が確定する操作を導入する場合は、versioning・HMAC・secret rotationを一体で再評価する。
@@ -71,9 +71,9 @@ HMAC署名は現在採用しない。private guild・固定4名では、actorは
 
 - Interaction write は `SessionCommandsPort` の aggregate commandを使う。Response writeとstatus transitionを別callで組み立てない。
 - 同時押下、遅延Interaction、deadlineとの競合はDB lock、snowflake fencing、unique、CASで吸収する。
-- 公開メッセージはcommit後に最新Session + Responseからrenderする。
+- 公開メッセージはfeatureのmessage editorが最新Session + Responseからrenderする。同じmessageの再読込・edit・削除復旧をprocess内queueで直列化し、古い描画の後着を防ぐ。別Sessionの更新は並列に進め、押下元messageのIDが現在の保存IDと一致する場合は余分なfetchを省く。
 - `message.edit`失敗でDBを巻き戻さない。次のInteraction、reconciler、startup recoveryで再同期する。
-- 既存message IDがDiscord側で消えている場合、reconcilerが再投稿し、DBのmessage IDをCASでbackfillする。
+- 既存messageがDiscord側で消えている場合、通常更新とstartup probeは同じmessage editorで再投稿し、保存IDを置き換える。startup probeは正常messageを編集しない。初回投稿のCAS-on-NULLによるcanonical ID確定はoutboxが所有する。
 - 新規の業務上必須投稿は同期sendではなくtyped outbox intentへ入れる。既存messageのeditはbest-effort経路に残す。
 - DB commit前にDiscord APIを待たない。外部API待ち中にrow lockを保持しない。
 
@@ -116,7 +116,7 @@ A/Bは`result-notifications` rendererで保存済みsnapshotから描画する�
 - Discord API失敗とdatabase失敗を同じ回復方法で扱わない。
 - DB未commitならoperation errorとして上位へ返す。
 - DB commit済み・Discord edit失敗ならDBを維持し、recoveryへ委譲する。
-- route handler最外周でerrorをlogし、まだreply可能ならgeneric ephemeral errorを返す。
+- route handler最外周でerrorをlogし、応答可能なInteractionへgeneric ephemeral errorを返す。ack済み（replied/deferred）はfollowUp、未ackはreplyを使い、deferUpdate済みという理由で内部失敗の通知を省略しない。
 - error通知自体の失敗は二重障害としてunhandled rejectionにしない。
 - rate limit情報はrouteとretryAfterなど必要な値に限定して構造化logへ記録する。
 

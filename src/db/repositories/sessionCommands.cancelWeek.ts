@@ -92,6 +92,15 @@ export const cancelWeekAtomically = async (
     }
 
     if (!sentinelCreated) {
+      // race: 最初のSELECTが金曜lockを待つ間に、順延txが土曜を作成してcommitし得る。
+      // 金曜を保持した後の新snapshotで週全体を再読込し、同時作成された土曜も取消対象にする。
+      const currentRows = await tx
+        .select()
+        .from(sessions)
+        .where(eq(sessions.weekKey, input.weekKey))
+        .orderBy(asc(sessions.postponeCount), asc(sessions.id))
+        .for("update");
+      lockedSessions = currentRows.map(mapSession);
       const held = await tx
         .select({ sessionId: heldEvents.sessionId })
         .from(heldEvents)

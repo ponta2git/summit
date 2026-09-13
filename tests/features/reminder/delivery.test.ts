@@ -5,6 +5,7 @@ import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
 import { REMINDER_LEAD_MINUTES } from "../../../src/config.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { sentPayload } from "../../helpers/discord.js";
+import { runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {
   createReminderDiscord,
@@ -30,7 +31,7 @@ describe("sendReminderForSession", () => {
     const { client, send } = createReminderDiscord();
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledOnce();
     expect(sentPayload(send)).toStrictEqual({ content: expectedReminderContent() });
@@ -57,7 +58,7 @@ describe("sendReminderForSession", () => {
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
 
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledOnce();
     expect(ctx.ports.sessions.listSessions()[0]).toMatchObject({
@@ -67,7 +68,7 @@ describe("sendReminderForSession", () => {
     expect(ctx.ports.heldEvents.listHeldEvents()).toHaveLength(1);
   });
 
-  it("dispatches and persists exactly once under concurrent calls", async () => {
+  it("dispatches and persists once after concurrent enqueue attempts under concurrent calls", async () => {
     const session = decidedSession();
     const ctx = createTestAppContext({
       now: TEST_NOW,
@@ -79,7 +80,7 @@ describe("sendReminderForSession", () => {
       sendReminderForSession(client, ctx, session.id, TEST_NOW),
       sendReminderForSession(client, ctx, session.id, TEST_NOW)
     ]);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledOnce();
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
@@ -107,7 +108,7 @@ describe("sendReminderForSession", () => {
       const { client, send } = createReminderDiscord();
 
       await sendReminderForSession(client, ctx, session.id, TEST_NOW);
-      await runOutboxWorkerTick(client, ctx);
+      await runEffect(runOutboxWorkerTick(client, ctx));
 
       expect(sentPayload(send)).toStrictEqual({ content: reminderBody });
     } finally {

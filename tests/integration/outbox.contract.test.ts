@@ -11,6 +11,9 @@ import {
 import { discordNotifications, discordNotificationParts } from "../../src/db/schema.js";
 
 import { createOutboxContractHarness } from "./_outboxContract.js";
+import { deferred } from "../helpers/deferred.ts";
+import { lockNotificationFamily } from "../../src/db/repositories/notifications.storage.ts";
+import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
 import { isIntegration } from "./_support.js";
 
 const describeDb = isIntegration ? describe : describe.skip;
@@ -25,7 +28,7 @@ const claimTokenOf = (
 };
 
 describeDb("discord_outbox repository contract (integration)", () => {
-  const harness = createOutboxContractHarness();
+  const harness = createOutboxContractHarness({ maxConnections: 4 });
   const { db, baseSession, basePayload, enqueueWithNextAttempt } = harness;
 
   beforeAll(() => harness.initialize());
@@ -98,12 +101,28 @@ describeDb("discord_outbox repository contract (integration)", () => {
     );
 
     const now = new Date("2026-04-24T12:35:00.000Z");
-    const [a, b] = await Promise.all([
-      claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 }),
-      claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 })
-    ]);
-    const totalClaimed = a.length + b.length;
-    expect(totalClaimed).toBe(1);
+    const locked = deferred<number>(); const release = deferred<void>();
+    const blocker = db.transaction(async tx => {
+      await lockNotificationFamily(tx, "attendance");
+      const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);
+      locked.resolve(backend!.pid); await release.promise;
+    });
+    const pid = await locked.promise;
+    const first = claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 });
+    let second: ReturnType<typeof claimNextOutboxBatch>;
+    try {
+      await waitForBlockedBy(harness.client, pid);
+      second = claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 });
+      await waitForLockWaiters(harness.client, 2);
+    } finally { release.resolve(); await blocker; }
+    const results = await Promise.all([first, second]);
+    const [winner, loser] = results.sort((a, b) => b.length - a.length);
+    if (!winner) { throw new Error("Expected claim winner"); }
+    expect(winner.map(row => ({ status: row.status, attemptCount: row.attemptCount })))
+      .toStrictEqual([{ status: "IN_FLIGHT", attemptCount: 1 }]);
+    expect(loser).toStrictEqual([]);
+    expect(await db.select({ status: discordNotifications.status, attemptCount: discordNotifications.attemptCount }).from(discordNotifications))
+      .toStrictEqual([{ status: "IN_FLIGHT", attemptCount: 1 }]);
   });
 
   it("claimNextOutboxBatch: serializes one session by aggregate revision and ordinal", async () => {

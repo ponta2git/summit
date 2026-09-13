@@ -1,8 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { discordNotifications } from "../schema.ts";
-import { parseDbTimestamp, type DbLike } from "../rows.ts";
-import { findAttendanceNotifications } from "./outbox.storage.ts";
-import type { OutboxEntry } from "./outbox.types.ts";
+import { discordNotificationAttendance, discordNotifications, OUTBOX_STATUSES } from "../schema.ts";
+import { assertEnum, parseDbTimestamp, type DbLike } from "../rows.ts";
+import type { OutboxDiagnostic } from "./outbox.types.ts";
 import { notificationTransaction } from "./notifications.storage.ts";
 import { purgeNotifications } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
@@ -12,10 +11,18 @@ const retainedAttendance = and(eq(discordNotifications.family, "attendance"), is
 
 export const findStrandedOutboxEntries = async (
   db: DbLike, attemptsThreshold: number
-): Promise<readonly OutboxEntry[]> => findAttendanceNotifications(db, or(
-  eq(discordNotifications.status, "FAILED"),
-  and(inArray(discordNotifications.status, ["PENDING", "IN_FLIGHT"]), sql`${discordNotifications.attemptCount} >= ${attemptsThreshold}`)
-) ?? sql`false`);
+): Promise<readonly OutboxDiagnostic[]> => {
+  // Diagnostics must remain available even when the stored delivery body is malformed.
+  const rows = await db.select({ id: discordNotifications.id, sessionId: discordNotificationAttendance.sessionId,
+    dedupeKey: discordNotifications.dedupeKey, status: discordNotifications.status, attemptCount: discordNotifications.attemptCount, createdAt: discordNotifications.createdAt })
+    .from(discordNotifications)
+    .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
+    .where(and(retainedAttendance, or(eq(discordNotifications.status, "FAILED"),
+      and(inArray(discordNotifications.status, ["PENDING", "IN_FLIGHT"]), sql`${discordNotifications.attemptCount} >= ${attemptsThreshold}`))))
+    .orderBy(discordNotifications.createdAt, discordNotifications.id);
+  return rows.flatMap(row => row.sessionId === null ? [] : [{ ...row, sessionId: row.sessionId,
+    status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status") }]);
+};
 
 export interface PruneOutboxResult {
   readonly deliveredPruned: number;

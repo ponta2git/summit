@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { settlePostponeVotingSession } from "../../../src/orchestration/index.js";
 import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
-import { callArg } from "../../helpers/assertions.js";
+import { callArg, runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {
   asMessagePayload,
@@ -14,8 +14,8 @@ import {
   sessionRow
 } from "./harness.js";
 
-const settlementAt = new Date("2026-04-25T14:00:00.000Z");
-const deadlineAt = new Date("2026-04-25T15:00:00.000Z");
+const settlementAt = new Date("2026-04-24T14:00:00.000Z");
+const deadlineAt = new Date("2026-04-24T15:00:00.000Z");
 
 const votingSession = () => sessionRow({
   status: "POSTPONE_VOTING",
@@ -47,14 +47,14 @@ describe("settlePostponeVotingSession", () => {
     });
     const discord = createSettleDiscordFixture();
 
-    await settlePostponeVotingSession(discord.client, ctx, session, settlementAt);
+    await runEffect(settlePostponeVotingSession(discord.client, ctx, session, settlementAt));
 
     expect(discord.send).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries().map((entry) => ({
       renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
       status: entry.status
     }))).toStrictEqual([{ renderer: "ask_body", status: "PENDING" }]);
-    await runOutboxWorkerTick(discord.client, ctx);
+    await runEffect(runOutboxWorkerTick(discord.client, ctx));
 
     const persisted = ctx.ports.sessions.listSessions();
     expect(persisted).toHaveLength(2);
@@ -117,7 +117,7 @@ describe("settlePostponeVotingSession", () => {
     });
     const discord = createSettleDiscordFixture();
 
-    await settlePostponeVotingSession(discord.client, ctx, session, settlementAt);
+    await runEffect(settlePostponeVotingSession(discord.client, ctx, session, settlementAt));
 
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
       id: persisted.id,
@@ -146,14 +146,14 @@ describe("settlePostponeVotingSession", () => {
       "POSTPONE_OK",
       "POSTPONE_OK"
     ]);
-    const afterDeadline = new Date("2026-04-25T15:00:01.000Z");
+    const afterDeadline = new Date("2026-04-24T15:00:01.000Z");
     const ctx = createTestAppContext({
       now: afterDeadline,
       seed: { sessions: [session], responses, members: seededMembers }
     });
     const discord = createSettleDiscordFixture();
 
-    await settlePostponeVotingSession(discord.client, ctx, session, afterDeadline);
+    await runEffect(settlePostponeVotingSession(discord.client, ctx, session, afterDeadline));
 
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
       id: persisted.id,
@@ -189,14 +189,14 @@ describe("settlePostponeVotingSession", () => {
     });
     const discord = createSettleDiscordFixture();
 
-    await settlePostponeVotingSession(discord.client, ctx, session, settlementAt);
-    await runOutboxWorkerTick(discord.client, ctx);
-    await settlePostponeVotingSession(
+    await runEffect(settlePostponeVotingSession(discord.client, ctx, session, settlementAt));
+    await runEffect(runOutboxWorkerTick(discord.client, ctx));
+    await runEffect(settlePostponeVotingSession(
       discord.client,
       ctx,
       session,
       new Date("2026-04-25T14:01:00.000Z")
-    );
+    ));
 
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
       status: persisted.status,

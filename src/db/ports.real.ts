@@ -23,6 +23,7 @@ import { loadCurrentWeekSnapshot } from "./repositories/status.ts";
 import { listResponses } from "./repositories/responses.ts";
 import {
   cancelWeekAtomically,
+  recoverMissingMessageIntents,
   settleAskingCancellation,
   settleAskingDeadline,
   settlePostponeVoting,
@@ -84,6 +85,7 @@ const makeResponsesPort = (db: DbLike): ResponsesPort => ({
 });
 
 const makeSessionCommandsPort = (db: DbLike): SessionCommandsPort => ({
+  recoverMissingMessageIntents: (id) => recoverMissingMessageIntents(db, id),
   cancelWeekAtomically: (input) => cancelWeekAtomically(db, input),
   submitAskResponse: (input) => submitAskResponse(db, input),
   settleAskingCancellation: (input) => settleAskingCancellation(db, input),

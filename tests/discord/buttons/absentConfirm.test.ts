@@ -10,7 +10,7 @@ import { buildAbsentConfirmCustomId } from "../../../src/discord/shared/customId
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({

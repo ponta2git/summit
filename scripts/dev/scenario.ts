@@ -13,22 +13,7 @@ import { responses, sessions } from "../../src/db/schema.ts";
 import { env } from "../../src/env.ts";
 import { logger } from "../../src/logger.ts";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
-
-const assertLocalDatabase = (url: string): void => {
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    throw new Error(`DATABASE_URL is not parseable as URL: ${url}`);
-  }
-  if (!LOCAL_HOSTS.has(host)) {
-    throw new Error(
-      `Refusing to run: DATABASE_URL host "${host}" is not localhost. ` +
-        `This script is for dev only. Expected one of: ${[...LOCAL_HOSTS].join(", ")}.`
-    );
-  }
-};
+import { assertLocalDatabase } from "./localDatabase.ts";
 
 // state: 進行中 = 終端状態 (COMPLETED / CANCELLED / SKIPPED / POSTPONED / DECIDED) 以外
 const ACTIVE_STATUSES = ["ASKING", "POSTPONE_VOTING"] as const;

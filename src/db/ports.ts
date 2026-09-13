@@ -21,7 +21,8 @@ import type {
 import type {
   EnqueueOutboxInput,
   EnqueueResult,
-  OutboxEntry
+  OutboxEntry,
+  OutboxDiagnostic
 } from "./repositories/outbox.ts";
 import type {
   AskingDeadlineResult,
@@ -53,6 +54,7 @@ export type {
   EnqueueOutboxInput,
   EnqueueResult,
   OutboxEntry,
+  OutboxDiagnostic,
   AskingDeadlineResult,
   CancelWeekInput,
   CancelWeekResult,
@@ -157,6 +159,8 @@ export interface ResponsesPort {
  * instead of composing ResponsesPort + SessionsPort writes.
  */
 export interface SessionCommandsPort {
+  /** Session lock後に現在状態を検証し、新規作成した欠落message intentだけを返す。 */
+  recoverMissingMessageIntents(sessionId: string): Promise<readonly EnqueueOutboxInput[]>;
   cancelWeekAtomically(input: CancelWeekInput): Promise<CancelWeekResult>;
   submitAskResponse(input: SubmitAskResponseInput): Promise<SubmitAskResponseResult>;
   settleAskingCancellation(
@@ -193,7 +197,7 @@ export interface HeldEventsPort {
  *
  * @remarks
  * 状態遷移と Discord 送信を非同期に切り離す at-least-once 配送キュー。
- * `enqueue` は recovery などの単独 intent 用。業務遷移は SessionCommandsPort、初回募集は
+ * 欠落messageのrecovery・業務遷移は SessionCommandsPort、初回募集は
  * createAskSession が同一 transaction で intent を永続化する。Session 内順序は
  * aggregateRevision / ordinal、claim 所有権は claimToken で fence する。
  */
@@ -227,7 +231,7 @@ export interface OutboxPort {
     readonly successorsRequeued: number;
   }>;
   releaseExpiredClaims(now: Date): Promise<number>;
-  findStranded(attemptsThreshold: number): Promise<readonly OutboxEntry[]>;
+  findStranded(attemptsThreshold: number): Promise<readonly OutboxDiagnostic[]>;
   prune(options: {
     readonly deliveredOlderThan: Date;
     readonly failedOlderThan: Date;

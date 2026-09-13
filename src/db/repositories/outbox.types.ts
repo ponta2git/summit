@@ -30,6 +30,11 @@ const outboxPayloadSchema = outboxSendMessagePayloadSchema;
 
 export type OutboxPayload = z.infer<typeof outboxPayloadSchema>;
 
+export const parseOutboxPayload = (value: unknown): OutboxPayload | undefined => {
+  const parsed = outboxPayloadSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+};
+
 export interface OutboxEntry {
   readonly id: string;
   readonly kind: OutboxKind;
@@ -59,19 +64,24 @@ export interface EnqueueOutboxInput {
   readonly ordinal: number;
 }
 
+export type OutboxDiagnostic = Pick<OutboxEntry, "id" | "sessionId" | "status" | "attemptCount" | "createdAt" | "dedupeKey">;
+
 export interface EnqueueResult {
   readonly id: string;
   readonly skipped: boolean;
 }
 
-type AttendanceNotificationRow = typeof discordNotifications.$inferSelect & {
+export type AttendanceNotificationRow = typeof discordNotifications.$inferSelect & {
   readonly sessionId: string | null;
   readonly aggregateRevision: number;
   readonly ordinal: number;
   readonly deliveredMessageId: string | null;
 };
 
-export const mapOutboxRow = (row: AttendanceNotificationRow): OutboxEntry => {
+export const mapOutboxRow = (
+  row: AttendanceNotificationRow,
+  payload: OutboxPayload
+): OutboxEntry => {
   if (row.sessionId === null) {
     throw new Error("Active attendance notification has no Session");
   }
@@ -79,7 +89,7 @@ export const mapOutboxRow = (row: AttendanceNotificationRow): OutboxEntry => {
   id: row.id,
   kind: assertEnum(OUTBOX_KINDS, row.kind, "outbox kind"),
   sessionId: row.sessionId,
-  payload: outboxPayloadSchema.parse(row.payload),
+  payload,
   dedupeKey: row.dedupeKey,
   status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status"),
   attemptCount: row.attemptCount,

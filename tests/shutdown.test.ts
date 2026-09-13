@@ -80,4 +80,17 @@ describe("shutdown", () => {
     expect(closeDb).toHaveBeenCalledTimes(1);
     expect(destroyClient).toHaveBeenCalledTimes(1);
   });
+
+  it("attempts every cleanup when stop, drain and database close all throw synchronously", async () => {
+    const order: string[] = [];
+    const fail = (stage: string): never => { order.push(stage); throw new Error(stage); };
+    expect(await shutdownGracefully({
+      signal: "SIGTERM",
+      stopScheduler: () => fail("stop"),
+      waitForInFlightSend: () => fail("drain"),
+      closeDb: () => fail("database"),
+      destroyClient: () => { order.push("discord"); }
+    })).toBe(true);
+    expect(order).toEqual(["stop", "drain", "database", "discord"]);
+  });
 });

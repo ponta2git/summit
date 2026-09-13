@@ -35,7 +35,7 @@ const createSendableTextChannel = (
   } = {}
 ) => {
   const send = vi.fn(sendImpl);
-  const fetch = vi.fn(async () => options.fetchedMessage ?? createEditableMessage("fetched-message-1"));
+  const fetch = vi.fn(async (_id: string) => options.fetchedMessage ?? createEditableMessage("fetched-message-1"));
   const channel = {
     type: ChannelType.GuildText,
     isSendable: () => true,

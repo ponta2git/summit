@@ -9,7 +9,7 @@ import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.j
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildCancelInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
 // why: render は pure builder なので stub 不要。Fake ports の state と outbox entries を直接検証する。
@@ -25,13 +25,12 @@ const currentWeekSession = (overrides: Partial<SessionRow> = {}): SessionRow =>
     status: "ASKING",
     postponeCount: 0,
     askMessageId: "ask-msg-1",
-    deadlineAt: new Date("2026-04-24T12:30:00.000Z"),
     ...overrides
   });
 
 const createDiscordClient = () => {
-  const askEdit = vi.fn(async () => undefined);
-  const postponeEdit = vi.fn(async () => undefined);
+  const askEdit = vi.fn(async (_payload: unknown) => undefined);
+  const postponeEdit = vi.fn(async (_payload: unknown) => undefined);
   const channelSend = vi.fn(async () => ({ id: "notice-1" }));
   const channel = {
     type: ChannelType.GuildText,
@@ -90,9 +89,9 @@ describe("/cancel_week command flow", () => {
 
 describe("cancel_week confirmation button", () => {
   const confirmCustomId = (nonce = "d8b1f8e5-1111-4222-8333-123456789abc"): string =>
-    `cancel_week:${nonce}:confirm`;
+    `cancel_week:2026-W17:${nonce}:confirm`;
   const abortCustomId = (nonce = "d8b1f8e5-1111-4222-8333-123456789abc"): string =>
-    `cancel_week:${nonce}:abort`;
+    `cancel_week:2026-W17:${nonce}:abort`;
 
   const buildCancelButtonInteraction = (customId: string) => ({
     id: "interaction-cancel-btn",
@@ -109,12 +108,15 @@ describe("cancel_week confirmation button", () => {
   });
 
   it("confirm: transitions current-week non-terminal sessions to SKIPPED and edits ephemeral", async () => {
-    const friSession = currentWeekSession({ id: "11111111-aaaa-4bbb-8ccc-000000000001" });
+    const friSession = currentWeekSession({
+      id: "11111111-aaaa-4bbb-8ccc-000000000001",
+      status: "POSTPONED",
+      postponeMessageId: "postpone-msg-2"
+    });
     const satSession = currentWeekSession({
       id: "11111111-aaaa-4bbb-8ccc-000000000002",
       postponeCount: 1,
-      status: "POSTPONE_VOTING",
-      postponeMessageId: "postpone-msg-2",
+      status: "ASKING",
       askMessageId: "ask-msg-2"
     });
     const now = new Date("2026-04-24T10:00:00.000Z");
@@ -263,6 +265,34 @@ describe("cancel_week confirmation button", () => {
       updatedAt: session.updatedAt
     }]);
     expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+  });
+
+  it.each(["Discord edit", "snapshot read"])("keeps committed cancellation successful and continues repainting after %s fails", async failure => {
+    const friday = currentWeekSession({ id: "friday", status: "POSTPONED", postponeMessageId: "postpone-msg-1" });
+    const saturday = currentWeekSession({ id: "saturday", postponeCount: 1, askMessageId: "ask-msg-2" });
+    const ctx = createTestAppContext({ seed: { sessions: [friday, saturday], members: seededMembers },
+      now: new Date("2026-04-24T10:00:00.000Z") });
+    const { client, askEdit, postponeEdit } = createDiscordClient();
+    if (failure === "Discord edit") { askEdit.mockRejectedValueOnce(new Error("Discord unavailable")); }
+    else { vi.spyOn(ctx.ports.sessions, "findSessionById").mockRejectedValueOnce(new Error("Snapshot unavailable")); }
+    const interaction = buildCancelButtonInteraction(confirmCustomId());
+
+    await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
+
+    expect(ctx.ports.sessions.listSessions().map(session => ({ id: session.id, status: session.status })))
+      .toStrictEqual([{ id: "friday", status: "SKIPPED" }, { id: "saturday", status: "SKIPPED" }]);
+    expect(ctx.ports.outbox.listEntries().map(entry => ({ dedupeKey: entry.dedupeKey, status: entry.status })))
+      .toStrictEqual([{ dedupeKey: "cancel-week-notice-2026-W17", status: "PENDING" }]);
+    expect(editReplyPayload(interaction)).toStrictEqual({ content: cancelWeekMessages.cancelWeek.done({ count: 2 }), components: [] });
+    // The same Friday's postpone message and the Saturday's ask message still converge after the failed Friday ask repaint.
+    expect(postponeEdit).toHaveBeenCalledTimes(2);
+    const payloads = postponeEdit.mock.calls.map(call => JSON.parse(JSON.stringify(call[0])));
+    expect(payloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ content: expect.stringContaining("お休み"),
+        components: [{ components: [expect.objectContaining({ disabled: true }), expect.objectContaining({ disabled: true })], type: 1 }] }),
+      expect.objectContaining({ content: expect.stringContaining("お休み"),
+        components: [{ components: Array.from({ length: 5 }, () => expect.objectContaining({ disabled: true })), type: 1 }] })
+    ]));
   });
 
   it("idempotent: confirm on already-SKIPPED sessions repairs but never duplicates the notice", async () => {

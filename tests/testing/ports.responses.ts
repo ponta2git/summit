@@ -8,6 +8,7 @@ import { recordCall, type AnyCall } from "./ports.shared.js";
 
 export interface FakeResponsesPort extends ResponsesPort {
   readonly calls: ReadonlyArray<AnyCall>;
+  checkpoint(): () => void;
   listAllResponses(): ReadonlyArray<ResponseRow>;
   saveResponse(input: {
     readonly id: string;
@@ -29,6 +30,10 @@ export const createFakeResponsesPort = (
 
   return {
     calls,
+    checkpoint: () => {
+      const snapshot = responses.map(clone);
+      return () => { responses.splice(0, responses.length, ...snapshot); };
+    },
     listAllResponses: () => responses.map(clone),
     listResponses: async (sessionId) => {
       recordCall(calls, "listResponses", { sessionId });

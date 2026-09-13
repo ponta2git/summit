@@ -25,6 +25,8 @@ const expectedMemberCountLabel = `${MEMBER_COUNT_EXPECTED}人分`;
 
 export const postponeMessages = {
   postpone: {
+    footerDecided: "明日の出欠確認へ進みます",
+    footerCancelled: "この回はお流れになりました",
     body: ({ candidateDateIso, statusLines }: PostponeBodyParams): string => {
       const lines = [
         "🔁 今回はお流れです。明日も募集しますか？",

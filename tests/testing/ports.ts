@@ -3,7 +3,6 @@
 
 import type {
   AppPorts,
-  EnqueueOutboxInput,
   HeldEventParticipantRow,
   HeldEventRow,
   MemberRow,
@@ -23,6 +22,7 @@ import {
   createFakeSessionCommandsPort,
   type FakeSessionCommandsPort
 } from "./ports.sessionCommands.js";
+import { createFakeTransaction } from "./transactions.ts";
 import { DEFAULT_CLOCK, type FakeClock } from "./ports.shared.js";
 import { createFakeSessionsPort, type FakeSessionsPort } from "./ports.sessions.js";
 import { createFakeStatusPort, type FakeStatusPort } from "./ports.status.js";
@@ -55,9 +55,7 @@ const createFakePorts = (
   const sessions = createFakeSessionsPort(
     seed.sessions ?? [],
     clock,
-    (entry: EnqueueOutboxInput) => {
-      void outbox.enqueue(entry);
-    }
+    async (entry) => { await outbox.enqueue(entry); }
   );
   const responses = createFakeResponsesPort(seed.responses ?? []);
   const members = createFakeMembersPort(seed.members ?? []);
@@ -76,6 +74,19 @@ const createFakePorts = (
     heldEvents,
     outbox
   );
+  const atomic = createFakeTransaction(() => {
+    const rollbacks = [sessions.checkpoint(), responses.checkpoint(), heldEvents.checkpoint(), outbox.checkpoint()];
+    return () => { for (const rollback of rollbacks) { rollback(); } };
+  });
+  sessions.createAskSession = atomic(sessions.createAskSession);
+  heldEvents.completeDecidedSessionAsHeld = atomic(heldEvents.completeDecidedSessionAsHeld);
+  sessionCommands.recoverMissingMessageIntents = atomic(sessionCommands.recoverMissingMessageIntents);
+  sessionCommands.submitAskResponse = atomic(sessionCommands.submitAskResponse);
+  sessionCommands.settleAskingCancellation = atomic(sessionCommands.settleAskingCancellation);
+  sessionCommands.settleAskingDeadline = atomic(sessionCommands.settleAskingDeadline);
+  sessionCommands.submitPostponeVote = atomic(sessionCommands.submitPostponeVote);
+  sessionCommands.settlePostponeVoting = atomic(sessionCommands.settlePostponeVoting);
+  sessionCommands.cancelWeekAtomically = atomic(sessionCommands.cancelWeekAtomically);
   const status = createFakeStatusPort(sessions, responses, heldEvents);
   return { sessions, sessionCommands, responses, members, heldEvents, status, outbox,
     resultNotifications: createFakeResultNotificationsPort(clock) };
@@ -91,8 +102,8 @@ export const createTestAppContext = (options: {
   readonly now?: Date | (() => Date);
   readonly seed?: FakePortsSeed;
 } = {}): TestAppContext => {
-  const now = options.now ?? new Date();
-  const clock = { now: typeof now === "function" ? now : () => now };
+  const now = options.now ?? DEFAULT_CLOCK.now;
+  const clock = { now: typeof now === "function" ? () => new Date(now()) : () => new Date(now) };
   return {
     ports: options.ports ?? createFakePorts(options.seed ?? {}, clock),
     clock

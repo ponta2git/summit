@@ -1,4 +1,5 @@
 import type {
+  EnqueueOutboxInput,
   MembersPort,
   SessionCommandsPort
 } from "../../src/db/ports.js";
@@ -6,6 +7,7 @@ import { evaluateDeadline } from "../../src/domain/askDecision.js";
 import { evaluatePostponeVote } from "../../src/domain/postponeDecision.js";
 import { reminderAtFor } from "../../src/time/index.js";
 import {
+  buildMissingMessageIntents,
   buildDecidedAnnouncementIntent
 } from "../../src/db/repositories/sessionOutboxIntents.js";
 import { recordCall, type AnyCall } from "./ports.shared.js";
@@ -36,6 +38,17 @@ export const createFakeSessionCommandsPort = (
   return {
     calls,
     ...createFakeCancelWeekCommand(calls, sessions, heldEvents, outbox),
+    recoverMissingMessageIntents: async (sessionId) => {
+      recordCall(calls, "recoverMissingMessageIntents", { sessionId });
+      const current = await sessions.findSessionById(sessionId);
+      if (!current) { return []; }
+      const queued: EnqueueOutboxInput[] = [];
+      for (const intent of buildMissingMessageIntents(current)) {
+        const result = await outbox.enqueue(intent);
+        if (!result.skipped) { queued.push(intent); }
+      }
+      return queued;
+    },
     submitAskResponse: async (input) => {
       recordCall(calls, "submitAskResponse", { input });
       const current = await sessions.findSessionById(input.sessionId);
@@ -181,7 +194,7 @@ export const createFakeSessionCommandsPort = (
       return {
         kind: "transitioned",
         response: saved.response,
-        ...(await applyPostponeDecision(sessions, current, decision, input))
+        ...(await applyPostponeDecision(sessions, current, outbox, decision, input))
       };
     },
     settlePostponeVoting: async (input) => {
@@ -201,7 +214,7 @@ export const createFakeSessionCommandsPort = (
       }
       return {
         kind: "transitioned",
-        ...(await applyPostponeDecision(sessions, current, decision, input))
+        ...(await applyPostponeDecision(sessions, current, outbox, decision, input))
       };
     }
   };

@@ -1,3 +1,4 @@
+import { checkpointMap } from "./transactions.ts";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -14,7 +15,7 @@ export interface FakeOutboxPort extends OutboxPort {
   readonly calls: ReadonlyArray<AnyCall>;
   listEntries(): ReadonlyArray<OutboxEntry>;
   seedEntry(entry: OutboxEntry): void;
-  restoreEntries(entries: readonly OutboxEntry[]): void;
+  checkpoint(): () => void;
   cancelForSessionIds(
     sessionIds: readonly string[],
     exceptDedupeKey: string,
@@ -28,23 +29,20 @@ export const createFakeOutboxPort = (
   clock: FakeClock = DEFAULT_CLOCK
 ): FakeOutboxPort => {
   const calls: AnyCall[] = [];
-  const byId = new Map<string, OutboxEntry>(seed.map((entry) => [entry.id, { ...entry }]));
+  const byId = new Map<string, OutboxEntry>(seed.map((entry) => [entry.id, structuredClone(entry)]));
   const sendingTokens = new Map<string, string>();
   const cancellationReasons = new Map<string, string>();
   const purgedIdentities = new Map<string, string>();
-  const cloneEntry = (entry: OutboxEntry): OutboxEntry => ({ ...entry });
+  const cloneEntry = (entry: OutboxEntry): OutboxEntry => structuredClone(entry);
   const activeDedupe = (key: string): OutboxEntry | undefined =>
     Array.from(byId.values()).find((entry) => entry.dedupeKey === key);
 
   return {
     calls,
     listEntries: () => Array.from(byId.values()).map(cloneEntry),
-    restoreEntries: (entries) => {
-      byId.clear();
-      sendingTokens.clear();
-      for (const entry of entries) {
-        byId.set(entry.id, cloneEntry(entry));
-      }
+    checkpoint: () => {
+      const restores = [checkpointMap(byId), checkpointMap(sendingTokens), checkpointMap(cancellationReasons), checkpointMap(purgedIdentities)];
+      return () => { for (const restore of restores) { restore(); } };
     },
     cancelForSessionIds: (sessionIds, exceptDedupeKey, now) => {
       const ids = new Set(sessionIds);
@@ -69,7 +67,7 @@ export const createFakeOutboxPort = (
       }
     },
     seedEntry: (entry) => {
-      byId.set(entry.id, { ...entry });
+      byId.set(entry.id, cloneEntry(entry));
     },
     enqueue: async (input: EnqueueOutboxInput): Promise<EnqueueResult> => {
       recordCall(calls, "enqueue", { input });
@@ -92,7 +90,7 @@ export const createFakeOutboxPort = (
         id,
         kind: input.kind,
         sessionId: input.sessionId,
-        payload: input.payload,
+        payload: structuredClone(input.payload),
         dedupeKey: input.dedupeKey,
         status: "PENDING",
         attemptCount: 0,
@@ -262,6 +260,6 @@ export const createFakeOutboxPort = (
       }
       return true;
     },
-    ...createFakeOutboxMaintenance(byId, calls, cloneEntry, cancellationReasons, purgedIdentities, sendingTokens)
+    ...createFakeOutboxMaintenance(byId, calls, cancellationReasons, purgedIdentities, sendingTokens)
   };
 };

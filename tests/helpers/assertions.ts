@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-export { unwrapResultAsync } from "../../src/errors/result.js";
+export { runPromiseBoundary as runEffect } from "../../src/runtime/effect.ts";
 
 type ParseResult<T> =
   | { readonly success: true; readonly data: T }

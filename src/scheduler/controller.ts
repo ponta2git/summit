@@ -1,5 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -8,12 +9,13 @@ import {
   SCHEDULER_WAKE_DEBOUNCE_MS
 } from "../config.ts";
 import { AppError, InvariantViolationError } from "../errors/index.ts";
-import { fromAppCall, fromDatabaseCall, unwrapResultAsync } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger as defaultLogger } from "../logger.ts";
+import { runPromiseBoundary } from "../runtime/effect.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
 import { runOutboxWorkerTick } from "./outboxWorker.ts";
-import { runResultTickSafely } from "./tickRunner.ts";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import { runEffectTickSafely } from "./tickRunner.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -25,15 +27,16 @@ type SchedulerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 export interface SchedulerController {
   wake(reason: string): void;
   stop(): void;
+  drain(): Promise<void>;
   recompute(reason: string): Promise<void>;
 }
 
 export interface SchedulerControllerDeps {
   readonly client: Client;
   readonly context: AppContext;
-  readonly runDeadlineTick: () => SchedulerResult<unknown>;
-  readonly runPostponeDeadlineTick: () => SchedulerResult<unknown>;
-  readonly runReminderTick: () => SchedulerResult<unknown>;
+  readonly runDeadlineTick: () => SchedulerEffect<unknown>;
+  readonly runPostponeDeadlineTick: () => SchedulerEffect<unknown>;
+  readonly runReminderTick: () => SchedulerEffect<unknown>;
   readonly logger?: SchedulerLogger;
 }
 
@@ -47,7 +50,7 @@ const delayUntil = (now: Date, at: Date): number =>
   );
 
 const readDatabase = <T>(call: () => Promise<T>, message: string): Promise<T> =>
-  unwrapResultAsync(fromDatabaseCall(call, message));
+  runPromiseBoundary(fromDatabaseCall(call, message));
 
 export const createSchedulerController = (
   deps: SchedulerControllerDeps
@@ -60,6 +63,27 @@ export const createSchedulerController = (
   let stopped = false;
   let outboxTimer: TimeoutHandle | undefined;
   let outboxActive = false;
+  const running = new Map<TimerKind | "outbox_worker", Promise<void>>();
+  let outboxWakeQueued = false;
+
+  const runOwnedTick = (
+    kind: TimerKind | "outbox_worker",
+    run: () => SchedulerEffect<unknown>,
+    onSuccess?: () => Promise<void>
+  ): Promise<void> => {
+    if (stopped) { return Promise.resolve(); }
+    const current = running.get(kind);
+    if (current) { return current; }
+    const pending = runEffectTickSafely({ name: kind, logger }, run, onSuccess).finally(() => {
+      running.delete(kind);
+      if (kind === "outbox_worker" && outboxWakeQueued && !stopped) {
+        outboxWakeQueued = false;
+        controller.wake("outbox_work_queued");
+      }
+    });
+    running.set(kind, pending);
+    return pending;
+  };
 
   const clearTimer = (kind: TimerKind): void => {
     const handle = timers.get(kind);
@@ -91,7 +115,7 @@ export const createSchedulerController = (
   const scheduleTimer = (
     kind: TimerKind,
     at: Date | null,
-    run: () => SchedulerResult<unknown>
+    run: () => SchedulerEffect<unknown>
   ): void => {
     clearTimer(kind);
     if (at === null || stopped) {return;}
@@ -100,7 +124,7 @@ export const createSchedulerController = (
     const delayMs = delayUntil(now, at);
     const handle = setTimeout(() => {
       timers.delete(kind);
-      void runResultTickSafely({ name: kind, logger }, run)
+      void runOwnedTick(kind, run)
         .finally(() => controller.wake(`${kind}_timer_fired`));
     }, delayMs);
     timers.set(kind, handle);
@@ -117,20 +141,22 @@ export const createSchedulerController = (
     if (stopped) {return;}
     outboxTimer = setTimeout(() => {
       outboxTimer = undefined;
-      void runResultTickSafely(
-        { name: "outbox_worker", logger },
-        () => runOutboxWorkerTick(client, context),
+      void runOwnedTick(
+        "outbox_worker",
+        () => runOutboxWorkerTick(client, context, () => stopped),
         continueOutboxLoop
       );
     }, delayMs);
   };
 
   const continueOutboxLoop = async (): Promise<void> => {
+    if (stopped) { return; }
     const now = context.clock.now();
     const nextDispatchAt = await readDatabase(
       () => context.ports.outbox.getNextDispatchAt(now),
       "Failed to read next outbox dispatch time."
     );
+    if (stopped) { return; }
     if (isDue(nextDispatchAt, now)) {
       scheduleOutboxLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);
       return;
@@ -140,6 +166,7 @@ export const createSchedulerController = (
   };
 
   const scheduleOutbox = (nextDispatchAt: Date | null, now: Date): void => {
+    if (stopped) { return; }
     if (nextDispatchAt === null) {
       stopOutboxWorker("no_work");
       return;
@@ -182,24 +209,27 @@ export const createSchedulerController = (
     let didRun = false;
 
     while (true) {
+      if (stopped) { return didRun; }
       const now = context.clock.now();
-      const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
-        readDatabase(
+      const [sessionHints, nextOutboxDispatchAt] = await runPromiseBoundary(Effect.all([
+        fromDatabaseCall(
           () => context.ports.sessions.getSchedulerSessionHints(now),
           "Failed to read scheduler session hints."
         ),
-        readDatabase(
+        fromDatabaseCall(
           () => context.ports.outbox.getNextDispatchAt(now),
           "Failed to read next outbox dispatch time."
         )
-      ]);
+      ], { concurrency: 2 }));
+      if (stopped) { return didRun; }
       let ranThisPass = false;
 
       const runIfDue = async (
         kind: TimerKind,
         at: Date | null,
-        run: () => SchedulerResult<unknown>
+        run: () => SchedulerEffect<unknown>
       ): Promise<void> => {
+        if (stopped) { return; }
         if (!isDue(at, now)) {
           scheduleTimer(kind, at, run);
           return;
@@ -212,7 +242,7 @@ export const createSchedulerController = (
           return;
         }
         attemptedDueKinds.add(kind);
-        await runResultTickSafely({ name: kind, logger }, run);
+        await runOwnedTick(kind, run);
         ranThisPass = true;
       };
 
@@ -227,7 +257,12 @@ export const createSchedulerController = (
       if (!ranThisPass) {
         // Re-read after due work so an intent enqueued by the tick is visible to the
         // outbox scheduler in the same recompute.
-        scheduleOutbox(nextOutboxDispatchAt, now);
+        if (running.has("outbox_worker")) {
+          // race: 配送後のidle queryと交差したwakeを、batch完了後に再読込する。
+          outboxWakeQueued = true;
+        } else {
+          scheduleOutbox(nextOutboxDispatchAt, now);
+        }
         return didRun;
       }
       didRun = true;
@@ -292,6 +327,7 @@ export const createSchedulerController = (
       clearAllTimers();
       stopOutboxWorker("shutdown");
     },
+    drain: async () => { await Promise.allSettled([recomputeInFlight, ...running.values()]); },
     recompute
   };
 
@@ -301,12 +337,11 @@ export const createSchedulerController = (
 export const runSchedulerSupervisorTick = (
   ctx: AppContext,
   controller: SchedulerController
-): SchedulerResult<{ readonly outboxClaimReleased: number }> =>
-  reconcileOutboxClaims(ctx).andThen((outboxClaimReleased) =>
-    fromAppCall(
+): SchedulerEffect<{ readonly outboxClaimReleased: number }> =>
+  Effect.flatMap(reconcileOutboxClaims(ctx), (outboxClaimReleased) =>
+    Effect.map(fromAppCall(
       () => controller.recompute("supervisor"),
       (cause) => cause instanceof AppError
         ? cause
         : new InvariantViolationError("Failed to recompute scheduler state.", { cause })
-    ).map(() => ({ outboxClaimReleased }))
-  );
+    ), () => ({ outboxClaimReleased })));

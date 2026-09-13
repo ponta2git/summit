@@ -10,6 +10,7 @@ import type { FakeSessionsPort } from "./ports.sessions.js";
 
 export interface FakeHeldEventsPort extends HeldEventsPort {
   readonly calls: ReadonlyArray<AnyCall>;
+  checkpoint(): () => void;
   listHeldEvents(): ReadonlyArray<HeldEventRow>;
   listAllParticipants(): ReadonlyArray<HeldEventParticipantRow>;
 }
@@ -23,22 +24,36 @@ export const createFakeHeldEventsPort = (
   clock: FakeClock = DEFAULT_CLOCK
 ): FakeHeldEventsPort => {
   const calls: AnyCall[] = [];
-  const heldEvents = (seed.heldEvents ?? []).map((event) => ({ ...event }));
-  const participants = (seed.participants ?? []).map((participant) => ({ ...participant }));
+  const heldEvents = (seed.heldEvents ?? []).map((event) => structuredClone(event));
+  const participants = (seed.participants ?? []).map((participant) => structuredClone(participant));
   let autoId = 0;
-  const cloneHeld = (event: HeldEventRow): HeldEventRow => ({ ...event });
+  const cloneHeld = (event: HeldEventRow): HeldEventRow => structuredClone(event);
   const cloneParticipant = (
     participant: HeldEventParticipantRow
-  ): HeldEventParticipantRow => ({ ...participant });
+  ): HeldEventParticipantRow => structuredClone(participant);
 
   return {
     calls,
+    checkpoint: () => {
+      const events = heldEvents.map(cloneHeld);
+      const people = participants.map(cloneParticipant);
+      const id = autoId;
+      return () => {
+        heldEvents.splice(0, heldEvents.length, ...events);
+        participants.splice(0, participants.length, ...people);
+        autoId = id;
+      };
+    },
     listHeldEvents: () => heldEvents.map(cloneHeld),
     listAllParticipants: () => participants.map(cloneParticipant),
     completeDecidedSessionAsHeld: async (
       input: CompleteDecidedSessionAsHeldInput
     ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
       recordCall(calls, "completeDecidedSessionAsHeld", { input });
+      const current = await sessionsPort.findSessionById(input.sessionId);
+      if (current?.status === "DECIDED" && !current.decidedStartAt) {
+        throw new Error("DECIDED session requires decidedStartAt");
+      }
       const transitioned = sessionsPort.completeDecidedForHeld(
         input.sessionId,
         input.reminderSentAt

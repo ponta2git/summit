@@ -11,7 +11,7 @@ export const attachRateLimitLogging = (client: Client): void => {
           event: "discord.rate_limited",
           route: info.route,
           method: info.method,
-          majorParameter: info.majorParameter,
+          // secret: webhookのmajorParameterはID/tokenを含むため、route templateだけ記録する。
           retryAfter: info.retryAfter,
           limit: info.limit,
           timeToReset: info.timeToReset,

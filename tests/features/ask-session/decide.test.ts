@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { evaluateDeadline } from "../../../src/features/ask-session/decide.js";
 import { expectKind } from "../../helpers/assertions.js";
-import { buildSessionRow } from "../../scheduler/factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-1", ...overrides });

@@ -1,22 +1,19 @@
+import * as Either from "effect/Either";
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { type ResultAsync, okAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
 import type { SubmitAskResponseResult } from "../../db/ports.ts";
 import type { SessionRow } from "../../db/rows.ts";
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
-import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabaseCall } from "../../errors/effect.ts";
+import { runPromiseBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import { askMessages } from "./messages.ts";
-import { renderAskBody } from "./render.ts";
+import { updateAskMessage } from "./messageEditor.ts";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.ts";
-import { buildAskMessageViewModel } from "./viewModel.ts";
 import {
   guardAskCustomId,
   guardChannelId,
@@ -47,155 +44,89 @@ interface AskPipelineReady extends AskPipelineParsed {
   readonly memberId: string;
 }
 
-const validateAskPipeline = (context: AskPipelineStart): AppResult<AskPipelineParsed, AppError> =>
-  okResult(context)
-    // invariant: cheap-first の検証順序を ask ハンドラ単体でも維持する。
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
-    .andThen((current) =>
-      guardAskCustomId(current.interaction.customId).map((parsed) => ({
-        ...current,
-        sessionId: parsed.sessionId,
-        choice: ASK_CUSTOM_ID_TO_DB_CHOICE[parsed.choice]
-      }))
-    );
+const validateAskPipeline = (context: AskPipelineStart): Either.Either<AskPipelineParsed, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(context.interaction.guildId);
+    yield* guardChannelId(context.interaction.channelId);
+    yield* guardMemberUserId(context.interaction.user.id);
+    const parsed = yield* guardAskCustomId(context.interaction.customId);
+    return { ...context, sessionId: parsed.sessionId, choice: ASK_CUSTOM_ID_TO_DB_CHOICE[parsed.choice] };
+  });
 
-const loadSessionAndMemberStep = (context: AskPipelineParsed): ResultAsync<AskPipelineReady, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.sessions.findSessionById(context.sessionId),
-      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
-    ]),
-    "Failed to load DB state while handling ask button."
-  )
-    .andThen(([session, memberId]) =>
-      toResultAsync(guardSessionExists(session)).map((existingSession) => ({
-        session: existingSession,
-        memberId
-      }))
-    )
-    // invariant: DB reads are parallel, but guard result precedence remains session → member.
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardSessionAsking(session))
-        .andThen((askingSession) =>
-          toResultAsync(guardSessionAskingDeadlineOpen(askingSession, context.context.clock.now()))
-        )
-        .map((askingSession) => ({ session: askingSession, memberId }))
-    )
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardRegisteredMemberId(memberId)).map((registeredMemberId) => ({
-        ...context,
-        session,
-        memberId: registeredMemberId
-      }))
-    );
+const loadSessionAndMemberStep = (context: AskPipelineParsed): Effect.Effect<AskPipelineReady, AppError> =>
+  Effect.gen(function* () {
+    const [session, memberId] = yield* Effect.all([
+      fromDatabaseCall(
+        () => context.context.ports.sessions.findSessionById(context.sessionId),
+        "Failed to load interaction session."
+      ),
+      fromDatabaseCall(
+        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+        "Failed to load interaction member."
+      )
+    ], { concurrency: 2 });
+    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+    const existingSession = yield* guardSessionExists(session);
+    yield* guardSessionAsking(existingSession);
+    yield* guardSessionAskingDeadlineOpen(existingSession, context.context.clock.now());
+    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
+    return { ...context, session: existingSession, memberId: registeredMemberId };
+  });
 
 const resolveAskCommandResult = (
   context: AskPipelineReady,
   result: SubmitAskResponseResult,
   now: Date
-): ResultAsync<AskPipelineReady, AppError> => {
-  switch (result.kind) {
-    case "accepted_pending":
-    case "transitioned":
-      return okAsync(context);
-    case "stale_interaction":
-      logger.info(
-        {
-          sessionId: context.sessionId,
-          interactionId: context.interaction.id,
-          persistedInteractionId: result.response.sourceInteractionId
-        },
-        "Ignored stale ask interaction."
-      );
-      return okAsync(context);
-    case "session_not_found":
-      return toResultAsync(guardSessionExists(undefined)).map(() => context);
-    case "member_not_found":
-      return toResultAsync(guardRegisteredMemberId(undefined)).map(() => context);
-    case "deadline_passed":
-      return toResultAsync(guardSessionAskingDeadlineOpen(result.session, now)).map(
-        () => context
-      );
-    case "closed":
-      return toResultAsync(guardSessionAsking(result.session)).map(() => context);
-  }
-};
+): Effect.Effect<AskPipelineReady, AppError> =>
+  Effect.gen(function* () {
+    switch (result.kind) {
+      case "accepted_pending":
+      case "transitioned":
+        return context;
+      case "stale_interaction":
+        logger.info({ sessionId: context.sessionId, interactionId: context.interaction.id,
+          persistedInteractionId: result.response.sourceInteractionId }, "Ignored stale ask interaction.");
+        return context;
+      case "session_not_found":
+        yield* guardSessionExists(undefined);
+        return context;
+      case "member_not_found":
+        yield* guardRegisteredMemberId(undefined);
+        return context;
+      case "deadline_passed":
+        yield* guardSessionAskingDeadlineOpen(result.session, now);
+        return context;
+      case "closed":
+        yield* guardSessionAsking(result.session);
+        return context;
+    }
+  });
 
-const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineReady, AppError> => {
-  const now = context.context.clock.now();
-  return fromDatabasePromise(
-    context.context.ports.sessionCommands.submitAskResponse({
-      responseId: randomUUID(),
-      sessionId: context.sessionId,
-      memberId: context.memberId,
-      choice: context.choice,
-      sourceInteractionId: context.interaction.id,
-      now,
-      memberCountExpected: MEMBER_COUNT_EXPECTED
-    }),
-    "Failed to record ask response atomically."
-  )
-    .andThen((result) => resolveAskCommandResult(context, result, now))
-    .andTee((current) => {
-      logger.info(
-        {
-          sessionId: current.sessionId,
-          weekKey: current.session.weekKey,
-          userId: current.interaction.user.id,
-          memberId: current.memberId,
-          choice: current.choice
-        },
-        "Ask response recorded."
-      );
-    });
-};
+const recordResponseStep = (context: AskPipelineReady): Effect.Effect<AskPipelineReady, AppError> =>
+  Effect.gen(function* () {
+    const now = context.context.clock.now();
+    const result = yield* fromDatabaseCall(
+      () => context.context.ports.sessionCommands.submitAskResponse({
+        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+        choice: context.choice, sourceInteractionId: context.interaction.id, now,
+        memberCountExpected: MEMBER_COUNT_EXPECTED
+      }),
+      "Failed to record ask response atomically."
+    );
+    const current = yield* resolveAskCommandResult(context, result, now);
+    logger.info({ sessionId: current.sessionId, weekKey: current.session.weekKey,
+      userId: current.interaction.user.id, memberId: current.memberId, choice: current.choice },
+      "Ask response recorded.");
+    return current;
+  });
 
-const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.responses.listResponses(context.sessionId),
-      context.context.ports.members.listMembers()
-    ]),
-    "Failed to load ask message snapshot."
-  )
-    .andThen(([responses, memberRows]) =>
-      fromDatabasePromise(
-        context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to reload session after ask response."
-      ).map((freshSession) => ({
-        freshSession,
-        responses,
-        memberRows
-      }))
-    )
-    .andThen(({ freshSession, responses, memberRows }) => {
-      if (!freshSession || !freshSession.askMessageId) {
-        return okAsync(undefined);
-      }
-
-      const vm = buildAskMessageViewModel(freshSession, responses, memberRows);
-      const rendered = renderAskBody(vm);
-      // source-of-truth: 再描画は常に DB の最新 Session + Response から再構築する。
-      return fromDiscordPromise(
-        context.interaction.message.edit(rendered),
-        "Failed to edit ask message after response."
-      )
-        .map(() => undefined)
-        .orElse((error) => {
-          // race: edit 失敗でも DB は巻き戻さず次 tick / 次押下で再描画して回復する。
-          logger.warn(
-            {
-              error,
-              sessionId: context.sessionId,
-              messageId: freshSession.askMessageId
-            },
-            "Failed to edit ask message after response."
-          );
-          return okAsync(undefined);
-        });
-    });
+const refreshAskMessageStep = (context: AskPipelineReady): Effect.Effect<void, AppError> =>
+  updateAskMessage(context.deps.client, context.context, context.session, context.interaction.message)
+    .pipe(Effect.catchAll(error => {
+      if (error.code !== "DISCORD_API") { return Effect.fail(error); }
+      logger.warn({ error, sessionId: context.sessionId }, "Failed to edit ask message after response.");
+      return Effect.void;
+    }));
 
 /**
  * Handle ask button interactions via cheap-first validation and DB-backed pipeline composition.
@@ -216,18 +147,18 @@ export const handleAskButton = async (
   };
 
   const validation = validateAskPipeline(pipelineStart);
-  if (validation.isErr()) {
-    await handleAskPipelineError(interaction, validation.error);
+  if (Either.isLeft(validation)) {
+    await handleAskPipelineError(interaction, validation.left);
     return;
   }
 
-  const parsed = validation.value;
+  const parsed = validation.right;
 
   // why: 欠席は確定後に即セッション中止となる不可逆操作。確認ダイアログを挟み誤押下を防ぐ。
   if (parsed.choice === "ABSENT") {
-    const result = await loadSessionAndMemberStep(parsed);
-    await result.match(
-      async (ctx) => {
+    const result = await runPromiseBoundary(Effect.either(loadSessionAndMemberStep(parsed)));
+    await Either.match(result, {
+      onRight: async (ctx) => {
         await interaction.followUp({
           content: askMessages.absentConfirm.prompt,
           components: [buildAbsentConfirmRow(ctx.sessionId)],
@@ -242,19 +173,20 @@ export const handleAskButton = async (
           "Absent confirmation dialog shown."
         );
       },
-      async (error) => handleAskPipelineError(interaction, error)
-    );
+      onLeft: (error) => handleAskPipelineError(interaction, error)
+    });
     return;
   }
 
-  const result = await loadSessionAndMemberStep(parsed)
-    .andThen(recordResponseStep)
-    .andThen((context) =>
-      refreshAskMessageStep(context).map(() => context)
-    );
+  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+    const ready = yield* loadSessionAndMemberStep(parsed);
+    const context = yield* recordResponseStep(ready);
+    yield* refreshAskMessageStep(context);
+    return context;
+  })));
 
-  await result.match(
-    async (context) => {
+  await Either.match(result, {
+    onRight: async (context) => {
       deps.wakeScheduler?.("ask_button_recorded");
       logger.info(
         {
@@ -265,6 +197,6 @@ export const handleAskButton = async (
         "Ask response reflected in public message."
       );
     },
-    async (error) => handleAskPipelineError(interaction, error)
-  );
+    onLeft: (error) => handleAskPipelineError(interaction, error)
+  });
 };

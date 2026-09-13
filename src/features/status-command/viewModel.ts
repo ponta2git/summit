@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { HeldEventRow, OutboxEntry, ResponseRow, SessionRow } from "../../db/ports.ts";
+import type { HeldEventRow, OutboxDiagnostic, ResponseRow, SessionRow } from "../../db/ports.ts";
 import type { SessionStatus } from "../../db/rows.ts";
 import {
   isoWeekKey,
@@ -113,7 +113,7 @@ export const buildStatusViewModel = (input: {
   readonly responsesBySessionId: ReadonlyMap<string, readonly ResponseRow[]>;
   readonly heldEventBySessionId: ReadonlyMap<string, HeldEventRow>;
   readonly strandedCancelledSessions?: readonly SessionRow[];
-  readonly strandedOutboxEntries?: readonly OutboxEntry[];
+  readonly strandedOutboxEntries?: readonly OutboxDiagnostic[];
 }): StatusViewModel => {
   const { now, sessions, responsesBySessionId, heldEventBySessionId } = input;
   const strandedCancelledSessions = input.strandedCancelledSessions ?? [];

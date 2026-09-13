@@ -7,7 +7,7 @@ import { logger } from "../../src/logger.js";
 import { callArg } from "../helpers/assertions.js";
 import { asInteraction, buildButtonInteraction, buildAskInteraction } from "../helpers/interaction.js";
 import { asDiscordClient } from "../helpers/discord.js";
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createTestAppContext, type TestAppContext } from "../testing/index.js";
 
 const bootMessage = "準備中です。数秒待ってもう一度お試しください。";

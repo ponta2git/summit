@@ -1,6 +1,8 @@
 import type { Client } from "discord.js";
+import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
 import { logger } from "../logger.ts";
+import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 import { createResultNotificationDispatcher } from "../scheduler/resultNotifications.ts";
 import { createNotificationReceiver } from "./http.ts";
 
@@ -30,7 +32,11 @@ export const createResultNotificationRuntime = (deps: {
   return {
     start: () => receiver.start(deps.host, deps.port),
     wake: (reason: string) => dispatcher.wake(reason),
-    stop: () => { receiver.stop(); dispatcher.stop(); },
-    drain: async () => { await Promise.all([receiver.drain(), dispatcher.drain()]); }
+    stop: () => { try { receiver.stop(); } finally { dispatcher.stop(); } },
+    drain: async () => {
+      await runPromiseBoundary(Effect.all([
+        settledCall(() => receiver.drain()), settledCall(() => dispatcher.drain())
+      ], { concurrency: 2 }));
+    }
   };
 };

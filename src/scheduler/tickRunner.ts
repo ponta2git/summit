@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
-import type { ResultAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
+import { runPromiseBoundary } from "../runtime/effect.ts";
 
 import { TICK_DURATION_WARN_MS } from "../config.ts";
 import { AppError, type AppError as AppErrorType } from "../errors/index.ts";
@@ -46,18 +47,13 @@ export const runTickSafely = async (
   }
 };
 
-export const runResultTickSafely = async <T>(
+export const runEffectTickSafely = async <T>(
   options: RunTickSafelyOptions,
-  fn: () => ResultAsync<T, AppErrorType>,
+  fn: () => Effect.Effect<T, AppErrorType>,
   onSuccess?: (value: T) => void | Promise<void>
 ): Promise<void> => {
   await runTickSafely(options, async () => {
-    const value = await fn().match(
-      (result) => result,
-      (error) => {
-        throw error;
-      }
-    );
+    const value = await runPromiseBoundary(Effect.suspend(fn));
     await onSuccess?.(value);
   });
 };

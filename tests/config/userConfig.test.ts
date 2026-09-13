@@ -121,6 +121,13 @@ describe("userConfigSchema", () => {
         }
       },
       {
+        name: "four entries include a duplicate member identity",
+        input: {
+          ...validConfigInput,
+          members: [validConfigInput.members[0], ...validConfigInput.members.slice(0, 3)]
+        }
+      },
+      {
         name: "askTime is not HH:MM",
         input: {
           ...validConfigInput,

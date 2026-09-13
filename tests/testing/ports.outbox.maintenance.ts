@@ -15,7 +15,6 @@ type OutboxMaintenancePort = Pick<
 export const createFakeOutboxMaintenance = (
   byId: Map<string, OutboxEntry>,
   calls: AnyCall[],
-  cloneEntry: (entry: OutboxEntry) => OutboxEntry,
   cancellationReasons: Map<string, string>,
   purgedIdentities: Map<string, string>,
   sendingTokens: Map<string, string>
@@ -102,7 +101,9 @@ export const createFakeOutboxMaintenance = (
           ((entry.status === "PENDING" || entry.status === "IN_FLIGHT") &&
             entry.attemptCount >= threshold)
       )
-      .map(cloneEntry);
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .map(({ id, sessionId, status, attemptCount, createdAt, dedupeKey }) =>
+        ({ id, sessionId, status, attemptCount, createdAt: new Date(createdAt), dedupeKey }));
   },
   prune: async ({ deliveredOlderThan, failedOlderThan }) => {
     recordCall(calls, "prune", { deliveredOlderThan, failedOlderThan });
@@ -176,8 +177,8 @@ export const createFakeOutboxMaintenance = (
       })
       .filter((date): date is Date => date !== null);
     if (candidates.length === 0) {return null;}
-    return candidates.reduce((earliest, current) =>
+    return new Date(candidates.reduce((earliest, current) =>
       current.getTime() < earliest.getTime() ? current : earliest
-    );
+    ));
   }
 });

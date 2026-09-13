@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
 import { makeOutboxEntry } from "../testing/fixtures.js";
-import { buildSessionRow } from "./factories/session.js";
-import { unwrapResultAsync } from "../helpers/assertions.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
+import { runEffect } from "../helpers/assertions.js";
 
 const requireClaimToken = (
   entry: { readonly claimToken: string | null }
@@ -159,7 +159,7 @@ describe("outbox port fake recovery", () => {
       nextAttemptAt: new Date("2026-04-24T11:00:00Z")
     }));
 
-    expect(await unwrapResultAsync(reconcileOutboxClaims(ctx))).toBe(1);
+    expect(await runEffect(reconcileOutboxClaims(ctx))).toBe(1);
     const [entry] = ctx.ports.outbox.listEntries();
     expect({
       status: entry?.status,

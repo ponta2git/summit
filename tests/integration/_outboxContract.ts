@@ -29,8 +29,8 @@ const basePayload: OutboxPayload = {
   target: "askMessageId"
 };
 
-export const createOutboxContractHarness = () => {
-  const { db, client } = createIntegrationDb();
+export const createOutboxContractHarness = (options: { maxConnections?: number } = {}) => {
+  const { db, client } = createIntegrationDb(options);
   let nextAggregateRevision = 0;
 
   const forceNextAttemptAt = async (dedupeKey: string, at: Date): Promise<void> => {
@@ -58,6 +58,7 @@ export const createOutboxContractHarness = () => {
 
   return {
     db,
+    client,
     baseSession,
     basePayload,
     enqueueWithNextAttempt,

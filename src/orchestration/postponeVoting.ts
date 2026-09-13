@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Client } from "discord.js";
-import { type ResultAsync, okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../config.ts";
@@ -11,7 +11,7 @@ import type {
 } from "../db/repositories/sessionCommands.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabasePromise } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
 import {
@@ -38,11 +38,6 @@ export const buildSaturdaySessionInput = (
   };
 };
 
-const decisionFooter = (outcome: PostponeTransitionOutcome["outcome"]): string =>
-  outcome === "all_ok"
-    ? "明日の出欠確認へ進みます"
-    : "この回はお流れになりました";
-
 /**
  * Reflect one already-persisted postpone transition to Discord.
  *
@@ -50,23 +45,13 @@ const decisionFooter = (outcome: PostponeTransitionOutcome["outcome"]): string =
  * Parent POSTPONED + Saturday ASKING + Saturday ask intent are committed atomically before
  * this function runs. This function only repaints the existing parent message.
  */
-export const applyPostponeTransitionResult = (
+export const applyPostponeTransition = (
   client: Client,
   ctx: AppContext,
   result: PersistedPostponeTransition
-): ResultAsync<void, AppError> =>
-  safeTry(async function* () {
-    const responseRows = yield* fromDatabasePromise(
-      ctx.ports.responses.listResponses(result.session.id),
-      "Failed to load responses for postpone message reflection."
-    );
-    yield* updatePostponeMessage(
-      client,
-      ctx,
-      result.session,
-      responseRows,
-      decisionFooter(result.outcome)
-    );
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
+    yield* updatePostponeMessage(client, ctx, result.session);
 
     if (result.outcome === "cancelled") {
       logger.info(
@@ -79,7 +64,7 @@ export const applyPostponeTransitionResult = (
         },
         "Postpone voting cancelled."
       );
-      return okAsync(undefined);
+      return;
     }
 
     logger.info(
@@ -93,7 +78,6 @@ export const applyPostponeTransitionResult = (
       },
       "Postpone voting decided with Saturday session."
     );
-    return okAsync(undefined);
   });
 
 /**
@@ -104,17 +88,17 @@ export const settlePostponeVotingSession = (
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    ctx.ports.sessionCommands.settlePostponeVoting({
+): Effect.Effect<void, AppError> =>
+  fromDatabaseCall(
+    () => ctx.ports.sessionCommands.settlePostponeVoting({
       sessionId: session.id,
       now,
       memberCountExpected: MEMBER_COUNT_EXPECTED,
       saturday: buildSaturdaySessionInput(session)
     }),
     "Failed to settle POSTPONE_VOTING aggregate."
-  ).andThen((result) =>
+  ).pipe(Effect.flatMap((result) =>
     result.kind === "transitioned"
-      ? applyPostponeTransitionResult(client, ctx, result)
-      : okAsync(undefined)
-  );
+      ? applyPostponeTransition(client, ctx, result)
+      : Effect.void
+  ));

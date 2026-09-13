@@ -1,3 +1,4 @@
+import * as Either from "effect/Either";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -5,18 +6,14 @@ import {
   ButtonStyle,
   type ButtonInteraction
 } from "discord.js";
-import { type ResultAsync, okAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
-import type { SubmitPostponeVoteResult } from "../../db/ports.ts";
 import type { SessionRow } from "../../db/rows.ts";
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabaseCall } from "../../errors/effect.ts";
+import { runPromiseBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -37,7 +34,7 @@ import {
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
 import { postponeMessages } from "./messages.ts";
 import {
-  applyPostponeTransitionResult,
+  applyPostponeTransition,
   buildSaturdaySessionInput
 } from "../../orchestration/postponeVoting.ts";
 
@@ -59,109 +56,73 @@ interface PostponeNgConfirmPipelineReady extends PostponeNgConfirmPipelineParsed
 
 const validatePostponeNgConfirmPipeline = (
   start: PostponeNgConfirmPipelineStart
-): AppResult<PostponeNgConfirmPipelineParsed, AppError> =>
-  okResult(start)
-    // invariant: cheap-first の検証順序を postpone_ng ハンドラ単体でも維持する。
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
-    .andThen((current) =>
-      guardPostponeNgConfirmCustomId(current.interaction.customId).map((parsed) => ({
-        ...current,
-        sessionId: parsed.sessionId,
-        choice: parsed.choice
-      }))
-    );
+): Either.Either<PostponeNgConfirmPipelineParsed, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(start.interaction.guildId);
+    yield* guardChannelId(start.interaction.channelId);
+    yield* guardMemberUserId(start.interaction.user.id);
+    const parsed = yield* guardPostponeNgConfirmCustomId(start.interaction.customId);
+    return { ...start, sessionId: parsed.sessionId, choice: parsed.choice };
+  });
 
 const loadSessionAndMemberStep = (
   context: PostponeNgConfirmPipelineParsed
-): ResultAsync<PostponeNgConfirmPipelineReady, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.sessions.findSessionById(context.sessionId),
-      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
-    ]),
-    "Failed to load DB state while handling postpone_ng confirm button."
-  )
-    .andThen(([session, memberId]) =>
-      toResultAsync(guardSessionExists(session)).map((existingSession) => ({
-        session: existingSession,
-        memberId
-      }))
-    )
-    // invariant: DB reads are parallel, but guard result precedence remains session → member.
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardSessionPostponeVoting(session))
-        .andThen((postponeSession) =>
-          toResultAsync(
-            guardSessionPostponeDeadlineOpen(postponeSession, context.context.clock.now())
-          )
-        )
-        .map((postponeSession) => ({ session: postponeSession, memberId }))
-    )
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardRegisteredMemberId(memberId)).map((registeredMemberId) => ({
-        ...context,
-        session,
-        memberId: registeredMemberId
-      }))
-    );
+): Effect.Effect<PostponeNgConfirmPipelineReady, AppError> =>
+  Effect.gen(function* () {
+    const [session, memberId] = yield* Effect.all([
+      fromDatabaseCall(
+        () => context.context.ports.sessions.findSessionById(context.sessionId),
+        "Failed to load interaction session."
+      ),
+      fromDatabaseCall(
+        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+        "Failed to load interaction member."
+      )
+    ], { concurrency: 2 });
+    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+    const existingSession = yield* guardSessionExists(session);
+    yield* guardSessionPostponeVoting(existingSession);
+    yield* guardSessionPostponeDeadlineOpen(existingSession, context.context.clock.now());
+    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
+    return { ...context, session: existingSession, memberId: registeredMemberId };
+  });
 
 const recordNgAndApplyStep = (
   context: PostponeNgConfirmPipelineReady
-): ResultAsync<void, AppError> => {
-  const now = context.context.clock.now();
-  return fromDatabasePromise(
-    context.context.ports.sessionCommands.submitPostponeVote({
-      responseId: randomUUID(),
-      sessionId: context.sessionId,
-      memberId: context.memberId,
-      choice: "POSTPONE_NG",
-      sourceInteractionId: context.interaction.id,
-      now,
-      memberCountExpected: MEMBER_COUNT_EXPECTED,
-      saturday: buildSaturdaySessionInput(context.session)
-    }),
-    "Failed to record postpone NG response atomically."
-  )
-    .andTee(() => {
-      logger.info(
-        {
-          sessionId: context.sessionId,
-          weekKey: context.session.weekKey,
-          userId: context.interaction.user.id,
-          memberId: context.memberId,
-          choice: "POSTPONE_NG"
-        },
-        "Postpone NG response recorded via confirmation."
-      );
-    })
-    .andThen((result: SubmitPostponeVoteResult) => {
-      switch (result.kind) {
-        case "transitioned":
-          return applyPostponeTransitionResult(
-            context.deps.client,
-            context.context,
-            result
-          );
-        case "accepted_pending":
-        case "stale_interaction":
-          return okAsync(undefined);
-        case "closed":
-          return toResultAsync(guardSessionPostponeVoting(result.session)).map(
-            () => undefined
-          );
-        case "session_not_found":
-          return toResultAsync(guardSessionExists(undefined)).map(() => undefined);
-        case "member_not_found":
-          return toResultAsync(guardRegisteredMemberId(undefined)).map(() => undefined);
-        case "deadline_passed":
-          return toResultAsync(
-            guardSessionPostponeDeadlineOpen(result.session, now)
-          ).map(() => undefined);
-      }
-    });
-};
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
+    const now = context.context.clock.now();
+    const result = yield* fromDatabaseCall(
+      () => context.context.ports.sessionCommands.submitPostponeVote({
+        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+        choice: "POSTPONE_NG", sourceInteractionId: context.interaction.id, now,
+        memberCountExpected: MEMBER_COUNT_EXPECTED, saturday: buildSaturdaySessionInput(context.session)
+      }),
+      "Failed to record postpone NG response atomically."
+    );
+    logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
+      userId: context.interaction.user.id, memberId: context.memberId, choice: "POSTPONE_NG" },
+      "Postpone NG response recorded via confirmation.");
+    switch (result.kind) {
+      case "transitioned":
+        return yield* applyPostponeTransition(context.deps.client, context.context, result);
+      case "stale_interaction":
+      case "accepted_pending":
+        return;
+      case "closed":
+        yield* guardSessionPostponeVoting(result.session);
+        return;
+      case "session_not_found":
+        yield* guardSessionExists(undefined);
+        return;
+      case "member_not_found":
+        yield* guardRegisteredMemberId(undefined);
+        return;
+      case "deadline_passed":
+        yield* guardSessionPostponeDeadlineOpen(result.session, now);
+        return;
+    }
+  });
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。
@@ -234,12 +195,12 @@ export const handlePostponeNgConfirmButton = async (
     deps,
     context: deps.context
   });
-  if (validation.isErr()) {
-    await handlePostponeNgConfirmError(interaction, validation.error);
+  if (Either.isLeft(validation)) {
+    await handlePostponeNgConfirmError(interaction, validation.left);
     return;
   }
 
-  const parsed = validation.value;
+  const parsed = validation.right;
 
   if (parsed.choice === "abort") {
     await interaction.editReply({
@@ -253,16 +214,19 @@ export const handlePostponeNgConfirmButton = async (
     return;
   }
 
-  const result = await loadSessionAndMemberStep(parsed).andThen(recordNgAndApplyStep);
+  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+    const ready = yield* loadSessionAndMemberStep(parsed);
+    yield* recordNgAndApplyStep(ready);
+  })));
 
-  await result.match(
-    async () => {
+  await Either.match(result, {
+    onRight: async () => {
       deps.wakeScheduler?.("postpone_ng_confirmed");
       await interaction.editReply({
         content: postponeMessages.ngConfirm.confirmed,
         components: []
       });
     },
-    async (error) => handlePostponeNgConfirmError(interaction, error)
-  );
+    onLeft: (error) => handlePostponeNgConfirmError(interaction, error)
+  });
 };

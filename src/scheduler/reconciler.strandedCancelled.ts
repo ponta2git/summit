@@ -1,16 +1,16 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import type { SettleCancelReason } from "../features/ask-session/messages.ts";
 import { logger } from "../logger.ts";
 import {
-  runSchedulerBatchResult,
+  runSchedulerBatchEffect,
   type SchedulerBatchReport,
-  type SchedulerResult
+  type SchedulerEffect
 } from "./scheduler.types.ts";
 
 /**
@@ -24,12 +24,12 @@ import {
 export const reconcileStrandedCancelled = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> =>
-  fromDatabaseCall(
+): SchedulerEffect<SchedulerBatchReport> =>
+  Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findStrandedCancelledSessions(),
     "Failed to find stranded CANCELLED sessions."
-  ).andThen((stranded) =>
-    runSchedulerBatchResult(
+  ), (stranded) =>
+    runSchedulerBatchEffect(
       "stranded_cancelled",
       stranded,
       (session) => promoteStranded(client, ctx, session, ctx.clock.now()),
@@ -47,8 +47,7 @@ export const reconcileStrandedCancelled = (
         );
       },
       (result) => result === undefined ? 0 : 1
-    )
-  );
+    ));
 
 const resolveSettleCancelReason = (session: SessionRow): SettleCancelReason => {
   const reason = session.cancelReason;
@@ -68,19 +67,19 @@ const promoteStranded = (
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): SchedulerResult<
+): SchedulerEffect<
   { readonly to: "POSTPONE_VOTING" | "COMPLETED"; readonly reason: string } | undefined
 > =>
-  fromDatabaseCall(
+  Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessionCommands.settleAskingCancellation({
       sessionId: session.id,
       now,
       reason: resolveSettleCancelReason(session)
     }),
     "Failed to settle stranded CANCELLED session."
-  ).andThen((result) => {
-    if (result.kind !== "transitioned") {return okAsync(undefined);}
-    return updateAskMessage(client, ctx, result.session).map(() => {
+  ), (result) => {
+    if (result.kind !== "transitioned") {return Effect.succeed(undefined);}
+    return Effect.map(updateAskMessage(client, ctx, result.session), () => {
       const next = result.session.status === "POSTPONE_VOTING"
         ? { to: "POSTPONE_VOTING" as const, reason: "friday_cancel_resumed" }
         : {

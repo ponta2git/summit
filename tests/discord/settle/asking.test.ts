@@ -6,7 +6,7 @@ import {
 } from "../../../src/orchestration/index.js";
 import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
 import { appConfig } from "../../../src/userConfig.js";
-import { callArg } from "../../helpers/assertions.js";
+import { callArg, runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {
   asMessagePayload,
@@ -34,13 +34,19 @@ describe("settleAskingSession", () => {
       cancelReason: null,
       postponeMessageId: null
     });
+    let executionTime = new Date("2026-04-24T12:29:00.000Z");
     const ctx = createTestAppContext({
-      now,
+      now: () => executionTime,
       seed: { sessions: [session], members: seededMembers }
     });
     const discord = createSettleDiscordFixture();
 
-    await settleAskingSession(discord.client, ctx, session.id, "absent");
+    const settlement = settleAskingSession(discord.client, ctx, session.id, "absent");
+    expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
+    expect(discord.fetch).not.toHaveBeenCalled();
+    executionTime = now;
+    await runEffect(settlement);
 
     expect(discord.edit).toHaveBeenCalledTimes(1);
     const askEdit = asMessagePayload(callArg(discord.edit));
@@ -56,8 +62,8 @@ describe("settleAskingSession", () => {
       { renderer: "postpone_vote", ordinal: 1, status: "PENDING" }
     ]);
 
-    await runOutboxWorkerTick(discord.client, ctx);
-    await runOutboxWorkerTick(discord.client, ctx);
+    await runEffect(runOutboxWorkerTick(discord.client, ctx));
+    await runEffect(runOutboxWorkerTick(discord.client, ctx));
 
     expect(ctx.ports.sessions.listSessions()).toHaveLength(1);
     const persisted = ctx.ports.sessions.listSessions()[0]!;
@@ -100,10 +106,10 @@ describe("settleAskingSession", () => {
     });
     const discord = createSettleDiscordFixture();
 
-    await settleAskingSession(discord.client, ctx, session.id, "deadline_unanswered");
+    await runEffect(settleAskingSession(discord.client, ctx, session.id, "deadline_unanswered"));
 
     expect(discord.send).not.toHaveBeenCalled();
-    await runOutboxWorkerTick(discord.client, ctx);
+    await runEffect(runOutboxWorkerTick(discord.client, ctx));
 
     expect(ctx.ports.sessions.listSessions().map((persisted) => ({
       id: persisted.id,
@@ -144,7 +150,7 @@ describe("settleAskingSession", () => {
       status: "ASKING",
       cancelReason: null
     });
-    const decisionNow = new Date("2026-04-25T12:00:00.000Z");
+    const decisionNow = new Date("2026-04-25T12:30:00.000Z");
     const responses = seededMembers.map((member, index) => ({
       id: `ask-response-${index + 1}`,
       sessionId: session.id,
@@ -158,10 +164,10 @@ describe("settleAskingSession", () => {
       seed: { sessions: [session], responses, members: seededMembers }
     });
     const discord = createSettleDiscordFixture();
-    await evaluateAndApplyDeadlineDecision(discord.client, ctx, session, {
+    await runEffect(evaluateAndApplyDeadlineDecision(discord.client, ctx, session, {
       memberCountExpected: 4,
       now: decisionNow
-    });
+    }));
 
     const persisted = ctx.ports.sessions.listSessions()[0]!;
     expect({
@@ -217,7 +223,7 @@ describe("settleAskingSession", () => {
     });
     const discord = createSettleDiscordFixture();
 
-    await settleAskingSession(discord.client, ctx, session.id, "absent");
+    await runEffect(settleAskingSession(discord.client, ctx, session.id, "absent"));
 
     expect(ctx.ports.sessions.listSessions()).toStrictEqual([session]);
     expect(discord.fetch).not.toHaveBeenCalled();

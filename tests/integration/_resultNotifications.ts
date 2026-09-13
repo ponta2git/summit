@@ -4,8 +4,9 @@ import { makeResultNotificationsPort } from "../../src/db/repositories/resultNot
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { createIntegrationDb, seedBaseMembers, truncatePerTestTables } from "./_support.ts";
 
+let pool: ReturnType<typeof createIntegrationDb> | undefined;
 export const createResultNotificationHarness = async () => {
-  const { db, client } = createIntegrationDb({ maxConnections: 4 });
+  const { db, client } = pool ??= createIntegrationDb({ maxConnections: 4 });
   await truncatePerTestTables(db);
   await seedBaseMembers(db);
   await db.update(discordNotificationSettings).set({ enabled: true, generation: 0n });
@@ -19,7 +20,6 @@ export const createResultNotificationHarness = async () => {
     mapMasterId: "map-1", seasonMasterId: "season-1", ownerMemberId: "m1", playedAt: notificationNow, createdByAccountId: "result-account" });
   return { db, client, port: makeResultNotificationsPort(db),
     deleteMatch: async () => { await db.delete(matches).where(eq(matches.id, "match-1")); },
-    close: () => client.end({ timeout: 5 }),
     countReceipts: async () => Number((await db.execute<{ count: number }>(sql`SELECT count(*)::int AS count FROM discord_notifications`))[0]?.count)
   };
 };

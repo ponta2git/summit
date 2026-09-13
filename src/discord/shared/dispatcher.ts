@@ -153,11 +153,12 @@ export const registerInteractionHandlers = (
     readonly registry?: FeatureRegistry;
     readonly wakeScheduler?: (reason: string) => void;
   } = {}
-): void => {
+): { stop(): void; drain(): Promise<void> } => {
+  const active = new Set<Promise<void>>();
   const registry = options.registry ?? defaultRegistry;
-  client.on("interactionCreate", (interaction) => {
+  const onInteraction = (interaction: Interaction): void => {
     // ack: 3 秒制約に備え入口で try/catch を集約する。
-    void (async () => {
+    const handling = (async () => {
       try {
         const readyDeps =
           options.getReadyState === undefined
@@ -188,16 +189,27 @@ export const registerInteractionHandlers = (
         );
 
         try {
-          if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-              content: rejectMessages.internalError,
-              flags: MessageFlags.Ephemeral
-            });
+          if (interaction.isRepliable()) {
+            const payload = buildEphemeralReject(rejectMessages.internalError);
+            if (interaction.replied || interaction.deferred) {
+              await interaction.followUp(payload);
+            } else {
+              await interaction.reply(payload);
+            }
           }
         } catch {
           // race: エラー通知自体の失敗は握りつぶし、二重障害で unhandled rejection を作らない。
         }
       }
     })();
-  });
+    active.add(handling);
+    const release = (): void => { active.delete(handling); };
+    // invariant: error通知の二重障害でも、追跡を解除してunhandled rejectionを残さない。
+    void handling.then(release, release);
+  };
+  client.on("interactionCreate", onInteraction);
+  return {
+    stop: () => { client.off("interactionCreate", onInteraction); },
+    drain: async () => { await Promise.allSettled([...active]); }
+  };
 };

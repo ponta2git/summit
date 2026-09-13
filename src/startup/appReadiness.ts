@@ -6,7 +6,7 @@ import { logger } from "../logger.ts";
 import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../config.ts";
 import { runReconciler } from "../scheduler/reconciler.ts";
 import { runStartupRecovery } from "../scheduler/index.ts";
-import { unwrapResultAsync } from "../errors/result.ts";
+import { runPromiseBoundary } from "../runtime/effect.ts";
 
 export interface AppReadiness {
   readonly state: AppReadyState;
@@ -40,23 +40,26 @@ export const registerReconnectReplayHandlers = (input: {
   readonly isStartupCompleted: () => boolean;
   readonly bootId: string;
   readonly wakeScheduler?: (reason: string) => void;
-}): void => {
+}): { completeStartup(): void; stop(): void; drain(): Promise<void> } => {
   const { client, context, readiness, isStartupCompleted, bootId } = input;
   // why: reconnect 時に reconciler + startupRecovery を replay し disconnect 中の cron 副作用漏れを収束させる。
   // race: in-flight Promise lock + 時刻 debounce で flappy reconnect を直列化する。
   // ack: replay 中は readiness で dispatcher に load-shed させ interaction を ephemeral で却下。
   let replayInFlight: Promise<void> | undefined;
-  let lastReplaySucceededAt = 0;
+  let lastReplaySucceededAt: number | undefined;
+  let connected = false;
+  let connectionVersion = 0;
+  let stopped = false;
 
-  const triggerReconnectReplay = (): void => {
-    if (!isStartupCompleted()) {
+  const triggerReconnectReplay = (connectionChangedDuringReplay = false): void => {
+    if (stopped || !isStartupCompleted()) {
       return;
     }
     if (replayInFlight) {
       return;
     }
     const now = Date.now();
-    if (now - lastReplaySucceededAt < RECONNECT_REPLAY_DEBOUNCE_MS) {
+    if (!connectionChangedDuringReplay && lastReplaySucceededAt !== undefined && now - lastReplaySucceededAt < RECONNECT_REPLAY_DEBOUNCE_MS) {
       readiness.markReady();
       logger.info(
         {
@@ -71,22 +74,30 @@ export const registerReconnectReplayHandlers = (input: {
     }
 
     readiness.markNotReady("replaying");
+    const replayVersion = connectionVersion;
     const startedAt = Date.now();
     logger.info(
       { event: "reconnect.replay_start", bootId },
       "Reconnect replay started."
     );
+    // race: 同期throwでもfinallyより先にPromiseを登録し、完了済みlockを残さない。
     replayInFlight = (async () => {
+      await Promise.resolve();
       try {
-        const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
-        await unwrapResultAsync(runStartupRecovery(client, context));
+        const report = await runPromiseBoundary(runReconciler(client, context, { scope: "reconnect" }));
+        if (stopped) { return; }
+        await runPromiseBoundary(runStartupRecovery(client, context));
+        if (stopped) { return; }
         input.wakeScheduler?.("reconnect_replay");
-        lastReplaySucceededAt = Date.now();
+        const completedAt = Date.now();
+        if (connected && replayVersion === connectionVersion) {
+          lastReplaySucceededAt = completedAt;
+        }
         logger.info(
           {
             event: "reconnect.replay_done",
             bootId,
-            elapsedMs: lastReplaySucceededAt - startedAt,
+            elapsedMs: completedAt - startedAt,
             cancelledPromoted: report.cancelledPromoted,
             askCreated: report.askCreated,
             messageIntentsQueued: report.messageIntentsQueued,
@@ -108,20 +119,51 @@ export const registerReconnectReplayHandlers = (input: {
         );
       } finally {
         replayInFlight = undefined;
-        // idempotent: 成否に関わらず ready に戻す。失敗時も次 scheduler tick で再収束する。
-        readiness.markReady();
+        if (stopped) {
+          readiness.markNotReady("shutting_down");
+        } else if (!connected) {
+          readiness.markNotReady("reconnecting");
+        } else if (replayVersion !== connectionVersion) {
+          // race: 処理中に切断・再接続した世代を、旧 replay の成功 debounce で落とさない。
+          triggerReconnectReplay(true);
+        } else {
+          // idempotent: 接続中の失敗は次の scheduler tick で収束できる。
+          readiness.markReady();
+        }
       }
     })();
   };
 
-  client.on("shardDisconnect", () => {
-    if (!isStartupCompleted()) {
+  const onDisconnected = (): void => {
+    connected = false;
+    connectionVersion += 1;
+    if (stopped || !isStartupCompleted()) {
       return;
     }
     readiness.markNotReady("reconnecting");
-  });
+  };
 
-  client.on("shardReady", () => {
+  const onConnected = (): void => {
+    connected = true;
     triggerReconnectReplay();
-  });
+  };
+  client.on("shardDisconnect", onDisconnected);
+  client.on("shardReady", onConnected);
+  client.on("shardResume", onConnected);
+  return {
+    completeStartup: () => {
+      // race: 起動recovery中の切断を、起動完了のmarkReadyで上書きしない。
+      if (stopped) { readiness.markNotReady("shutting_down"); }
+      else if (!connected) { readiness.markNotReady("reconnecting"); }
+      else { readiness.markReady(); }
+    },
+    stop: () => {
+      stopped = true;
+      readiness.markNotReady("shutting_down");
+      client.off("shardDisconnect", onDisconnected);
+      client.off("shardReady", onConnected);
+      client.off("shardResume", onConnected);
+    },
+    drain: async () => { await replayInFlight; }
+  };
 };

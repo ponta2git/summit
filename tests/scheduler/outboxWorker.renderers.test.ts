@@ -1,9 +1,10 @@
+import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 
 import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { appConfig } from "../../src/userConfig.js";
 import { createTestAppContext, makeResponse } from "../testing/index.js";
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.js";
 
 describe("outbox worker renderers", () => {
@@ -40,7 +41,7 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     const mentionLines = appConfig.dev.suppressMentions
       ? []
@@ -92,7 +93,7 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     expect(sentMessages).toStrictEqual([{
       id: "posted-1",
@@ -119,14 +120,13 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     expect(sentMessages).toStrictEqual([]);
     const [entry] = ctx.ports.outbox.listEntries();
     expect({ status: entry?.status, lastError: entry?.lastError }).toStrictEqual({
       status: "FAILED",
-      lastError:
-        "Unsupported outbox payload: kind=send_message, renderer=not_registered"
+      lastError: "Unsupported outbox payload."
     });
   });
 });

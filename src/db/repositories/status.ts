@@ -78,7 +78,7 @@ export const loadCurrentWeekSnapshot = async (
     .filter((session) => session.status === "DECIDED")
     .map((session) => session.id);
 
-  const [responseRows, heldEventRows] = await Promise.all([
+  const [responseResult, heldEventResult] = await Promise.allSettled([
     detailSessionIds.length === 0
       ? Promise.resolve([] as ResponseRow[])
       : db
@@ -93,9 +93,12 @@ export const loadCurrentWeekSnapshot = async (
         .from(heldEvents)
         .where(inArray(heldEvents.sessionId, decidedSessionIds))
   ]);
+  // Ownership of the snapshot read includes both queries, including the failure path.
+  if (responseResult.status === "rejected") { throw responseResult.reason; }
+  if (heldEventResult.status === "rejected") { throw heldEventResult.reason; }
 
-  const responsesBySessionId = mapRowsBySessionId(responseRows);
-  const heldEventsBySessionId = mapHeldEventsBySessionId(heldEventRows);
+  const responsesBySessionId = mapRowsBySessionId(responseResult.value);
+  const heldEventsBySessionId = mapHeldEventsBySessionId(heldEventResult.value);
 
   return {
     sessions: detailSessions.map((session): {

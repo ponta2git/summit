@@ -12,7 +12,7 @@ type IntentSession = Pick<
 >;
 
 // Reserved tail ordinals for repair intents anchored to the current Session revision.
-export const OUTBOX_RECOVERY_ORDINALS = {
+const OUTBOX_RECOVERY_ORDINALS = {
   ask: 32_766,
   postpone: 32_767
 } as const;
@@ -110,3 +110,26 @@ export const buildReminderIntent = (
     extra: {}
   }
 });
+
+export const buildMissingMessageIntents = (
+  session: SessionRow
+): readonly EnqueueOutboxInput[] => {
+  if (
+    session.status !== "ASKING" &&
+    session.status !== "POSTPONE_VOTING" &&
+    session.status !== "POSTPONED"
+  ) {
+    return [];
+  }
+  const intents: EnqueueOutboxInput[] = [];
+  if (!session.askMessageId) {
+    intents.push(buildAskBodyIntent(session, OUTBOX_RECOVERY_ORDINALS.ask));
+  }
+  if (
+    !session.postponeMessageId &&
+    (session.status === "POSTPONE_VOTING" || session.status === "POSTPONED")
+  ) {
+    intents.push(buildPostponeVoteIntent(session, OUTBOX_RECOVERY_ORDINALS.postpone));
+  }
+  return intents;
+};

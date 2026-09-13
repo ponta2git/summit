@@ -6,7 +6,7 @@ import type { DbLike } from "../rows.ts";
 import { normalizeNotificationJson } from "./notifications.hash.ts";
 import type { EnqueueOutboxInput, EnqueueResult } from "./outbox.types.ts";
 
-export type { EnqueueOutboxInput, EnqueueResult, OutboxEntry, OutboxPayload } from "./outbox.types.ts";
+export type { EnqueueOutboxInput, EnqueueResult, OutboxDiagnostic, OutboxEntry, OutboxPayload } from "./outbox.types.ts";
 export { findStrandedOutboxEntries, getNextOutboxDispatchAt, getOutboxMetrics, pruneOutbox } from "./outbox.metrics.ts";
 export { claimNextOutboxBatch, releaseExpiredOutboxClaims } from "./outbox.claim.ts";
 export { beginOutboxDelivery, markOutboxDelivered, markOutboxFailed } from "./outbox.delivery.ts";

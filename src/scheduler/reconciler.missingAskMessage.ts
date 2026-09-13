@@ -1,43 +1,13 @@
-import { okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
-import {
-  buildAskBodyIntent,
-  buildPostponeVoteIntent,
-  OUTBOX_RECOVERY_ORDINALS
-} from "../db/repositories/sessionOutboxIntents.ts";
-import type { EnqueueOutboxInput } from "../db/ports.ts";
-import type { SessionRow } from "../db/rows.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import {
-  runSchedulerBatchResult,
+  runSchedulerBatchEffect,
   type SchedulerBatchReport,
-  type SchedulerResult
+  type SchedulerEffect
 } from "./scheduler.types.ts";
-
-const buildMissingMessageIntents = (
-  session: SessionRow
-): readonly EnqueueOutboxInput[] => {
-  if (
-    session.status !== "ASKING" &&
-    session.status !== "POSTPONE_VOTING" &&
-    session.status !== "POSTPONED"
-  ) {
-    return [];
-  }
-  const intents: EnqueueOutboxInput[] = [];
-  if (!session.askMessageId) {
-    intents.push(buildAskBodyIntent(session, OUTBOX_RECOVERY_ORDINALS.ask));
-  }
-  if (
-    !session.postponeMessageId &&
-    (session.status === "POSTPONE_VOTING" || session.status === "POSTPONED")
-  ) {
-    intents.push(buildPostponeVoteIntent(session, OUTBOX_RECOVERY_ORDINALS.postpone));
-  }
-  return intents;
-};
 
 /**
  * Invariant C: ensure every missing non-terminal message has a durable delivery intent.
@@ -49,37 +19,25 @@ const buildMissingMessageIntents = (
  */
 export const reconcileMissingMessageIntents = (
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> =>
-  fromDatabaseCall(
+): SchedulerEffect<SchedulerBatchReport> =>
+  Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findMessageRecoveryCandidates(),
     "Failed to find message recovery candidates."
-  ).andThen((nonTerminal) =>
-    runSchedulerBatchResult(
+  ), (nonTerminal) =>
+    runSchedulerBatchEffect(
       "missing_message_intents",
       nonTerminal,
-      (session) => safeTry(async function* () {
-        let queued = 0;
-        for (const intent of buildMissingMessageIntents(session)) {
-          const result = yield* fromDatabaseCall(
-            () => ctx.ports.outbox.enqueue(intent),
-            "Failed to enqueue a missing message intent."
-          );
-          if (!result.skipped) {
-            queued += 1;
-            logger.info(
-              {
-                event: "reconciler.message_intent_queued",
-                sessionId: session.id,
-                weekKey: session.weekKey,
-                renderer: intent.payload.kind === "send_message"
-                  ? intent.payload.renderer
-                  : undefined
-              },
-              "Reconciler: queued a missing message delivery intent."
-            );
-          }
+      (session) => Effect.gen(function* () {
+        const queued = yield* fromDatabaseCall(
+          () => ctx.ports.sessionCommands.recoverMissingMessageIntents(session.id),
+          "Failed to recover missing message intents."
+        );
+        for (const intent of queued) {
+          logger.info({ event: "reconciler.message_intent_queued", sessionId: session.id,
+            weekKey: session.weekKey, renderer: intent.payload.renderer },
+          "Reconciler: queued a missing message delivery intent.");
         }
-        return okAsync(queued);
+        return queued.length;
       }),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       (failure) => {
@@ -95,5 +53,4 @@ export const reconcileMissingMessageIntents = (
         );
       },
       (queued) => queued
-    )
-  );
+    ));

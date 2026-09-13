@@ -4,10 +4,7 @@ import {
   AppError,
   DatabaseError,
   NotFoundError,
-  ShutdownError,
-  ValidationError,
-  errResult,
-  okResult
+  ShutdownError
 } from "../../src/errors/index.js";
 
 describe("AppError", () => {
@@ -28,15 +25,5 @@ describe("AppError", () => {
 
   it("discriminates shutdown errors", () => {
     expect(new ShutdownError("shutdown in progress").code).toBe("SHUTDOWN");
-  });
-});
-
-describe("AppResult", () => {
-  it("handles ok/err branches", () => {
-    const ok = okResult("ok");
-    const err = errResult(new ValidationError("invalid custom_id"));
-
-    expect(ok.match((value) => value, () => "err")).toBe("ok");
-    expect(err.match(() => "ok", (error) => error.code)).toBe("VALIDATION");
   });
 });

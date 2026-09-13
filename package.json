@@ -16,16 +16,16 @@
     "lint": "oxlint . --deny-warnings --report-unused-disable-directives",
     "lint:knip": "knip",
     "lint:fix": "oxlint . --fix",
-    "test": "vitest run --passWithNoTests",
-    "test:integration": "INTEGRATION_DB=1 dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec vitest run --config vitest.integration.config.ts'",
+    "test": "vitest run",
+    "test:integration": "INTEGRATION_DB=1 vitest run --config vitest.integration.config.ts",
     "docs:sync-agent": "node scripts/verify/docs.ts --write-adapters",
     "verify:docs": "node scripts/verify/docs.ts",
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
     "ci": "pnpm typecheck && pnpm lint && pnpm lint:knip && pnpm test && pnpm build && pnpm verify:docs && pnpm verify:forbidden && pnpm verify:file-size",
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/seed.ts'",
-    "db:reset": "dotenv -e .env.local -- node scripts/dev/reset.ts",
-    "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/scenario.ts'",
+    "db:reset": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/reset.ts \"$@\"' --",
+    "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/scenario.ts \"$@\"' --",
     "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node src/commands/sync.ts'",
     "notifications": "node src/notifications/cli.ts",
     "setup": "cd ../momo-db && pnpm install && pnpm build && pnpm db:up && pnpm db:migrate && cd ../summit && pnpm install && pnpm db:seed"
@@ -34,21 +34,21 @@
     "@momo/db": "file:../momo-db",
     "date-fns": "^4.4.0",
     "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "neverthrow": "^8.2.0",
+    "effect": "3.22.2",
     "node-cron": "^4.6.0",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
-    "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.4"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.13.4",
     "dotenv-cli": "^11.0.0",
-    "knip": "^6.32.2",
-    "oxlint": "^1.77.0",
-    "typescript": "~7.0.0",
-    "vitest": "^4.1.10"
+    "knip": "^6.35.1",
+    "oxlint": "^1.82.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
   }
 }

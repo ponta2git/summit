@@ -1,7 +1,8 @@
+import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Invariant F: Release IN_FLIGHT outbox rows past their claim deadline.
@@ -12,15 +13,15 @@ import type { SchedulerResult } from "./scheduler.types.ts";
  */
 export const reconcileOutboxClaims = (
   ctx: AppContext
-): SchedulerResult<number> =>
-  fromDatabaseCall(
+): SchedulerEffect<number> =>
+  Effect.tap(fromDatabaseCall(
     () => ctx.ports.outbox.releaseExpiredClaims(ctx.clock.now()),
     "Failed to release expired outbox claims."
-  ).andTee((released) => {
+  ), (released) => Effect.sync(() => {
     if (released > 0) {
       logger.warn(
         { event: "reconciler.outbox_claim_reclaimed", released },
         "Reconciler: released expired outbox claims."
       );
     }
-  });
+  }));

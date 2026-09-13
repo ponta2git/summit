@@ -1,19 +1,16 @@
+import * as Either from "effect/Either";
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
-import { type ResultAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
 import type {
-  CurrentWeekStatusSnapshot,
-  OutboxEntry,
+  OutboxDiagnostic,
   SessionRow,
   StatusSessionSnapshot
 } from "../../db/ports.ts";
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
-import { fromDatabasePromise, toResultAsync } from "../../errors/result.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabaseCall } from "../../errors/effect.ts";
+import { runPromiseBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -36,38 +33,44 @@ interface StatusSnapshot {
   readonly now: Date;
   readonly sessions: readonly SessionRow[];
   readonly strandedCancelled: readonly SessionRow[];
-  readonly strandedOutbox: readonly OutboxEntry[];
+  readonly strandedOutbox: readonly OutboxDiagnostic[];
   readonly sessionDetails: readonly StatusSessionSnapshot[];
 }
 
 const validateStatusCommand = (
   context: StatusPipelineStart
-): AppResult<StatusPipelineStart, AppError> =>
-  okResult(context)
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current));
+): Either.Either<StatusPipelineStart, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(context.interaction.guildId);
+    yield* guardChannelId(context.interaction.channelId);
+    yield* guardMemberUserId(context.interaction.user.id);
+    return context;
+  });
 
 const loadStatusSnapshot = (
   context: StatusPipelineStart
-): ResultAsync<StatusSnapshot, AppError> =>
-  (() => {
+): Effect.Effect<StatusSnapshot, AppError> =>
+  Effect.gen(function* () {
     const now = context.deps.context.clock.now();
     const weekKey = isoWeekKey(now);
-    return fromDatabasePromise(
-      Promise.all([
-        context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
-        context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
-      ]),
-      "Failed to load /status snapshot."
-    ).map(([statusSnapshot, strandedOutbox]: [CurrentWeekStatusSnapshot, readonly OutboxEntry[]]) => ({
+    const [statusSnapshot, strandedOutbox] = yield* Effect.all([
+      fromDatabaseCall(
+        () => context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
+        "Failed to load /status snapshot."
+      ),
+      fromDatabaseCall(
+        () => context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD),
+        "Failed to load /status outbox diagnostics."
+      )
+    ], { concurrency: 2 });
+    return {
       now,
       sessions: statusSnapshot.sessions.map(({ session }) => session),
       strandedCancelled: statusSnapshot.strandedCancelled,
       strandedOutbox,
       sessionDetails: statusSnapshot.sessions
-    }));
-  })();
+    };
+  });
 
 const replyStatusError = async (
   interaction: ChatInputCommandInteraction,
@@ -105,11 +108,13 @@ export const handleStatusCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const pipelineStart: StatusPipelineStart = { interaction, deps };
-  const result = await toResultAsync(validateStatusCommand(pipelineStart))
-    .andThen(loadStatusSnapshot);
+  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+    const validated = yield* validateStatusCommand(pipelineStart);
+    return yield* loadStatusSnapshot(validated);
+  })));
 
-  await result.match(
-    async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
+  await Either.match(result, {
+    onRight: async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
       const responsesBySessionId = new Map(
         sessionDetails.map(({ session, responses }) => [session.id, responses])
       );
@@ -145,6 +150,6 @@ export const handleStatusCommand = async (
         "/status command served."
       );
     },
-    async (error) => replyStatusError(interaction, error)
-  );
+    onLeft: (error) => replyStatusError(interaction, error)
+  });
 };

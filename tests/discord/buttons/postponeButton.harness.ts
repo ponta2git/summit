@@ -6,7 +6,7 @@ import type { InteractionHandlerDeps } from "../../../src/discord/shared/dispatc
 import { appConfig } from "../../../src/userConfig.js";
 import { asDiscordClient } from "../../helpers/discord.js";
 import type { createTestAppContext } from "../../testing/index.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 
 export const seededMembers = appConfig.memberUserIds.map((userId, index) => ({
   id: `member-${index}`,
@@ -22,7 +22,7 @@ export const postponeSession = (
     status: "POSTPONE_VOTING",
     postponeCount: 0,
     postponeMessageId: "postpone-msg-1",
-    deadlineAt: new Date("2026-04-25T15:00:00.000Z"),
+    deadlineAt: new Date("2026-04-24T15:00:00.000Z"),
     ...overrides
   });
 
@@ -35,7 +35,7 @@ export const postponeResponse = (
   sessionId,
   memberId: seededMembers[index]!.id,
   choice,
-  answeredAt: new Date(`2026-04-25T12:${String(index).padStart(2, "0")}:00.000Z`),
+  answeredAt: new Date(`2026-04-24T12:${String(index).padStart(2, "0")}:00.000Z`),
   sourceInteractionId: null
 });
 

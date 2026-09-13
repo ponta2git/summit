@@ -1,7 +1,7 @@
 import { and, eq, getTableColumns, isNotNull, type SQL } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
 import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../schema.ts";
-import { mapOutboxRow, type OutboxEntry } from "./outbox.types.ts";
+import type { AttendanceNotificationRow } from "./outbox.types.ts";
 
 // why: application の attendance DTO へ、共有配送と業務関連を一度だけ組み立てる。
 const attendanceNotificationColumns = {
@@ -12,10 +12,10 @@ const attendanceNotificationColumns = {
   deliveredMessageId: discordNotificationParts.deliveredMessageId
 };
 
-export const findAttendanceNotifications = async (
+export const findAttendanceNotificationRows = async (
   db: Pick<DbLike, "select">,
   condition: SQL
-): Promise<readonly OutboxEntry[]> => {
+): Promise<readonly AttendanceNotificationRow[]> => {
   const rows = await db.select(attendanceNotificationColumns)
     .from(discordNotifications)
     .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
@@ -29,7 +29,7 @@ export const findAttendanceNotifications = async (
       isNotNull(discordNotificationAttendance.sessionId),
       condition
     ));
-  return rows.map(mapOutboxRow).sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime()
-    || left.sessionId.localeCompare(right.sessionId)
+  return rows.sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime()
+    || (left.sessionId ?? "").localeCompare(right.sessionId ?? "")
     || left.aggregateRevision - right.aggregateRevision || left.ordinal - right.ordinal);
 };

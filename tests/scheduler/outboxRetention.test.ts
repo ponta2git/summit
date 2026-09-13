@@ -1,6 +1,7 @@
 // why: outbox retention worker の prune 振る舞いを fake port 経由で検証する。
 //   real repository は同 port 契約 (ports.ts) を満たすため、ここでのカバレッジが production 挙動の保証。
 
+import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 
 import type { OutboxEntry } from "../../src/db/ports.js";
@@ -11,7 +12,7 @@ import {
 import { runOutboxRetentionTick } from "../../src/scheduler/outboxRetention.js";
 import { createTestAppContext } from "../testing/index.js";
 
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 const baseEntry = (
   overrides: Partial<OutboxEntry> & Pick<OutboxEntry, "id" | "sessionId" | "dedupeKey" | "status">
@@ -157,7 +158,7 @@ describe("runOutboxRetentionTick", () => {
       })
     );
 
-    await runOutboxRetentionTick(ctx);
+    await runEffect(runOutboxRetentionTick(ctx));
 
     expect(new Set(ctx.ports.outbox.listEntries().map((entry) => entry.id))).toStrictEqual(
       new Set([
@@ -186,7 +187,7 @@ describe("runOutboxRetentionTick", () => {
       })
     );
 
-    await runOutboxRetentionTick(ctx);
+    await runEffect(runOutboxRetentionTick(ctx));
 
     expect(ctx.ports.outbox.listEntries().map((entry) => ({
       id: entry.id,

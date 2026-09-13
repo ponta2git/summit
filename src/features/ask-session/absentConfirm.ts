@@ -1,3 +1,4 @@
+import * as Either from "effect/Either";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -5,18 +6,14 @@ import {
   ButtonStyle,
   type ButtonInteraction
 } from "discord.js";
-import { type ResultAsync, okAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
-import type { SubmitAskResponseResult } from "../../db/ports.ts";
 import type { SessionRow } from "../../db/rows.ts";
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDatabaseCall } from "../../errors/effect.ts";
+import { runPromiseBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -59,114 +56,77 @@ interface AbsentConfirmPipelineReady extends AbsentConfirmPipelineParsed {
 
 const validateAbsentConfirmPipeline = (
   start: AbsentConfirmPipelineStart
-): AppResult<AbsentConfirmPipelineParsed, AppError> =>
-  okResult(start)
-    // invariant: cheap-first の検証順序を ask ハンドラ単体でも維持する。
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current))
-    .andThen((current) =>
-      guardAbsentConfirmCustomId(current.interaction.customId).map((parsed) => ({
-        ...current,
-        sessionId: parsed.sessionId,
-        choice: parsed.choice
-      }))
-    );
+): Either.Either<AbsentConfirmPipelineParsed, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(start.interaction.guildId);
+    yield* guardChannelId(start.interaction.channelId);
+    yield* guardMemberUserId(start.interaction.user.id);
+    const parsed = yield* guardAbsentConfirmCustomId(start.interaction.customId);
+    return { ...start, sessionId: parsed.sessionId, choice: parsed.choice };
+  });
 
 const loadSessionAndMemberStep = (
   context: AbsentConfirmPipelineParsed
-): ResultAsync<AbsentConfirmPipelineReady, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.sessions.findSessionById(context.sessionId),
-      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
-    ]),
-    "Failed to load DB state while handling absent confirm button."
-  )
-    .andThen(([session, memberId]) =>
-      toResultAsync(guardSessionExists(session)).map((existingSession) => ({
-        session: existingSession,
-        memberId
-      }))
-    )
-    // invariant: DB reads are parallel, but guard result precedence remains session → member.
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardSessionAsking(session))
-        .andThen((askingSession) =>
-          toResultAsync(guardSessionAskingDeadlineOpen(askingSession, context.context.clock.now()))
-        )
-        .map((askingSession) => ({ session: askingSession, memberId }))
-    )
-    .andThen(({ session, memberId }) =>
-      toResultAsync(guardRegisteredMemberId(memberId)).map((registeredMemberId) => ({
-        ...context,
-        session,
-        memberId: registeredMemberId
-      }))
-    );
+): Effect.Effect<AbsentConfirmPipelineReady, AppError> =>
+  Effect.gen(function* () {
+    const [session, memberId] = yield* Effect.all([
+      fromDatabaseCall(
+        () => context.context.ports.sessions.findSessionById(context.sessionId),
+        "Failed to load interaction session."
+      ),
+      fromDatabaseCall(
+        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+        "Failed to load interaction member."
+      )
+    ], { concurrency: 2 });
+    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+    const existingSession = yield* guardSessionExists(session);
+    yield* guardSessionAsking(existingSession);
+    yield* guardSessionAskingDeadlineOpen(existingSession, context.context.clock.now());
+    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
+    return { ...context, session: existingSession, memberId: registeredMemberId };
+  });
 
 const recordAbsentAndApplyStep = (
   context: AbsentConfirmPipelineReady
-): ResultAsync<void, AppError> => {
-  const now = context.context.clock.now();
-  return fromDatabasePromise(
-    context.context.ports.sessionCommands.submitAskResponse({
-      responseId: randomUUID(),
-      sessionId: context.sessionId,
-      memberId: context.memberId,
-      choice: "ABSENT",
-      sourceInteractionId: context.interaction.id,
-      now,
-      memberCountExpected: MEMBER_COUNT_EXPECTED
-    }),
-    "Failed to record absent response atomically."
-  )
-    .andTee(() => {
-      logger.info(
-        {
-          sessionId: context.sessionId,
-          weekKey: context.session.weekKey,
-          userId: context.interaction.user.id,
-          memberId: context.memberId,
-          choice: "ABSENT"
-        },
-        "Absent response recorded via confirmation."
-      );
-    })
-    .andThen((result: SubmitAskResponseResult) => {
-      switch (result.kind) {
-        case "transitioned":
-          return reflectAskingCancellation(
-            context.deps.client,
-            context.context,
-            result.session
-          );
-        case "stale_interaction":
-        case "accepted_pending":
-          return okAsync(undefined);
-        case "closed":
-          if (result.session.status === "CANCELLED") {
-            return settleAskingSession(
-              context.deps.client,
-              context.context,
-              result.session.id,
-              result.session.cancelReason === "saturday_cancelled"
-                ? "saturday_cancelled"
-                : "absent"
-            );
-          }
-          return toResultAsync(guardSessionAsking(result.session)).map(() => undefined);
-        case "session_not_found":
-          return toResultAsync(guardSessionExists(undefined)).map(() => undefined);
-        case "member_not_found":
-          return toResultAsync(guardRegisteredMemberId(undefined)).map(() => undefined);
-        case "deadline_passed":
-          return toResultAsync(
-            guardSessionAskingDeadlineOpen(result.session, now)
-          ).map(() => undefined);
-      }
-    });
-};
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
+    const now = context.context.clock.now();
+    const result = yield* fromDatabaseCall(
+      () => context.context.ports.sessionCommands.submitAskResponse({
+        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+        choice: "ABSENT", sourceInteractionId: context.interaction.id, now,
+        memberCountExpected: MEMBER_COUNT_EXPECTED
+      }),
+      "Failed to record absent response atomically."
+    );
+    logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
+      userId: context.interaction.user.id, memberId: context.memberId, choice: "ABSENT" },
+      "Absent response recorded via confirmation.");
+    switch (result.kind) {
+      case "transitioned":
+        return yield* reflectAskingCancellation(context.deps.client, context.context, result.session);
+      case "stale_interaction":
+      case "accepted_pending":
+        return;
+      case "closed":
+        if (result.session.status === "CANCELLED") {
+          return yield* settleAskingSession(context.deps.client, context.context, result.session.id,
+            result.session.cancelReason === "saturday_cancelled" ? "saturday_cancelled" : "absent");
+        }
+        yield* guardSessionAsking(result.session);
+        return;
+      case "session_not_found":
+        yield* guardSessionExists(undefined);
+        return;
+      case "member_not_found":
+        yield* guardRegisteredMemberId(undefined);
+        return;
+      case "deadline_passed":
+        yield* guardSessionAskingDeadlineOpen(result.session, now);
+        return;
+    }
+  });
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。
@@ -231,12 +191,12 @@ export const handleAbsentConfirmButton = async (
   _ack: { readonly acknowledged: true } = { acknowledged: true }
 ): Promise<void> => {
   const validation = validateAbsentConfirmPipeline({ interaction, deps, context: deps.context });
-  if (validation.isErr()) {
-    await handleAbsentConfirmError(interaction, validation.error);
+  if (Either.isLeft(validation)) {
+    await handleAbsentConfirmError(interaction, validation.left);
     return;
   }
 
-  const parsed = validation.value;
+  const parsed = validation.right;
 
   if (parsed.choice === "abort") {
     await interaction.editReply({
@@ -250,16 +210,19 @@ export const handleAbsentConfirmButton = async (
     return;
   }
 
-  const result = await loadSessionAndMemberStep(parsed).andThen(recordAbsentAndApplyStep);
+  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+    const ready = yield* loadSessionAndMemberStep(parsed);
+    yield* recordAbsentAndApplyStep(ready);
+  })));
 
-  await result.match(
-    async () => {
+  await Either.match(result, {
+    onRight: async () => {
       deps.wakeScheduler?.("ask_absent_confirmed");
       await interaction.editReply({
         content: askMessages.absentConfirm.confirmed,
         components: []
       });
     },
-    async (error) => handleAbsentConfirmError(interaction, error)
-  );
+    onLeft: (error) => handleAbsentConfirmError(interaction, error)
+  });
 };

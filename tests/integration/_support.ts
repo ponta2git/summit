@@ -4,9 +4,13 @@ import postgres from "postgres";
 
 import * as schema from "../../src/db/schema.js";
 
-// invariant: integration test 共通の DB setup。各 suite 専用に接続を張り、afterAll で閉じる。
-//   INTEGRATION_DB=1 gate と LOCAL_HOSTS allowlist は呼び出し側で済ませる前提。
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
+import { requireLocalTestUrl } from "./databaseLifecycle.ts";
+
+const clients = new Set<postgres.Sql>();
+export const closeIntegrationDbs = async (): Promise<void> => {
+  await Promise.all([...clients].map(client => client.end({ timeout: 5 })));
+  clients.clear();
+};
 
 export const isIntegration = process.env["INTEGRATION_DB"] === "1";
 
@@ -16,16 +20,12 @@ export interface IntegrationDb {
 }
 
 export const createIntegrationDb = (options: { readonly maxConnections?: number } = {}): IntegrationDb => {
-  const url = process.env["DATABASE_URL"] ?? "";
-  // secret: 本番誤爆防止。localhost / docker compose 内 hostname のみ許可。
-  if (url && !LOCAL_HOSTS.has(new URL(url).hostname)) {
-    throw new Error(
-      `Refusing integration test on non-local DATABASE_URL host: ${new URL(url).hostname}`
-    );
+  const url = requireLocalTestUrl(process.env["DATABASE_URL"]);
+  if (!isIntegration || !/^\/summit_test_[a-f0-9]{32}_[a-f0-9]{12}$/.test(url.pathname)) {
+    throw new Error("Integration clients require a file-owned disposable database");
   }
-  // tx: src/db/client.ts の singleton は流用しない。close 競合・並列時の脆さを避ける。
-  // Concurrency contracts explicitly opt into enough independent connections.
-  const client = postgres(url, { prepare: false, max: options.maxConnections ?? 1 });
+  const client = postgres(url.href, { prepare: false, max: options.maxConnections ?? 1, onnotice: () => undefined });
+  clients.add(client);
   const db = drizzle(client, { schema, casing: "snake_case" });
   return { db, client };
 };
@@ -58,7 +58,7 @@ export const seedBaseMembers = async (
       ('m2','444444444444444444','Member2'),
       ('m3','555555555555555555','Member3'),
       ('m4','666666666666666666','Member4')
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, display_name = EXCLUDED.display_name
   `);
 };
 

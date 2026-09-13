@@ -1,4 +1,4 @@
-import type { OutboxEntry, SessionRow } from "../../db/ports.ts";
+import type { OutboxDiagnostic, SessionRow } from "../../db/ports.ts";
 
 export interface InvariantWarning {
   readonly kind: string;
@@ -78,7 +78,7 @@ export const checkStrandedCancelledSessions = (
  * 最古 entry の dedupeKey を含め一次切り分けを容易にする。
  */
 export const checkStrandedOutboxEntries = (
-  entries: readonly OutboxEntry[]
+  entries: readonly OutboxDiagnostic[]
 ): InvariantWarning | undefined => {
   if (entries.length === 0) {return undefined;}
   const oldest = entries.reduce((a, b) =>

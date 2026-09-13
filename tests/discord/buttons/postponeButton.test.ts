@@ -19,14 +19,14 @@ describe("handlePostponeButton", () => {
   it("persists OK vote and re-renders postpone message from DB", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const context = createTestAppContext({
       now,
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const messageEdit = vi.fn(async () => undefined);
-    const interactionWithMessage = { ...interaction, message: { edit: messageEdit } };
+    const interactionWithMessage = { ...interaction, message: { id: session.postponeMessageId, edit: messageEdit } };
 
     await handlePostponeButton(
       asButtonInteraction(interactionWithMessage),
@@ -54,13 +54,13 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -85,7 +85,7 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: {
         sessions: [session],
         members: seededMembers,
@@ -95,7 +95,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -139,13 +139,13 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(customId, override);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -164,13 +164,13 @@ describe("handlePostponeButton", () => {
     const session = postponeSession({ status: "ASKING" });
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -187,7 +187,7 @@ describe("handlePostponeButton", () => {
   it("settles to POSTPONED and creates Saturday session when all 4 vote OK", async () => {
     const session = postponeSession();
     const { client, channelSend } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const context = createTestAppContext({
       now,
       seed: {
@@ -203,7 +203,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
