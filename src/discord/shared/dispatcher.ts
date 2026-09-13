@@ -153,11 +153,12 @@ export const registerInteractionHandlers = (
     readonly registry?: FeatureRegistry;
     readonly wakeScheduler?: (reason: string) => void;
   } = {}
-): void => {
+): { stop(): void; drain(): Promise<void> } => {
+  const active = new Set<Promise<void>>();
   const registry = options.registry ?? defaultRegistry;
-  client.on("interactionCreate", (interaction) => {
+  const onInteraction = (interaction: Interaction): void => {
     // ack: 3 秒制約に備え入口で try/catch を集約する。
-    void (async () => {
+    const handling = (async () => {
       try {
         const readyDeps =
           options.getReadyState === undefined
@@ -199,5 +200,14 @@ export const registerInteractionHandlers = (
         }
       }
     })();
-  });
+    active.add(handling);
+    const release = (): void => { active.delete(handling); };
+    // invariant: error通知の二重障害でも、追跡を解除してunhandled rejectionを残さない。
+    void handling.then(release, release);
+  };
+  client.on("interactionCreate", onInteraction);
+  return {
+    stop: () => { client.off("interactionCreate", onInteraction); },
+    drain: async () => { await Promise.allSettled([...active]); }
+  };
 };

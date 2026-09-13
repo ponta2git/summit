@@ -40,7 +40,7 @@ export const registerReconnectReplayHandlers = (input: {
   readonly isStartupCompleted: () => boolean;
   readonly bootId: string;
   readonly wakeScheduler?: (reason: string) => void;
-}): void => {
+}): { completeStartup(): void; stop(): void; drain(): Promise<void> } => {
   const { client, context, readiness, isStartupCompleted, bootId } = input;
   // why: reconnect 時に reconciler + startupRecovery を replay し disconnect 中の cron 副作用漏れを収束させる。
   // race: in-flight Promise lock + 時刻 debounce で flappy reconnect を直列化する。
@@ -49,9 +49,10 @@ export const registerReconnectReplayHandlers = (input: {
   let lastReplaySucceededAt: number | undefined;
   let connected = false;
   let connectionVersion = 0;
+  let stopped = false;
 
   const triggerReconnectReplay = (connectionChangedDuringReplay = false): void => {
-    if (!isStartupCompleted()) {
+    if (stopped || !isStartupCompleted()) {
       return;
     }
     if (replayInFlight) {
@@ -84,7 +85,9 @@ export const registerReconnectReplayHandlers = (input: {
       await Promise.resolve();
       try {
         const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
+        if (stopped) { return; }
         await unwrapResultAsync(runStartupRecovery(client, context));
+        if (stopped) { return; }
         input.wakeScheduler?.("reconnect_replay");
         const completedAt = Date.now();
         if (connected && replayVersion === connectionVersion) {
@@ -116,7 +119,9 @@ export const registerReconnectReplayHandlers = (input: {
         );
       } finally {
         replayInFlight = undefined;
-        if (!connected) {
+        if (stopped) {
+          readiness.markNotReady("shutting_down");
+        } else if (!connected) {
           readiness.markNotReady("reconnecting");
         } else if (replayVersion !== connectionVersion) {
           // race: 処理中に切断・再接続した世代を、旧 replay の成功 debounce で落とさない。
@@ -129,19 +134,36 @@ export const registerReconnectReplayHandlers = (input: {
     })();
   };
 
-  client.on("shardDisconnect", () => {
+  const onDisconnected = (): void => {
     connected = false;
     connectionVersion += 1;
-    if (!isStartupCompleted()) {
+    if (stopped || !isStartupCompleted()) {
       return;
     }
     readiness.markNotReady("reconnecting");
-  });
+  };
 
   const onConnected = (): void => {
     connected = true;
     triggerReconnectReplay();
   };
+  client.on("shardDisconnect", onDisconnected);
   client.on("shardReady", onConnected);
   client.on("shardResume", onConnected);
+  return {
+    completeStartup: () => {
+      // race: 起動recovery中の切断を、起動完了のmarkReadyで上書きしない。
+      if (stopped) { readiness.markNotReady("shutting_down"); }
+      else if (!connected) { readiness.markNotReady("reconnecting"); }
+      else { readiness.markReady(); }
+    },
+    stop: () => {
+      stopped = true;
+      readiness.markNotReady("shutting_down");
+      client.off("shardDisconnect", onDisconnected);
+      client.off("shardReady", onConnected);
+      client.off("shardResume", onConnected);
+    },
+    drain: async () => { await replayInFlight; }
+  };
 };

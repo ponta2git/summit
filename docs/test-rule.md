@@ -74,9 +74,9 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 | Interaction / command | ack順、guard失敗、success response、stale/race |
 | custom ID / registry | encode/decode、malformed、duplicate/prefix conflict、stale format |
 | Session aggregate | real/fake contract、lock/CAS、rollback、concurrent winner |
-| outbox | dedupe、順序、claim fencing、retry/dead-letter、backfill、recovery |
-| scheduler | fake clock、one-shot再構築、wake debounce、due-kind一回、supervisor fallback |
-| startup/reconnect | readiness、scope別recovery、in-flight lock、debounce |
+| outbox | dedupe、順序、claim fencing、retry/dead-letter、backfill、recovery、不正payloadのitem隔離 |
+| scheduler | fake clock、one-shot再構築、wake debounce、同種workの非重複、due-kind一回、supervisor fallback |
+| startup/reconnect/shutdown | readiness、scope別recovery、in-flight lock、接続世代とdebounce、受付停止後の新規副作用なし・処理中workのdrain |
 | time | JST、ISO week year、24:00、deadline、candidate、reminder |
 | env/user config | valid parse、invalid fail-fast、secret非出力 |
 | migration/schema consumer | momo-db check、Summit real DB integration、compatibility順序 |

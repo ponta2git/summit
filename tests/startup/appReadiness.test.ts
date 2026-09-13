@@ -21,13 +21,14 @@ const epoch = Date.parse("2026-04-24T12:00:00Z");
 
 const createHarness = (startupCompleted = true) => {
   const listeners = new Map<string, () => void>();
-  const client = asDiscordClient({ on: (event: string, callback: () => void) => { listeners.set(event, callback); } });
+  const client = asDiscordClient({ on: (event: string, callback: () => void) => { listeners.set(event, callback); },
+    off: (event: string) => { listeners.delete(event); } });
   const context = createTestAppContext(); const readiness = createAppReadiness(); const wake = vi.fn();
   let started = startupCompleted;
-  registerReconnectReplayHandlers({ client, context, readiness, wakeScheduler: wake,
+  const lifecycle = registerReconnectReplayHandlers({ client, context, readiness, wakeScheduler: wake,
     isStartupCompleted: () => started, bootId: "test-boot" });
-  return { client, context, readiness, wake,
-    completeStartup: () => { started = true; readiness.markReady(); },
+  return { client, context, readiness, wake, lifecycle, listeners,
+    completeStartup: () => { started = true; lifecycle.completeStartup(); },
     emit: (event: "shardReady" | "shardResume" | "shardDisconnect") => {
       const listener = listeners.get(event); if (!listener) { throw new Error(`Missing ${event} handler`); } listener();
     }
@@ -44,12 +45,35 @@ describe("reconnect readiness event control", () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
+  it("stops replay admission and drains current work without starting another recovery phase", async () => {
+    const reconcile = deferred<typeof report>();
+    vi.mocked(runReconciler).mockReturnValueOnce(ResultAsync.fromPromise(reconcile.promise, cause => new DatabaseError("reconcile", { cause })));
+    const h = createHarness(); h.emit("shardReady"); await setImmediate();
+    h.lifecycle.stop(); let drained = false;
+    const drain = h.lifecycle.drain().then(() => { drained = true; return undefined; }); await setImmediate();
+    try { expect(drained).toBe(false); expect(h.listeners.size).toBe(0); }
+    finally { reconcile.resolve(report); await drain; }
+    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
+    expect(runStartupRecovery).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
+  });
+
   it("ignores shard events during initial startup", async () => {
     const h = createHarness(false); h.emit("shardDisconnect"); h.emit("shardReady"); await setImmediate();
     expect(h.readiness.state).toStrictEqual({ ready: false, reason: "startup" });
     expect(runReconciler).not.toHaveBeenCalled(); expect(runStartupRecovery).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
     h.completeStartup(); h.emit("shardDisconnect");
     expect(h.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
+  });
+
+  it("keeps a connection lost during startup unready until it resumes", async () => {
+    const h = createHarness(false);
+    h.emit("shardReady"); h.emit("shardDisconnect"); h.completeStartup();
+    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
+    expect(runReconciler).not.toHaveBeenCalled();
+    h.emit("shardResume"); await h.lifecycle.drain();
+    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
+    h.lifecycle.stop();
   });
 
   it("recovers readiness after a disconnected Gateway session resumes", async () => {

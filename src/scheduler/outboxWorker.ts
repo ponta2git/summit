@@ -42,7 +42,8 @@ export const computeOutboxBackoff = (
 const deliverOne = async (
   client: Client,
   ctx: AppContext,
-  entry: OutboxEntry
+  entry: OutboxEntry,
+  isStopping: () => boolean
 ): Promise<void> => {
   const now = ctx.clock.now();
   const payload = entry.payload;
@@ -60,11 +61,12 @@ const deliverOne = async (
   }
 
   try {
+    if (isStopping()) { return; }
     const body = await renderOutboxPayload(ctx, entry);
     if (body === undefined) {
       // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
       const marked = await ctx.ports.outbox.markFailed(entry.id, {
-        error: `Unsupported outbox payload: kind=${payload.kind}, renderer=${payload.renderer}`,
+        error: "Unsupported outbox payload.",
         claimToken,
         now,
         nextAttemptAt: null
@@ -81,8 +83,6 @@ const deliverOne = async (
           event: "outbox.unsupported_payload",
           outboxId: entry.id,
           sessionId: entry.sessionId,
-          kind: payload.kind,
-          renderer: payload.renderer,
           dedupeKey: entry.dedupeKey
         },
         "Outbox worker: unsupported payload; moved to FAILED."
@@ -91,6 +91,7 @@ const deliverOne = async (
     }
 
     const channel = await getTextChannel(client, payload.channelId);
+    if (isStopping()) { return; }
     const canSend = await ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() });
     if (!canSend) {
       logger.info(
@@ -99,6 +100,7 @@ const deliverOne = async (
       );
       return;
     }
+    if (isStopping()) { return; }
     const sent = await channel.send(body);
     if (payload.renderer === "reminder") {
       const completed = await completeReminderDelivery(
@@ -165,7 +167,8 @@ const deliverOne = async (
   } catch (error: unknown) {
     const failedNow = ctx.clock.now();
     const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
-    const message = error instanceof Error ? error.message : String(error);
+    // redact: 外部例外のmessageにはtokenや接続情報が含まれるため、DBにも固定診断だけを保存する。
+    const message = error instanceof AppError ? `Outbox delivery failed (${error.code}).` : "Outbox delivery failed.";
     const marked = await ctx.ports.outbox.markFailed(entry.id, {
       error: message,
       claimToken,
@@ -178,7 +181,8 @@ const deliverOne = async (
           event: "outbox.claim_lost",
           outboxId: entry.id,
           sessionId: entry.sessionId,
-          error: message
+          error,
+          failureSummary: message
         },
         "Outbox worker lost claim while recording delivery failure."
       );
@@ -192,7 +196,8 @@ const deliverOne = async (
         dedupeKey: entry.dedupeKey,
         attempt: entry.attemptCount,
         nextAttemptAt: nextAttemptAt?.toISOString() ?? null,
-        error: message
+        error,
+        failureSummary: message
       },
       "Outbox worker: send failed."
     );
@@ -207,8 +212,10 @@ const deliverOne = async (
  */
 export const runOutboxWorkerTick = (
   client: Client,
-  ctx: AppContext
+  ctx: AppContext,
+  isStopping: () => boolean = () => false
 ): SchedulerResult<{ readonly claimed: number }> => {
+  if (isStopping()) { return okAsync({ claimed: 0 }); }
   const now = ctx.clock.now();
   return fromDatabaseCall(
     () => ctx.ports.outbox.claimNextBatch({
@@ -223,7 +230,12 @@ export const runOutboxWorkerTick = (
     }
     // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
     return fromAppCall(
-      () => Promise.all(batch.map((entry) => deliverOne(client, ctx, entry))).then(() => ({ claimed: batch.length })),
+      async () => {
+        const results = await Promise.allSettled(batch.map((entry) => deliverOne(client, ctx, entry, isStopping)));
+        const failed = results.find(result => result.status === "rejected");
+        if (failed) { throw new InvariantViolationError("Failed to finalize outbox delivery.", { cause: failed.reason }); }
+        return { claimed: batch.length };
+      },
       (cause: unknown): AppError => cause instanceof AppError
         ? cause
         : new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause })

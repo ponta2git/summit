@@ -25,6 +25,7 @@ type SchedulerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 export interface SchedulerController {
   wake(reason: string): void;
   stop(): void;
+  drain(): Promise<void>;
   recompute(reason: string): Promise<void>;
 }
 
@@ -60,6 +61,27 @@ export const createSchedulerController = (
   let stopped = false;
   let outboxTimer: TimeoutHandle | undefined;
   let outboxActive = false;
+  const running = new Map<TimerKind | "outbox_worker", Promise<void>>();
+  let outboxWakeQueued = false;
+
+  const runOwnedTick = (
+    kind: TimerKind | "outbox_worker",
+    run: () => SchedulerResult<unknown>,
+    onSuccess?: () => Promise<void>
+  ): Promise<void> => {
+    if (stopped) { return Promise.resolve(); }
+    const current = running.get(kind);
+    if (current) { return current; }
+    const pending = runResultTickSafely({ name: kind, logger }, run, onSuccess).finally(() => {
+      running.delete(kind);
+      if (kind === "outbox_worker" && outboxWakeQueued && !stopped) {
+        outboxWakeQueued = false;
+        controller.wake("outbox_work_queued");
+      }
+    });
+    running.set(kind, pending);
+    return pending;
+  };
 
   const clearTimer = (kind: TimerKind): void => {
     const handle = timers.get(kind);
@@ -100,7 +122,7 @@ export const createSchedulerController = (
     const delayMs = delayUntil(now, at);
     const handle = setTimeout(() => {
       timers.delete(kind);
-      void runResultTickSafely({ name: kind, logger }, run)
+      void runOwnedTick(kind, run)
         .finally(() => controller.wake(`${kind}_timer_fired`));
     }, delayMs);
     timers.set(kind, handle);
@@ -117,20 +139,22 @@ export const createSchedulerController = (
     if (stopped) {return;}
     outboxTimer = setTimeout(() => {
       outboxTimer = undefined;
-      void runResultTickSafely(
-        { name: "outbox_worker", logger },
-        () => runOutboxWorkerTick(client, context),
+      void runOwnedTick(
+        "outbox_worker",
+        () => runOutboxWorkerTick(client, context, () => stopped),
         continueOutboxLoop
       );
     }, delayMs);
   };
 
   const continueOutboxLoop = async (): Promise<void> => {
+    if (stopped) { return; }
     const now = context.clock.now();
     const nextDispatchAt = await readDatabase(
       () => context.ports.outbox.getNextDispatchAt(now),
       "Failed to read next outbox dispatch time."
     );
+    if (stopped) { return; }
     if (isDue(nextDispatchAt, now)) {
       scheduleOutboxLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);
       return;
@@ -140,6 +164,7 @@ export const createSchedulerController = (
   };
 
   const scheduleOutbox = (nextDispatchAt: Date | null, now: Date): void => {
+    if (stopped) { return; }
     if (nextDispatchAt === null) {
       stopOutboxWorker("no_work");
       return;
@@ -182,6 +207,7 @@ export const createSchedulerController = (
     let didRun = false;
 
     while (true) {
+      if (stopped) { return didRun; }
       const now = context.clock.now();
       const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
         readDatabase(
@@ -193,6 +219,7 @@ export const createSchedulerController = (
           "Failed to read next outbox dispatch time."
         )
       ]);
+      if (stopped) { return didRun; }
       let ranThisPass = false;
 
       const runIfDue = async (
@@ -200,6 +227,7 @@ export const createSchedulerController = (
         at: Date | null,
         run: () => SchedulerResult<unknown>
       ): Promise<void> => {
+        if (stopped) { return; }
         if (!isDue(at, now)) {
           scheduleTimer(kind, at, run);
           return;
@@ -212,7 +240,7 @@ export const createSchedulerController = (
           return;
         }
         attemptedDueKinds.add(kind);
-        await runResultTickSafely({ name: kind, logger }, run);
+        await runOwnedTick(kind, run);
         ranThisPass = true;
       };
 
@@ -227,7 +255,12 @@ export const createSchedulerController = (
       if (!ranThisPass) {
         // Re-read after due work so an intent enqueued by the tick is visible to the
         // outbox scheduler in the same recompute.
-        scheduleOutbox(nextOutboxDispatchAt, now);
+        if (running.has("outbox_worker")) {
+          // race: 配送後のidle queryと交差したwakeを、batch完了後に再読込する。
+          outboxWakeQueued = true;
+        } else {
+          scheduleOutbox(nextOutboxDispatchAt, now);
+        }
         return didRun;
       }
       didRun = true;
@@ -292,6 +325,7 @@ export const createSchedulerController = (
       clearAllTimers();
       stopOutboxWorker("shutdown");
     },
+    drain: async () => { await Promise.allSettled([recomputeInFlight, ...running.values()]); },
     recompute
   };
 

@@ -12,7 +12,7 @@ import { reconcileMembers } from "./members/reconcile.ts";
 import { runReconciler } from "./scheduler/reconciler.ts";
 import { createAskScheduler, runStartupRecovery, type AppScheduler } from "./scheduler/index.ts";
 import { unwrapResultAsync } from "./errors/result.ts";
-import { shutdownGracefully } from "./shutdown.ts";
+import { isShuttingDown, shutdownGracefully } from "./shutdown.ts";
 import { appConfig } from "./userConfig.ts";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.ts";
 import { createBootPhaseLogger } from "./startup/bootLogging.ts";
@@ -34,7 +34,7 @@ const wakeSchedulers = (reason: string): void => {
   resultNotifications?.wake(reason);
 };
 
-registerInteractionHandlers(client, appContext, {
+const interactions = registerInteractionHandlers(client, appContext, {
   getReadyState: () => readiness.state,
   wakeScheduler: wakeSchedulers
 });
@@ -48,10 +48,18 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
     stopScheduler: () => {
+      interactions.stop();
+      readiness.markNotReady("shutting_down");
+      reconnect.stop();
       resultNotifications?.stop();
       scheduler?.stop();
     },
-    waitForInFlightSend: async () => { await Promise.all([waitForInFlightSend(), resultNotifications?.drain()]); },
+    waitForInFlightSend: async () => {
+      const results = await Promise.allSettled([startupInFlight, interactions.drain(), reconnect.drain(),
+        waitForInFlightSend(), scheduler?.drain(), resultNotifications?.drain()]);
+      const failed = results.find(result => result.status === "rejected");
+      if (failed) { throw failed.reason; }
+    },
     closeDb,
     destroyClient: () => client.destroy()
   })
@@ -79,7 +87,7 @@ const bootId = randomUUID();
 const bootStartedAt = Date.now();
 const logBootPhase = createBootPhaseLogger(bootId, bootStartedAt);
 
-registerReconnectReplayHandlers({
+const reconnect = registerReconnectReplayHandlers({
   client,
   context: appContext,
   readiness,
@@ -96,10 +104,13 @@ const run = async (): Promise<void> => {
     buildMemberReconcileInputs(appConfig.memberUserIds, appConfig.memberDisplayNames),
     db
   );
+  if (isShuttingDown()) { return; }
   logBootPhase("db_connect");
   await resultNotifications?.start();
+  if (isShuttingDown()) { resultNotifications?.stop(); return; }
 
   await client.login(env.DISCORD_TOKEN);
+  if (isShuttingDown()) { return; }
   logBootPhase("login");
 
   attachRateLimitLogging(client);
@@ -114,6 +125,7 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
   const report = await unwrapResultAsync(runReconciler(client, appContext, { scope: "startup" }));
+  if (isShuttingDown()) { return; }
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,
     askCreated: report.askCreated,
@@ -126,8 +138,9 @@ const run = async (): Promise<void> => {
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   // race: scheduler は本呼び出しの完了**後**に生成し、startup recovery との重複処理を避ける。
   await unwrapResultAsync(runStartupRecovery(client, appContext));
+  if (isShuttingDown()) { return; }
   startupCompleted = true;
-  readiness.markReady();
+  reconnect.completeStartup();
 
   // single-instance: scheduler は 1 プロセスで 1 回のみ生成する。
   scheduler = createAskScheduler({
@@ -141,6 +154,8 @@ const run = async (): Promise<void> => {
   const commitSha = env.FLY_IMAGE_REF ?? env.GIT_SHA ?? "unknown";
   logBootPhase("ready", {
     event: "startup.ready",
+    applicationReady: readiness.state.ready,
+    readinessReason: readiness.state.reason,
     commitSha,
     discordGuildId: appConfig.discord.guildId,
     channelId: appConfig.discord.channelId,
@@ -157,7 +172,8 @@ const run = async (): Promise<void> => {
   );
 };
 
-void run().catch((error: unknown) => {
+const startupInFlight = run().catch((error: unknown) => {
+  if (isShuttingDown()) { return; }
   readiness.markNotReady("startup_failed");
   logger.error({ error, bootId }, "Failed to start Discord bot.");
   process.exit(1);

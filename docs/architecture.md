@@ -124,15 +124,25 @@ deadline、postpone deadline、reminder、outbox dispatch は DB の次回時刻
 5. 同じ due kind は一回の recompute で一度だけ試す。reminder は配送完了まで due のままになり得るため、無制限再計算を防ぐ。
 6. outbox は作業がある間だけ burst worker を動かし、idle なら停止する。
 
+timerとrecomputeが共有する同種workは実行Promiseを一つだけ保持し、outbox batchの配送・確定・次回時刻取得までを所有する。配送中のwakeは完了後の再読込へ引き継ぐ。cron callbackも非同期tick全体を返し、`noOverlap`とshutdownの待機対象を一致させる。
+
 interaction、aggregate command、startup/reconnect が新しい work を作った場合は `wakeScheduler(reason)` を呼ぶ。supervisor は missed wake、claim expiry、timer drift の fallback であり、通常経路が supervisor の次回実行を待つ設計にしない。
 
 ### Startup と reconnect
 
 - startup 中と reconnect replay 中は application readiness を false にし、Interaction を ephemeral で拒否する。
+- startup完了時も接続状態を確認し、起動recovery中に切断した場合はreadyにしない。再接続後のreplayでreadyへ戻す。起動完了logにも`applicationReady`と`readinessReason`を残し、起動phaseの完了と現在の受付可否を区別する。
 - startup は dead-letter chain recovery、expired claim、stranded transition、missing intent/message、期限超過 Session を DB から収束させる。
 - reconnect は`shardReady`と`shardResume`の両方を復旧入口とし、in-flight lock と debounce で初回readyと並行replayを区別する。replay中の切断はreadyへ戻さず、新しい接続世代の復旧要求を保持する。lockは処理開始前に登録し、同期例外・Result失敗の両方で解放する。debounceは成功完了時から測り、失敗後は次の再接続で再試行できる。
 - Discord message の active probe は API 負荷が高いため startup に限定する。通常 tick は Unknown Message を検出したとき opportunistic に再生成する。
 - poison payload の FAILED 復帰は startup だけで行い、定期 tick や reconnect で hot loop を作らない。
+
+### Shutdown
+
+- Interaction、reconnect、HTTP受付、cron、one-shot timerの新規仕事を先に止め、readinessをfalseにする。
+- startup、処理中Interaction、reconnect replay、scheduler/outbox、A/B受付・配送を上限付きでdrainしてからDBとDiscordを閉じる。batch内の一件が失敗しても、他の処理のsettlementまで追跡を維持する。
+- startupは各非同期phaseの完了後に停止状態を確認し、停止開始後にlogin・recovery・scheduler生成を進めない。HTTPのlisten開始もPromiseで所有し、開始中のstopはその完了後にlistenerを閉じる。
+- 上限到達時の未完了claimは次の起動で回収する。待機上限は`src/config.ts`を正本とする。
 
 ### A/Bの受信と配送
 
@@ -142,7 +152,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - DB障害の連続回数は、claimと必要な次回配送時刻の取得がすべて成功してから戻す。時刻取得だけの障害でも再試行上限を維持する。
 - supervisorのA/B wakeをattendance処理より先に呼び、一方の障害で他方を抑止しない。retentionもfamilyごとに独立させる。idle中に短周期DB pollingを追加しない。
 - Discord待機中はclaimを延長するがDB transactionを保持しない。開始・確定時のCASが失効ownerを排除する。部分数・renderer・宛先・リンクを初回計画から変更しない。
-- shutdownはreceiverとdispatcherの新規仕事を止め、受付と送信を上限付きでdrainしてDB・Discordを閉じる。未完了claimは次の起動で回収する。値は`src/config.ts`と`src/notifications/config.ts`を参照する。
+- receiverとdispatcherのstop/drainは共通shutdownへ参加する。配送固有の実行値は`src/notifications/config.ts`を参照する。
 
 ## 7. Configuration と logging
 
@@ -158,7 +168,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts`は運用接続設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。
 - user config は重複しない固定4名のidentityを検証し、起動時に表示名と一つのtransactionでDBへreconcileする。過去履歴を守るため、設定から消えたmember rowは自動削除せず、既存IDも再利用しない。新規IDの生成はreconcileが所有し、設定の配列順に依存させない。
 - pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
-- log messageは固定文言とし、必要な識別子・状態・診断分類を構造化して出す。token、接続文字列、Authorizationのkey redactは追加防御として維持する。Discord rate limitはroute templateと待機時間を記録し、tokenを含み得るmajor parameterは記録しない。
+- log messageとDBへ保存する失敗診断は固定文言・分類とし、必要な識別子・状態・診断分類を構造化して出す。token、接続文字列、Authorizationのkey redactは追加防御として維持する。Discord rate limitはroute templateと待機時間を記録し、tokenを含み得るmajor parameterは記録しない。
 - Interaction payload や SQL bind を丸ごと記録せず、必要な識別子と状態遷移の `from` / `to` / `reason` に限定する。
 - 外部 healthcheck ping はアプリから送信しない。運用観測は構造化ログと `/status` を基本とする。
 - A/B有効化は受信token・別の運用token・Web originの3項目を一組にする。部分設定や同じtokenの兼用を起動時に拒否する。状態・設定・再試行の専用CLIは[通知運用](operations/result-notifications.md)を参照する。

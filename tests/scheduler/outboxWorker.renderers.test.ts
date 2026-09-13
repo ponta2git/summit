@@ -125,8 +125,7 @@ describe("outbox worker renderers", () => {
     const [entry] = ctx.ports.outbox.listEntries();
     expect({ status: entry?.status, lastError: entry?.lastError }).toStrictEqual({
       status: "FAILED",
-      lastError:
-        "Unsupported outbox payload: kind=send_message, renderer=not_registered"
+      lastError: "Unsupported outbox payload."
     });
   });
 });

@@ -22,6 +22,7 @@ export interface NotificationReceiver {
 export const createNotificationReceiver = (deps: NotificationHttpDeps): NotificationReceiver => {
   const active = new Set<Promise<unknown>>();
   let stopped = false;
+  let starting: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
   const server = createServer({ maxHeaderSize: 8_192 }, (request, response) => {
     request.on("error", () => undefined);
@@ -64,16 +65,22 @@ export const createNotificationReceiver = (deps: NotificationHttpDeps): Notifica
     server,
     start: async (host, port) => {
       if (!isPrivateNotificationBind(host)) { throw new Error("Notification receiver requires a private or loopback bind"); }
-      await new Promise<void>((resolve, reject) => {
+      if (stopped) { throw new Error("Notification receiver is stopped"); }
+      if (starting) { throw new Error("Notification receiver has already started"); }
+      starting = new Promise<void>((resolve, reject) => {
         const failed = (error: Error): void => { reject(error); };
         server.once("error", failed);
         server.listen({ host, port, ipv6Only: true }, () => { server.off("error", failed); resolve(); });
       });
+      await starting;
+      if (stopped) { await closing; }
     },
     stop: () => {
       if (stopped) { return; }
       stopped = true;
-      closing = new Promise(resolve => { server.close(() => resolve()); });
+      // race: 非同期listenの完了前にcloseすると、開始callbackが完了しない場合がある。
+      closing = (starting ?? Promise.resolve()).catch(() => undefined)
+        .then(() => new Promise<void>(resolve => { server.close(() => resolve()); }));
     },
     drain: async () => { await Promise.allSettled([...active]); await closing; }
   };

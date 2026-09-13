@@ -62,7 +62,7 @@ interface CronAdapter {
     expression: string,
     handler: () => void | Promise<void>,
     options: { timezone: string; noOverlap: boolean }
-  ): ScheduledTask;
+  ): Pick<ScheduledTask, "stop">;
 }
 
 export interface AskSchedulerDeps {
@@ -76,6 +76,7 @@ export interface AskSchedulerDeps {
 export interface AppScheduler {
   readonly controller: SchedulerController;
   stop(): void;
+  drain(): Promise<void>;
   wake(reason: string): void;
 }
 
@@ -205,11 +206,11 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   });
 
   // why: 新 feature の tick 追加箇所を registry に集約する。cron 式と JST 前提は src/config.ts の CRON_* に集約。
-  const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => void }> = [
+  const taskDefs: ReadonlyArray<{ readonly schedule: string; readonly tick: () => Promise<void> }> = [
     {
       schedule: CRON_ASK_SCHEDULE,
       tick: () =>
-        void runResultTickSafely(
+        runResultTickSafely(
           { name: "ask_dispatch", logger },
           () => runScheduledAskTick(sendAsk, context),
           () => controller.wake("ask_dispatch")
@@ -217,22 +218,21 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     },
     {
       schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
-      tick: () => {
-        void runResultTickSafely(
+      tick: async () => {
+        await Promise.allSettled([runResultTickSafely(
           { name: "outbox_retention", logger },
           () => runOutboxRetentionTick(context)
-        );
-        void runResultTickSafely(
+        ), runResultTickSafely(
           { name: "result_notification_retention", logger },
           () => fromDatabaseCall(() => context.ports.resultNotifications.prune(context.clock.now()), "Failed to prune result notifications.")
-        );
+        )]);
       }
     },
     {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       tick: () => {
         deps.wakeResultNotifications?.("supervisor");
-        void runResultTickSafely(
+        return runResultTickSafely(
           { name: "scheduler_supervisor", logger },
           () =>
             runOutboxMetricsTick(context).andThen(() =>
@@ -243,20 +243,31 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     }
   ];
 
-  const tasks = taskDefs.map((def) =>
-    cronModule.schedule(def.schedule, def.tick, { timezone: "Asia/Tokyo", noOverlap: true })
-  );
+  let stopped = false;
+  const running = new Set<Promise<void>>();
+  const track = (operation: () => void | Promise<void>): Promise<void> => {
+    const pending = (async () => { await operation(); })().finally(() => { running.delete(pending); });
+    running.add(pending);
+    return pending;
+  };
+  const tasks = taskDefs.map((def) => cronModule.schedule(def.schedule,
+    () => stopped ? Promise.resolve() : track(def.tick), { timezone: "Asia/Tokyo", noOverlap: true }));
 
   controller.wake("scheduler_created");
 
   return {
     controller,
     stop: () => {
-      for (const task of tasks) {
-        task.stop();
-      }
+      stopped = true;
       controller.stop();
+      for (const task of tasks) {
+        void track(async () => {
+          try { await task.stop(); }
+          catch (error: unknown) { logger.error({ error }, "Failed to stop cron task."); }
+        });
+      }
     },
+    drain: async () => { await Promise.allSettled([controller.drain(), ...running]); },
     wake: (reason) => controller.wake(reason)
   };
 };
