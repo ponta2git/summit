@@ -9,7 +9,7 @@ Summit のtoolchain、package command、source layout、TypeScript、命名、co
 - Node.js 24のnative TypeScript type strippingで開発entrypointとdev scriptを実行する。
 - local relative importは`.ts`拡張子を正規形とし、TypeScript buildが出力時に`.js`へrewriteする。
 - sourceはESM固定。`require()`、CommonJS module、暗黙のextension解決を追加しない。
-- native TypeScript runtimeは型検査をしない。`pnpm typecheck`と`pnpm build`を別途通す。
+- native TypeScript runtimeは型検査をしない。runtime 実装の変更は `docs/test-rule.md` の code gate で型検査と build を含める。
 - Node runtimeでeraseできないTypeScript syntaxを導入しない。`erasableSyntaxOnly`を弱めない。
 - optional peerを含む利用toolはmanifestへ明示し、pnpmのpeer自動installを有効へ戻さない。
 - `tsx`、`ts-node`、`jiti`等の別TypeScript runtimeを安易に追加しない。
@@ -52,7 +52,9 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 
 `package.json` を command の実体とする。`dev`、`start`、`commands:sync` は外部サービスへ接続し、`setup`、DB script、integration test は DB の変更を伴う。検証のためにアプリ起動や command 同期を追加しない。`.env.local` や git 管理外 YAML を読む script は、`AGENTS.md` の読取条件も満たす必要がある。
 
-探索・検証は必要な path に限定する。`verify:docs` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、検証した差分が作業元と一致することを確認する。
+探索・検証は必要な path に限定する。`verify:docs` と `docs:sync-agent` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、生成 adapter を作業元へ戻して、検証したファイルが作業元と一致することを確認する。
+
+一時コピーでは Node / pnpm の実効 version も確認する。外部依存のない文書 script に限り、実行時の `pnpm_config_verify_deps_before_run=false` で pnpm の自動 install を抑止できる。repository / global の設定は変更しない。
 
 ## 3. TypeScript
 
@@ -142,7 +144,7 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 - local secretは`.env.local`、commit可能なのはplaceholderだけの`.env.example`。
 - user向け非secret設定は`*.config.yml`の既定の追跡方針に従う。
 - runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。
-- token、接続文字列、monitor URL、Authorizationをcode、fixture、log、PR、commitへ載せない。
+- 機密値の扱いは `AGENTS.md` に従う。monitor URL も同じ扱いとする。
 - `console.*`を残さずpino loggerを使う。
 - redact pathを狭める変更はsecurity-sensitiveとしてreviewする。
 - Fly secretのunset/上書きはrunbookなしに実行しない。
@@ -168,12 +170,3 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 - 理由、非採用案、再評価条件はPRと現在の設計文書に残し、完了済み実装計画をdocsへ蓄積しない。
 
 Linear チケットの実装と必要な確認が完了し、PR の merge をもって Done にする場合は、PR 本文に `Fixes <issue ID>` を記載する。`Refs <issue ID>` は merge 後も追加作業または受け入れ確認が残る場合だけ使用し、その残作業を示す。この記法はチケット更新・外部へのメッセージ送信・PR merge 自体の実行権限を与えない。
-
-## 10. 完了条件
-
-- 仕様、設計文書、code、testが同じcontractを示す。
-- `git diff --check`が通る。
-- `docs/test-rule.md` で選んだ品質 gate が通る。code・test・実行設定・検証 script の変更は `pnpm run ci`、DB 契約変更は追加の integration test が必要。
-- 運用手順の変更は該当 runbook と実装・設定を照合する。手順の review を理由に production 操作を実行しない。
-- secret、production destructive operation、deploy禁止窓、single-instance逸脱がない。
-- new warningやbaseline failureを隠していない。
