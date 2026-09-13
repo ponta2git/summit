@@ -155,7 +155,7 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 - 週次flowをやり直すときは`pnpm db:reset`を使う。
 - memberを含めて消す必要がある場合だけ`pnpm db:reset --all`を使い、その後seedする。
 - `docker exec`や`psql`で手動TRUNCATEしない。
-- reset scriptのhost guardを迂回しない。
+- seed/reset/scenarioは`scripts/dev/localDatabase.ts`でlocal PostgreSQLの接続先を検証してからqueryを実行する。host guardを迂回しない。seedは起動時と同じmember reconcileを使い、配列順で過去のidentityを書き換えない。
 - schema変更はmomo-dbで行い、Summit側へmigration toolを再導入しない。
 
 ## 9. Git とPR

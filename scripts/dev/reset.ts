@@ -11,24 +11,7 @@ import { closeDb, db } from "../../src/db/client.ts";
 import { env } from "../../src/env.ts";
 import { logger } from "../../src/logger.ts";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres"]);
-
-// invariant: DATABASE_URL が localhost を指していないときは破壊的 TRUNCATE を絶対に実行しない。
-//   Neon / Fly の secret を誤って .env.local に入れた状態でも、ここで止める。
-const assertLocalDatabase = (url: string): void => {
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    throw new Error("DATABASE_URL is not parseable as URL");
-  }
-  if (!LOCAL_HOSTS.has(host)) {
-    throw new Error(
-      `Refusing to reset: DATABASE_URL host "${host}" is not localhost. ` +
-        `This script is for dev only. Expected one of: ${[...LOCAL_HOSTS].join(", ")}.`
-    );
-  }
-};
+import { assertLocalDatabase } from "./localDatabase.ts";
 
 const parseFlags = (argv: readonly string[]): { includeMembers: boolean } => {
   const includeMembers = argv.includes("--all") || argv.includes("--members");

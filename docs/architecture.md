@@ -156,7 +156,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 
 - application code は parse 済みの `env` / `appConfig` / exported constant だけを使う。
 - `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts`は運用接続設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。
-- user config の member identity を起動時に DB へ reconcile する。過去履歴を守るため、設定から消えた member row は自動削除しない。
+- user config は重複しない固定4名のidentityを検証し、起動時に表示名と一つのtransactionでDBへreconcileする。過去履歴を守るため、設定から消えたmember rowは自動削除せず、既存IDも再利用しない。新規IDの生成はreconcileが所有し、設定の配列順に依存させない。
 - pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
 - token、接続文字列、Authorization は logger redact から外さない。
 - Interaction payload や SQL bind を丸ごと記録せず、必要な識別子と状態遷移の `from` / `to` / `reason` に限定する。

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 
 import type { DbLike } from "../db/rows.ts";
@@ -12,7 +13,6 @@ interface ExistingMemberRow {
 }
 
 interface MemberRowToInsert {
-  readonly id: string;
   readonly userId: string;
   readonly displayName: string;
 }
@@ -35,12 +35,11 @@ export const computeMemberReconcilePlan = (
   const existingByUserId = new Map(existing.map((row) => [row.userId, row]));
 
   return {
-    rowsToInsert: memberInputs.flatMap((memberInput, index) => {
+    rowsToInsert: memberInputs.flatMap((memberInput) => {
       if (existingByUserId.has(memberInput.userId)) {
         return [];
       }
       return [{
-        id: `member-${index + 1}`,
         userId: memberInput.userId,
         displayName: memberInput.displayName
       }];
@@ -66,7 +65,7 @@ export const computeMemberReconcilePlan = (
  * Reconcile configured members into the DB members table idempotently.
  *
  * @remarks
- * user config は identity (userId) の SSoT、DB は display_name の正本。config から消えた行は DELETE しない
+ * user config は identity (userId) と明示された表示名の正本。config から消えた行は DELETE しない
  * （履歴保全）。起動時に cron 登録・login より前に呼び、失敗時は起動中止。
  * @see docs/architecture.md
  */
@@ -74,30 +73,34 @@ export const reconcileMembers = async (
   memberInputs: ReadonlyArray<MemberReconcileInput>,
   db: DbLike
 ): Promise<void> => {
-  const existing = await db
-    .select({
-      id: members.id,
-      userId: members.userId,
-      displayName: members.displayName
-    })
-    .from(members);
+  const plan = await db.transaction(async tx => {
+    const existing = await tx
+      .select({
+        id: members.id,
+        userId: members.userId,
+        displayName: members.displayName
+      })
+      .from(members);
 
-  const plan = computeMemberReconcilePlan(memberInputs, existing);
+    const changes = computeMemberReconcilePlan(memberInputs, existing);
 
-  for (const update of plan.displayNameUpdates) {
-    await db
-      .update(members)
-      .set({ displayName: update.displayName })
-      .where(eq(members.userId, update.userId));
-  }
+    for (const update of changes.displayNameUpdates) {
+      await tx
+        .update(members)
+        .set({ displayName: update.displayName })
+        .where(eq(members.userId, update.userId));
+    }
 
-  if (plan.rowsToInsert.length > 0) {
-    // idempotent: userId unique + onConflictDoNothing で race / 再実行を吸収。
-    await db
-      .insert(members)
-      .values([...plan.rowsToInsert])
-      .onConflictDoNothing({ target: members.userId });
-  }
+    if (changes.rowsToInsert.length > 0) {
+      // idempotent: userId unique + onConflictDoNothing で race / 再実行を吸収。
+      await tx
+        .insert(members)
+        // invariant: positionからIDを作らず、設定から外れた過去memberのidentityを再利用しない。
+        .values(changes.rowsToInsert.map(row => ({ id: randomUUID(), ...row })))
+        .onConflictDoNothing({ target: members.userId });
+    }
+    return changes;
+  });
 
   logger.info(
     {

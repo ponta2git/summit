@@ -16,7 +16,10 @@ export const userConfigSchema = z.object({
     guildId: discordId,
     channelId: discordId
   }),
-  members: z.array(memberSchema).length(4),
+  members: z.array(memberSchema).length(4).refine(
+    members => new Set(members.map(member => member.userId)).size === members.length,
+    "Member user IDs must be distinct"
+  ),
   schedule: z.object({
     askTime: hhmm,
     answerDeadline: hhmm,
