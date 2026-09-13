@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import type { Client } from "discord.js";
-import { type ResultAsync, okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
-import { type AppError, okResult } from "../errors/index.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import type { AppError } from "../errors/index.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
@@ -28,18 +28,17 @@ const repaintSkippedSession = (
   client: Client,
   ctx: AppContext,
   session: SessionRow
-): ResultAsync<void, never> =>
-  safeTry(async function* () {
+): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
     const keepCommittedCancellation = (messageKind: "ask" | "postpone") => (error: AppError) => {
       logger.warn({ event: "cancel_week.repaint_failed", sessionId: session.id, weekKey: session.weekKey, messageKind, error },
         "Cancellation is committed; a message could not be repainted.");
-      return okAsync(undefined);
+      return Effect.void;
     };
-    yield* updateAskMessage(client, ctx, session).orElse(keepCommittedCancellation("ask"));
+    yield* updateAskMessage(client, ctx, session).pipe(Effect.catchAll(keepCommittedCancellation("ask")));
     if (session.postponeMessageId) {
-      yield* updatePostponeMessage(client, ctx, session).orElse(keepCommittedCancellation("postpone"));
+      yield* updatePostponeMessage(client, ctx, session).pipe(Effect.catchAll(keepCommittedCancellation("postpone")));
     }
-    return okResult(undefined);
   });
 
 /**
@@ -49,12 +48,12 @@ export const applyManualSkip = (
   client: Client,
   ctx: AppContext,
   params: { readonly invokerUserId: string; readonly expectedWeekKey: string }
-): ResultAsync<SkipWeekOutcome, AppError> =>
-  safeTry(async function* () {
+): Effect.Effect<SkipWeekOutcome, AppError> =>
+  Effect.gen(function* () {
     const now = ctx.clock.now();
     const weekKey = isoWeekKey(now);
     if (weekKey !== params.expectedWeekKey) {
-      return okResult({ kind: "expired" as const });
+      return { kind: "expired" as const };
     }
     const candidateDate = candidateDateForAsk(now);
     const outcome = yield* fromDatabaseCall(
@@ -80,14 +79,14 @@ export const applyManualSkip = (
         },
         "Manual skip ignored because the week already has a held event."
       );
-      return okResult({ kind: "applied" as const, skippedCount: 0, weekKey });
+      return { kind: "applied" as const, skippedCount: 0, weekKey };
     }
     if (outcome.kind === "already_closed") {
       logger.info(
         { weekKey, invokerUserId: params.invokerUserId },
         "Manual skip found only already-closed sessions."
       );
-      return okResult({ kind: "applied" as const, skippedCount: 0, weekKey });
+      return { kind: "applied" as const, skippedCount: 0, weekKey };
     }
 
     for (const session of outcome.skippedSessions) {
@@ -104,9 +103,9 @@ export const applyManualSkip = (
       },
       "Manual skip applied atomically."
     );
-    return okResult({
+    return {
       kind: "applied" as const,
       skippedCount: outcome.skippedSessions.length,
       weekKey
-    });
+    };
   });

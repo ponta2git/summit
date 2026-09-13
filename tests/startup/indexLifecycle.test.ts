@@ -1,5 +1,6 @@
 import { setImmediate } from "node:timers/promises";
-import { ResultAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
+import { promiseCall } from "../../src/runtime/effect.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deferred } from "../helpers/deferred.ts";
 import type * as Environment from "../../src/env.ts";
@@ -25,9 +26,9 @@ vi.mock("../../src/startup/appReadiness.ts", () => ({
   createAppReadiness: () => ({ state: { ready: false }, markReady: () => { h.calls.push("ready"); }, markNotReady: vi.fn() }),
   registerReconnectReplayHandlers: () => ({ ...h.resource("reconnect"), completeStartup: () => { h.calls.push("ready"); } })
 }));
-vi.mock("../../src/scheduler/reconciler.ts", () => ({ runReconciler: () => ResultAsync.fromPromise(h.step("reconcile"), error => error).map(() => ({})) }));
+vi.mock("../../src/scheduler/reconciler.ts", () => ({ runReconciler: () => promiseCall(() => h.step("reconcile")).pipe(Effect.as({})) }));
 vi.mock("../../src/scheduler/index.ts", () => ({
-  runStartupRecovery: () => ResultAsync.fromPromise(h.step("recovery"), error => error),
+  runStartupRecovery: () => promiseCall(() => h.step("recovery")),
   createAskScheduler: () => { h.calls.push("scheduler.create"); return { ...h.resource("scheduler"), wake: vi.fn() }; }
 }));
 vi.mock("../../src/env.ts", async importOriginal => {

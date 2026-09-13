@@ -10,7 +10,7 @@ import {
 } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
-import { unwrapResultAsync } from "../helpers/assertions.js";
+import { runEffect } from "../helpers/assertions.js";
 
 beforeEach(resetReconcilerHarness);
 
@@ -18,7 +18,7 @@ describe("reconcileMissingAsk", () => {
   it("creates a Friday ASKING session when none exists after 08:00 JST", async () => {
     const ctx = createTestAppContext({ now: new Date("2026-04-24T01:00:00.000Z") });
 
-    expect(await unwrapResultAsync(reconcileMissingAsk(ctx))).toBe(1);
+    expect(await runEffect(reconcileMissingAsk(ctx))).toBe(1);
     const sessions = ctx.ports.sessions.listSessions();
     expect(sessions).toHaveLength(1);
     expect({ status: sessions[0]?.status, postponeCount: sessions[0]?.postponeCount })
@@ -28,14 +28,14 @@ describe("reconcileMissingAsk", () => {
   it("does nothing on Friday before 08:00 JST", async () => {
     const ctx = createTestAppContext({ now: new Date("2026-04-23T22:30:00.000Z") });
 
-    expect(await unwrapResultAsync(reconcileMissingAsk(ctx))).toBe(0);
+    expect(await runEffect(reconcileMissingAsk(ctx))).toBe(0);
     expect(ctx.ports.sessions.listSessions()).toStrictEqual([]);
   });
 
   it("does nothing on non-Friday days", async () => {
     const ctx = createTestAppContext({ now: new Date("2026-04-23T03:00:00.000Z") });
 
-    expect(await unwrapResultAsync(reconcileMissingAsk(ctx))).toBe(0);
+    expect(await runEffect(reconcileMissingAsk(ctx))).toBe(0);
     expect(ctx.ports.sessions.listSessions()).toStrictEqual([]);
   });
 
@@ -53,7 +53,7 @@ describe("reconcileMissingAsk", () => {
       seed: { sessions: [existing] }
     });
 
-    expect(await unwrapResultAsync(reconcileMissingAsk(ctx))).toBe(0);
+    expect(await runEffect(reconcileMissingAsk(ctx))).toBe(0);
     expect(ctx.ports.sessions.listSessions()).toHaveLength(1);
   });
 });
@@ -63,7 +63,7 @@ describe("reconcileMissingMessageIntents", () => {
     const session = buildSessionRow({ id: "a-null", status: "ASKING", askMessageId: null });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect((await unwrapResultAsync(reconcileMissingMessageIntents(ctx))).succeeded).toBe(1);
+    expect((await runEffect(reconcileMissingMessageIntents(ctx))).succeeded).toBe(1);
     expect((await ctx.ports.sessions.findSessionById("a-null"))?.askMessageId).toBeNull();
     expect(sentMessages).toStrictEqual([]);
     expect(ctx.ports.outbox.listEntries().map((entry) => entry.payload)).toStrictEqual([
@@ -82,7 +82,7 @@ describe("reconcileMissingMessageIntents", () => {
     });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect((await unwrapResultAsync(reconcileMissingMessageIntents(ctx))).succeeded).toBe(2);
+    expect((await runEffect(reconcileMissingMessageIntents(ctx))).succeeded).toBe(2);
     expect(ctx.ports.outbox.listEntries().map((entry) => ({
       renderer: entry.payload.kind === "send_message" ? entry.payload.renderer : undefined,
       aggregateRevision: entry.aggregateRevision,
@@ -97,8 +97,8 @@ describe("reconcileMissingMessageIntents", () => {
     const session = buildSessionRow({ id: "a-ok", status: "ASKING", askMessageId: "existing-id" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect((await unwrapResultAsync(reconcileMissingMessageIntents(ctx))).succeeded).toBe(0);
-    expect((await unwrapResultAsync(reconcileMissingMessageIntents(ctx))).succeeded).toBe(0);
+    expect((await runEffect(reconcileMissingMessageIntents(ctx))).succeeded).toBe(0);
+    expect((await runEffect(reconcileMissingMessageIntents(ctx))).succeeded).toBe(0);
     expect(sentMessages).toStrictEqual([]);
   });
 });

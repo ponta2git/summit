@@ -1,15 +1,15 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { probeAskMessage } from "../features/ask-session/messageEditor.ts";
 import { probePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
 import {
-  runSchedulerBatchResult,
+  runSchedulerBatchEffect,
   type SchedulerBatchReport,
-  type SchedulerResult
+  type SchedulerEffect
 } from "./scheduler.types.ts";
 
 /**
@@ -24,19 +24,19 @@ import {
 export const probeDeletedMessagesAtStartup = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> =>
-  fromDatabaseCall(
+): SchedulerEffect<SchedulerBatchReport> =>
+  Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findMessageRecoveryCandidates(),
     "Failed to find message recovery candidates for probing."
-  ).andThen((nonTerminal) =>
-    runSchedulerBatchResult(
+  ), (nonTerminal) =>
+    runSchedulerBatchEffect(
       "message_probe",
       nonTerminal,
-      (session) => safeTry(async function* () {
+      (session) => Effect.gen(function* () {
         const ask = yield* probeAskMessage(client, ctx, session);
         const postpone = session.status === "POSTPONE_VOTING" || session.status === "POSTPONED"
           ? yield* probePostponeMessage(client, ctx, session) : false;
-        return okAsync((ask ? 1 : 0) + (postpone ? 1 : 0));
+        return (ask ? 1 : 0) + (postpone ? 1 : 0);
       }),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       (failure) => {
@@ -52,5 +52,4 @@ export const probeDeletedMessagesAtStartup = (
         );
       },
       (recreated) => recreated
-    )
-  );
+    ));

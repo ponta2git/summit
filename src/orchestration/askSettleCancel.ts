@@ -1,10 +1,10 @@
 import type { Client } from "discord.js";
-import { type ResultAsync, okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import type { CancelReason } from "../features/ask-session/cancelReason.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { logger } from "../logger.ts";
@@ -15,8 +15,9 @@ export const reflectAskingCancellation = (
   client: Client,
   ctx: AppContext,
   settled: SessionRow
-): ResultAsync<void, AppError> =>
-  updateAskMessage(client, ctx, settled).andTee(() => {
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
+    yield* updateAskMessage(client, ctx, settled);
     logger.info(
       {
         sessionId: settled.id,
@@ -44,8 +45,8 @@ export const settleAskingSession = (
   ctx: AppContext,
   sessionId: string,
   reason: CancelReason
-): ResultAsync<void, AppError> =>
-  safeTry(async function* () {
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
     const resolvedReason: AskingCancelReason =
       reason === "absent"
         ? "absent"
@@ -60,7 +61,7 @@ export const settleAskingSession = (
       }),
       "Failed to settle cancelled ASKING aggregate."
     );
-    if (result.kind === "session_not_found") {return okAsync(undefined);}
+    if (result.kind === "session_not_found") {return;}
 
     if (result.kind === "closed") {
       logger.info(
@@ -72,8 +73,7 @@ export const settleAskingSession = (
         },
         "settleAskingSession called on an already settled session; skipping."
       );
-      return okAsync(undefined);
+      return;
     }
     yield* reflectAskingCancellation(client, ctx, result.session);
-    return okAsync(undefined);
   });

@@ -1,3 +1,5 @@
+import * as Effect from "effect/Effect";
+import * as Either from "effect/Either";
 import { setImmediate } from "node:timers/promises";
 import { type ActionRowBuilder, type ButtonBuilder } from "discord.js";
 import { describe, expect, it } from "vitest";
@@ -9,7 +11,7 @@ import { createDiscordTextFixture, createEditableMessage } from "../helpers/disc
 import { asButtonInteraction, buildButtonInteraction } from "../helpers/interaction.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
-import { unwrapResultAsync } from "../helpers/assertions.ts";
+import { runEffect } from "../helpers/assertions.ts";
 
 type Payload = { readonly content: string; readonly components: readonly ActionRowBuilder<ButtonBuilder>[] };
 const disabledButtons = (payload: Payload) => payload.components.flatMap(row => row.toJSON().components.map(button => button.disabled));
@@ -26,10 +28,10 @@ describe("message updates from persisted state", () => {
       written.push(payload);
     });
     const { client } = createDiscordTextFixture(undefined, { fetchedMessage: message });
-    const first = updateAskMessage(client, context, session);
+    const first = runEffect(updateAskMessage(client, context, session));
     await entered.promise;
     await context.ports.sessions.skipSession({ id: session.id, cancelReason: "manual_skip" });
-    const second = updateAskMessage(client, context, session);
+    const second = runEffect(updateAskMessage(client, context, session));
     await setImmediate();
     try { expect(calls).toBe(1); } finally { release.resolve(); await Promise.all([first, second]); }
     const latest = written.at(-1) as Payload;
@@ -45,8 +47,8 @@ describe("message updates from persisted state", () => {
       if (id === "deleted-id") { throw Object.assign(new Error("Unknown Message"), { code: 10008 }); }
       return createEditableMessage(id);
     });
-    await unwrapResultAsync(updateAskMessage(fixture.client, context, session));
-    await unwrapResultAsync(updateAskMessage(fixture.client, context, session));
+    await runEffect(updateAskMessage(fixture.client, context, session));
+    await runEffect(updateAskMessage(fixture.client, context, session));
     expect(fixture.send).toHaveBeenCalledOnce();
     expect(fixture.fetch.mock.calls.map(call => call[0])).toStrictEqual(["deleted-id", "replacement-id"]);
   });
@@ -62,10 +64,10 @@ describe("message updates from persisted state", () => {
       if (id === "first-message") { entered.resolve(); await release.promise; }
       edited.push(id);
     }));
-    const first = updateAskMessage(fixture.client, context, firstSession);
+    const first = runEffect(updateAskMessage(fixture.client, context, firstSession));
     await entered.promise;
     try {
-      await unwrapResultAsync(updateAskMessage(fixture.client, context, secondSession));
+      await runEffect(updateAskMessage(fixture.client, context, secondSession));
       expect(edited).toStrictEqual(["second-message"]);
     } finally { release.resolve(); await first; }
     expect(edited).toStrictEqual(["second-message", "first-message"]);
@@ -85,13 +87,13 @@ describe("message updates from persisted state", () => {
       written.push(payload);
     });
     const { client } = createDiscordTextFixture(undefined, { fetchedMessage: message });
-    const first = updateAskMessage(client, context, session);
+    const first = runEffect(Effect.either(updateAskMessage(client, context, session)));
     await entered.promise;
     await context.ports.sessions.skipSession({ id: session.id, cancelReason: "manual_skip" });
-    const second = updateAskMessage(client, context, session);
+    const second = runEffect(updateAskMessage(client, context, session));
     release.resolve();
-    expect((await first).isErr()).toBe(true);
-    await unwrapResultAsync(second);
+    expect(Either.isLeft(await first)).toBe(true);
+    await second;
     expect(written).toHaveLength(1);
     expect(disabledButtons(written[0] as Payload)).toStrictEqual([true, true, true, true, true]);
   });
@@ -102,7 +104,7 @@ describe("message updates from persisted state", () => {
     const payloads: unknown[] = [];
     const interaction = asButtonInteraction({ ...buildButtonInteraction("postpone:any:ok"),
       message: createEditableMessage("vote-id", async payload => { payloads.push(payload); }) });
-    await unwrapResultAsync(refreshPostponeMessage(createDiscordTextFixture().client, context, interaction, session.id));
+    await runEffect(refreshPostponeMessage(createDiscordTextFixture().client, context, interaction, session.id));
     const payload = payloads[0] as Payload;
     expect(disabledButtons(payload)).toStrictEqual([true, true]);
     expect(payload.content).toContain("明日の出欠確認へ進みます");

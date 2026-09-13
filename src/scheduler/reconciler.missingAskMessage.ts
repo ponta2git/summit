@@ -1,12 +1,12 @@
-import { okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import {
-  runSchedulerBatchResult,
+  runSchedulerBatchEffect,
   type SchedulerBatchReport,
-  type SchedulerResult
+  type SchedulerEffect
 } from "./scheduler.types.ts";
 
 /**
@@ -19,15 +19,15 @@ import {
  */
 export const reconcileMissingMessageIntents = (
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> =>
-  fromDatabaseCall(
+): SchedulerEffect<SchedulerBatchReport> =>
+  Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findMessageRecoveryCandidates(),
     "Failed to find message recovery candidates."
-  ).andThen((nonTerminal) =>
-    runSchedulerBatchResult(
+  ), (nonTerminal) =>
+    runSchedulerBatchEffect(
       "missing_message_intents",
       nonTerminal,
-      (session) => safeTry(async function* () {
+      (session) => Effect.gen(function* () {
         const queued = yield* fromDatabaseCall(
           () => ctx.ports.sessionCommands.recoverMissingMessageIntents(session.id),
           "Failed to recover missing message intents."
@@ -37,7 +37,7 @@ export const reconcileMissingMessageIntents = (
             weekKey: session.weekKey, renderer: intent.payload.renderer },
           "Reconciler: queued a missing message delivery intent.");
         }
-        return okAsync(queued.length);
+        return queued.length;
       }),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       (failure) => {
@@ -53,5 +53,4 @@ export const reconcileMissingMessageIntents = (
         );
       },
       (queued) => queued
-    )
-  );
+    ));

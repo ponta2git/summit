@@ -11,7 +11,7 @@ import { buildMemberReconcileInputs } from "./members/inputs.ts";
 import { reconcileMembers } from "./members/reconcile.ts";
 import { runReconciler } from "./scheduler/reconciler.ts";
 import { createAskScheduler, runStartupRecovery, type AppScheduler } from "./scheduler/index.ts";
-import { unwrapResultAsync } from "./errors/result.ts";
+import { runPromiseBoundary } from "./runtime/effect.ts";
 import { isShuttingDown, shutdownGracefully } from "./shutdown.ts";
 import { appConfig } from "./userConfig.ts";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.ts";
@@ -124,7 +124,7 @@ const run = async (): Promise<void> => {
   }
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
-  const report = await unwrapResultAsync(runReconciler(client, appContext, { scope: "startup" }));
+  const report = await runPromiseBoundary(runReconciler(client, appContext, { scope: "startup" }));
   if (isShuttingDown()) { return; }
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,
@@ -137,7 +137,7 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   // race: scheduler は本呼び出しの完了**後**に生成し、startup recovery との重複処理を避ける。
-  await unwrapResultAsync(runStartupRecovery(client, appContext));
+  await runPromiseBoundary(runStartupRecovery(client, appContext));
   if (isShuttingDown()) { return; }
   startupCompleted = true;
   reconnect.completeStartup();

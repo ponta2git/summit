@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Client } from "discord.js";
-import { type ResultAsync, okAsync, safeTry } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../config.ts";
@@ -11,7 +11,7 @@ import type {
 } from "../db/repositories/sessionCommands.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
 import {
@@ -45,12 +45,12 @@ export const buildSaturdaySessionInput = (
  * Parent POSTPONED + Saturday ASKING + Saturday ask intent are committed atomically before
  * this function runs. This function only repaints the existing parent message.
  */
-export const applyPostponeTransitionResult = (
+export const applyPostponeTransition = (
   client: Client,
   ctx: AppContext,
   result: PersistedPostponeTransition
-): ResultAsync<void, AppError> =>
-  safeTry(async function* () {
+): Effect.Effect<void, AppError> =>
+  Effect.gen(function* () {
     yield* updatePostponeMessage(client, ctx, result.session);
 
     if (result.outcome === "cancelled") {
@@ -64,7 +64,7 @@ export const applyPostponeTransitionResult = (
         },
         "Postpone voting cancelled."
       );
-      return okAsync(undefined);
+      return;
     }
 
     logger.info(
@@ -78,7 +78,6 @@ export const applyPostponeTransitionResult = (
       },
       "Postpone voting decided with Saturday session."
     );
-    return okAsync(undefined);
   });
 
 /**
@@ -89,7 +88,7 @@ export const settlePostponeVotingSession = (
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): ResultAsync<void, AppError> =>
+): Effect.Effect<void, AppError> =>
   fromDatabaseCall(
     () => ctx.ports.sessionCommands.settlePostponeVoting({
       sessionId: session.id,
@@ -98,8 +97,8 @@ export const settlePostponeVotingSession = (
       saturday: buildSaturdaySessionInput(session)
     }),
     "Failed to settle POSTPONE_VOTING aggregate."
-  ).andThen((result) =>
+  ).pipe(Effect.flatMap((result) =>
     result.kind === "transitioned"
-      ? applyPostponeTransitionResult(client, ctx, result)
-      : okAsync(undefined)
-  );
+      ? applyPostponeTransition(client, ctx, result)
+      : Effect.void
+  ));

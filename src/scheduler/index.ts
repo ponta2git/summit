@@ -2,6 +2,7 @@
 // Each tick is wrapped by `runTickSafely` for failure isolation; literal schedules
 // live in src/config.ts (CRON_*). @see docs/architecture.md
 
+import * as Effect from "effect/Effect";
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
@@ -13,7 +14,7 @@ import {
   MEMBER_COUNT_EXPECTED
 } from "../config.ts";
 import type { SessionRow } from "../db/rows.ts";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/effect.ts";
 import {
   sendAskMessage,
   type SendAskMessageContext,
@@ -30,13 +31,13 @@ import {
   type SchedulerController
 } from "./controller.ts";
 import {
-  runResultTickSafely
+  runEffectTickSafely
 } from "./tickRunner.ts";
 import {
   type SchedulerFailure,
-  type SchedulerResult,
+  type SchedulerEffect,
   type SchedulerBatchReport,
-  runSchedulerBatchResult
+  runSchedulerBatchEffect
 } from "./scheduler.types.ts";
 
 export { runStartupRecovery } from "./startupRecovery.ts";
@@ -83,7 +84,7 @@ export interface AppScheduler {
 export const runScheduledAskTick = (
   sendAsk: SendAsk,
   context: AppContext
-): SchedulerResult<SendAskMessageResult> =>
+): SchedulerEffect<SendAskMessageResult> =>
   fromAppCall(
     () => sendAsk({ trigger: "cron", context }),
     mapDatabaseError("Failed to queue ASK message.")
@@ -94,7 +95,7 @@ const settleDueAskingSession = (
   ctx: AppContext,
   session: SessionRow,
   now: Date
-): SchedulerResult<void> =>
+): SchedulerEffect<void> =>
   evaluateAndApplyDeadlineDecision(client, ctx, session, {
     memberCountExpected: MEMBER_COUNT_EXPECTED,
     now
@@ -110,21 +111,20 @@ const settleDueAskingSession = (
 export const runDeadlineTick = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> => {
+): SchedulerEffect<SchedulerBatchReport> => Effect.suspend(() => {
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findDueAskingSessions(now),
     "Failed to find due ASKING sessions."
-  ).andThen((due) =>
-    runSchedulerBatchResult(
+  ), (due) =>
+    runSchedulerBatchEffect(
       "deadline",
       due,
       (session) => settleDueAskingSession(client, ctx, session, now),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       logSchedulerFailure
-    )
-  );
-};
+    ));
+});
 
 /**
  * Settle every POSTPONE_VOTING session whose deadline has passed.
@@ -136,21 +136,20 @@ export const runDeadlineTick = (
 export const runPostponeDeadlineTick = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> => {
+): SchedulerEffect<SchedulerBatchReport> => Effect.suspend(() => {
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findDuePostponeVotingSessions(now),
     "Failed to find due POSTPONE_VOTING sessions."
-  ).andThen((due) =>
-    runSchedulerBatchResult(
+  ), (due) =>
+    runSchedulerBatchEffect(
       "postpone_deadline",
       due,
       (session) => settlePostponeVotingSession(client, ctx, session, now),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       logSchedulerFailure
-    )
-  );
-};
+    ));
+});
 
 /**
  * Dispatch the pre-start reminder for DECIDED sessions whose `reminderAt` has passed.
@@ -162,13 +161,13 @@ export const runPostponeDeadlineTick = (
 export const runReminderTick = (
   client: Client,
   ctx: AppContext
-): SchedulerResult<SchedulerBatchReport> => {
+): SchedulerEffect<SchedulerBatchReport> => Effect.suspend(() => {
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findDueReminderSessions(now),
     "Failed to find due reminder sessions."
-  ).andThen((due) =>
-    runSchedulerBatchResult(
+  ), (due) =>
+    runSchedulerBatchEffect(
       "reminder",
       due,
       (session) =>
@@ -178,9 +177,8 @@ export const runReminderTick = (
         ),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       logSchedulerFailure
-    )
-  );
-};
+    ));
+});
 
 /**
  * Register all scheduled cron tasks. Call once per process.
@@ -210,7 +208,7 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     {
       schedule: CRON_ASK_SCHEDULE,
       tick: () =>
-        runResultTickSafely(
+        runEffectTickSafely(
           { name: "ask_dispatch", logger },
           () => runScheduledAskTick(sendAsk, context),
           () => controller.wake("ask_dispatch")
@@ -219,10 +217,10 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     {
       schedule: CRON_OUTBOX_RETENTION_SCHEDULE,
       tick: async () => {
-        await Promise.allSettled([runResultTickSafely(
+        await Promise.allSettled([runEffectTickSafely(
           { name: "outbox_retention", logger },
           () => runOutboxRetentionTick(context)
-        ), runResultTickSafely(
+        ), runEffectTickSafely(
           { name: "result_notification_retention", logger },
           () => fromDatabaseCall(() => context.ports.resultNotifications.prune(context.clock.now()), "Failed to prune result notifications.")
         )]);
@@ -232,12 +230,11 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
       tick: () => {
         deps.wakeResultNotifications?.("supervisor");
-        return runResultTickSafely(
+        return runEffectTickSafely(
           { name: "scheduler_supervisor", logger },
           () =>
-            runOutboxMetricsTick(context).andThen(() =>
-              runSchedulerSupervisorTick(context, controller)
-            )
+            Effect.flatMap(runOutboxMetricsTick(context), () =>
+              runSchedulerSupervisorTick(context, controller))
         );
       }
     }

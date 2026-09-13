@@ -1,5 +1,6 @@
 // why: outbox observability metrics の depth/age snapshot と warn 昇格条件を fake port 経由で検証。
 
+import { runEffect } from "../helpers/assertions.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OutboxEntry } from "../../src/db/ports.js";
@@ -60,7 +61,7 @@ describe("runOutboxMetricsTick", () => {
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledTimes(1);
@@ -95,7 +96,7 @@ describe("runOutboxMetricsTick", () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -127,7 +128,7 @@ describe("runOutboxMetricsTick", () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -157,7 +158,7 @@ describe("runOutboxMetricsTick", () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledTimes(1);
@@ -188,7 +189,7 @@ describe("runOutboxMetricsTick", () => {
     }
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(callArg<Record<string, unknown>>(warn)["pending"]).toBe(
@@ -201,7 +202,7 @@ describe("runOutboxMetricsTick", () => {
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-    await runOutboxMetricsTick(ctx);
+    await runEffect(runOutboxMetricsTick(ctx));
 
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledTimes(1);

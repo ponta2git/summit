@@ -1,8 +1,8 @@
+import * as Effect from "effect/Effect";
 import { setImmediate } from "node:timers/promises";
-import { ResultAsync, okAsync } from "neverthrow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSchedulerController } from "../../src/scheduler/controller.ts";
-import type { SchedulerResult } from "../../src/scheduler/scheduler.types.ts";
+import type { SchedulerEffect } from "../../src/scheduler/scheduler.types.ts";
 import { OUTBOX_WORKER_BATCH_LIMIT, SCHEDULER_MIN_TIMER_DELAY_MS } from "../../src/config.ts";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { createTestAppContext } from "../testing/index.ts";
@@ -11,7 +11,7 @@ import { deferred } from "../helpers/deferred.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-const okTask = (): SchedulerResult<void> => okAsync(undefined);
+const okTask = (): SchedulerEffect<void> => Effect.succeed(undefined);
 const options = (context: ReturnType<typeof createTestAppContext>) => ({ client: stubClient(undefined), context, logger,
   runDeadlineTick: vi.fn(okTask), runPostponeDeadlineTick: vi.fn(okTask), runReminderTick: vi.fn(okTask) });
 
@@ -63,7 +63,7 @@ describe("scheduler work ownership", () => {
     const hints = { nextAskingDeadlineAt: deadline, nextPostponeDeadlineAt: null, nextReminderAt: null };
     ctx.ports.sessions.getSchedulerSessionHints = async () => hints;
     const work = deferred<void>(); const deps = options(ctx);
-    deps.runDeadlineTick.mockImplementation(() => ResultAsync.fromPromise(work.promise, cause => new DatabaseError("tick", { cause })));
+    deps.runDeadlineTick.mockImplementation(() => Effect.tryPromise({ try: () => work.promise, catch: cause => new DatabaseError("tick", { cause }) }));
     const controller = createSchedulerController(deps);
     stopWork = () => controller.stop(); drainWork = () => controller.drain(); releaseWork = () => work.resolve();
     await controller.recompute("schedule");

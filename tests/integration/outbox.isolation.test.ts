@@ -6,7 +6,7 @@ import { claimNextOutboxBatch, enqueueOutbox, findStrandedOutboxEntries } from "
 import { buildAskBodyIntent } from "../../src/db/repositories/sessionOutboxIntents.ts";
 import { discordNotifications, sessions } from "../../src/db/schema.ts";
 import { reconcileMissingMessageIntents } from "../../src/scheduler/reconciler.missingAskMessage.ts";
-import { unwrapResultAsync } from "../helpers/assertions.ts";
+import { runEffect } from "../helpers/assertions.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_support.ts";
 
@@ -57,7 +57,7 @@ describeDb("attendance outbox failure isolation (integration)", () => {
         return snapshot.filter(row => row.id === first.id);
       }
     } };
-    const report = await unwrapResultAsync(reconcileMissingMessageIntents({ ports: staleReadPorts, clock: { now: () => now } }));
+    const report = await runEffect(reconcileMissingMessageIntents({ ports: staleReadPorts, clock: { now: () => now } }));
     expect(report).toStrictEqual({ processed: 1, succeeded: 0, failures: [] });
     expect(await db.select({ dedupeKey: discordNotifications.dedupeKey, status: discordNotifications.status })
       .from(discordNotifications)).toStrictEqual([{ dedupeKey: `cancel-week-notice-${first.weekKey}`, status: "PENDING" }]);

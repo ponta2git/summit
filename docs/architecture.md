@@ -98,10 +98,10 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 
 - `AppError.code` で invariant、validation、not found、Discord API、database、shutdown を判別する。
 - `cause`は内部の分類・回復判断に保持し、logには`err`/`error`のserializerが許可したcode/statusと有限深度のcause分類だけを出す。外部Errorのmessage、stack、URL、request body、SQL bindを出さない。
-- Interaction pipeline、cross-feature orchestration、scheduler application operation の複数 I/O 合成には `Result` / `ResultAsync` を使う。
-- repository、ports、pure domain、timer mechanics を blanket に `ResultAsync` 化しない。
+- 同期のguard・validationはEffectの`Either`、Interaction pipeline・cross-feature orchestration・schedulerの非同期合成は`Effect.Effect<A, AppError>`を使う。値の合成はnativeの`Either.gen` / `Effect.gen` / operatorsで表し、独自のResult互換APIを置かない。
+- repository・portsはPromise、pure domainは具体値の契約を維持する。外部I/Oとの変換は`src/errors/effect.ts`が所有する。
 - CAS race、重複、claim lost、no-op は例外ではなく typed return / state return で表現する。
-- cron / timer callback は `Promise<void>` adapter で Result を unwrap し、失敗を tick 外へ持ち越さない。
+- cron / timer callback は `Promise<void>` adapter でEffectを実行し、失敗をtick外へ持ち越さない。
 - batch scheduler は item 単位の失敗をreportに集め、同期throwと非同期rejectで後続itemの継続方針を変えない。既知AppErrorは保持し、その他のitem異常はinvariantとして記録する。query全体、識別・集計・失敗通知などreport自体の生成に失敗した場合はphase全体の失敗を上位へ返す。
 - config/env parse、`assertNever`、起動不能な impossible state は fail-fast を許可する。
 - fire-and-forget は最外周で明示的に catch し、unhandled rejection を作らない。
@@ -110,18 +110,21 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 
 ### Effect の利用境界
 
-Effect v3 の安定版を、非同期resourceの所有、待機期限、並列I/Oのsettlement、終了時のfinalizerに使う。既存の`AppContext`によるDI、Promise ports、pure domainとtransaction境界、業務pipelineの`ResultAsync`は維持する。単純な逐次合成のためにEffectとResultを往復させず、Effectの実行はPromise adapterに閉じる。
+Effect v3の安定版を非同期application operationの共通表現とし、resourceの所有・待機期限・並列I/O・終了時のfinalizerも同じEffectで合成する。既存の`AppContext`によるDI、Promise ports、pure domainとtransaction境界は維持する。Effectの実行はInteraction・startup・timer等のPromise adapterに閉じ、内部でEffect→Promise→Effectを往復しない。
 
 - 外部I/Oは`src/runtime/effect.ts`の`promiseCall`等へthunkで渡す。開始済みPromiseをwrapして同期例外を取りこぼさない。外部の失敗はtyped error channel、pure計算のbugはdefectとして区別する。
+- Effectの生成ではI/O・時刻取得・lock取得を開始しない。実行時に読む値は`Effect.gen` / `Effect.suspend`内で求める。Effectを`await`するだけでは実行されないため、最外周は`runPromiseBoundary`で一度実行し、そのPromiseをdrainまで追跡する。
+- `Effect.either` / `catchAll`で扱うのはexpected failureだけとし、defectまで成功に変換しない。item隔離や終了処理など全causeを扱う境界を明示し、batchのinterruptionは次itemへ継続せず伝播する。
 - DBなど中断APIを持たないI/Oは`settledCall`で実際のsettlementまで所有する。並列queryの一件が失敗しても、兄弟queryを待ってからownerのdrain・排他枠を解放する。独立した配送の失敗を理由に他の配送を中断しない。
+- message再生成の送信からID保存までは一つの中断不能区間とし、送信成功後の中断で保存を飛ばさない。同じmessageのread/editはEffectの排他内で実行し、待機者の中断でもactiveな更新のlockを解放しない。
 - `timeout`は待機の期限であり、外部sendやcommitの取消を意味しない。送達不明は永続claim・nonce・CAS・既存retry方針で回復し、Effectの汎用retryで書込みや送信を再実行しない。中断不能I/O全体へtimeoutをかけても即座に終了するとは限らない。
 - Promise境界の`runPromiseBoundary`は`Exit`から元の失敗を取り出し、既存のAppError/status分類を保つ。`Cause.pretty`やEffectの既定console loggerへ外部errorを出さず、§5のsafe loggerを使う。
 - finalizerは後続の資源解放を飛ばさない。shutdownは受付停止・drainの失敗後もDB・Discordの解放を試みる。scope/fiberを導入する場合はownerとjoinの責務を明示し、無所有のdaemon fiberを作らない。
 - A/B配送は1配送のScopeがheartbeat fiberを所有し、終了時にtimerを中断して開始済みrenewの実完了を待つ。plan/beginの待機中に判明したclaim喪失も確認してから次のDiscord I/Oへ進む。開始済み送信の結果は既存のCASで保存を試みる。
 
-全portのEffect化やLayer/ServiceによるDI置換は、現状の明示依存に対して変換層を増やすため採用しない。resource graphが既存AppContextでは表現できない場合や、複数workflowで同じEffect合成が反復する場合に、対象境界の統一を再評価する。
+全portのEffect化やLayer/ServiceによるDI置換は、現状の明示依存に対して変換層を増やすため採用しない。resource graphが既存AppContextでは表現できない場合に再評価する。
 
-資料: [v3のerror分類](https://effect.website/docs/v3/error-management/two-error-types)、[並列性](https://effect.website/docs/v3/concurrency/basic-concurrency)、[resource管理](https://effect.website/docs/v3/resource-management/introduction)、[timeout](https://effect.website/docs/v3/error-management/timing-out)。APIは`package.json`の導入版と照合する。v4のpreview資料をv3の根拠として混在させない。
+資料: [同期・非同期APIの対応](https://effect.website/docs/v3/additional-resources/effect-vs-neverthrow)、[v3のerror分類](https://effect.website/docs/v3/error-management/two-error-types)、[並列性](https://effect.website/docs/v3/concurrency/basic-concurrency)、[resource管理](https://effect.website/docs/v3/resource-management/introduction)、[timeout](https://effect.website/docs/v3/error-management/timing-out)。APIは`package.json`の導入版と照合する。v4のpreview資料をv3の根拠として混在させない。
 
 ## 6. Scheduler architecture
 
@@ -133,7 +136,7 @@ deadline、postpone deadline、reminder、outbox dispatch は DB の次回時刻
 
 1. `SessionsPort.getSchedulerSessionHints` と `OutboxPort.getNextDispatchAt` を読む。
 2. future work は one-shot timer を張る。
-3. due work は既存 operation を `runResultTickSafely` 経由で実行する。
+3. due work は既存 operation を `runEffectTickSafely` 経由で実行する。
 4. work 後に DB を再読込し、同じ recompute 中に新しい種類の due work と新規 outbox intentを認識する。
 5. 同じ due kind は一回の recompute で一度だけ試す。reminder は配送完了まで due のままになり得るため、無制限再計算を防ぐ。
 6. outbox は作業がある間だけ burst worker を動かし、idle なら停止する。
@@ -147,7 +150,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - startup 中と reconnect replay 中は application readiness を false にし、Interaction を ephemeral で拒否する。
 - startup完了時も接続状態を確認し、起動recovery中に切断した場合はreadyにしない。再接続後のreplayでreadyへ戻す。起動完了logにも`applicationReady`と`readinessReason`を残し、起動phaseの完了と現在の受付可否を区別する。
 - startup は dead-letter chain recovery、expired claim、stranded transition、missing intent/message、期限超過 Session を DB から収束させる。
-- reconnect は`shardReady`と`shardResume`の両方を復旧入口とし、in-flight lock と debounce で初回readyと並行replayを区別する。replay中の切断はreadyへ戻さず、新しい接続世代の復旧要求を保持する。lockは処理開始前に登録し、同期例外・Result失敗の両方で解放する。debounceは成功完了時から測り、失敗後は次の再接続で再試行できる。
+- reconnect は`shardReady`と`shardResume`の両方を復旧入口とし、in-flight lock と debounce で初回readyと並行replayを区別する。replay中の切断はreadyへ戻さず、新しい接続世代の復旧要求を保持する。lockは処理開始前に登録し、同期例外・Effect失敗の両方で解放する。debounceは成功完了時から測り、失敗後は次の再接続で再試行できる。
 - Discord message の active probe は API 負荷が高いため startup に限定する。通常 tick は Unknown Message を検出したとき opportunistic に再生成する。
 - poison payload の FAILED 復帰は startup だけで行い、定期 tick や reconnect で hot loop を作らない。
 
@@ -195,7 +198,7 @@ OpenTelemetry は、単一 service のログ調査に collector / backend 運用
 |---|---|---|
 | DI container | factory と `AppContext` で graph が追える | resource lifecycle と provider 数が factory で追跡困難になる |
 | XState | typed state + pure decision + DB CAS で十分 | 並行/履歴状態や複雑な guard が増える |
-| 全層のEffect移行 | §5のresource境界だけで必要な所有権を表現でき、既存portsやDIの置換は変換層を増やす | Effect合成の反復やresource graphの拡大で境界統一の利益が上回る |
+| ports・DIのEffect化 | application operationのEffect合成と既存Promise portsで依存を追跡できる | resource graphが既存AppContextで表現困難になる |
 | Event sourcing | 過去時点再構成・監査要求がない | replay、監査、過去ルール再計算が要件になる |
 | OpenTelemetry | 単一serviceの構造化ログで足りる | 複数service traceとSLO運用が必要になる |
 | 外部message broker | PostgreSQL outboxで規模と運用を満たす | outbox量・latency・運用負荷がbroker導入コストを上回る |

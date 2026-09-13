@@ -1,5 +1,6 @@
 import { setImmediate } from "node:timers/promises";
-import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
+import { fromDatabaseCall } from "../../src/errors/effect.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppReadiness, registerReconnectReplayHandlers } from "../../src/startup/appReadiness.ts";
 import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../../src/config.ts";
@@ -38,8 +39,8 @@ const createHarness = (startupCompleted = true) => {
 describe("reconnect readiness event control", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(epoch);
-    vi.mocked(runReconciler).mockReset().mockReturnValue(okAsync(report));
-    vi.mocked(runStartupRecovery).mockReset().mockReturnValue(okAsync(recovered));
+    vi.mocked(runReconciler).mockReset().mockReturnValue(Effect.succeed(report));
+    vi.mocked(runStartupRecovery).mockReset().mockReturnValue(Effect.succeed(recovered));
     vi.spyOn(logger, "info").mockImplementation(() => undefined);
     vi.spyOn(logger, "error").mockImplementation(() => undefined);
   });
@@ -47,7 +48,7 @@ describe("reconnect readiness event control", () => {
 
   it("stops replay admission and drains current work without starting another recovery phase", async () => {
     const reconcile = deferred<typeof report>();
-    vi.mocked(runReconciler).mockReturnValueOnce(ResultAsync.fromPromise(reconcile.promise, cause => new DatabaseError("reconcile", { cause })));
+    vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
     const h = createHarness(); h.emit("shardReady"); await setImmediate();
     h.lifecycle.stop(); let drained = false;
     const drain = h.lifecycle.drain().then(() => { drained = true; return undefined; }); await setImmediate();
@@ -86,7 +87,7 @@ describe("reconnect readiness event control", () => {
 
   it.each(["success", "failure"] as const)("keeps readiness false if disconnected during replay %s", async outcome => {
     const reconcile = deferred<typeof report>();
-    vi.mocked(runReconciler).mockReturnValueOnce(ResultAsync.fromPromise(reconcile.promise, cause => new DatabaseError("reconcile", { cause })));
+    vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
     const h = createHarness(); h.emit("shardReady"); await setImmediate(); h.emit("shardDisconnect");
     if (outcome === "success") { reconcile.resolve(report); } else { reconcile.reject(new Error("disconnected")); }
     await setImmediate();
@@ -100,8 +101,8 @@ describe("reconnect readiness event control", () => {
   it.each(["success", "failure"] as const)("retains a resumed connection while an earlier replay ends in %s", async outcome => {
     const first = deferred<typeof report>(); const second = deferred<typeof report>();
     vi.mocked(runReconciler)
-      .mockReturnValueOnce(ResultAsync.fromPromise(first.promise, cause => new DatabaseError("first", { cause })))
-      .mockReturnValueOnce(ResultAsync.fromPromise(second.promise, cause => new DatabaseError("second", { cause })));
+      .mockReturnValueOnce(fromDatabaseCall(() => first.promise, "first"))
+      .mockReturnValueOnce(fromDatabaseCall(() => second.promise, "second"));
     const h = createHarness(); h.emit("shardReady"); await setImmediate();
     h.emit("shardDisconnect"); h.emit("shardResume");
     expect(runReconciler).toHaveBeenCalledOnce();
@@ -115,8 +116,8 @@ describe("reconnect readiness event control", () => {
 
   it("waits for reconcile then recovery, rejects overlapping replay and wakes before readiness", async () => {
     const reconcile = deferred<typeof report>(); const recovery = deferred<typeof recovered>();
-    vi.mocked(runReconciler).mockReturnValue(ResultAsync.fromPromise(reconcile.promise, cause => new DatabaseError("reconcile", { cause })));
-    vi.mocked(runStartupRecovery).mockReturnValue(ResultAsync.fromPromise(recovery.promise, cause => new DatabaseError("recovery", { cause })));
+    vi.mocked(runReconciler).mockReturnValue(fromDatabaseCall(() => reconcile.promise, "reconcile"));
+    vi.mocked(runStartupRecovery).mockReturnValue(fromDatabaseCall(() => recovery.promise, "recovery"));
     const h = createHarness();
     h.wake.mockImplementation(() => { expect(h.readiness.state.ready).toBe(false); });
     h.emit("shardReady"); h.emit("shardReady"); await setImmediate();
@@ -133,7 +134,7 @@ describe("reconnect readiness event control", () => {
 
   it("debounces from successful completion and replays at the exact boundary", async () => {
     const reconcile = deferred<typeof report>();
-    vi.mocked(runReconciler).mockReturnValueOnce(ResultAsync.fromPromise(reconcile.promise, cause => new DatabaseError("reconcile", { cause })));
+    vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
     const h = createHarness(); h.emit("shardReady"); await setImmediate();
     vi.setSystemTime(epoch + 1_000); reconcile.resolve(report); await setImmediate();
     vi.setSystemTime(epoch + 1_000 + RECONNECT_REPLAY_DEBOUNCE_MS - 1);
@@ -146,8 +147,8 @@ describe("reconnect readiness event control", () => {
 
   it.each(["reconcile", "recovery", "synchronous throw"] as const)("releases the in-flight lock and does not debounce after %s failure", async phase => {
     const error = new DatabaseError("replay failed");
-    if (phase === "reconcile") { vi.mocked(runReconciler).mockReturnValueOnce(errAsync(error)); }
-    if (phase === "recovery") { vi.mocked(runStartupRecovery).mockReturnValueOnce(errAsync(error)); }
+    if (phase === "reconcile") { vi.mocked(runReconciler).mockReturnValueOnce(Effect.fail(error)); }
+    if (phase === "recovery") { vi.mocked(runStartupRecovery).mockReturnValueOnce(Effect.fail(error)); }
     if (phase === "synchronous throw") { vi.mocked(runReconciler).mockImplementationOnce(() => { throw error; }); }
     const h = createHarness(); h.emit("shardReady"); await setImmediate();
     expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });

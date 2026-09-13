@@ -1,3 +1,4 @@
+import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { deferred } from "../helpers/deferred.js";
@@ -22,7 +23,7 @@ describe("outbox send-start cancellation boundary", () => {
       channelRequested.resolve();
       return channelReady.promise;
     });
-    const tick = runOutboxWorkerTick(client, ctx);
+    const tick = runEffect(runOutboxWorkerTick(client, ctx));
     await channelRequested.promise;
     ctx.ports.outbox.cancelForSessionIds([session.id], "unrelated-dedupe", now);
     channelReady.resolve(channel);

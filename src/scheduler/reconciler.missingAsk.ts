@@ -1,11 +1,11 @@
+import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
 import { ASK_DEADLINE_HHMM, ASK_START_HHMM } from "../config.ts";
-import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall, mapDatabaseError } from "../errors/effect.ts";
 import { sendAskMessage } from "../features/ask-session/send.ts";
 import { logger } from "../logger.ts";
 import { isoWeekKey } from "../time/index.ts";
-import { okAsync } from "neverthrow";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 const FRIDAY_JS_DAY = 5;
 
@@ -34,22 +34,22 @@ const isFridayAskWindow = (now: Date): boolean => {
  */
 export const reconcileMissingAsk = (
   ctx: AppContext
-): SchedulerResult<number> => {
+): SchedulerEffect<number> => Effect.suspend(() => {
   const now = ctx.clock.now();
   if (!isFridayAskWindow(now)) {
-    return okAsync(0);
+    return Effect.succeed(0);
   }
 
   const weekKey = isoWeekKey(now);
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0),
     "Failed to check for an existing ASK session."
-  ).andThen((existing) => {
-    if (existing) {return okAsync(0);}
-    return fromAppCall(
+  ), (existing) => {
+    if (existing) {return Effect.succeed(0);}
+    return Effect.map(fromAppCall(
       () => sendAskMessage({ trigger: "cron", context: ctx }),
       mapDatabaseError("Failed to create missing ASK session.")
-    ).map((result) => {
+    ), (result) => {
       if (result.status === "queued") {
         logger.info(
           {
@@ -65,4 +65,4 @@ export const reconcileMissingAsk = (
       return 0;
     });
   });
-};
+});

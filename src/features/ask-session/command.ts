@@ -1,12 +1,10 @@
+import { runPromiseBoundary } from "../../runtime/effect.ts";
+import * as Either from "effect/Either";
+import * as Effect from "effect/Effect";
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
-import { type ResultAsync } from "neverthrow";
 
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
-import { fromDiscordCall, toResultAsync } from "../../errors/result.ts";
+import type { AppError } from "../../errors/index.ts";
+import { fromDiscordCall } from "../../errors/effect.ts";
 import { logger } from "../../logger.ts";
 import { askMessages } from "./messages.ts";
 import { assertNever } from "../../util/assertNever.ts";
@@ -26,15 +24,17 @@ interface AskCommandPipelineStart {
 
 const validateAskCommand = (
   context: AskCommandPipelineStart
-): AppResult<AskCommandPipelineStart, AppError> =>
-  okResult(context)
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current));
+): Either.Either<AskCommandPipelineStart, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(context.interaction.guildId);
+    yield* guardChannelId(context.interaction.channelId);
+    yield* guardMemberUserId(context.interaction.user.id);
+    return context;
+  });
 
 const sendAskStep = (
   context: AskCommandPipelineStart
-): ResultAsync<Awaited<ReturnType<InteractionHandlerDeps["sendAsk"]>>, AppError> =>
+): Effect.Effect<Awaited<ReturnType<InteractionHandlerDeps["sendAsk"]>>, AppError> =>
   fromDiscordCall(
     () => context.deps.sendAsk({
       trigger: "command",
@@ -72,11 +72,13 @@ export const handleAskCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const pipelineStart: AskCommandPipelineStart = { interaction, deps };
-  const result = await toResultAsync(validateAskCommand(pipelineStart))
-    .andThen(sendAskStep);
+  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+    const validated = yield* validateAskCommand(pipelineStart);
+    return yield* sendAskStep(validated);
+  })));
 
-  await result.match(
-    async (sendResult) => {
+  await Either.match(result, {
+    onRight: async (sendResult) => {
       if (sendResult.status === "queued") {
         deps.wakeScheduler?.("ask_command_queued");
         await interaction.editReply(askMessages.interaction.ask.queued);
@@ -91,6 +93,6 @@ export const handleAskCommand = async (
       // invariant: SendAskMessageResult.status 追加時に型エラーで気付くため assertNever を残す。
       return assertNever(sendResult.status, "handleAskCommand: sendAsk result.status");
     },
-    async (error) => replyAskCommandError(interaction, error)
-  );
+    onLeft: (error) => replyAskCommandError(interaction, error)
+  });
 };

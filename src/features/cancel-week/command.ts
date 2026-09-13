@@ -1,3 +1,4 @@
+import * as Either from "effect/Either";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -17,11 +18,7 @@ import {
   guardMemberUserId,
   GUARD_REASON_TO_MESSAGE
 } from "../../discord/shared/guards.ts";
-import {
-  type AppError,
-  type AppResult,
-  okResult
-} from "../../errors/index.ts";
+import type { AppError } from "../../errors/index.ts";
 import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
 import { isoWeekKey } from "../../time/index.ts";
 
@@ -44,11 +41,13 @@ interface CancelWeekCommandStart {
 
 const validateCancelWeekCommand = (
   context: CancelWeekCommandStart
-): AppResult<CancelWeekCommandStart, AppError> =>
-  okResult(context)
-    .andThen((current) => guardGuildId(current.interaction.guildId).map(() => current))
-    .andThen((current) => guardChannelId(current.interaction.channelId).map(() => current))
-    .andThen((current) => guardMemberUserId(current.interaction.user.id).map(() => current));
+): Either.Either<CancelWeekCommandStart, AppError> =>
+  Either.gen(function* () {
+    yield* guardGuildId(context.interaction.guildId);
+    yield* guardChannelId(context.interaction.channelId);
+    yield* guardMemberUserId(context.interaction.user.id);
+    return context;
+  });
 
 const replyCancelWeekCommandValidationError = async (
   interaction: ChatInputCommandInteraction,
@@ -69,8 +68,8 @@ export const handleCancelWeekCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const validation = validateCancelWeekCommand({ interaction });
-  if (validation.isErr()) {
-    await replyCancelWeekCommandValidationError(interaction, validation.error);
+  if (Either.isLeft(validation)) {
+    await replyCancelWeekCommandValidationError(interaction, validation.left);
     return;
   }
 

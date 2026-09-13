@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_RETENTION_DELIVERED_MS,
@@ -5,8 +6,8 @@ import {
 } from "../config.ts";
 import { logger } from "../logger.ts";
 import { subMs } from "../time/index.ts";
-import { fromDatabaseCall } from "../errors/result.ts";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Prune terminal outbox rows past their retention deadline.
@@ -15,21 +16,21 @@ import type { SchedulerResult } from "./scheduler.types.ts";
  * idempotent: 削除のみで状態遷移なし。同一 tick の重複呼び出しに安全。
  * invariant: PENDING / IN_FLIGHT は repository 側で除外済。
  */
-export const runOutboxRetentionTick = (ctx: AppContext): SchedulerResult<{
+export const runOutboxRetentionTick = (ctx: AppContext): SchedulerEffect<{
   readonly deliveredPruned: number;
   readonly failedPruned: number;
   readonly cancelledPruned: number;
-}> => {
+}> => Effect.suspend(() => {
   const now = ctx.clock.now();
   const deliveredOlderThan = subMs(now, OUTBOX_RETENTION_DELIVERED_MS);
   const failedOlderThan = subMs(now, OUTBOX_RETENTION_FAILED_MS);
-  return fromDatabaseCall(
+  return Effect.tap(fromDatabaseCall(
     () => ctx.ports.outbox.prune({
       deliveredOlderThan,
       failedOlderThan
     }),
     "Failed to prune outbox rows."
-  ).andTee((result) => {
+  ), (result) => Effect.sync(() => {
     if (
       result.deliveredPruned > 0 ||
       result.failedPruned > 0 ||
@@ -45,5 +46,5 @@ export const runOutboxRetentionTick = (ctx: AppContext): SchedulerResult<{
         "Outbox retention: pruned terminal rows."
       );
     }
-  });
-};
+  }));
+});

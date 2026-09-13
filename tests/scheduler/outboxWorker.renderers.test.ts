@@ -1,3 +1,4 @@
+import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 
 import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
@@ -40,7 +41,7 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     const mentionLines = appConfig.dev.suppressMentions
       ? []
@@ -92,7 +93,7 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     expect(sentMessages).toStrictEqual([{
       id: "posted-1",
@@ -119,7 +120,7 @@ describe("outbox worker renderers", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     expect(sentMessages).toStrictEqual([]);
     const [entry] = ctx.ports.outbox.listEntries();

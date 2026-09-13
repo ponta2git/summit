@@ -1,5 +1,5 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
 import { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
@@ -9,7 +9,7 @@ import { reconcileOutboxDeadLetters } from "./reconciler.outboxDeadLetters.ts";
 import { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.ts";
 import { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.ts";
 import type { ReconcileReport, ReconcileScope } from "./reconciler.types.ts";
-import type { SchedulerBatchReport, SchedulerResult } from "./scheduler.types.ts";
+import type { SchedulerBatchReport, SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Run all reconciliation invariants for the given scope.
@@ -24,8 +24,8 @@ export const runReconciler = (
   client: Client,
   ctx: AppContext,
   options: { readonly scope: ReconcileScope }
-): SchedulerResult<ReconcileReport> =>
-  safeTry(async function* () {
+): SchedulerEffect<ReconcileReport> =>
+  Effect.gen(function* () {
     const deadLetterRecovery = options.scope === "startup"
       ? yield* reconcileOutboxDeadLetters(ctx)
       : { deadLettersRequeued: 0, successorsRequeued: 0 };
@@ -39,7 +39,7 @@ export const runReconciler = (
       : { processed: 0, succeeded: 0, failures: [] };
     const outboxClaimReleased = yield* reconcileOutboxClaims(ctx);
 
-    return okAsync({
+    return {
       cancelledPromoted: cancelledReport.succeeded,
       askCreated,
       messageIntentsQueued: messageReport.succeeded,
@@ -51,5 +51,5 @@ export const runReconciler = (
         ...messageReport.failures,
         ...probeReport.failures
       ]
-    });
+    };
   });

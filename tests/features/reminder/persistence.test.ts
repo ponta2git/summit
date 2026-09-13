@@ -5,6 +5,7 @@ import {
   skipReminderAndComplete
 } from "../../../src/features/reminder/send.js";
 import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
+import { runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {
   createReminderDiscord,
@@ -30,7 +31,7 @@ describe("HeldEvent persistence via reminder completion", () => {
     const { client } = createReminderDiscord();
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(await ctx.ports.heldEvents.findBySessionId(session.id)).toStrictEqual({
       id: "fake-held-1",
@@ -73,7 +74,7 @@ describe("HeldEvent persistence via reminder completion", () => {
     const { client, send } = createReminderDiscord({ sendFails: true });
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledOnce();
     expect(ctx.ports.heldEvents.listHeldEvents()).toStrictEqual([]);
@@ -92,7 +93,7 @@ describe("HeldEvent persistence via reminder completion", () => {
     const { client, send } = createReminderDiscord();
 
     await sendReminderForSession(client, ctx, session.id, TEST_NOW);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
     await sendReminderForSession(
       client,
       ctx,

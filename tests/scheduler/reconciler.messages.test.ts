@@ -1,3 +1,5 @@
+import * as Either from "effect/Either";
+import * as Effect from "effect/Effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setImmediate } from "node:timers/promises";
 
@@ -17,7 +19,7 @@ import { updateAskMessage } from "../../src/features/ask-session/messageEditor.j
 import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
-import { unwrapResultAsync } from "../helpers/assertions.js";
+import { runEffect } from "../helpers/assertions.js";
 import { deferred } from "../helpers/deferred.ts";
 
 beforeEach(resetReconcilerHarness);
@@ -45,7 +47,7 @@ describe("updateAskMessage recovery", () => {
       throw Object.assign(new Error("Unknown Message"), { code: 10008 });
     });
 
-    await unwrapResultAsync(updateAskMessage(client, ctx, session));
+    await runEffect(updateAskMessage(client, ctx, session));
 
     expect((await ctx.ports.sessions.findSessionById("s-10008"))?.askMessageId).toBe("sent-1");
     expect(sentMessages).toHaveLength(1);
@@ -59,10 +61,10 @@ describe("updateAskMessage recovery", () => {
       throw Object.assign(new Error("Missing Access"), { code: 50001 });
     });
 
-    const result = await updateAskMessage(client, ctx, session);
-    expect(result.isErr()).toBe(true);
-    if (result.isOk()) {throw new Error("Expected ask message update to fail.");}
-    expect(result.error.cause).toMatchObject({ code: 50001 });
+    const result = await runEffect(Effect.either(updateAskMessage(client, ctx, session)));
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isRight(result)) {throw new Error("Expected ask message update to fail.");}
+    expect(result.left.cause).toMatchObject({ code: 50001 });
 
     expect((await ctx.ports.sessions.findSessionById("s-other"))?.askMessageId).toBe("old-id");
     expect(sentMessages).toStrictEqual([]);
@@ -73,7 +75,7 @@ describe("updateAskMessage recovery", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => makeMessage(id));
 
-    await unwrapResultAsync(updateAskMessage(client, ctx, session));
+    await runEffect(updateAskMessage(client, ctx, session));
 
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("keep-id");
@@ -86,11 +88,11 @@ describe("updateAskMessage recovery", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     vi.spyOn(ctx.ports.members, "listMembers").mockRejectedValue(new Error("db unavailable"));
 
-    const result = await updateAskMessage(client, ctx, session);
+    const result = await runEffect(Effect.either(updateAskMessage(client, ctx, session)));
 
-    expect(result.isErr()).toBe(true);
-    if (result.isOk()) {throw new Error("Expected ask message update to fail.");}
-    expect(result.error.code).toBe("DATABASE");
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isRight(result)) {throw new Error("Expected ask message update to fail.");}
+    expect(result.left.code).toBe("DATABASE");
   });
 });
 
@@ -106,7 +108,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       throw Object.assign(new Error("Unknown Message"), { code: 10008 });
     });
 
-    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
     expect(fetchedMessageIds).toStrictEqual(["gone-ask-id"]);
     expect(sentMessages).toHaveLength(1);
     expect((await ctx.ports.sessions.findSessionById("probe-ask-gone"))?.askMessageId).toBe("sent-1");
@@ -127,7 +129,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       return makeMessage(id);
     });
 
-    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
     expect(new Set(fetchedMessageIds)).toStrictEqual(new Set(["ask-ok", "gone-postpone-id"]));
     const after = await ctx.ports.sessions.findSessionById("probe-postpone-gone");
     expect({ askMessageId: after?.askMessageId, postponeMessageId: after?.postponeMessageId })
@@ -139,7 +141,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => makeMessage(id));
 
-    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
+    expect((await runEffect(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
     expect(sentMessages).toStrictEqual([]);
     expect(editCalls).toStrictEqual([]);
     expect(ctx.ports.responses.calls).not.toContainEqual(expect.objectContaining({ name: "listResponses" }));
@@ -151,7 +153,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async () => { throw Object.assign(new Error("Unknown Message"), { code: 10008 }); });
 
-    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
     const payload: unknown = JSON.parse(JSON.stringify(sentMessages[0]?.payload));
     expect(payload).toMatchObject({ content: expect.stringContaining("明日の出欠確認へ進みます"),
       components: [{ components: [{ disabled: true }, { disabled: true }] }] });
@@ -166,9 +168,9 @@ describe("probeDeletedMessagesAtStartup", () => {
       if (!blocked) { blocked = true; entered.resolve(); await release.promise; }
       throw Object.assign(new Error("Unknown Message"), { code: 10008 });
     });
-    const update = unwrapResultAsync(updateAskMessage(client, ctx, session));
+    const update = runEffect(updateAskMessage(client, ctx, session));
     await entered.promise;
-    const probe = unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx));
+    const probe = runEffect(probeDeletedMessagesAtStartup(client, ctx));
     await setImmediate();
     try { expect(fetchedMessageIds).toStrictEqual(["deleted-id"]); }
     finally { release.resolve(); await Promise.all([update, probe]); }
@@ -182,7 +184,7 @@ describe("probeDeletedMessagesAtStartup", () => {
     const session = buildSessionRow({ id: "probe-null", status: "ASKING", askMessageId: null });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
+    expect((await runEffect(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
     expect(fetchedMessageIds).toStrictEqual([]);
   });
 });

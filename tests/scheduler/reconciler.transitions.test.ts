@@ -15,7 +15,7 @@ import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
-import { unwrapResultAsync } from "../helpers/assertions.js";
+import { runEffect } from "../helpers/assertions.js";
 
 beforeEach(resetReconcilerHarness);
 
@@ -34,11 +34,11 @@ describe("reconcileStrandedCancelled", () => {
     const now = new Date("2026-04-24T12:45:00.000Z");
     const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
 
-    const report = await unwrapResultAsync(reconcileStrandedCancelled(client, ctx));
+    const report = await runEffect(reconcileStrandedCancelled(client, ctx));
     expect(report.succeeded).toBe(0);
     expect(report.failures).toHaveLength(1);
-    await runOutboxWorkerTick(client, ctx);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
+    await runEffect(runOutboxWorkerTick(client, ctx));
     const after = await ctx.ports.sessions.findSessionById("c-friday");
     expect({ status: after?.status, postponeMessageId: after?.postponeMessageId }).toStrictEqual({
       status: "POSTPONE_VOTING",
@@ -60,7 +60,7 @@ describe("reconcileStrandedCancelled", () => {
       seed: { sessions: [session] }
     });
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
     expect((await ctx.ports.sessions.findSessionById("c-late"))?.status).toBe("COMPLETED");
   });
 
@@ -78,7 +78,7 @@ describe("reconcileStrandedCancelled", () => {
       seed: { sessions: [session] }
     });
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
     expect((await ctx.ports.sessions.findSessionById("c-sat"))?.status).toBe("COMPLETED");
   });
 
@@ -86,7 +86,7 @@ describe("reconcileStrandedCancelled", () => {
     const session = buildSessionRow({ id: "a1", status: "ASKING" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(0);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(0);
     expect((await ctx.ports.sessions.findSessionById("a1"))?.status).toBe("ASKING");
   });
 });
@@ -108,11 +108,11 @@ describe("stranded CANCELLED Discord cleanup", () => {
     });
     setFetchImpl(async (id) => makeMessage(id));
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("ask-fri");
-    await runOutboxWorkerTick(client, ctx);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
+    await runEffect(runOutboxWorkerTick(client, ctx));
     expect(sentMessages).toHaveLength(2);
     expect(extractContent(sentMessages[0]?.payload)).toContain(
       `21:30 までに${MEMBER_COUNT_EXPECTED}人分の回答`
@@ -142,10 +142,10 @@ describe("stranded CANCELLED Discord cleanup", () => {
     });
     setFetchImpl(async (id) => makeMessage(id));
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.messageId).toBe("ask-sat");
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
     expect(sentMessages).toHaveLength(1);
     expect(extractContent(sentMessages[0]?.payload)).toContain("土曜回も予定がそろわなかった");
     expect((await ctx.ports.sessions.findSessionById("c-sat-ui"))?.status).toBe("COMPLETED");
@@ -167,8 +167,8 @@ describe("stranded CANCELLED Discord cleanup", () => {
     });
     setFetchImpl(async (id) => makeMessage(id));
 
-    expect((await unwrapResultAsync(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
-    await runOutboxWorkerTick(client, ctx);
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(1);
+    await runEffect(runOutboxWorkerTick(client, ctx));
     expect(sentMessages).toHaveLength(1);
     expect(extractContent(sentMessages[0]?.payload)).toContain("予定がそろわなかった");
     expect((await ctx.ports.sessions.findSessionById("c-late-ui"))?.status).toBe("COMPLETED");

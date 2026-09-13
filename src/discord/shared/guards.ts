@@ -1,3 +1,4 @@
+import * as Either from "effect/Either";
 import { MessageFlags } from "discord.js";
 
 import type { SessionRow } from "../../db/rows.ts";
@@ -6,10 +7,7 @@ import {
   InvariantViolationError,
   NotFoundError,
   ValidationError,
-  errResult,
-  okResult,
-  type AppError,
-  type AppResult
+  type AppError
 } from "../../errors/index.ts";
 import {
   parseCancelWeekCustomId,
@@ -52,28 +50,28 @@ const buildGuardCause = (reason: GuardFailureReason) => ({ reason });
 const buildValidationError = (reason: GuardFailureReason, message: string): ValidationError =>
   new ValidationError(message, { cause: buildGuardCause(reason) });
 
-export const guardGuildId = (guildId: string | null): AppResult<string, ValidationError> => {
+export const guardGuildId = (guildId: string | null): Either.Either<string, ValidationError> => {
   if (guildId !== appConfig.discord.guildId) {
-    return errResult(buildValidationError("wrong_guild", "Guild is out of scope."));
+    return Either.left(buildValidationError("wrong_guild", "Guild is out of scope."));
   }
 
-  return okResult(guildId);
+  return Either.right(guildId);
 };
 
-export const guardChannelId = (channelId: string | null): AppResult<string, ValidationError> => {
+export const guardChannelId = (channelId: string | null): Either.Either<string, ValidationError> => {
   if (channelId !== appConfig.discord.channelId) {
-    return errResult(buildValidationError("wrong_channel", "Channel is out of scope."));
+    return Either.left(buildValidationError("wrong_channel", "Channel is out of scope."));
   }
 
-  return okResult(channelId);
+  return Either.right(channelId);
 };
 
-export const guardMemberUserId = (userId: string): AppResult<string, ValidationError> => {
+export const guardMemberUserId = (userId: string): Either.Either<string, ValidationError> => {
   if (!appConfig.memberUserIds.includes(userId)) {
-    return errResult(buildValidationError("not_member", "User is not an in-scope member."));
+    return Either.left(buildValidationError("not_member", "User is not an in-scope member."));
   }
 
-  return okResult(userId);
+  return Either.right(userId);
 };
 
 export interface AskCustomIdGuardResult {
@@ -81,13 +79,13 @@ export interface AskCustomIdGuardResult {
   readonly choice: AskCustomIdChoice;
 }
 
-export const guardAskCustomId = (customId: string): AppResult<AskCustomIdGuardResult, ValidationError> => {
+export const guardAskCustomId = (customId: string): Either.Either<AskCustomIdGuardResult, ValidationError> => {
   const parsed = parseCustomId(customId);
   if (!parsed.success || parsed.data.kind !== "ask") {
-    return errResult(buildValidationError("invalid_custom_id", "Invalid ask button custom_id."));
+    return Either.left(buildValidationError("invalid_custom_id", "Invalid ask button custom_id."));
   }
 
-  return okResult({
+  return Either.right({
     sessionId: parsed.data.sessionId,
     choice: parsed.data.choice
   });
@@ -100,13 +98,13 @@ export interface PostponeCustomIdGuardResult {
 
 export const guardPostponeCustomId = (
   customId: string
-): AppResult<PostponeCustomIdGuardResult, ValidationError> => {
+): Either.Either<PostponeCustomIdGuardResult, ValidationError> => {
   const parsed = parseCustomId(customId);
   if (!parsed.success || parsed.data.kind !== "postpone") {
-    return errResult(buildValidationError("invalid_custom_id", "Invalid postpone button custom_id."));
+    return Either.left(buildValidationError("invalid_custom_id", "Invalid postpone button custom_id."));
   }
 
-  return okResult({
+  return Either.right({
     sessionId: parsed.data.sessionId,
     choice: parsed.data.choice
   });
@@ -119,13 +117,13 @@ export interface CancelWeekCustomIdGuardResult {
 
 export const guardCancelWeekCustomId = (
   customId: string
-): AppResult<CancelWeekCustomIdGuardResult, ValidationError> => {
+): Either.Either<CancelWeekCustomIdGuardResult, ValidationError> => {
   const parsed = parseCancelWeekCustomId(customId);
   if (!parsed.success) {
-    return errResult(buildValidationError("invalid_custom_id", "Invalid cancel_week custom_id."));
+    return Either.left(buildValidationError("invalid_custom_id", "Invalid cancel_week custom_id."));
   }
 
-  return okResult({ weekKey: parsed.data.weekKey, choice: parsed.data.choice });
+  return Either.right({ weekKey: parsed.data.weekKey, choice: parsed.data.choice });
 };
 
 export interface AbsentConfirmCustomIdGuardResult {
@@ -135,13 +133,13 @@ export interface AbsentConfirmCustomIdGuardResult {
 
 export const guardAbsentConfirmCustomId = (
   customId: string
-): AppResult<AbsentConfirmCustomIdGuardResult, ValidationError> => {
+): Either.Either<AbsentConfirmCustomIdGuardResult, ValidationError> => {
   const parsed = parseAbsentConfirmCustomId(customId);
   if (!parsed.success) {
-    return errResult(buildValidationError("invalid_custom_id", "Invalid ask_absent custom_id."));
+    return Either.left(buildValidationError("invalid_custom_id", "Invalid ask_absent custom_id."));
   }
 
-  return okResult({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
+  return Either.right({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
 };
 
 export interface PostponeNgConfirmCustomIdGuardResult {
@@ -151,46 +149,46 @@ export interface PostponeNgConfirmCustomIdGuardResult {
 
 export const guardPostponeNgConfirmCustomId = (
   customId: string
-): AppResult<PostponeNgConfirmCustomIdGuardResult, ValidationError> => {
+): Either.Either<PostponeNgConfirmCustomIdGuardResult, ValidationError> => {
   const parsed = parsePostponeNgConfirmCustomId(customId);
   if (!parsed.success) {
-    return errResult(buildValidationError("invalid_custom_id", "Invalid postpone_ng custom_id."));
+    return Either.left(buildValidationError("invalid_custom_id", "Invalid postpone_ng custom_id."));
   }
 
-  return okResult({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
+  return Either.right({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
 };
 
 export const guardSessionExists = (
   session: SessionRow | undefined
-): AppResult<SessionRow, NotFoundError> => {
+): Either.Either<SessionRow, NotFoundError> => {
   if (!session) {
-    return errResult(
+    return Either.left(
       new NotFoundError("Session not found.", {
         cause: buildGuardCause("session_not_found")
       })
     );
   }
 
-  return okResult(session);
+  return Either.right(session);
 };
 
 export const guardSessionAsking = (
   session: SessionRow
-): AppResult<SessionRow, ValidationError> => {
+): Either.Either<SessionRow, ValidationError> => {
   if (session.status !== "ASKING") {
-    return errResult(
+    return Either.left(
       buildValidationError("session_not_asking", "Session is not accepting ask responses.")
     );
   }
 
-  return okResult(session);
+  return Either.right(session);
 };
 
 export const guardSessionPostponeVoting = (
   session: SessionRow
-): AppResult<SessionRow, ValidationError> => {
+): Either.Either<SessionRow, ValidationError> => {
   if (session.status !== "POSTPONE_VOTING") {
-    return errResult(
+    return Either.left(
       buildValidationError(
         "session_not_postpone_voting",
         "Session is not accepting postpone responses."
@@ -198,47 +196,47 @@ export const guardSessionPostponeVoting = (
     );
   }
 
-  return okResult(session);
+  return Either.right(session);
 };
 
 export const guardSessionAskingDeadlineOpen = (
   session: SessionRow,
   now: Date
-): AppResult<SessionRow, ValidationError> => {
+): Either.Either<SessionRow, ValidationError> => {
   if (now.getTime() >= session.deadlineAt.getTime()) {
-    return errResult(
+    return Either.left(
       buildValidationError("session_asking_closed", "Ask response deadline has passed.")
     );
   }
 
-  return okResult(session);
+  return Either.right(session);
 };
 
 export const guardSessionPostponeDeadlineOpen = (
   session: SessionRow,
   now: Date
-): AppResult<SessionRow, ValidationError> => {
+): Either.Either<SessionRow, ValidationError> => {
   if (now.getTime() >= session.deadlineAt.getTime()) {
-    return errResult(
+    return Either.left(
       buildValidationError("session_postpone_closed", "Postpone voting deadline has passed.")
     );
   }
 
-  return okResult(session);
+  return Either.right(session);
 };
 
 export const guardRegisteredMemberId = (
   memberId: string | undefined
-): AppResult<string, InvariantViolationError> => {
+): Either.Either<string, InvariantViolationError> => {
   if (!memberId) {
-    return errResult(
+    return Either.left(
       new InvariantViolationError("Allowed user has no matching member row.", {
         cause: buildGuardCause("member_not_registered")
       })
     );
   }
 
-  return okResult(memberId);
+  return Either.right(memberId);
 };
 
 export const getGuardFailureReason = (error: AppError): GuardFailureReason | undefined => {

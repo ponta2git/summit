@@ -6,7 +6,7 @@ import { logger } from "../logger.ts";
 import { RECONNECT_REPLAY_DEBOUNCE_MS } from "../config.ts";
 import { runReconciler } from "../scheduler/reconciler.ts";
 import { runStartupRecovery } from "../scheduler/index.ts";
-import { unwrapResultAsync } from "../errors/result.ts";
+import { runPromiseBoundary } from "../runtime/effect.ts";
 
 export interface AppReadiness {
   readonly state: AppReadyState;
@@ -84,9 +84,9 @@ export const registerReconnectReplayHandlers = (input: {
     replayInFlight = (async () => {
       await Promise.resolve();
       try {
-        const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
+        const report = await runPromiseBoundary(runReconciler(client, context, { scope: "reconnect" }));
         if (stopped) { return; }
-        await unwrapResultAsync(runStartupRecovery(client, context));
+        await runPromiseBoundary(runStartupRecovery(client, context));
         if (stopped) { return; }
         input.wakeScheduler?.("reconnect_replay");
         const completedAt = Date.now();

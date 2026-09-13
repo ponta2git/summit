@@ -42,8 +42,9 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 - 確認dialogはcustom ID・選択肢・label・disabled・ephemeralを固定し、代表flowは生成したIDをdispatcherへ戻して最終状態を観測する。SDKの非本質項目まで全箇所でsnapshot固定しない。
 - `expect.any`、`objectContaining`、`arrayContaining`はSDKの非本質項目や生成ID/時刻を意図的に緩める場合だけ使う。
 - skipped/no-op/race-lostは「呼ばれなかった」だけでなく、DB stateと外部副作用が変わらないことを確認する。
-- Resultを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。
+- Either / Effectを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。非同期Effectの成功値は共通の`runEffect` test helperで実行し、typed failureは`Effect.either`、defect/interruptionは`Exit` / `Cause`で区別する。
 - Effectを含む境界は元のAppError/statusの保持、同期throwと非同期reject、expected failureとdefectの扱いを確認する。内部operatorの呼出し回数ではなく、最終状態と後続処理の継続・停止をオラクルにする。
+- 非同期operationは生成だけでは副作用がなく、実行時のclock/stateを使うことを代表契約で確認する。Effectを直接`await`して検証を省略したり、互換ラッパーで旧ライブラリのAPIを再現したりしない。
 - 重要な契約のオラクルに疑義がある場合は、条件反転・await欠落・rollback漏れ等の代表的な誤実装でtestが失敗することを確認する。対象・検出結果を残し、mutationは復元する。全変更へのmutation実行やsnapshot更新の機械的承認は要求しない。
 
 ## 4. Fixture とscenario

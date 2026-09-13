@@ -1,3 +1,6 @@
+import * as Either from "effect/Either";
+import * as Effect from "effect/Effect";
+import { runEffect } from "../helpers/assertions.ts";
 import { ChannelType } from "discord.js";
 import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
@@ -25,11 +28,11 @@ describe("outbox worker delivery", () => {
     channel.send.mockRejectedValueOnce(new Error("Discord failed")).mockImplementationOnce(async body => ({ ...await completion.promise, payload: body }));
     ctx.ports.outbox.markFailed = async () => { failed.resolve(); throw new Error("Database failed"); };
     let finished = false;
-    const tick = Promise.resolve(runOutboxWorkerTick(stubClient(channel), ctx)).then(result => { finished = true; return result; });
+    const tick = Promise.resolve(runEffect(Effect.either(runOutboxWorkerTick(stubClient(channel), ctx)))).then(result => { finished = true; return result; });
     await failed.promise; await setImmediate();
     expect(finished).toBe(false);
     completion.resolve({ id: "accepted" }); const result = await tick;
-    expect(result.isErr()).toBe(true);
+    expect(Either.isLeft(result)).toBe(true);
     expect(ctx.ports.outbox.listEntries().filter(entry => entry.status === "DELIVERED")).toHaveLength(1);
   });
   it("starts claimed deliveries concurrently within one batch", async () => {
@@ -74,7 +77,7 @@ describe("outbox worker delivery", () => {
       })
     };
 
-    const tick = runOutboxWorkerTick(stubClient(channel), ctx);
+    const tick = runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
     await secondSendStarted.promise;
     expect(channel.send).toHaveBeenCalledTimes(2);
     firstSendDone.resolve({ id: "posted-1" });
@@ -108,7 +111,7 @@ describe("outbox worker delivery", () => {
     });
     const { channel, sentMessages } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     const [entry] = ctx.ports.outbox.listEntries();
     expect({ status: entry?.status, deliveredMessageId: entry?.deliveredMessageId })
@@ -147,7 +150,7 @@ describe("outbox worker delivery", () => {
     });
     const { channel } = stubChannel();
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     expect(ctx.ports.outbox.listEntries()[0]?.status).toBe("DELIVERED");
     expect((await ctx.ports.sessions.findSessionById(session.id))?.askMessageId)
@@ -175,7 +178,7 @@ describe("outbox worker retry policy", () => {
     });
     const { channel } = stubChannel({ sendThrows: true });
 
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
 
     const [entry] = ctx.ports.outbox.listEntries();
     expect({
@@ -197,7 +200,7 @@ describe("outbox worker retry policy", () => {
     await ctx.ports.outbox.enqueue({ kind: "send_message", sessionId: session.id, dedupeKey: "safe-diagnostics",
       aggregateRevision: 0, ordinal: 0, payload: { kind: "send_message", channelId: session.channelId, renderer: "ask_body" } });
     const { channel } = stubChannel(); channel.send.mockRejectedValue(new Error("postgres://private:dummy-password@localhost/database"));
-    await runOutboxWorkerTick(stubClient(channel), ctx);
+    await runEffect(runOutboxWorkerTick(stubClient(channel), ctx));
     expect(ctx.ports.outbox.listEntries()[0]?.lastError).toBe("Outbox delivery failed.");
   });
 

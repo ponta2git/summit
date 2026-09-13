@@ -1,3 +1,6 @@
+import * as Either from "effect/Either";
+import * as Effect from "effect/Effect";
+import { runEffect } from "../helpers/assertions.ts";
 import type { Client } from "discord.js";
 import type { ScheduledTask } from "node-cron";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -92,10 +95,10 @@ describe("ask scheduler", () => {
       throw new Error("network failure");
     });
 
-    const result = await runScheduledAskTick(sendAsk, createTestAppContext());
-    expect(result.isErr()).toBe(true);
-    if (result.isOk()) {throw new Error("Expected ask scheduler tick to fail.");}
-    expect(result.error.cause).toBeInstanceOf(Error);
+    const result = await runEffect(Effect.either(runScheduledAskTick(sendAsk, createTestAppContext())));
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isRight(result)) {throw new Error("Expected ask scheduler tick to fail.");}
+    expect(result.left.cause).toBeInstanceOf(Error);
   });
 
   it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {
@@ -203,14 +206,14 @@ describe("ask scheduler", () => {
     };
     const client = { channels: { fetch: vi.fn(async () => channel) } } as unknown as Client;
 
-    await runReminderTick(client, ctx);
+    await runEffect(runReminderTick(client, ctx));
 
     expect(send).not.toHaveBeenCalled();
     expect(ctx.ports.outbox.listEntries().map((entry) => entry.dedupeKey)).toStrictEqual([
       `reminder-${dueSession.id}`,
       `reminder-${alreadySentSession.id}`
     ]);
-    await runOutboxWorkerTick(client, ctx);
+    await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledTimes(2);
     const persistedDue = ctx.ports.sessions.listSessions().find((s) => s.id === dueSession.id);

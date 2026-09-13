@@ -1,5 +1,5 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -10,7 +10,7 @@ import {
 } from "../config.ts";
 import type { OutboxEntry } from "../db/ports.ts";
 import { AppError, InvariantViolationError } from "../errors/index.ts";
-import { fromAppCall, fromDatabaseCall } from "../errors/result.ts";
+import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import { getTextChannel } from "../discord/shared/channels.ts";
 import {
@@ -18,7 +18,7 @@ import {
 } from "../features/reminder/send.ts";
 import { addMs } from "../time/index.ts";
 import { renderOutboxPayload } from "./outboxRenderers.ts";
-import type { SchedulerResult } from "./scheduler.types.ts";
+import type { SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -208,25 +208,25 @@ const deliverOne = async (
  * Claim a batch of PENDING outbox entries and deliver each.
  *
  * @remarks
- * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runResultTickSafely`) が閉じ込める。
+ * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runEffectTickSafely`) が閉じ込める。
  */
 export const runOutboxWorkerTick = (
   client: Client,
   ctx: AppContext,
   isStopping: () => boolean = () => false
-): SchedulerResult<{ readonly claimed: number }> => {
-  if (isStopping()) { return okAsync({ claimed: 0 }); }
+): SchedulerEffect<{ readonly claimed: number }> => Effect.suspend(() => {
+  if (isStopping()) { return Effect.succeed({ claimed: 0 }); }
   const now = ctx.clock.now();
-  return fromDatabaseCall(
+  return Effect.flatMap(fromDatabaseCall(
     () => ctx.ports.outbox.claimNextBatch({
       limit: OUTBOX_WORKER_BATCH_LIMIT,
       now,
       claimDurationMs: OUTBOX_CLAIM_DURATION_MS
     }),
     "Failed to claim outbox batch."
-  ).andThen((batch) => {
+  ), (batch) => {
     if (batch.length === 0) {
-      return okAsync({ claimed: 0 });
+      return Effect.succeed({ claimed: 0 });
     }
     // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
     return fromAppCall(
@@ -241,4 +241,4 @@ export const runOutboxWorkerTick = (
         : new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause })
     );
   });
-};
+});

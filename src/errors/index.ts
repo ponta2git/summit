@@ -1,5 +1,3 @@
-import { err, ok, type Result } from "neverthrow";
-
 const APP_ERROR_CODES = [
   "INVARIANT_VIOLATION",
   "VALIDATION",
@@ -63,8 +61,3 @@ export class ShutdownError extends AppError {
     super("SHUTDOWN", message, options);
   }
 }
-
-export type AppResult<T, E extends AppError = AppError> = Result<T, E>;
-
-export const okResult = <T>(value: T): AppResult<T, never> => ok(value);
-export const errResult = <E extends AppError>(error: E): AppResult<never, E> => err(error);

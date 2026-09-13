@@ -1,5 +1,5 @@
+import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
-import { okAsync } from "neverthrow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,7 +20,7 @@ const silentLogger = {
 };
 
 const client = {} as Client;
-const okTask = () => okAsync(undefined);
+const okTask = () => Effect.succeed(undefined);
 
 describe("SchedulerController", () => {
   afterEach(() => {
