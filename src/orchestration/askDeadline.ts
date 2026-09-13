@@ -5,7 +5,7 @@ import type { AppContext } from "../appContext.ts";
 import type { AskingDeadlineResult } from "../db/ports.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabasePromise } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
 import type { EvaluateDeadlineOptions } from "../features/ask-session/decide.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { skipReminderAndComplete } from "../features/reminder/send.ts";
@@ -20,8 +20,8 @@ const applyDecidedSideEffects = (
   safeTry(async function* () {
     yield* updateAskMessage(client, ctx, session);
     if (session.reminderAt && shouldSkipReminder(ctx.clock.now(), session.reminderAt)) {
-      yield* fromDatabasePromise(
-        skipReminderAndComplete(ctx, session, ctx.clock.now()),
+      yield* fromDatabaseCall(
+        () => skipReminderAndComplete(ctx, session, ctx.clock.now()),
         "Failed to skip reminder and complete session."
       );
     }
@@ -49,8 +49,8 @@ export const evaluateAndApplyDeadlineDecision = (
   session: SessionRow,
   options: EvaluateDeadlineOptions
 ): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    ctx.ports.sessionCommands.settleAskingDeadline({
+  fromDatabaseCall(
+    () => ctx.ports.sessionCommands.settleAskingDeadline({
       sessionId: session.id,
       now: options.now,
       memberCountExpected: options.memberCountExpected

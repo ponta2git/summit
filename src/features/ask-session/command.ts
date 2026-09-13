@@ -6,7 +6,7 @@ import {
   type AppResult,
   okResult
 } from "../../errors/index.ts";
-import { fromDiscordPromise, toResultAsync } from "../../errors/result.ts";
+import { fromDiscordCall, toResultAsync } from "../../errors/result.ts";
 import { logger } from "../../logger.ts";
 import { askMessages } from "./messages.ts";
 import { assertNever } from "../../util/assertNever.ts";
@@ -35,8 +35,8 @@ const validateAskCommand = (
 const sendAskStep = (
   context: AskCommandPipelineStart
 ): ResultAsync<Awaited<ReturnType<InteractionHandlerDeps["sendAsk"]>>, AppError> =>
-  fromDiscordPromise(
-    context.deps.sendAsk({
+  fromDiscordCall(
+    () => context.deps.sendAsk({
       trigger: "command",
       invokerId: context.interaction.user.id
     }),

@@ -48,9 +48,11 @@ describe("interaction command routing", () => {
     expect(sendAsk).not.toHaveBeenCalled();
   });
 
-  it("returns a failure response when /ask sending throws", async () => {
-    const sendAsk = vi.fn(async () => {
-      throw new Error("discord api failed");
+  it.each(["throw", "reject"])("returns a failure response when /ask sending fails by %s", async mode => {
+    const sendAsk = vi.fn(() => {
+      const error = new Error("discord api failed");
+      if (mode === "throw") { throw error; }
+      return Promise.reject(error);
     });
     const interaction = buildAskInteraction();
 

@@ -1,4 +1,6 @@
-import { Effect, Fiber } from "effect";
+import { setImmediate } from "node:timers/promises";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { promiseCall, runPromiseBoundary, settledCall } from "../../src/runtime/effect.ts";
@@ -13,6 +15,17 @@ describe("Effect / Promise boundary", () => {
     await expect(runPromiseBoundary(operation)).rejects.toBe(failure);
     await expect(runPromiseBoundary(promiseCall(() => Promise.reject(failure)))).rejects.toBe(failure);
     await expect(runPromiseBoundary(Effect.die(failure))).rejects.toBe(failure);
+  });
+
+  it("disables Effect's raw console diagnostics while preserving the failure for the safe logger", async () => {
+    const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const failure = new Error("private-error-canary");
+    try {
+      await expect(runPromiseBoundary(Effect.logError(failure).pipe(
+        Effect.andThen(Effect.fail(failure))
+      ))).rejects.toBe(failure);
+      expect(output).not.toHaveBeenCalled();
+    } finally { output.mockRestore(); }
   });
 
   it("keeps parallel I/O owned after one call fails until its uncancellable sibling settles", async () => {
@@ -30,8 +43,10 @@ describe("Effect / Promise boundary", () => {
     await siblingStarted.promise;
     failed.reject(failure);
     await failureObserved.promise;
-    expect(finished).toBe(false);
-    blocked.resolve(42);
+    try {
+      await setImmediate();
+      expect(finished).toBe(false);
+    } finally { blocked.resolve(42); }
     expect(await outcome).toBe(failure);
     expect(finished).toBe(true);
   });
@@ -47,8 +62,10 @@ describe("Effect / Promise boundary", () => {
     }).pipe(Effect.ensuring(Effect.sync(() => { events.push("released"); }))));
     await started.promise;
     const interrupted = runPromiseBoundary(Fiber.interrupt(fiber));
-    expect(events).toEqual([]);
-    write.resolve();
+    try {
+      await setImmediate();
+      expect(events).toEqual([]);
+    } finally { write.resolve(); }
     await interrupted;
     expect(events).toEqual(["committed", "released"]);
   });

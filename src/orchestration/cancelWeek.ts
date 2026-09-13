@@ -6,7 +6,7 @@ import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
 import { type AppError, okResult } from "../errors/index.ts";
-import { fromDatabasePromise } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
@@ -57,8 +57,8 @@ export const applyManualSkip = (
       return okResult({ kind: "expired" as const });
     }
     const candidateDate = candidateDateForAsk(now);
-    const outcome = yield* fromDatabasePromise(
-      ctx.ports.sessionCommands.cancelWeekAtomically({
+    const outcome = yield* fromDatabaseCall(
+      () => ctx.ports.sessionCommands.cancelWeekAtomically({
         sentinelSessionId: randomUUID(),
         weekKey,
         candidateDateIso: formatCandidateDateIso(candidateDate),

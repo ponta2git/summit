@@ -1,4 +1,5 @@
 import { MessageFlags } from "discord.js";
+import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleStatusCommand } from "../../../src/features/status-command/handler.js";
@@ -6,6 +7,7 @@ import { appConfig } from "../../../src/userConfig.js";
 import type { AppContext } from "../../../src/appContext.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/interactionHandlerDeps.js";
 import { callArg } from "../../helpers/assertions.js";
+import { deferred } from "../../helpers/deferred.ts";
 import { createClientWithChannel } from "../../helpers/discord.js";
 import { asChatInputCommandInteraction } from "../../helpers/interaction.js";
 import { memberUserId } from "../../helpers/env.js";
@@ -134,11 +136,13 @@ describe("handleStatusCommand", () => {
     expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
-  it("returns an internal error message when status DB loading fails", async () => {
+  it.each(["throw", "reject"])("returns an internal error message on a DB %s", async mode => {
     const ctx = createTestAppContext({ seed: {} });
     Object.assign(ctx.ports.status, {
-      loadCurrentWeekSnapshot: vi.fn(async () => {
-        throw new Error("database unavailable");
+      loadCurrentWeekSnapshot: vi.fn(() => {
+        const error = new Error("database unavailable");
+        if (mode === "throw") { throw error; }
+        return Promise.reject(error);
       })
     });
     const interaction = buildInteraction();
@@ -146,6 +150,21 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.internalError);
+  });
+
+  it("keeps failed status reads in flight until their parallel outbox query settles", async () => {
+    const ctx = createTestAppContext(); const interaction = buildInteraction();
+    const snapshot = deferred<never>(); const outbox = deferred<never[]>(); const started = deferred<void>();
+    ctx.ports.status.loadCurrentWeekSnapshot = () => snapshot.promise;
+    ctx.ports.outbox.findStranded = () => { started.resolve(); return outbox.promise; };
+    const pending = handleStatus(interaction, ctx);
+    await started.promise; snapshot.reject(new Error("snapshot unavailable"));
+    try {
+      await setImmediate();
+      expect(interaction.editReply).not.toHaveBeenCalled();
+    } finally { outbox.resolve([]); }
+    await pending;
+    expect(interaction.editReply).toHaveBeenCalledExactlyOnceWith(rejectMessages.internalError);
   });
 
   it("surfaces invariant warning when ASKING session has past deadline and null messageId", async () => {

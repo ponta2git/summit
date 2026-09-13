@@ -44,7 +44,7 @@ src/db/* ──> persistence boundary
 - 複数 feature を跨ぐ副作用は `src/orchestration/` が順序駆動する。feature から orchestration への逆向き依存は作らない。
 - `src/discord/shared/` は dispatcher、guard、custom ID codec、共通 DTO、Discord SDK の薄い helper に限定する。
 - `src/domain/` は I/O と global clock を持たない aggregate decision の配置先とする。現在は ASKING と POSTPONE_VOTING の判定を所有する。
-- `src/time/`、`src/scheduler/`、`src/db/`、`src/members/` は横断 infrastructure であり、feature 配下へ分散しない。
+- `src/time/`、`src/scheduler/`、`src/db/`、`src/members/` は横断 infrastructure であり、feature 配下へ分散しない。`src/runtime/effect.ts`は外部Promiseの開始・settlement・実行境界を所有する。
 - `src/` は production runtime、`scripts/dev/` は開発用の seed/reset/scenario を所有する。
 - `src/notifications/`はA/BのHTTP認証・受付制限・運用CLIとresource合成、`src/features/result-notifications/`は固定本文、`src/scheduler/resultNotifications*`は配送を所有する。
 - generic な `types.ts` や `util/` に責務を隠さず、型は所有 module、共有 assertion は用途名の module に置く。
@@ -193,7 +193,7 @@ OpenTelemetry は、単一 service のログ調査に collector / backend 運用
 |---|---|---|
 | DI container | factory と `AppContext` で graph が追える | resource lifecycle と provider 数が factory で追跡困難になる |
 | XState | typed state + pure decision + DB CAS で十分 | 並行/履歴状態や複雑な guard が増える |
-| effect system | failure policy に対して runtime/学習コストが過大 | structured concurrency とresource管理が主要課題になる |
+| 全層のEffect移行 | §5のresource境界だけで必要な所有権を表現でき、既存portsやDIの置換は変換層を増やす | Effect合成の反復やresource graphの拡大で境界統一の利益が上回る |
 | Event sourcing | 過去時点再構成・監査要求がない | replay、監査、過去ルール再計算が要件になる |
 | OpenTelemetry | 単一serviceの構造化ログで足りる | 複数service traceとSLO運用が必要になる |
 | 外部message broker | PostgreSQL outboxで規模と運用を満たす | outbox量・latency・運用負荷がbroker導入コストを上回る |

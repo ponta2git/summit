@@ -1,4 +1,6 @@
-import { Cause, Effect, Option } from "effect";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { promiseCall, runPromiseBoundary } from "./runtime/effect.ts";
 import { logger } from "./logger.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./config.ts";

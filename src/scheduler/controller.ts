@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
-import { Effect } from "effect";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import {

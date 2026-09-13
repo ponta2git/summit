@@ -18,18 +18,11 @@ export const unwrapResultAsync = async <T, E>(result: ResultAsync<T, E>): Promis
     (error) => { throw error; }
   );
 
-export const fromDatabasePromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DatabaseError> =>
-  ResultAsync.fromPromise(promise, (cause) => new DatabaseError(message, { cause }));
-
 export const fromDatabaseCall = <T>(
   call: () => Promise<T>,
   message: string
 ): ResultAsync<T, DatabaseError> =>
   ResultAsync.fromThrowable(call, (cause) => new DatabaseError(message, { cause }))();
-
-// why: Discord API 失敗を DB 失敗と同じ AppError 境界に揃える。
-export const fromDiscordPromise = <T>(promise: Promise<T>, message: string): ResultAsync<T, DiscordApiError> =>
-  ResultAsync.fromPromise(promise, (cause) => new DiscordApiError(message, { cause }));
 
 export const fromDiscordCall = <T>(
   call: () => Promise<T>,

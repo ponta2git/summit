@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import { type ResultAsync, okAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
@@ -11,7 +12,8 @@ import {
   type AppResult,
   okResult
 } from "../../errors/index.ts";
-import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
+import { toResultAsync, fromDatabaseCall } from "../../errors/result.ts";
+import { runPromiseBoundary, settledCall } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import { postponeMessages } from "./messages.ts";
 import {
@@ -85,11 +87,11 @@ const validatePostponePipeline = (context: PostponePipelineStart): AppResult<Pos
     );
 
 const loadSessionAndMemberStep = (context: PostponePipelineParsed): ResultAsync<PostponePipelineReady, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.sessions.findSessionById(context.sessionId),
-      context.context.ports.members.findMemberIdByUserId(context.interaction.user.id)
-    ]),
+  fromDatabaseCall(
+    () => runPromiseBoundary(Effect.all([
+      settledCall(() => context.context.ports.sessions.findSessionById(context.sessionId)),
+      settledCall(() => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id))
+    ], { concurrency: 2 })),
     "Failed to load DB state while handling postpone button."
   )
     .andThen(([session, memberId]) =>
@@ -143,8 +145,8 @@ const recordResponseStep = (
   context: PostponePipelineReady
 ): ResultAsync<PostponePipelineRecorded, AppError> => {
   const now = context.context.clock.now();
-  return fromDatabasePromise(
-    context.context.ports.sessionCommands.submitPostponeVote({
+  return fromDatabaseCall(
+    () => context.context.ports.sessionCommands.submitPostponeVote({
       responseId: randomUUID(),
       sessionId: context.sessionId,
       memberId: context.memberId,

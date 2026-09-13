@@ -1,5 +1,5 @@
 import type { MessageCreateOptions } from "discord.js";
-import { Effect } from "effect";
+import * as Effect from "effect/Effect";
 import { z } from "zod";
 
 import type { AppContext } from "../appContext.ts";

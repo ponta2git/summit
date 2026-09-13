@@ -67,6 +67,7 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 - `@ts-ignore`を常用しない。必要な場合は理由、範囲、撤去条件を近傍に残す。
 - independent I/Oだけを並列化し、順序契約のあるI/Oを見かけ上並列にしない。失敗時も実行中I/Oをownerが追跡する必要がある箇所は、`Promise.all`の早期rejectで解放せず、`docs/architecture.md` §5のsettlement境界を使う。
 - naked promiseを残さない。fire-and-forgetは`void`と最外周catchを明示する。
+- Effectは`effect/Effect`等の公開subpathからnamespace importし、Nodeの非bundle実行で不要なbarrel全体の初期化を避ける。
 
 ## 4. Source layout
 

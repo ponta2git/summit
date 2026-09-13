@@ -4,7 +4,7 @@ import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabasePromise } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
 import type { CancelReason } from "../features/ask-session/cancelReason.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { logger } from "../logger.ts";
@@ -52,8 +52,8 @@ export const settleAskingSession = (
         : reason === "saturday_cancelled"
           ? "saturday_cancelled"
           : "deadline_unanswered";
-    const result = yield* fromDatabasePromise(
-      ctx.ports.sessionCommands.settleAskingCancellation({
+    const result = yield* fromDatabaseCall(
+      () => ctx.ports.sessionCommands.settleAskingCancellation({
         sessionId,
         now: ctx.clock.now(),
         reason: resolvedReason

@@ -11,7 +11,7 @@ import type {
 } from "../db/repositories/sessionCommands.ts";
 import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
-import { fromDatabasePromise } from "../errors/result.ts";
+import { fromDatabaseCall } from "../errors/result.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
 import {
@@ -90,8 +90,8 @@ export const settlePostponeVotingSession = (
   session: SessionRow,
   now: Date
 ): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    ctx.ports.sessionCommands.settlePostponeVoting({
+  fromDatabaseCall(
+    () => ctx.ports.sessionCommands.settlePostponeVoting({
       sessionId: session.id,
       now,
       memberCountExpected: MEMBER_COUNT_EXPECTED,

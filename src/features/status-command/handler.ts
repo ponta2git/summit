@@ -1,5 +1,6 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import { type ResultAsync } from "neverthrow";
+import * as Effect from "effect/Effect";
 
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
 import type {
@@ -13,7 +14,8 @@ import {
   type AppResult,
   okResult
 } from "../../errors/index.ts";
-import { fromDatabasePromise, toResultAsync } from "../../errors/result.ts";
+import { fromDatabaseCall, toResultAsync } from "../../errors/result.ts";
+import { runPromiseBoundary, settledCall } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -54,11 +56,11 @@ const loadStatusSnapshot = (
   (() => {
     const now = context.deps.context.clock.now();
     const weekKey = isoWeekKey(now);
-    return fromDatabasePromise(
-      Promise.all([
-        context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
-        context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
-      ]),
+    return fromDatabaseCall(
+      () => runPromiseBoundary(Effect.all([
+        settledCall(() => context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey)),
+        settledCall(() => context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD))
+      ], { concurrency: 2 })),
       "Failed to load /status snapshot."
     ).map(([statusSnapshot, strandedOutbox]: [CurrentWeekStatusSnapshot, readonly OutboxDiagnostic[]]) => ({
       now,
