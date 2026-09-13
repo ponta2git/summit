@@ -26,6 +26,39 @@ export const attendanceIntent = (sessionId: string, revision = 0, ordinal = 0): 
 
 export const attendanceContract = (label: string, create: (seed?: AttendanceSeed) => Promise<AttendanceHarness>): void => {
   describe(`attendance sequential contract (${label})`, () => {
+    it("repairs missing messages once at the current revision without changing the Session", async () => {
+      const row = fridayPostponeVoting({ id: "session-1", revision: 4 });
+      const h = await create({ sessions: [row] });
+      const queued = await h.ports.sessionCommands.recoverMissingMessageIntents(row.id);
+      expect(queued.map(intent => ({ key: intent.dedupeKey, revision: intent.aggregateRevision, ordinal: intent.ordinal })))
+        .toStrictEqual([{ key: "ask-body-session-1", revision: 4, ordinal: 32_766 },
+          { key: "postpone-vote-session-1", revision: 4, ordinal: 32_767 }]);
+      expect(await h.ports.sessions.findSessionById(row.id)).toStrictEqual(row);
+      const after = await h.snapshot();
+      expect(await h.ports.sessionCommands.recoverMissingMessageIntents(row.id)).toStrictEqual([]);
+      expect(await h.snapshot()).toStrictEqual(after);
+    });
+
+    it("rolls back the first recovery intent when the second ordinal conflicts", async () => {
+      const row = fridayPostponeVoting({ id: "session-1", revision: 4 });
+      const h = await create({ sessions: [row] });
+      await h.ports.outbox.enqueue(attendanceIntent(row.id, 4, 32_767));
+      const before = await h.snapshot();
+      await expect(h.ports.sessionCommands.recoverMissingMessageIntents(row.id)).rejects.toThrow(/./);
+      expect(await h.snapshot()).toStrictEqual(before);
+    });
+
+    it("does not repair closed, fully published or absent Sessions", async () => {
+      const closed = { ...fridayPostponeVoting({ id: "closed" }), status: "SKIPPED" as const };
+      const published = saturdayAsking({ id: "published", askMessageId: "ask-existing" });
+      const h = await create({ sessions: [closed, published] });
+      const before = await h.snapshot();
+      for (const id of [closed.id, published.id, "absent"]) {
+        expect(await h.ports.sessionCommands.recoverMissingMessageIntents(id)).toStrictEqual([]);
+      }
+      expect(await h.snapshot()).toStrictEqual(before);
+    });
+
     it("creates a unique session, elects one canonical message and returns independent values", async () => {
       const h = await create(); const row = makeSession();
       const created = await h.ports.sessions.createAskSession(row);

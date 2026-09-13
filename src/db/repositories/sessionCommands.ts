@@ -7,6 +7,7 @@ export {
   settlePostponeVoting,
   submitPostponeVote
 } from "./sessionCommands.postpone.ts";
+export { recoverMissingMessageIntents } from "./sessionCommands.recovery.ts";
 export { cancelWeekAtomically } from "./sessionCommands.cancelWeek.ts";
 export type {
   AskingDeadlineResult,

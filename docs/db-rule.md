@@ -68,7 +68,7 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 
 ### `OutboxPort`
 
-- 共通通知 DB の attendance family に限定し、recovery用の単独enqueue、claim、送信開始、delivery確定、retry、retention、metrics、next dispatch hintを扱う。
+- 共通通知 DB の attendance family に限定し、enqueue、claim、送信開始、delivery確定、retry、retention、metrics、next dispatch hintを扱う。欠落messageの復旧判断はSession aggregate commandが所有し、汎用enqueueへ古いSession snapshotの判断を持ち込まない。
 - business transitionからのenqueueは、可能な限り`SessionCommandsPort`またはSession作成transaction内で行う。
 - A/B の設定・固定 payload・取消は [momo-db の共有通知契約](../../momo-db/docs/discord-notifications.md) に従う。既存アンケートの設定・順序・起動時回復を A/B へ適用しない。
 
@@ -106,6 +106,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - message ID backfillはCAS-on-NULLでcanonical messageを決める。
 - Discord受理後・DB確定前のcrashでは、欠落より重複を選ぶ。
 - payload/state mismatchや未対応rendererは握りつぶさずdead letterへ送る。
+- 保存payloadのshape不正はclaim transaction内でrowごとにFAILEDへ隔離し、別Sessionの健全なclaimをrollbackしない。`/status`用の診断取得は配送payloadをparseせず、必要な状態列だけを読む。
 - retry/backoff/max attempt/claim duration/batch sizeの実値は`src/config.ts`が正本。
 - claim制御・part更新・状態照会では必要な状態列だけを読む。配送本文はclaimが確定したバッチから一度取得し、取消確認のために本文を読み直さない。対象の生存確認とclaim fencingは省略しない。
 - 次回配送時刻はPENDINGのretry時刻と残存claimの期限を別々に検索する。永久保持する終端履歴の全走査を避け、family・処理中IDの除外を共通の`notifications.dispatch.ts`で扱う。
@@ -122,7 +123,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - expired claimはreconcilerが回復し、試行上限内ならPENDING、上限到達ならFAILEDにする。
 - poison payloadのFAILED chain復帰はstartupだけで行い、attemptと先行失敗に由来する後続cancelを同じtransactionでresetする。手動週取消と A/B の通知は復帰させない。
 - reconnectや定期supervisorでFAILEDを無条件復帰させずhot loopを防ぐ。
-- non-terminal Sessionのmessage IDがNULLなら、直接sendせず予約ordinalのrecovery intentをenqueueする。
+- non-terminal Sessionのmessage IDがNULLなら、直接sendせず予約ordinalのrecovery intentをenqueueする。候補一覧のsnapshotだけで確定せず、Session lockを取得したaggregate command内で現在状態とmessage IDを再検査し、週取消後の募集intent復活を防ぐ。
 - Discord上で既存messageが削除済みと確認できた場合のedit対象再生成はbest-effort reconcilerが担う。
 
 外部brokerは現在採用しない。DB outboxの量、head-of-line blocking、latency、maintenance costがbroker追加コストを上回る場合に再評価する。

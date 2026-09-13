@@ -260,6 +260,6 @@ export const createFakeOutboxPort = (
       }
       return true;
     },
-    ...createFakeOutboxMaintenance(byId, calls, cloneEntry, cancellationReasons, purgedIdentities, sendingTokens)
+    ...createFakeOutboxMaintenance(byId, calls, cancellationReasons, purgedIdentities, sendingTokens)
   };
 };

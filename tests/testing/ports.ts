@@ -80,6 +80,7 @@ const createFakePorts = (
   });
   sessions.createAskSession = atomic(sessions.createAskSession);
   heldEvents.completeDecidedSessionAsHeld = atomic(heldEvents.completeDecidedSessionAsHeld);
+  sessionCommands.recoverMissingMessageIntents = atomic(sessionCommands.recoverMissingMessageIntents);
   sessionCommands.submitAskResponse = atomic(sessionCommands.submitAskResponse);
   sessionCommands.settleAskingCancellation = atomic(sessionCommands.settleAskingCancellation);
   sessionCommands.settleAskingDeadline = atomic(sessionCommands.settleAskingDeadline);

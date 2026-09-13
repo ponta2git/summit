@@ -4,7 +4,7 @@ import { type ResultAsync } from "neverthrow";
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
 import type {
   CurrentWeekStatusSnapshot,
-  OutboxEntry,
+  OutboxDiagnostic,
   SessionRow,
   StatusSessionSnapshot
 } from "../../db/ports.ts";
@@ -36,7 +36,7 @@ interface StatusSnapshot {
   readonly now: Date;
   readonly sessions: readonly SessionRow[];
   readonly strandedCancelled: readonly SessionRow[];
-  readonly strandedOutbox: readonly OutboxEntry[];
+  readonly strandedOutbox: readonly OutboxDiagnostic[];
   readonly sessionDetails: readonly StatusSessionSnapshot[];
 }
 
@@ -60,7 +60,7 @@ const loadStatusSnapshot = (
         context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD)
       ]),
       "Failed to load /status snapshot."
-    ).map(([statusSnapshot, strandedOutbox]: [CurrentWeekStatusSnapshot, readonly OutboxEntry[]]) => ({
+    ).map(([statusSnapshot, strandedOutbox]: [CurrentWeekStatusSnapshot, readonly OutboxDiagnostic[]]) => ({
       now,
       sessions: statusSnapshot.sessions.map(({ session }) => session),
       strandedCancelled: statusSnapshot.strandedCancelled,
