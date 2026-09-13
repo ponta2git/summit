@@ -97,7 +97,7 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 エラー分類の実装正本は `src/errors/` とする。
 
 - `AppError.code` で invariant、validation、not found、Discord API、database、shutdown を判別する。
-- `cause` は診断用に保持するが、必ず logger redact を通す。
+- `cause`は内部の分類・回復判断に保持し、logには`err`/`error`のserializerが許可したcode/statusと有限深度のcause分類だけを出す。外部Errorのmessage、stack、URL、request body、SQL bindを出さない。
 - Interaction pipeline、cross-feature orchestration、scheduler application operation の複数 I/O 合成には `Result` / `ResultAsync` を使う。
 - repository、ports、pure domain、timer mechanics を blanket に `ResultAsync` 化しない。
 - CAS race、重複、claim lost、no-op は例外ではなく typed return / state return で表現する。
@@ -158,7 +158,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 - `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts`は運用接続設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。
 - user config は重複しない固定4名のidentityを検証し、起動時に表示名と一つのtransactionでDBへreconcileする。過去履歴を守るため、設定から消えたmember rowは自動削除せず、既存IDも再利用しない。新規IDの生成はreconcileが所有し、設定の配列順に依存させない。
 - pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
-- token、接続文字列、Authorization は logger redact から外さない。
+- log messageは固定文言とし、必要な識別子・状態・診断分類を構造化して出す。token、接続文字列、Authorizationのkey redactは追加防御として維持する。Discord rate limitはroute templateと待機時間を記録し、tokenを含み得るmajor parameterは記録しない。
 - Interaction payload や SQL bind を丸ごと記録せず、必要な識別子と状態遷移の `from` / `to` / `reason` に限定する。
 - 外部 healthcheck ping はアプリから送信しない。運用観測は構造化ログと `/status` を基本とする。
 - A/B有効化は受信token・別の運用token・Web originの3項目を一組にする。部分設定や同じtokenの兼用を起動時に拒否する。状態・設定・再試行の専用CLIは[通知運用](operations/result-notifications.md)を参照する。
