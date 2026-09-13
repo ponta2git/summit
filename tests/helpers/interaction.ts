@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { createInteractionResponses } from "./interactionResponses.ts";
 import type {
   ButtonInteraction,
   ChatInputCommandInteraction,
@@ -14,6 +14,7 @@ import { memberUserId } from "./env.js";
 //   実際に override される場面 (user.id の差し替え等) に型を合わせる。
 
 type AskOverride = {
+  readonly acknowledge?: () => Promise<void>;
   readonly user?: { readonly id: string };
   readonly guildId?: string | null;
   readonly channelId?: string | null;
@@ -31,9 +32,7 @@ export const buildAskInteraction = (override: AskOverride = {}) => ({
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => true,
   isButton: () => false,
-  deferReply: vi.fn(async () => undefined),
-  editReply: vi.fn(async () => undefined),
-  reply: vi.fn(async () => undefined)
+  ...createInteractionResponses(override.acknowledge)
 });
 
 export const buildCancelInteraction = (override: CancelOverride = {}) => ({
@@ -44,9 +43,7 @@ export const buildCancelInteraction = (override: CancelOverride = {}) => ({
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => true,
   isButton: () => false,
-  deferReply: vi.fn(async () => undefined),
-  editReply: vi.fn(async () => undefined),
-  reply: vi.fn(async () => undefined)
+  ...createInteractionResponses(override.acknowledge)
 });
 
 export const buildButtonInteraction = (customId: string, override: ButtonOverride = {}) => ({
@@ -57,10 +54,7 @@ export const buildButtonInteraction = (customId: string, override: ButtonOverrid
   user: override.user ?? { id: memberUserId },
   isChatInputCommand: () => false,
   isButton: () => true,
-  deferUpdate: vi.fn(async () => undefined),
-  editReply: vi.fn(async () => undefined),
-  followUp: vi.fn(async () => undefined),
-  reply: vi.fn(async () => undefined)
+  ...createInteractionResponses(override.acknowledge)
 });
 
 export const asInteraction = (interaction: unknown): Interaction =>

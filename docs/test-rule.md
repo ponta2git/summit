@@ -34,7 +34,8 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 
 - pure function、view model、message builder、codecは`toStrictEqual`や具体payloadを優先する。
 - handler、scheduler、orchestrationは最終persisted state、user-facing response、outbox/Discord boundaryを検証する。
-- raw call orderは、順序自体が業務仕様またはrace invariantの場合だけ固定する。
+- raw call orderは、順序自体が業務仕様またはrace invariantの場合だけ固定する。Interactionは未解決ackの間にDB/API処理が始まらないこと、ack失敗時に副作用がないことを確認する。呼出し順だけでawaitの欠落を検出した扱いにしない。
+- 確認dialogはcustom ID・選択肢・label・disabled・ephemeralを固定し、代表flowは生成したIDをdispatcherへ戻して最終状態を観測する。SDKの非本質項目まで全箇所でsnapshot固定しない。
 - `expect.any`、`objectContaining`、`arrayContaining`はSDKの非本質項目や生成ID/時刻を意図的に緩める場合だけ使う。
 - skipped/no-op/race-lostは「呼ばれなかった」だけでなく、DB stateと外部副作用が変わらないことを確認する。
 - Resultを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。
