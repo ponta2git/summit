@@ -76,7 +76,9 @@ export const registerReconnectReplayHandlers = (input: {
       { event: "reconnect.replay_start", bootId },
       "Reconnect replay started."
     );
+    // race: 同期throwでもfinallyより先にPromiseを登録し、完了済みlockを残さない。
     replayInFlight = (async () => {
+      await Promise.resolve();
       try {
         const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
         await unwrapResultAsync(runStartupRecovery(client, context));

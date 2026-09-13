@@ -130,7 +130,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 
 - startup 中と reconnect replay 中は application readiness を false にし、Interaction を ephemeral で拒否する。
 - startup は dead-letter chain recovery、expired claim、stranded transition、missing intent/message、期限超過 Session を DB から収束させる。
-- reconnect は in-flight lock と debounce を併用し、初回 ready と並行 replay を区別する。
+- reconnect は in-flight lock と debounce を併用し、初回 ready と並行 replay を区別する。lockは処理開始前に登録し、同期例外・Result失敗の両方で解放する。debounceは成功完了時から測り、失敗後は次の再接続で再試行できる。
 - Discord message の active probe は API 負荷が高いため startup に限定する。通常 tick は Unknown Message を検出したとき opportunistic に再生成する。
 - poison payload の FAILED 復帰は startup だけで行い、定期 tick や reconnect で hot loop を作らない。
 
