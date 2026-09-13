@@ -79,7 +79,7 @@ Summit が共有 PostgreSQL を利用する際の所有権、persistence boundar
 - race lostはerrorではなくtyped result/no-opとして返し、最新rowを再取得して表示を収束させる。
 - interaction由来ResponseはDiscord snowflakeでfenceし、遅れて届いた古いInteractionが新しい回答やaggregate revisionを上書きしない。
 - 同時`/ask`とcalendar tickはprocess内in-flight最適化とDB uniqueの二段で吸収する。正しさはDB uniqueが担う。
-- `/cancel_week`は対象Sessionを決定論的順序でlockし、skip、競合intent取消、通知intentを一つのtransactionで確定する。Session未作成時はsentinelで後続作成を抑止する。
+- `/cancel_week`は対象Sessionを決定論的順序でlockし、skip、競合intent取消、通知intentを一つのtransactionで確定する。金曜lockの待機中に順延transactionが土曜を作成し得るため、金曜を保持した後の新しいstatement snapshotで週全体を再読込する。Session未作成時はsentinelで後続作成を抑止する。
 - transaction中にDiscord APIを待たない。
 
 ## 6. アンケートの Discord 配送
