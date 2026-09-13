@@ -43,6 +43,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 - `expect.any`、`objectContaining`、`arrayContaining`はSDKの非本質項目や生成ID/時刻を意図的に緩める場合だけ使う。
 - skipped/no-op/race-lostは「呼ばれなかった」だけでなく、DB stateと外部副作用が変わらないことを確認する。
 - Resultを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。
+- Effectを含む境界は元のAppError/statusの保持、同期throwと非同期reject、expected failureとdefectの扱いを確認する。内部operatorの呼出し回数ではなく、最終状態と後続処理の継続・停止をオラクルにする。
 - 重要な契約のオラクルに疑義がある場合は、条件反転・await欠落・rollback漏れ等の代表的な誤実装でtestが失敗することを確認する。対象・検出結果を残し、mutationは復元する。全変更へのmutation実行やsnapshot更新の機械的承認は要求しない。
 
 ## 4. Fixture とscenario
@@ -63,6 +64,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 - Interaction snowflake fencingは古いeventが新しいResponseとaggregate revisionを変えないことを確認する。
 - outbox claim expiryは旧ownerのfinalizeが失敗し、新ownerだけがDBを確定できることを確認する。
 - Discord受理は二重になり得るため、exactly-once assertionを誤って置かない。
+- fiber interruptionやtimeoutを使う場合は、実I/Oの完了と待機終了を別の同期点で観測する。片方の並列I/Oが失敗しても未完了の兄弟をdrainし、finalizerが実書込みより先に所有権を解放しないことを確認する。timer/fiberをtestごとに回収し、Effectへ移した待機もfake timerまたはTestClockで制御する。
 
 ## 6. 変更種別ごとの必須テスト
 
@@ -77,6 +79,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 | outbox | dedupe、順序、claim fencing、retry/dead-letter、backfill、recovery、不正payloadのitem隔離 |
 | scheduler | fake clock、one-shot再構築、wake debounce、同種workの非重複、due-kind一回、supervisor fallback |
 | startup/reconnect/shutdown | readiness、scope別recovery、in-flight lock、接続世代とdebounce、受付停止後の新規副作用なし・処理中workのdrain |
+| Effect / 非同期resource境界 | 遅延実行、error identity、並列失敗時のsettlement、中断不能I/Oとfinalizerの順序、timeout後の安全な回復、cleanup失敗時の後続解放 |
 | time | JST、ISO week year、24:00、deadline、candidate、reminder |
 | env/user config | valid parse、invalid fail-fast、secret非出力 |
 | migration/schema consumer | momo-db check、Summit real DB integration、compatibility順序 |

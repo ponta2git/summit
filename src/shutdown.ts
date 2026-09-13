@@ -1,3 +1,5 @@
+import { Cause, Effect, Option } from "effect";
+import { promiseCall, runPromiseBoundary } from "./runtime/effect.ts";
 import { logger } from "./logger.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./config.ts";
 
@@ -38,32 +40,29 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
   }
 
   logger.info({ signal: deps.signal }, "Shutdown started.");
-  // invariant: scheduler 停止 → in-flight 待機の順序。逆にすると cron tick が in-flight を積み増す。
-  deps.stopScheduler();
+  const attempt = <T, E>(effect: Effect.Effect<T, E>, message: string): Effect.Effect<void> =>
+    Effect.asVoid(Effect.catchAllCause(effect, cause => Effect.sync(() => {
+      logger.error({ error: Cause.squash(cause), signal: deps.signal }, message);
+    })));
 
-  let drainTimer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([deps.waitForInFlightSend(), new Promise<void>(resolve => {
-      drainTimer = setTimeout(() => {
-        logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB.");
-        resolve();
-      }, SHUTDOWN_DRAIN_TIMEOUT_MS);
-    })]);
-  } catch (error: unknown) {
-    logger.error({ error, signal: deps.signal }, "Waiting in-flight send failed during shutdown.");
-  } finally { clearTimeout(drainTimer); }
+  const closeResources = Effect.gen(function* () {
+    yield* attempt(promiseCall(deps.closeDb), "Database close failed during shutdown.");
+    yield* attempt(Effect.sync(deps.destroyClient), "Discord client destroy failed during shutdown.");
+  });
 
-  try {
-    await deps.closeDb();
-  } catch (error: unknown) {
-    logger.error({ error, signal: deps.signal }, "Database close failed during shutdown.");
-  }
-
-  try {
-    deps.destroyClient();
-  } catch (error: unknown) {
-    logger.error({ error, signal: deps.signal }, "Discord client destroy failed during shutdown.");
-  }
+  await runPromiseBoundary(Effect.gen(function* () {
+    // invariant: stop admission before drain; a broken stop adapter must not bypass resource cleanup.
+    yield* attempt(Effect.sync(deps.stopScheduler), "Stopping scheduler failed during shutdown.");
+    yield* attempt(promiseCall(deps.waitForInFlightSend).pipe(
+      // This bounds waiting only. Pending external I/O remains recoverable by its persisted claim.
+      Effect.timeoutOption(SHUTDOWN_DRAIN_TIMEOUT_MS),
+      Effect.tap(result => Effect.sync(() => {
+        if (Option.isNone(result)) {
+          logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB.");
+        }
+      }))
+    ), "Waiting in-flight send failed during shutdown.");
+  }).pipe(Effect.ensuring(closeResources)));
 
   logger.info({ signal: deps.signal }, "Shutdown completed.");
   return true;

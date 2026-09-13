@@ -1,5 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
+import { Effect } from "effect";
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -10,6 +11,7 @@ import {
 import { AppError, InvariantViolationError } from "../errors/index.ts";
 import { fromAppCall, fromDatabaseCall, unwrapResultAsync } from "../errors/result.ts";
 import { logger as defaultLogger } from "../logger.ts";
+import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
 import { runOutboxWorkerTick } from "./outboxWorker.ts";
 import { runResultTickSafely } from "./tickRunner.ts";
@@ -209,16 +211,16 @@ export const createSchedulerController = (
     while (true) {
       if (stopped) { return didRun; }
       const now = context.clock.now();
-      const [sessionHints, nextOutboxDispatchAt] = await Promise.all([
-        readDatabase(
+      const [sessionHints, nextOutboxDispatchAt] = await runPromiseBoundary(Effect.all([
+        settledCall(() => readDatabase(
           () => context.ports.sessions.getSchedulerSessionHints(now),
           "Failed to read scheduler session hints."
-        ),
-        readDatabase(
+        )),
+        settledCall(() => readDatabase(
           () => context.ports.outbox.getNextDispatchAt(now),
           "Failed to read next outbox dispatch time."
-        )
-      ]);
+        ))
+      ], { concurrency: 2 }));
       if (stopped) { return didRun; }
       let ranThisPass = false;
 

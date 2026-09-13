@@ -107,7 +107,19 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 - fire-and-forget は最外周で明示的に catch し、unhandled rejection を作らない。
 - A/B配送の結果はDB状態へ確定するため、dispatcher境界は`Promise<void>`を受け取る。配送内部が送達不明・恒久失敗・claim失効を分類し、最終保存の失敗も回収可能な状態と安全なlogへ収束させる。
 
-effect system を採用しない理由は、現在の resource graph と failure policy が `AppContext`、typed return、neverthrow の境界利用で表現できるためである。DI、resource lifecycle、fiber cancellation が複数 subsystem で必要になったとき再評価する。
+### Effect の利用境界
+
+Effect v3 の安定版を、非同期resourceの所有、待機期限、並列I/Oのsettlement、終了時のfinalizerに使う。既存の`AppContext`によるDI、Promise ports、pure domainとtransaction境界、業務pipelineの`ResultAsync`は維持する。単純な逐次合成のためにEffectとResultを往復させず、Effectの実行はPromise adapterに閉じる。
+
+- 外部I/Oは`src/runtime/effect.ts`の`promiseCall`等へthunkで渡す。開始済みPromiseをwrapして同期例外を取りこぼさない。外部の失敗はtyped error channel、pure計算のbugはdefectとして区別する。
+- DBなど中断APIを持たないI/Oは`settledCall`で実際のsettlementまで所有する。並列queryの一件が失敗しても、兄弟queryを待ってからownerのdrain・排他枠を解放する。独立した配送の失敗を理由に他の配送を中断しない。
+- `timeout`は待機の期限であり、外部sendやcommitの取消を意味しない。送達不明は永続claim・nonce・CAS・既存retry方針で回復し、Effectの汎用retryで書込みや送信を再実行しない。中断不能I/O全体へtimeoutをかけても即座に終了するとは限らない。
+- Promise境界の`runPromiseBoundary`は`Exit`から元の失敗を取り出し、既存のAppError/status分類を保つ。`Cause.pretty`やEffectの既定console loggerへ外部errorを出さず、§5のsafe loggerを使う。
+- finalizerは後続の資源解放を飛ばさない。shutdownは受付停止・drainの失敗後もDB・Discordの解放を試みる。scope/fiberを導入する場合はownerとjoinの責務を明示し、無所有のdaemon fiberを作らない。
+
+全portのEffect化やLayer/ServiceによるDI置換は、現状の明示依存に対して変換層を増やすため採用しない。resource graphが既存AppContextでは表現できない場合や、複数workflowで同じEffect合成が反復する場合に、対象境界の統一を再評価する。
+
+資料: [v3のerror分類](https://effect.website/docs/v3/error-management/two-error-types)、[並列性](https://effect.website/docs/v3/concurrency/basic-concurrency)、[resource管理](https://effect.website/docs/v3/resource-management/introduction)、[timeout](https://effect.website/docs/v3/error-management/timing-out)。APIは`package.json`の導入版と照合する。v4のpreview資料をv3の根拠として混在させない。
 
 ## 6. Scheduler architecture
 

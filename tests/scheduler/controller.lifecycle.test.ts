@@ -39,6 +39,23 @@ describe("scheduler work ownership", () => {
     expect(deps.runDeadlineTick).not.toHaveBeenCalled();
   });
 
+  it("keeps a pending hint read in drain when its parallel query has already failed", async () => {
+    const ctx = createTestAppContext();
+    const started = deferred<void>(); const next = deferred<Date | null>();
+    ctx.ports.sessions.getSchedulerSessionHints = async () => { throw new Error("query unavailable"); };
+    ctx.ports.outbox.getNextDispatchAt = () => { started.resolve(); return next.promise; };
+    const deps = options(ctx); const controller = createSchedulerController(deps);
+    stopWork = () => controller.stop(); drainWork = () => controller.drain(); releaseWork = () => next.resolve(null);
+    const recompute = controller.recompute("failing_query"); await started.promise;
+    controller.stop(); let drained = false;
+    const drain = controller.drain().then(() => { drained = true; return undefined; });
+    await setImmediate();
+    expect(drained).toBe(false);
+    next.resolve(null); await recompute; await drain;
+    expect(drained).toBe(true);
+    expect(deps.runDeadlineTick).not.toHaveBeenCalled();
+  });
+
   it("joins a timer tick during recompute and drains it before shutdown completes", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-24T12:00:00Z"); vi.setSystemTime(now);

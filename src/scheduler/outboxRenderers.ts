@@ -1,4 +1,5 @@
 import type { MessageCreateOptions } from "discord.js";
+import { Effect } from "effect";
 import { z } from "zod";
 
 import type { AppContext } from "../appContext.ts";
@@ -15,6 +16,7 @@ import { buildDecidedAnnouncementViewModel } from "../features/decided-announcem
 import { renderPostponeBody } from "../features/postpone-voting/render.ts";
 import { buildPostponeMessageViewModel } from "../features/postpone-voting/viewModel.ts";
 import { buildReminderContent } from "../features/reminder/send.ts";
+import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 
 type Renderer = (input: {
   readonly ctx: AppContext;
@@ -43,10 +45,7 @@ const renderers: Readonly<Record<string, Renderer>> = {
   ask_body: async ({ ctx, entry }) => {
     const session = await ctx.ports.sessions.findSessionById(entry.sessionId);
     if (!session) {return undefined;}
-    const [responses, members] = await Promise.all([
-      ctx.ports.responses.listResponses(session.id),
-      ctx.ports.members.listMembers()
-    ]);
+    const [responses, members] = await loadAttendance(ctx, session.id);
     return renderAskBody(buildAskMessageViewModel(session, responses, members));
   },
   settle_notice: async ({ entry }) => {
@@ -62,10 +61,7 @@ const renderers: Readonly<Record<string, Renderer>> = {
   postpone_vote: async ({ ctx, entry }) => {
     const session = await ctx.ports.sessions.findSessionById(entry.sessionId);
     if (!session) {return undefined;}
-    const [responses, members] = await Promise.all([
-      ctx.ports.responses.listResponses(session.id),
-      ctx.ports.members.listMembers()
-    ]);
+    const [responses, members] = await loadAttendance(ctx, session.id);
     return renderPostponeBody(buildPostponeMessageViewModel(session, responses, members, {
       disabled: session.status !== "POSTPONE_VOTING"
     }));
@@ -79,10 +75,7 @@ const renderers: Readonly<Record<string, Renderer>> = {
     ) {
       return undefined;
     }
-    const [responses, members] = await Promise.all([
-      ctx.ports.responses.listResponses(session.id),
-      ctx.ports.members.listMembers()
-    ]);
+    const [responses, members] = await loadAttendance(ctx, session.id);
     const vm = buildDecidedAnnouncementViewModel(session, responses, members);
     return vm ? renderDecidedAnnouncement(vm) : undefined;
   },
@@ -111,6 +104,17 @@ const renderers: Readonly<Record<string, Renderer>> = {
     };
   }
 };
+
+const loadAttendance = (
+  ctx: AppContext,
+  sessionId: string
+): Promise<[
+  Awaited<ReturnType<AppContext["ports"]["responses"]["listResponses"]>>,
+  Awaited<ReturnType<AppContext["ports"]["members"]["listMembers"]>>
+]> => runPromiseBoundary(Effect.all([
+  settledCall(() => ctx.ports.responses.listResponses(sessionId)),
+  settledCall(() => ctx.ports.members.listMembers())
+], { concurrency: 2 }));
 
 export const renderOutboxPayload = async (
   ctx: AppContext,
