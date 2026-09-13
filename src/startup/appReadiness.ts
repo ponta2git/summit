@@ -46,9 +46,11 @@ export const registerReconnectReplayHandlers = (input: {
   // race: in-flight Promise lock + 時刻 debounce で flappy reconnect を直列化する。
   // ack: replay 中は readiness で dispatcher に load-shed させ interaction を ephemeral で却下。
   let replayInFlight: Promise<void> | undefined;
-  let lastReplaySucceededAt = 0;
+  let lastReplaySucceededAt: number | undefined;
+  let connected = false;
+  let connectionVersion = 0;
 
-  const triggerReconnectReplay = (): void => {
+  const triggerReconnectReplay = (connectionChangedDuringReplay = false): void => {
     if (!isStartupCompleted()) {
       return;
     }
@@ -56,7 +58,7 @@ export const registerReconnectReplayHandlers = (input: {
       return;
     }
     const now = Date.now();
-    if (now - lastReplaySucceededAt < RECONNECT_REPLAY_DEBOUNCE_MS) {
+    if (!connectionChangedDuringReplay && lastReplaySucceededAt !== undefined && now - lastReplaySucceededAt < RECONNECT_REPLAY_DEBOUNCE_MS) {
       readiness.markReady();
       logger.info(
         {
@@ -71,6 +73,7 @@ export const registerReconnectReplayHandlers = (input: {
     }
 
     readiness.markNotReady("replaying");
+    const replayVersion = connectionVersion;
     const startedAt = Date.now();
     logger.info(
       { event: "reconnect.replay_start", bootId },
@@ -83,12 +86,15 @@ export const registerReconnectReplayHandlers = (input: {
         const report = await unwrapResultAsync(runReconciler(client, context, { scope: "reconnect" }));
         await unwrapResultAsync(runStartupRecovery(client, context));
         input.wakeScheduler?.("reconnect_replay");
-        lastReplaySucceededAt = Date.now();
+        const completedAt = Date.now();
+        if (connected && replayVersion === connectionVersion) {
+          lastReplaySucceededAt = completedAt;
+        }
         logger.info(
           {
             event: "reconnect.replay_done",
             bootId,
-            elapsedMs: lastReplaySucceededAt - startedAt,
+            elapsedMs: completedAt - startedAt,
             cancelledPromoted: report.cancelledPromoted,
             askCreated: report.askCreated,
             messageIntentsQueued: report.messageIntentsQueued,
@@ -110,20 +116,32 @@ export const registerReconnectReplayHandlers = (input: {
         );
       } finally {
         replayInFlight = undefined;
-        // idempotent: 成否に関わらず ready に戻す。失敗時も次 scheduler tick で再収束する。
-        readiness.markReady();
+        if (!connected) {
+          readiness.markNotReady("reconnecting");
+        } else if (replayVersion !== connectionVersion) {
+          // race: 処理中に切断・再接続した世代を、旧 replay の成功 debounce で落とさない。
+          triggerReconnectReplay(true);
+        } else {
+          // idempotent: 接続中の失敗は次の scheduler tick で収束できる。
+          readiness.markReady();
+        }
       }
     })();
   };
 
   client.on("shardDisconnect", () => {
+    connected = false;
+    connectionVersion += 1;
     if (!isStartupCompleted()) {
       return;
     }
     readiness.markNotReady("reconnecting");
   });
 
-  client.on("shardReady", () => {
+  const onConnected = (): void => {
+    connected = true;
     triggerReconnectReplay();
-  });
+  };
+  client.on("shardReady", onConnected);
+  client.on("shardResume", onConnected);
 };
