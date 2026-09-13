@@ -189,11 +189,13 @@ export const registerInteractionHandlers = (
         );
 
         try {
-          if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-              content: rejectMessages.internalError,
-              flags: MessageFlags.Ephemeral
-            });
+          if (interaction.isRepliable()) {
+            const payload = buildEphemeralReject(rejectMessages.internalError);
+            if (interaction.replied || interaction.deferred) {
+              await interaction.followUp(payload);
+            } else {
+              await interaction.reply(payload);
+            }
           }
         } catch {
           // race: エラー通知自体の失敗は握りつぶし、二重障害で unhandled rejection を作らない。

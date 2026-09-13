@@ -116,7 +116,7 @@ A/Bは`result-notifications` rendererで保存済みsnapshotから描画する�
 - Discord API失敗とdatabase失敗を同じ回復方法で扱わない。
 - DB未commitならoperation errorとして上位へ返す。
 - DB commit済み・Discord edit失敗ならDBを維持し、recoveryへ委譲する。
-- route handler最外周でerrorをlogし、まだreply可能ならgeneric ephemeral errorを返す。
+- route handler最外周でerrorをlogし、応答可能なInteractionへgeneric ephemeral errorを返す。ack済み（replied/deferred）はfollowUp、未ackはreplyを使い、deferUpdate済みという理由で内部失敗の通知を省略しない。
 - error通知自体の失敗は二重障害としてunhandled rejectionにしない。
 - rate limit情報はrouteとretryAfterなど必要な値に限定して構造化logへ記録する。
 
