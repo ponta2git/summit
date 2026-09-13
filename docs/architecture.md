@@ -102,10 +102,11 @@ XState と event sourcing は採用しない。現在の状態数と監査要求
 - repository、ports、pure domain、timer mechanics を blanket に `ResultAsync` 化しない。
 - CAS race、重複、claim lost、no-op は例外ではなく typed return / state return で表現する。
 - cron / timer callback は `Promise<void>` adapter で Result を unwrap し、失敗を tick 外へ持ち越さない。
-- batch scheduler は item 単位の recoverable failure を report に集め、query 全体の失敗だけを上位へ返す。
+- batch scheduler は item 単位の失敗をreportに集め、同期throwと非同期rejectで後続itemの継続方針を変えない。既知AppErrorは保持し、その他のitem異常はinvariantとして記録する。query全体、識別・集計・失敗通知などreport自体の生成に失敗した場合はphase全体の失敗を上位へ返す。
 - config/env parse、`assertNever`、起動不能な impossible state は fail-fast を許可する。
 - fire-and-forget は最外周で明示的に catch し、unhandled rejection を作らない。
 - A/B配送の結果はDB状態へ確定するため、dispatcher境界は`Promise<void>`を受け取る。配送内部が送達不明・恒久失敗・claim失効を分類し、最終保存の失敗も回収可能な状態と安全なlogへ収束させる。
+- 配送前のDB操作失敗はretry可能な`delivery_failed`、送信開始後の確定失敗は`delivery_uncertain`とする。DBエラーをDiscordの障害と誤分類しない。
 
 ### Effect の利用境界
 
@@ -116,6 +117,7 @@ Effect v3 の安定版を、非同期resourceの所有、待機期限、並列I/
 - `timeout`は待機の期限であり、外部sendやcommitの取消を意味しない。送達不明は永続claim・nonce・CAS・既存retry方針で回復し、Effectの汎用retryで書込みや送信を再実行しない。中断不能I/O全体へtimeoutをかけても即座に終了するとは限らない。
 - Promise境界の`runPromiseBoundary`は`Exit`から元の失敗を取り出し、既存のAppError/status分類を保つ。`Cause.pretty`やEffectの既定console loggerへ外部errorを出さず、§5のsafe loggerを使う。
 - finalizerは後続の資源解放を飛ばさない。shutdownは受付停止・drainの失敗後もDB・Discordの解放を試みる。scope/fiberを導入する場合はownerとjoinの責務を明示し、無所有のdaemon fiberを作らない。
+- A/B配送は1配送のScopeがheartbeat fiberを所有し、終了時にtimerを中断して開始済みrenewの実完了を待つ。plan/beginの待機中に判明したclaim喪失も確認してから次のDiscord I/Oへ進む。開始済み送信の結果は既存のCASで保存を試みる。
 
 全portのEffect化やLayer/ServiceによるDI置換は、現状の明示依存に対して変換層を増やすため採用しない。resource graphが既存AppContextでは表現できない場合や、複数workflowで同じEffect合成が反復する場合に、対象境界の統一を再評価する。
 

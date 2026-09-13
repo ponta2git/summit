@@ -1,6 +1,6 @@
 import type { ResultAsync } from "neverthrow";
 
-import { AppError, InvariantViolationError } from "../errors/index.ts";
+import { AppError, InvariantViolationError, errResult, type AppResult } from "../errors/index.ts";
 import { fromAppCall } from "../errors/result.ts";
 
 export interface SchedulerFailure {
@@ -38,20 +38,15 @@ const runSchedulerBatch = async <TItem, TValue>(
 
   for (const item of items) {
     const identity = identify(item);
-    let result: SchedulerResult<TValue>;
+    let result: AppResult<TValue>;
     try {
-      result = run(item);
+      result = await run(item);
     } catch (cause: unknown) {
-      const failure: SchedulerFailure = {
-        phase,
-        error: new InvariantViolationError(`Scheduler operation threw in phase '${phase}'.`, { cause }),
-        ...identity
-      };
-      failures.push(failure);
-      onFailure(failure);
-      continue;
+      result = errResult(cause instanceof AppError ? cause :
+        new InvariantViolationError(`Scheduler operation failed in phase '${phase}'.`, { cause }));
     }
-    await result.match(
+    // Bookkeeping defects invalidate the whole report; they are not recoverable item failures.
+    result.match(
       (value) => {
         succeeded += successCount(value);
       },

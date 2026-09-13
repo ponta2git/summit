@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageFlags } from "discord.js";
 import { deliverResultNotification, resultNotificationNonce } from "../../src/scheduler/resultNotifications.delivery.ts";
-import { RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../src/config.ts";
+import { RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
@@ -65,6 +65,73 @@ describe("result notification delivery", () => {
     await vi.advanceTimersByTimeAsync(10_000); sent.resolve({ id: "known" }); await delivery;
     expect(h.channel.send).toHaveBeenCalledOnce();
     expect((await h.port.inspect(id))?.parts[0]).toMatchObject({ status: "DELIVERED" });
+  });
+
+  it("waits for an already-started renewal before releasing the delivery scope", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue("pending-renewal", "Short summary"); const entry = await h.claim();
+    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<boolean>();
+    h.channel.send.mockImplementationOnce(() => { sending.resolve(); return sent.promise; });
+    h.port.renew = vi.fn(() => renewed.promise);
+    let settled = false;
+    const delivery = h.deliver(entry).then(() => { settled = true; return undefined; });
+    try {
+      await sending.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS);
+      expect(h.port.renew).toHaveBeenCalledOnce();
+      sent.resolve({ id: "accepted" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" });
+      expect(settled).toBe(false);
+    } finally { sent.resolve({ id: "accepted" }); renewed.resolve(true); await delivery; }
+    expect(settled).toBe(true);
+    await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS * 2);
+    expect(h.port.renew).toHaveBeenCalledOnce();
+  });
+
+  it.each(["plan", "begin"] as const)("does not start Discord I/O when the lease is lost during %s", async operation => {
+    const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
+    const entered = deferred<void>(); const release = deferred<void>();
+    if (operation === "plan") {
+      const plan = h.port.plan;
+      h.port.plan = async (...args) => { const changed = await plan(...args); entered.resolve(); await release.promise; return changed; };
+    } else {
+      const begin = h.port.begin;
+      h.port.begin = async (...args) => { const changed = await begin(...args); entered.resolve(); await release.promise; return changed; };
+    }
+    h.port.renew = async () => false;
+    const delivery = h.deliver(entry);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS);
+    } finally { release.resolve(); await delivery; }
+    expect(h.channel.send).not.toHaveBeenCalled();
+    expect(h.client.channels.fetch).toHaveBeenCalledTimes(operation === "plan" ? 0 : 1);
+  });
+
+  it("classifies a synchronous renewal failure without leaking it or starting later parts", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
+    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
+    h.channel.send.mockImplementationOnce(() => { sending.resolve(); return sent.promise; });
+    h.port.renew = () => { throw new Error("private renewal canary"); };
+    const delivery = h.deliver(entry);
+    try {
+      await sending.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS);
+    } finally { sent.resolve({ id: "already-started" }); await delivery; }
+    expect(h.channel.send).toHaveBeenCalledOnce();
+    expect((await h.port.inspect(id))?.parts[0]).toMatchObject({ status: "DELIVERED", deliveredMessageId: "already-started" });
+    expect(h.logger.warn).toHaveBeenCalledWith({ event: "result_notification.lease_uncertain", notificationId: id });
+    expect(JSON.stringify(h.logger.warn.mock.calls)).not.toContain("canary");
+    expect(JSON.stringify(h.logger.error.mock.calls)).not.toContain("canary");
+  });
+
+  it.each(["plan", "begin"] as const)("classifies a %s database failure before send as retryable delivery failure", async operation => {
+    const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
+    h.port[operation] = () => { throw new Error("private database canary"); };
+    await h.deliver(entry);
+    expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", lastError: "delivery_failed" });
+    expect(h.channel.send).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.logger.warn.mock.calls)).not.toContain("canary");
   });
 
   it("bounds an unresponsive Discord call and schedules the same part after an uncertain outcome", async () => {
