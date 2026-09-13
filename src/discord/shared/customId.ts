@@ -1,4 +1,4 @@
-// why: custom_id の 3-segment codec と slot の wire 表現（lowercase）をここで所有する。
+// why: custom_id codec と slot の wire 表現（lowercase）をここで所有する。
 //   SlotKey の意味論は src/slot.ts、DB は SlotKey を verbatim 保存するため DB 側の wire 変換は不要。
 // @see docs/discord-rule.md
 import { z } from "zod";
@@ -67,10 +67,10 @@ export const parseCustomId = (raw: string): z.ZodSafeParseResult<CustomIdSpec> =
 export const buildCustomId = (spec: CustomIdSpec): string =>
   `${spec.kind}:${spec.sessionId}:${spec.choice}`;
 
-// why: cancel_week は session を持たない独立フロー。nonce で stale dialog を識別し、
-//   ask/postpone codec と衝突させないため別 schema にする。
+// why: cancel_week は確認した週を固定し、nonceでinvocationを区別する独立フロー。
 const cancelWeekCustomIdSpecSchema = z.object({
   kind: z.literal("cancel_week"),
+  weekKey: z.string().regex(/^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/),
   nonce: z.uuid(),
   choice: z.enum(["confirm", "abort"])
 });
@@ -79,15 +79,15 @@ const cancelWeekCodecSchema = z
   .string()
   .transform((raw, ctx) => {
     const segments = raw.split(":");
-    if (segments.length !== 3) {
+    if (segments.length !== 4) {
       ctx.addIssue({
         code: "custom",
-        message: "cancel_week custom_id must have exactly 3 segments."
+        message: "cancel_week custom_id must have exactly 4 segments."
       });
       return z.NEVER;
     }
-    const [kind, nonce, choice] = segments;
-    return { kind, nonce, choice };
+    const [kind, weekKey, nonce, choice] = segments;
+    return { kind, weekKey, nonce, choice };
   })
   .pipe(cancelWeekCustomIdSpecSchema);
 
@@ -102,7 +102,7 @@ export const parseCancelWeekCustomId = (
 
 // invariant: buildCancelWeekCustomId ∘ parseCancelWeekCustomId = identity on valid inputs
 export const buildCancelWeekCustomId = (spec: CancelWeekCustomIdSpec): string =>
-  `${spec.kind}:${spec.nonce}:${spec.choice}`;
+  `${spec.kind}:${spec.weekKey}:${spec.nonce}:${spec.choice}`;
 
 // why: ask_absent は欠席の不可逆性ゆえに確認 dialog が必要。nonce ではなく sessionId を使い、
 //   DB CAS と組み合わせて同時押下による二重確定を吸収する。

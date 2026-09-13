@@ -38,11 +38,6 @@ export const buildSaturdaySessionInput = (
   };
 };
 
-const decisionFooter = (outcome: PostponeTransitionOutcome["outcome"]): string =>
-  outcome === "all_ok"
-    ? "明日の出欠確認へ進みます"
-    : "この回はお流れになりました";
-
 /**
  * Reflect one already-persisted postpone transition to Discord.
  *
@@ -56,17 +51,7 @@ export const applyPostponeTransitionResult = (
   result: PersistedPostponeTransition
 ): ResultAsync<void, AppError> =>
   safeTry(async function* () {
-    const responseRows = yield* fromDatabasePromise(
-      ctx.ports.responses.listResponses(result.session.id),
-      "Failed to load responses for postpone message reflection."
-    );
-    yield* updatePostponeMessage(
-      client,
-      ctx,
-      result.session,
-      responseRows,
-      decisionFooter(result.outcome)
-    );
+    yield* updatePostponeMessage(client, ctx, result.session);
 
     if (result.outcome === "cancelled") {
       logger.info(

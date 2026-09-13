@@ -24,6 +24,7 @@ interface CancelWeekButtonStart {
 }
 
 interface CancelWeekButtonParsed extends CancelWeekButtonStart {
+  readonly weekKey: string;
   readonly choice: "confirm" | "abort";
 }
 
@@ -37,6 +38,7 @@ const validateCancelWeekButton = (
     .andThen((current) =>
       guardCancelWeekCustomId(current.interaction.customId).map((parsed) => ({
         ...current,
+        weekKey: parsed.weekKey,
         choice: parsed.choice
       }))
     );
@@ -121,11 +123,16 @@ export const handleCancelWeekButton = async (
   }
 
   const result = await applyManualSkip(deps.client, deps.context, {
-    invokerUserId: interaction.user.id
+    invokerUserId: interaction.user.id,
+    expectedWeekKey: validation.value.weekKey
   });
 
   await result.match(
     async (outcome) => {
+      if (outcome.kind === "expired") {
+        await interaction.editReply({ content: cancelWeekMessages.cancelWeek.expired, components: [] });
+        return;
+      }
       deps.wakeScheduler?.("cancel_week_confirmed");
       await interaction.editReply({
         content: cancelWeekMessages.cancelWeek.done({ count: outcome.skippedCount }),

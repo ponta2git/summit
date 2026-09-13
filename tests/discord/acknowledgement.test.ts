@@ -17,7 +17,7 @@ describe("interaction acknowledgement completion", () => {
     const edit = vi.fn(async () => undefined);
     const interaction = { ...buildButtonInteraction(`ask:${sessionId}:t2200`, {
       acknowledge: () => { started.resolve(); return ack.promise; }
-    }), message: { edit } };
+    }), message: { id: "ask-message", edit } };
     const handling = handleInteraction(asInteraction(interaction), defaultInteractionDeps(successfulSendAsk(), context));
     // Observe a complete event-loop turn, not a wall-clock sleep: an unawaited ack lets the whole handler run here.
     await Promise.race([started.promise, handling]); await setImmediate();

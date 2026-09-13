@@ -113,6 +113,7 @@ export const guardPostponeCustomId = (
 };
 
 export interface CancelWeekCustomIdGuardResult {
+  readonly weekKey: string;
   readonly choice: CancelWeekCustomIdChoice;
 }
 
@@ -124,7 +125,7 @@ export const guardCancelWeekCustomId = (
     return errResult(buildValidationError("invalid_custom_id", "Invalid cancel_week custom_id."));
   }
 
-  return okResult({ choice: parsed.data.choice });
+  return okResult({ weekKey: parsed.data.weekKey, choice: parsed.data.choice });
 };
 
 export interface AbsentConfirmCustomIdGuardResult {

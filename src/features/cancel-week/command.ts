@@ -23,15 +23,16 @@ import {
   okResult
 } from "../../errors/index.ts";
 import type { InteractionHandlerDeps } from "../../discord/shared/interactionHandlerDeps.ts";
+import { isoWeekKey } from "../../time/index.ts";
 
-// why: /cancel_week は破壊的なので confirmation 必須。nonce を invocation ごとに発行し stale dialog 踏み直しを判別する。
-const buildConfirmRow = (nonce: string): ActionRowBuilder<ButtonBuilder> => {
+// why: 週を跨いだdialogで別週を取り消さないよう、確認対象週をIDへ固定する。
+const buildConfirmRow = (weekKey: string, nonce: string): ActionRowBuilder<ButtonBuilder> => {
   const confirmButton = new ButtonBuilder()
-    .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", nonce, choice: "confirm" }))
+    .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", weekKey, nonce, choice: "confirm" }))
     .setLabel(cancelWeekMessages.cancelWeek.confirmButtonLabel)
     .setStyle(ButtonStyle.Danger);
   const abortButton = new ButtonBuilder()
-    .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", nonce, choice: "abort" }))
+    .setCustomId(buildCancelWeekCustomId({ kind: "cancel_week", weekKey, nonce, choice: "abort" }))
     .setLabel(cancelWeekMessages.cancelWeek.abortButtonLabel)
     .setStyle(ButtonStyle.Secondary);
   return new ActionRowBuilder<ButtonBuilder>().addComponents(confirmButton, abortButton);
@@ -62,7 +63,7 @@ const replyCancelWeekCommandValidationError = async (
 
 export const handleCancelWeekCommand = async (
   interaction: ChatInputCommandInteraction,
-  _deps: InteractionHandlerDeps
+  deps: InteractionHandlerDeps
 ): Promise<void> => {
   // ack: 3 秒制約。確認ボタンは ephemeral で実行者のみ視認可能。
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -76,7 +77,7 @@ export const handleCancelWeekCommand = async (
   const nonce = randomUUID();
   await interaction.editReply({
     content: cancelWeekMessages.cancelWeek.confirmPrompt,
-    components: [buildConfirmRow(nonce)]
+    components: [buildConfirmRow(isoWeekKey(deps.context.clock.now()), nonce)]
   });
 
   logger.info(

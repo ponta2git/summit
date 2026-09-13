@@ -26,7 +26,7 @@ describe("handlePostponeButton", () => {
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const messageEdit = vi.fn(async () => undefined);
-    const interactionWithMessage = { ...interaction, message: { edit: messageEdit } };
+    const interactionWithMessage = { ...interaction, message: { id: session.postponeMessageId, edit: messageEdit } };
 
     await handlePostponeButton(
       asButtonInteraction(interactionWithMessage),
@@ -60,7 +60,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -95,7 +95,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -145,7 +145,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(customId, override);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -170,7 +170,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(
@@ -203,7 +203,7 @@ describe("handlePostponeButton", () => {
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
     const interactionWithMessage = {
       ...interaction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handlePostponeButton(

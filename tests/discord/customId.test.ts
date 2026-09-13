@@ -67,38 +67,46 @@ describe("slot wire in custom_id", () => {
 describe("cancel_week customId codec", () => {
   const nonce = "d8b1f8e5-1111-4222-8333-123456789abc";
 
+  it.each(["2026-W00", "2026-W54", "2026-W1", "unknown"])("rejects invalid week %s", weekKey => {
+    expect(parseCancelWeekCustomId(`cancel_week:${weekKey}:${nonce}:confirm`).success).toBe(false);
+  });
+
+  it("rejects legacy dialogs without a confirmed week", () => {
+    expect(parseCancelWeekCustomId(`cancel_week:${nonce}:confirm`).success).toBe(false);
+  });
+
   it("parses valid confirm id", () => {
-    const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:confirm`);
-    expect(expectParseSuccess(parsed)).toStrictEqual({ kind: "cancel_week", nonce, choice: "confirm" });
+    const parsed = parseCancelWeekCustomId(`cancel_week:2026-W17:${nonce}:confirm`);
+    expect(expectParseSuccess(parsed)).toStrictEqual({ kind: "cancel_week", weekKey: "2026-W17", nonce, choice: "confirm" });
   });
 
   it("parses valid abort id", () => {
-    const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:abort`);
-    expect(expectParseSuccess(parsed)).toStrictEqual({ kind: "cancel_week", nonce, choice: "abort" });
+    const parsed = parseCancelWeekCustomId(`cancel_week:2026-W17:${nonce}:abort`);
+    expect(expectParseSuccess(parsed)).toStrictEqual({ kind: "cancel_week", weekKey: "2026-W17", nonce, choice: "abort" });
   });
 
   it("rejects wrong prefix", () => {
-    const parsed = parseCancelWeekCustomId(`cancel:${nonce}:confirm`);
+    const parsed = parseCancelWeekCustomId(`cancel:2026-W17:${nonce}:confirm`);
     expect(parsed.success).toBe(false);
   });
 
   it("rejects invalid uuid nonce", () => {
-    const parsed = parseCancelWeekCustomId("cancel_week:not-a-uuid:confirm");
+    const parsed = parseCancelWeekCustomId("cancel_week:2026-W17:not-a-uuid:confirm");
     expect(parsed.success).toBe(false);
   });
 
   it("rejects unknown choice", () => {
-    const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:maybe`);
+    const parsed = parseCancelWeekCustomId(`cancel_week:2026-W17:${nonce}:maybe`);
     expect(parsed.success).toBe(false);
   });
 
   it("rejects wrong segment count", () => {
-    const parsed = parseCancelWeekCustomId(`cancel_week:${nonce}:confirm:extra`);
+    const parsed = parseCancelWeekCustomId(`cancel_week:2026-W17:${nonce}:confirm:extra`);
     expect(parsed.success).toBe(false);
   });
 
   it("keeps round-trip identity on valid inputs", () => {
-    const raw = `cancel_week:${nonce}:confirm`;
+    const raw = `cancel_week:2026-W17:${nonce}:confirm`;
     const parsed = parseCancelWeekCustomId(raw);
     expect(buildCancelWeekCustomId(expectParseSuccess(parsed))).toBe(raw);
   });

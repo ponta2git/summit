@@ -48,7 +48,7 @@ describe("interaction button routing", () => {
     const baseInteraction = buildButtonInteraction(`postpone:${SESSION_ID}:ok`);
     const interaction = {
       ...baseInteraction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.postponeMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handleInteraction(
@@ -137,7 +137,7 @@ describe("interaction button routing", () => {
     const baseInteraction = buildButtonInteraction(`ask:${SESSION_ID}:t2200`);
     const interaction = {
       ...baseInteraction,
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.askMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handleInteraction(

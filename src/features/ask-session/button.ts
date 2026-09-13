@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { type ResultAsync, okAsync } from "neverthrow";
+import { type ResultAsync, errAsync, okAsync } from "neverthrow";
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
@@ -11,12 +11,11 @@ import {
   type AppResult,
   okResult
 } from "../../errors/index.ts";
-import { toResultAsync, fromDatabasePromise, fromDiscordPromise } from "../../errors/result.ts";
+import { toResultAsync, fromDatabasePromise } from "../../errors/result.ts";
 import { logger } from "../../logger.ts";
 import { askMessages } from "./messages.ts";
-import { renderAskBody } from "./render.ts";
+import { updateAskMessage } from "./messageEditor.ts";
 import { ASK_CUSTOM_ID_TO_DB_CHOICE, type AskDbChoice } from "./choiceMap.ts";
-import { buildAskMessageViewModel } from "./viewModel.ts";
 import {
   guardAskCustomId,
   guardChannelId,
@@ -153,48 +152,11 @@ const recordResponseStep = (context: AskPipelineReady): ResultAsync<AskPipelineR
 };
 
 const refreshAskMessageStep = (context: AskPipelineReady): ResultAsync<void, AppError> =>
-  fromDatabasePromise(
-    Promise.all([
-      context.context.ports.responses.listResponses(context.sessionId),
-      context.context.ports.members.listMembers()
-    ]),
-    "Failed to load ask message snapshot."
-  )
-    .andThen(([responses, memberRows]) =>
-      fromDatabasePromise(
-        context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to reload session after ask response."
-      ).map((freshSession) => ({
-        freshSession,
-        responses,
-        memberRows
-      }))
-    )
-    .andThen(({ freshSession, responses, memberRows }) => {
-      if (!freshSession || !freshSession.askMessageId) {
-        return okAsync(undefined);
-      }
-
-      const vm = buildAskMessageViewModel(freshSession, responses, memberRows);
-      const rendered = renderAskBody(vm);
-      // source-of-truth: 再描画は常に DB の最新 Session + Response から再構築する。
-      return fromDiscordPromise(
-        context.interaction.message.edit(rendered),
-        "Failed to edit ask message after response."
-      )
-        .map(() => undefined)
-        .orElse((error) => {
-          // race: edit 失敗でも DB は巻き戻さず次 tick / 次押下で再描画して回復する。
-          logger.warn(
-            {
-              error,
-              sessionId: context.sessionId,
-              messageId: freshSession.askMessageId
-            },
-            "Failed to edit ask message after response."
-          );
-          return okAsync(undefined);
-        });
+  updateAskMessage(context.deps.client, context.context, context.session, context.interaction.message)
+    .orElse(error => {
+      if (error.code !== "DISCORD_API") { return errAsync(error); }
+      logger.warn({ error, sessionId: context.sessionId }, "Failed to edit ask message after response.");
+      return okAsync(undefined);
     });
 
 /**

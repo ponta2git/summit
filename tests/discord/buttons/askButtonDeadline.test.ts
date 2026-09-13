@@ -67,7 +67,7 @@ describe("handleAskButton deadline guard", () => {
     });
     const interaction = {
       ...buildButtonInteraction(`ask:${session.id}:t2200`),
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.askMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handleInteraction(asInteraction(interaction), buildDeps(context));
@@ -91,7 +91,7 @@ describe("handleAskButton deadline guard", () => {
     });
     const interaction = {
       ...buildButtonInteraction(`ask:${session.id}:t2200`),
-      message: { edit: vi.fn(async () => undefined) }
+      message: { id: session.askMessageId, edit: vi.fn(async () => undefined) }
     };
 
     await handleInteraction(

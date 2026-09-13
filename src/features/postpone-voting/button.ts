@@ -241,6 +241,7 @@ export const handlePostponeButton = async (
             context.commandResult
           ).map(() => context)
         : refreshPostponeMessage(
+            context.deps.client,
             context.context,
             context.interaction,
             context.sessionId

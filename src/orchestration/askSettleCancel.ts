@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { type ResultAsync, okAsync, safeTry } from "neverthrow";
 
 import type { AppContext } from "../appContext.ts";
+import type { SessionRow } from "../db/rows.ts";
 import type { AppError } from "../errors/index.ts";
 import { fromDatabasePromise } from "../errors/result.ts";
 import type { CancelReason } from "../features/ask-session/cancelReason.ts";
@@ -13,7 +14,7 @@ type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered"
 export const reflectAskingCancellation = (
   client: Client,
   ctx: AppContext,
-  settled: Parameters<typeof updateAskMessage>[2]
+  settled: SessionRow
 ): ResultAsync<void, AppError> =>
   updateAskMessage(client, ctx, settled).andTee(() => {
     logger.info(

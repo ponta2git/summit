@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setImmediate } from "node:timers/promises";
 
 import {
   isUnknownMessageError
@@ -17,6 +18,7 @@ import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.js
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { unwrapResultAsync } from "../helpers/assertions.js";
+import { deferred } from "../helpers/deferred.ts";
 
 beforeEach(resetReconcilerHarness);
 
@@ -115,8 +117,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       id: "probe-postpone-gone",
       status: "POSTPONE_VOTING",
       askMessageId: "ask-ok",
-      postponeMessageId: "gone-postpone-id",
-      deadlineAt: new Date("2026-04-24T15:00:00.000Z")
+      postponeMessageId: "gone-postpone-id"
     });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => {
@@ -140,7 +141,41 @@ describe("probeDeletedMessagesAtStartup", () => {
 
     expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(0);
     expect(sentMessages).toStrictEqual([]);
+    expect(editCalls).toStrictEqual([]);
+    expect(ctx.ports.responses.calls).not.toContainEqual(expect.objectContaining({ name: "listResponses" }));
     expect((await ctx.ports.sessions.findSessionById("probe-fresh"))?.askMessageId).toBe("fresh-ask-id");
+  });
+
+  it("restores a completed postpone vote with disabled buttons and its final footer", async () => {
+    const session = buildSessionRow({ status: "POSTPONED", askMessageId: null, postponeMessageId: "deleted-vote" });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    setFetchImpl(async () => { throw Object.assign(new Error("Unknown Message"), { code: 10008 }); });
+
+    expect((await unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx))).succeeded).toBe(1);
+    const payload: unknown = JSON.parse(JSON.stringify(sentMessages[0]?.payload));
+    expect(payload).toMatchObject({ content: expect.stringContaining("明日の出欠確認へ進みます"),
+      components: [{ components: [{ disabled: true }, { disabled: true }] }] });
+  });
+
+  it("shares replacement ownership with an in-flight message update", async () => {
+    const session = buildSessionRow({ askMessageId: "deleted-id" });
+    const ctx = createTestAppContext({ seed: { sessions: [session] } });
+    const entered = deferred<void>(); const release = deferred<void>(); let blocked = false;
+    setFetchImpl(async id => {
+      if (id !== "deleted-id") { return makeMessage(id); }
+      if (!blocked) { blocked = true; entered.resolve(); await release.promise; }
+      throw Object.assign(new Error("Unknown Message"), { code: 10008 });
+    });
+    const update = unwrapResultAsync(updateAskMessage(client, ctx, session));
+    await entered.promise;
+    const probe = unwrapResultAsync(probeDeletedMessagesAtStartup(client, ctx));
+    await setImmediate();
+    try { expect(fetchedMessageIds).toStrictEqual(["deleted-id"]); }
+    finally { release.resolve(); await Promise.all([update, probe]); }
+    expect(sentMessages).toHaveLength(1);
+    expect(fetchedMessageIds).toStrictEqual(["deleted-id", "sent-1"]);
+    expect(editCalls).toStrictEqual([]);
+    expect((await ctx.ports.sessions.findSessionById(session.id))?.askMessageId).toBe("sent-1");
   });
 
   it("skips a null ask message id without probing Discord", async () => {
