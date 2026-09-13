@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { matchDrafts, matches } from "../../src/db/schema.ts";
 import { notificationTransaction, cancelNotification, lockNotificationFamily } from "../../src/db/repositories/notifications.storage.ts";
@@ -22,7 +22,6 @@ const barrier = () => {
 (isIntegration ? describe : describe.skip)("result receipt transaction boundaries", () => {
   let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
   beforeEach(async () => { h = await createResultNotificationHarness(); });
-  afterEach(async () => { await h?.close(); });
 
   const waitForBlockedBy = async (pid: number) => {
     for (let attempt = 0; attempt < 1_000; attempt += 1) {

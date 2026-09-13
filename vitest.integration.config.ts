@@ -1,24 +1,24 @@
 import { defineConfig } from "vitest/config";
 import { readFileSync } from "node:fs";
 
-// jst: 時刻依存の統合テスト (candidate_date / deadline_at 等) の再現性を担保する。
-process.env.NODE_ENV = "test";
-process.env.TZ = "Asia/Tokyo";
-if (!process.env.SUMMIT_CONFIG_YAML) {
-  process.env.SUMMIT_CONFIG_YAML = readFileSync("summit.config.example.yml", "utf8");
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("RESULT_NOTIFICATION_") || key === "FLY_IMAGE_REF" || key === "GIT_SHA") {
+    delete process.env[key];
+  }
 }
-
-// invariant: 統合テストは実 DB (localhost 想定) を前提にする。
-//   vitest.config.ts のようなダミー DATABASE_URL 注入は行わない。
-//   test 側の `INTEGRATION_DB=1` gate と localhost guard で二重防御する。
-// @see docs/db-rule.md
+Object.assign(process.env, {
+  NODE_ENV: "test", TZ: "Asia/Tokyo", DISCORD_TOKEN: "dummy-token",
+  SUMMIT_CONFIG_YAML: readFileSync(new URL("./summit.config.example.yml", import.meta.url), "utf8")
+});
 
 export default defineConfig({
   test: {
     include: ["tests/integration/**/*.test.ts"],
-    // race: TRUNCATE CASCADE で干渉するため、integration は必ず直列実行。
-    //   Vitest 4 では top-level の fileParallelism: false で十分 (poolOptions は撤去された)。
-    fileParallelism: false,
+    globalSetup: ["./tests/integration/database.global.ts"],
+    setupFiles: ["./tests/integration/database.setup.ts"],
+    fileParallelism: true,
+    maxWorkers: 4,
+    hookTimeout: 30_000,
     clearMocks: true,
     restoreMocks: true
   }

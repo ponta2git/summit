@@ -36,7 +36,7 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm lint` | oxlint |
 | `pnpm lint:knip` | 未使用ファイル・export・依存関係の検査 |
 | `pnpm test` | unit/application tests |
-| `pnpm test:integration` | local guarded DB integration |
+| `pnpm test:integration` | 明示した`TEST_DATABASE_URL`上の使い捨てDBでintegration |
 | `pnpm build` | production JavaScript生成 |
 | `pnpm verify:forbidden` | 危険patternと依存方向の検査 |
 | `pnpm verify:file-size` | source file size advisory |

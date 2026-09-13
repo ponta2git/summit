@@ -9,7 +9,7 @@ export const ocrReceiptPayload = () => ({ ...ocrNotification(), settingsGenerati
 export interface ResultContractHarness {
   readonly port: ResultNotificationsPort;
   deleteMatch(): Promise<void>;
-  close(): Promise<void>;
+  close?(): Promise<void>;
 }
 
 export const resultNotificationContract = (
@@ -28,7 +28,7 @@ export const resultNotificationContract = (
     };
     const plan = (id: string, token: string, count = 2, ms = 0) => port.plan(id, token, { count, rendererVersion: 1, context, now: at(ms) });
     beforeEach(async () => { harness = await create(); port = harness.port; });
-    afterEach(async () => { await harness?.close(); });
+    afterEach(async () => { await harness?.close?.(); });
 
     it("deduplicates concurrent identical receipts and rejects identity reuse with different content", async () => {
       const payload = ocrReceiptPayload();

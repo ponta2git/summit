@@ -16,7 +16,6 @@ import { isIntegration } from "./_support.ts";
   });
   afterEach(async () => {
     await http?.close();
-    await database?.close();
   });
 
   it("withholds HTTP success and wake while the real receipt transaction is blocked", async () => {

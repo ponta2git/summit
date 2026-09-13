@@ -75,12 +75,16 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 
 ## 7. Integration test
 
-- `INTEGRATION_DB=1` gateとlocalhost guardを維持する。
+- `INTEGRATION_DB=1` gateとlocalhost guardを維持する。接続先は明示的な`TEST_DATABASE_URL`だけを使い、local secret file・通常の`DATABASE_URL`を管理接続に流用しない。
+- test roleには一時DBの作成権限が必要。global setupがmomo-dbのmigrationを一度だけ適用し、setupFilesがファイルごとにtemplateを複製する。run UUIDとfile UUIDで同時実行・worktree間を隔離する。
+- `TRUNCATE`はそのファイル所有DBだけに限定する。poolはファイル終了時に閉じ、DBは所有prefixを確認して削除する。setup失敗・worker異常終了時はglobal teardownも所有DBを回収する。
+- DB内のtestは逐次、ファイルは並列に実行する。外側rollbackでtestを包まない。commit可視性・競合・rollbackそのものが検証対象のためである。
+- 接続数は通常1、競合testは競合当事者とlock観測用に必要な数を明示する。DB lockの観測で競合点への到達を確認し、敗者の結果と残存状態を検証する。
 - setup/cleanupは`tests/integration/_support.ts`の共通helperを使う。
 - repository、constraint、transaction、migration consumer contractに絞る。
 - Discord flowでunit fakeが十分なものをreal DBへ重複させない。
 - test databaseでも手動SQLで都合のよい途中状態を残さず、fixture/helperで再現可能にする。
-- sibling momo-dbのmigrationを適用した状態で実行する。
+- sibling momo-dbのmigrationを適用した状態で実行する。CIは`.github/workflows/ci.yml`の単一`MOMO_DB_REF`で両jobのcheckoutを固定する。schema更新時はこのrefとconsumer contractを同時に検証する。
 
 ## 8. Quality gate
 
