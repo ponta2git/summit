@@ -6,7 +6,7 @@ import {
   createDiscordTextFixture,
   createEditableMessage
 } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 
 export interface MessagePayload {
   readonly content?: string;

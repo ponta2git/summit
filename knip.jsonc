@@ -9,8 +9,7 @@
   "entry": [
     "src/index.ts",
     "src/commands/sync.ts",
-    "scripts/dev/{seed,reset,scenario}.ts",
-    "vitest.integration.config.ts"
+    "scripts/dev/{seed,reset,scenario}.ts"
   ],
   "project": [
     "src/**/*.ts",

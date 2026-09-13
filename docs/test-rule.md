@@ -12,6 +12,8 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 | configuration | env/user config parse、registry build | isolated inputとfail-fast期待 |
 | deterministic verification | 禁止pattern、文書topology、生成adapter | `scripts/verify/` |
 
+対象の重要度で厚さを変える。回答・状態・翌土曜・開催履歴・通知intentを同時確定する集約は、pureの判断網羅に加えreal DBの代表成功・拒否・rollbackを持つ。表示や薄い委譲の組合せを全て実DBへ複製しない。
+
 同じ意味を複数層で無目的に重複検証しない。pure decisionはunit、DB固有semanticsはintegration、Discord payloadはapplication unitを基本とする。
 
 追加する test は、変更で壊れ得る契約と観測できる失敗を固定する。既存 test で十分に検証できる可逆な小変更や、文書の文言を写すだけの変更には新しい test を追加しない。期待値は requirements・外部仕様・確認済みの不変条件から決め、実装の出力をそのまま期待値へ写さない。
@@ -22,7 +24,8 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 - DB依存は`createTestAppContext`のfake ports、またはreal DB integrationで検証する。
 - fake portsはproduction contractの写像であり、testを簡単にするためCAS、unique、dedupe、claim ownership、state transitionを緩めない。
 - port interface変更時はreal/fake両方をTypeScriptで満たし、compile時にdriftを検出する。
-- fake portの時刻は`AppContext.clock`から得る。
+- fake portの時刻は`AppContext.clock`から得る。既定時刻も固定し、seed・戻り値・観測snapshotのDateとnested payloadは参照を共有しない。
+- attendanceとresult notificationsの逐次契約は`tests/contracts/`をreal/fake両方で動かす。fakeの集約writeは失敗をawaitし、関連storeとclaim所有権を一括rollbackする。SQL lock/MVCCは模倣せず、未commitの可視性や競合の証明にはreal DBを使う。
 - Discord client/channel/messageのfakeは既存のtest helperへ集約し、個別testにSDK全体の二重castを散らさない。
 - `vi.mock`はDiscord API helper、cron adapter、logger、HTTP/fetch等の外部boundary、またはorchestration entryの隔離に限定する。
 - mockを使う場合は、何を差し替え、どのcontractを観測するかをtest名か短いcommentで明示する。
@@ -38,7 +41,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 
 ## 4. Fixture とscenario
 
-- bare `Partial<Row>`を各testへ拡散せず、業務状態が分かるbuilder/scenarioを使う。
+- bare `Partial<Row>`を各testへ拡散せず、`tests/testing/sessionScenario.ts`の業務状態が分かるbuilder/scenarioを使う。候補日と状態に対応する締切をまとめて導出し、低水準row組立は`tests/testing/fixtures.ts`へ集約する。
 - scenario名は、全員回答、欠席、順延OK/NG、金曜/土曜cancelled、decided/reminder、dead-letter等の業務語彙で付ける。
 - stateを作るためだけの不正rowは、検証目的と破っているinvariantを明記する。
 - 実行リテラルや業務仕様をfixture commentへ再記述しない。requirements、config、time、schemaを参照する。

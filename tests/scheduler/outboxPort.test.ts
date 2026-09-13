@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createTestAppContext } from "../testing/index.js";
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 describe("outbox port fake", () => {
   const requireClaimToken = (entry: { readonly claimToken: string | null }): string => {

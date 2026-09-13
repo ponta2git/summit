@@ -19,7 +19,7 @@ describe("handlePostponeButton", () => {
   it("persists OK vote and re-renders postpone message from DB", async () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const context = createTestAppContext({
       now,
       seed: { sessions: [session], members: seededMembers }
@@ -54,7 +54,7 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ng`);
@@ -85,7 +85,7 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: {
         sessions: [session],
         members: seededMembers,
@@ -139,7 +139,7 @@ describe("handlePostponeButton", () => {
     const session = postponeSession();
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(customId, override);
@@ -164,7 +164,7 @@ describe("handlePostponeButton", () => {
     const session = postponeSession({ status: "ASKING" });
     const { client } = createDiscordClient();
     const context = createTestAppContext({
-      now: new Date("2026-04-25T12:00:00.000Z"),
+      now: new Date("2026-04-24T12:00:00.000Z"),
       seed: { sessions: [session], members: seededMembers }
     });
     const interaction = buildButtonInteraction(`postpone:${session.id}:ok`);
@@ -187,7 +187,7 @@ describe("handlePostponeButton", () => {
   it("settles to POSTPONED and creates Saturday session when all 4 vote OK", async () => {
     const session = postponeSession();
     const { client, channelSend } = createDiscordClient();
-    const now = new Date("2026-04-25T12:00:00.000Z");
+    const now = new Date("2026-04-24T12:00:00.000Z");
     const context = createTestAppContext({
       now,
       seed: {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
 import { evaluatePostponeVote } from "../../../src/features/postpone-voting/decide.js";
-import { buildSessionRow } from "../../scheduler/factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
   buildSessionRow({ id: "session-1", status: "POSTPONE_VOTING", ...overrides });

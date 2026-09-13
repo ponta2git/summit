@@ -17,6 +17,7 @@ import {
   buildSettleNoticeIntent,
   type AskCancellationReason
 } from "../../src/db/repositories/sessionOutboxIntents.js";
+import type { FakeOutboxPort } from "./ports.outbox.ts";
 import type { FakeResponsesPort } from "./ports.responses.js";
 import type { FakeSessionsPort } from "./ports.sessions.js";
 
@@ -113,6 +114,7 @@ export const applyAskCancellation = async (
 const createSaturday = async (
   sessions: FakeSessionsPort,
   parent: SessionRow,
+  outbox: FakeOutboxPort,
   input: SubmitPostponeVoteInput["saturday"]
 ): Promise<SessionRow> => {
   const created = await sessions.createAskSession({
@@ -134,12 +136,14 @@ const createSaturday = async (
     created ??
     (await sessions.findSessionByWeekKeyAndPostponeCount(parent.weekKey, 1));
   if (!persisted) {throw new Error("Saturday session insert returned no row");}
+  if (!created) { await outbox.enqueue(buildAskBodyIntent(persisted)); }
   return persisted;
 };
 
 export const applyPostponeDecision = async (
   sessions: FakeSessionsPort,
   current: SessionRow,
+  outbox: FakeOutboxPort,
   decision: Exclude<PostponeDecisionResult, { kind: "pending" }>,
   input: Pick<SettlePostponeVotingInput, "now" | "saturday">
 ): Promise<
@@ -170,6 +174,6 @@ export const applyPostponeDecision = async (
   return {
     outcome: "all_ok",
     session: postponed,
-    saturdaySession: await createSaturday(sessions, current, input.saturday)
+    saturdaySession: await createSaturday(sessions, current, outbox, input.saturday)
   };
 };

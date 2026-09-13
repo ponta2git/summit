@@ -49,7 +49,7 @@ export const createFakeSessionTransitionMethods = (
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(next);
   },
 
@@ -65,7 +65,7 @@ export const createFakeSessionTransitionMethods = (
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(next);
   },
 
@@ -82,7 +82,7 @@ export const createFakeSessionTransitionMethods = (
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(next);
   },
 
@@ -99,7 +99,7 @@ export const createFakeSessionTransitionMethods = (
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(next);
   },
 
@@ -114,7 +114,7 @@ export const createFakeSessionTransitionMethods = (
       updatedAt: input.now
     });
     state.byId.set(next.id, next);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(next);
   },
 

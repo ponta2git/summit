@@ -23,6 +23,7 @@ export const createFakeSessionMessageMethods = (
         session.postponeCount === input.postponeCount
     );
     if (duplicate) {return undefined;}
+    if (state.byId.has(input.id)) { throw new Error("duplicate Session primary key"); }
     const created = makeSession({
       id: input.id,
       weekKey: input.weekKey,
@@ -31,11 +32,11 @@ export const createFakeSessionMessageMethods = (
       channelId: input.channelId,
       deadlineAt: input.deadlineAt,
       status: "ASKING",
-      createdAt: new Date(input.deadlineAt),
-      updatedAt: new Date(input.deadlineAt)
+      createdAt: state.clock.now(),
+      updatedAt: state.clock.now()
     });
     state.byId.set(created.id, created);
-    state.enqueueOutbox(input.outbox);
+    await state.enqueueOutbox(input.outbox);
     return state.clone(created);
   },
 

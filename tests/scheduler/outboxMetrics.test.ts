@@ -12,7 +12,7 @@ import { runOutboxMetricsTick } from "../../src/scheduler/outboxMetrics.js";
 import { callArg } from "../helpers/assertions.js";
 import { createTestAppContext } from "../testing/index.js";
 
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 const baseEntry = (
   overrides: Partial<OutboxEntry> &

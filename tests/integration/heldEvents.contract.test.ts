@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +9,8 @@ import {
 import {
   createAskSession
 } from "../../src/db/repositories/sessions.js";
+import { deferred } from "../helpers/deferred.ts";
+import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
 import { sessions } from "../../src/db/schema.js";
 
 import {
@@ -22,7 +24,7 @@ import {
 const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("heldEvents repository contract (integration)", () => {
-  const { db, client } = createIntegrationDb();
+  const { db, client } = createIntegrationDb({ maxConnections: 4 });
 
   const baseSession = {
     id: "sess-held",
@@ -117,22 +119,27 @@ describeDb("heldEvents repository contract (integration)", () => {
   // race: 並行 complete で 1 件の held_event に収束する。
   it("completeDecidedSessionAsHeld: concurrent completes converge to a single held_event", async () => {
     await decide();
-    const [a, b] = await Promise.all([
-      completeDecidedSessionAsHeld(db, {
-        sessionId: baseSession.id,
-        reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
-        memberIds: ["m1", "m2"]
-      }),
-      completeDecidedSessionAsHeld(db, {
-        sessionId: baseSession.id,
-        reminderSentAt: new Date("2026-04-24T13:45:02.000Z"),
-        memberIds: ["m3", "m4"]
-      })
-    ]);
-    const winners = [a, b].filter((r) => r !== undefined);
-    expect(winners).toHaveLength(1);
-    const winner = winners[0];
-    if (!winner) {throw new Error("expected one concurrent completion winner");}
+    const locked = deferred<number>(); const release = deferred<void>();
+    const blocker = db.transaction(async tx => {
+      await tx.select().from(sessions).where(eq(sessions.id, baseSession.id)).for("update");
+      const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);
+      locked.resolve(backend!.pid); await release.promise;
+    });
+    const pid = await locked.promise;
+    const input = { sessionId: baseSession.id, reminderSentAt: new Date("2026-04-24T13:45:01Z"), memberIds: ["m1", "m2"] };
+    const first = completeDecidedSessionAsHeld(db, input);
+    let second: ReturnType<typeof completeDecidedSessionAsHeld>;
+    try {
+      await waitForBlockedBy(client, pid);
+      second = completeDecidedSessionAsHeld(db, { ...input, memberIds: ["m3", "m4"] });
+      await waitForLockWaiters(client, 2);
+    } finally { release.resolve(); await blocker; }
+    const results = await Promise.all([first, second]);
+    expect(results.filter(result => result === undefined)).toStrictEqual([undefined]);
+    const winner = results.find(result => result !== undefined);
+    expect(winner?.session).toMatchObject({ status: "COMPLETED", revision: 2 });
+    if (!winner) { throw new Error("Expected completion winner"); }
+    expect(winner.participants.map(row => row.memberId).sort()).toStrictEqual(results[0] ? ["m1", "m2"] : ["m3", "m4"]);
 
     const held = await findHeldEventBySessionId(db, baseSession.id);
     expect(held?.id).toBe(winner.heldEvent.id);

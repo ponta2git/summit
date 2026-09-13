@@ -7,7 +7,7 @@ import { appConfig } from "../../../src/userConfig.js";
 import { rejectMessages } from "../../../src/features/interaction-reject/messages.js";
 import { asButtonInteraction, buildButtonInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext } from "../../testing/index.js";
 
 const seededMembers = appConfig.memberUserIds.map((userId, index) => ({

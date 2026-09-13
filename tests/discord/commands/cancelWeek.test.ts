@@ -9,7 +9,7 @@ import { cancelWeekMessages } from "../../../src/features/cancel-week/messages.j
 import { callArg } from "../../helpers/assertions.js";
 import { asInteraction, buildCancelInteraction } from "../../helpers/interaction.js";
 import { asDiscordClient } from "../../helpers/discord.js";
-import { buildSessionRow } from "../factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { createTestAppContext, type TestAppContext } from "../../testing/index.js";
 
 // why: render は pure builder なので stub 不要。Fake ports の state と outbox entries を直接検証する。

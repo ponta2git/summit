@@ -10,7 +10,7 @@ import {
 import { buildReminderIntent } from "../../src/db/repositories/sessionOutboxIntents.js";
 import { createSchedulerController } from "../../src/scheduler/controller.js";
 import { createTestAppContext } from "../testing/index.js";
-import { buildSessionRow } from "../discord/factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 const silentLogger = {
   info: vi.fn(),

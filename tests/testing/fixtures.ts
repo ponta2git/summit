@@ -7,7 +7,7 @@ import type {
   SessionStatus
 } from "../../src/db/ports.js";
 
-export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => ({
+export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => structuredClone({
   id: "session-1",
   weekKey: "2026-W17",
   postponeCount: 0,
@@ -27,14 +27,14 @@ export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => 
   ...overrides
 });
 
-export const makeMember = (overrides: Partial<MemberRow> = {}): MemberRow => ({
+export const makeMember = (overrides: Partial<MemberRow> = {}): MemberRow => structuredClone({
   id: "member-1",
   userId: "323456789012345678",
   displayName: "Member 1",
   ...overrides
 });
 
-export const makeResponse = (overrides: Partial<ResponseRow> = {}): ResponseRow => ({
+export const makeResponse = (overrides: Partial<ResponseRow> = {}): ResponseRow => structuredClone({
   id: "response-1",
   sessionId: "session-1",
   memberId: "member-1",
@@ -44,7 +44,7 @@ export const makeResponse = (overrides: Partial<ResponseRow> = {}): ResponseRow 
   ...overrides
 });
 
-export const makeOutboxEntry = (overrides: Partial<OutboxEntry> = {}): OutboxEntry => ({
+export const makeOutboxEntry = (overrides: Partial<OutboxEntry> = {}): OutboxEntry => structuredClone({
   id: "outbox-1",
   kind: "send_message",
   sessionId: "session-1",

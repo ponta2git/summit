@@ -15,7 +15,7 @@ import {
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.js";
 import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.js";
 import { createTestAppContext } from "../testing/index.js";
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { unwrapResultAsync } from "../helpers/assertions.js";
 
 beforeEach(resetReconcilerHarness);
@@ -116,7 +116,7 @@ describe("probeDeletedMessagesAtStartup", () => {
       status: "POSTPONE_VOTING",
       askMessageId: "ask-ok",
       postponeMessageId: "gone-postpone-id",
-      deadlineAt: new Date("2026-04-25T15:00:00.000Z")
+      deadlineAt: new Date("2026-04-24T15:00:00.000Z")
     });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     setFetchImpl(async (id) => {

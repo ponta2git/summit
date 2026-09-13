@@ -3,6 +3,7 @@ import type {
   SessionRow,
   SessionsPort
 } from "../../src/db/ports.js";
+import { checkpointMap } from "./transactions.ts";
 import { DEFAULT_CLOCK, type AnyCall, type FakeClock } from "./ports.shared.js";
 import { createFakeSessionMessageMethods } from "./ports.sessions.messages.js";
 import { createFakeSessionQueryMethods } from "./ports.sessions.queries.js";
@@ -17,25 +18,20 @@ export interface FakeSessionsPort extends SessionsPort, FakeSessionTransitionMet
   listSessions(): ReadonlyArray<SessionRow>;
   bumpRevision(id: string, now: Date): SessionRow | undefined;
   completeDecidedForHeld(id: string, now: Date): SessionRow | undefined;
-  restoreSessions(rows: readonly SessionRow[]): void;
+  checkpoint(): () => void;
 }
 
 /** In-memory SessionsPort with production-like CAS and uniqueness semantics. */
 export const createFakeSessionsPort = (
   seed: ReadonlyArray<SessionRow> = [],
   clock: FakeClock = DEFAULT_CLOCK,
-  outboxEnqueue?: (entry: EnqueueOutboxInput) => void
+  outboxEnqueue?: (entry: EnqueueOutboxInput) => Promise<void>
 ): FakeSessionsPort => {
   const state = createFakeSessionsState(seed, clock, outboxEnqueue);
   return {
     calls: state.calls,
     listSessions: () => Array.from(state.byId.values()).map(state.clone),
-    restoreSessions: (rows) => {
-      state.byId.clear();
-      for (const row of rows) {
-        state.byId.set(row.id, state.clone(row));
-      }
-    },
+    checkpoint: () => checkpointMap(state.byId),
     bumpRevision: (id, now) => {
       const found = state.byId.get(id);
       if (!found) {return undefined;}

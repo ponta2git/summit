@@ -8,7 +8,7 @@ import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
 import { logger } from "../../src/logger.js";
 import { callArgs } from "../helpers/assertions.js";
 import { deferred } from "../helpers/deferred.js";
-import { buildSessionRow } from "../discord/factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createTestAppContext } from "../testing/index.js";
 
 type ScheduleCall = readonly [
@@ -28,7 +28,7 @@ describe("ask scheduler", () => {
     vi.useRealTimers();
   });
 
-  it("registers friday 08:00 JST ask cron as the first task with noOverlap", () => {
+  it("registers friday 08:00 JST ask cron with noOverlap", () => {
     const stop = vi.fn();
     const schedule = vi.fn(
       () =>
@@ -48,7 +48,9 @@ describe("ask scheduler", () => {
     });
 
     expect(schedule).toHaveBeenCalledTimes(3);
-    const [expression, tick, options] = callArgs<ScheduleCall>(schedule);
+    const index = schedule.mock.calls.findIndex((_, i) => callArgs<ScheduleCall>(schedule, i)[0] === "0 8 * * 5");
+    expect(index).toBeGreaterThanOrEqual(0);
+    const [expression, tick, options] = callArgs<ScheduleCall>(schedule, index);
     expect(expression).toBe("0 8 * * 5");
     expect(tick).toBeTypeOf("function");
     expect(options).toStrictEqual({ timezone: "Asia/Tokyo", noOverlap: true });

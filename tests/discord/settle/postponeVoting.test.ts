@@ -14,8 +14,8 @@ import {
   sessionRow
 } from "./harness.js";
 
-const settlementAt = new Date("2026-04-25T14:00:00.000Z");
-const deadlineAt = new Date("2026-04-25T15:00:00.000Z");
+const settlementAt = new Date("2026-04-24T14:00:00.000Z");
+const deadlineAt = new Date("2026-04-24T15:00:00.000Z");
 
 const votingSession = () => sessionRow({
   status: "POSTPONE_VOTING",
@@ -146,7 +146,7 @@ describe("settlePostponeVotingSession", () => {
       "POSTPONE_OK",
       "POSTPONE_OK"
     ]);
-    const afterDeadline = new Date("2026-04-25T15:00:01.000Z");
+    const afterDeadline = new Date("2026-04-24T15:00:01.000Z");
     const ctx = createTestAppContext({
       now: afterDeadline,
       seed: { sessions: [session], responses, members: seededMembers }

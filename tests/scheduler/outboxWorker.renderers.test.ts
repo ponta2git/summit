@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
 import { appConfig } from "../../src/userConfig.js";
 import { createTestAppContext, makeResponse } from "../testing/index.js";
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.js";
 
 describe("outbox worker renderers", () => {

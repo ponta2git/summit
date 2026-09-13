@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "../../src/db/rows.js";
 import { createTestAppContext } from "../testing/index.js";
 
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 import { errAsync, okAsync } from "neverthrow";
 
@@ -160,7 +160,7 @@ describe("runStartupRecovery", () => {
     expect(call[0]).toBe(client);
     expect(call[1]).toBe(ctx);
     expect(call[2].id).toBe("pv-overdue");
-    expect(call[3]).toBe(now);
+    expect(call[3]).toStrictEqual(now);
   });
 
   it("leaves POSTPONE_VOTING sessions with future deadlines untouched on startup", async () => {
@@ -214,11 +214,11 @@ describe("runPostponeDeadlineTick", () => {
     expect(firstCall[0]).toBe(client);
     expect(firstCall[1]).toBe(ctx);
     expect(firstCall[2].id).toBe("pv-a");
-    expect(firstCall[3]).toBe(now);
+    expect(firstCall[3]).toStrictEqual(now);
     expect(secondCall[0]).toBe(client);
     expect(secondCall[1]).toBe(ctx);
     expect(secondCall[2].id).toBe("pv-b");
-    expect(secondCall[3]).toBe(now);
+    expect(secondCall[3]).toStrictEqual(now);
   });
 
   it("error in one session does not prevent others from being settled", async () => {

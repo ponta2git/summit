@@ -11,7 +11,7 @@ import {
 import { runOutboxRetentionTick } from "../../src/scheduler/outboxRetention.js";
 import { createTestAppContext } from "../testing/index.js";
 
-import { buildSessionRow } from "./factories/session.js";
+import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 const baseEntry = (
   overrides: Partial<OutboxEntry> & Pick<OutboxEntry, "id" | "sessionId" | "dedupeKey" | "status">

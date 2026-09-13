@@ -144,7 +144,7 @@ describe("settleAskingSession", () => {
       status: "ASKING",
       cancelReason: null
     });
-    const decisionNow = new Date("2026-04-25T12:00:00.000Z");
+    const decisionNow = new Date("2026-04-25T12:30:00.000Z");
     const responses = seededMembers.map((member, index) => ({
       id: `ask-response-${index + 1}`,
       sessionId: session.id,

@@ -1,6 +1,6 @@
 import type { SessionRow } from "../../../src/db/rows.js";
 import { createDiscordTextFixture } from "../../helpers/discord.js";
-import { buildSessionRow } from "../../discord/factories/session.js";
+import { buildSessionRow } from "../../testing/sessionScenario.ts";
 import { makeResponse } from "../../testing/fixtures.js";
 
 export const TEST_NOW = new Date("2026-04-24T12:45:00.000Z");

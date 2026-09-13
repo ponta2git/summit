@@ -181,7 +181,7 @@ export const createFakeSessionCommandsPort = (
       return {
         kind: "transitioned",
         response: saved.response,
-        ...(await applyPostponeDecision(sessions, current, decision, input))
+        ...(await applyPostponeDecision(sessions, current, outbox, decision, input))
       };
     },
     settlePostponeVoting: async (input) => {
@@ -201,7 +201,7 @@ export const createFakeSessionCommandsPort = (
       }
       return {
         kind: "transitioned",
-        ...(await applyPostponeDecision(sessions, current, decision, input))
+        ...(await applyPostponeDecision(sessions, current, outbox, decision, input))
       };
     }
   };

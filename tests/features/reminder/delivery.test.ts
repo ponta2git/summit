@@ -67,7 +67,7 @@ describe("sendReminderForSession", () => {
     expect(ctx.ports.heldEvents.listHeldEvents()).toHaveLength(1);
   });
 
-  it("dispatches and persists exactly once under concurrent calls", async () => {
+  it("dispatches and persists once after concurrent enqueue attempts under concurrent calls", async () => {
     const session = decidedSession();
     const ctx = createTestAppContext({
       now: TEST_NOW,

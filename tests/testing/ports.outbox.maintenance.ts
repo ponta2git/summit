@@ -176,8 +176,8 @@ export const createFakeOutboxMaintenance = (
       })
       .filter((date): date is Date => date !== null);
     if (candidates.length === 0) {return null;}
-    return candidates.reduce((earliest, current) =>
+    return new Date(candidates.reduce((earliest, current) =>
       current.getTime() < earliest.getTime() ? current : earliest
-    );
+    ));
   }
 });
