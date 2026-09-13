@@ -12,7 +12,9 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 | configuration | env/user config parse、registry build | isolated inputとfail-fast期待 |
 | deterministic verification | 禁止pattern、文書topology、生成adapter | `scripts/verify/` |
 
-対象の重要度で厚さを変える。回答・状態・翌土曜・開催履歴・通知intentを同時確定する集約は、pureの判断網羅に加えreal DBの代表成功・拒否・rollbackを持つ。表示や薄い委譲の組合せを全て実DBへ複製しない。
+対象の重要度は、誤動作の影響、復旧の難しさ、境界・競合の多さから判断して厚さを変える。回答・状態・翌土曜・開催履歴・通知intentを同時確定する集約は、pureの判断網羅に加えreal DBの代表成功・拒否・rollbackを持つ。表示や薄い委譲の組合せを全て実DBへ複製しない。行数・coverage率・test件数だけで手厚さを決めない。
+
+テスト層とサイズは別に選ぶ。本projectでは、process内で外部I/Oを使わないものをsmall、使い捨てDB・loopback HTTP・子process等のローカルresourceを使うものをmedium、実外部serviceとの接続を含むものをlargeとして扱う。`pnpm test`にもmediumは含まれ、unitという名前だけではsmallを意味しない。重要なロジックも組合せはsmallで厚くし、実境界でしか検出できない契約を必要なサイズで補う。largeを追加する場合は接続先・実行条件・cleanupを明示する。
 
 同じ意味を複数層で無目的に重複検証しない。pure decisionはunit、DB固有semanticsはintegration、Discord payloadはapplication unitを基本とする。
 
@@ -20,6 +22,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 
 ## 2. Fake とmockの境界
 
+- 固定入力や障害を与えるだけならstub、外部副作用の有無を観測するならspy、複数操作をまたぐ状態契約にはfakeを選ぶ。状態を観測できる箇所へ呼出し期待を重ねず、ダブルで証明できない外部semanticsはreal boundaryで検証する。
 - DB repository moduleやDB clientを新規に`vi.mock`しない。
 - DB依存は`createTestAppContext`のfake ports、またはreal DB integrationで検証する。
 - fake portsはproduction contractの写像であり、testを簡単にするためCAS、unique、dedupe、claim ownership、state transitionを緩めない。
@@ -32,6 +35,7 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 
 ## 3. Assertion
 
+- オラクルは壊れてほしくない契約を識別できる強さにする。広いsmoke testの「例外がない」「件数が合う」を、状態遷移・宛先・選択肢・原子性の証明に使わない。部分一致で緩めた項目が何の変更を許すのか説明できるようにする。
 - pure function、view model、message builder、codecは`toStrictEqual`や具体payloadを優先する。
 - handler、scheduler、orchestrationは最終persisted state、user-facing response、outbox/Discord boundaryを検証する。
 - raw call orderは、順序自体が業務仕様またはrace invariantの場合だけ固定する。Interactionは未解決ackの間にDB/API処理が始まらないこと、ack失敗時に副作用がないことを確認する。呼出し順だけでawaitの欠落を検出した扱いにしない。
@@ -39,12 +43,14 @@ Summit のテスト選択、fake/real boundary、assertion、race/time検証、�
 - `expect.any`、`objectContaining`、`arrayContaining`はSDKの非本質項目や生成ID/時刻を意図的に緩める場合だけ使う。
 - skipped/no-op/race-lostは「呼ばれなかった」だけでなく、DB stateと外部副作用が変わらないことを確認する。
 - Resultを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。
+- 重要な契約のオラクルに疑義がある場合は、条件反転・await欠落・rollback漏れ等の代表的な誤実装でtestが失敗することを確認する。対象・検出結果を残し、mutationは復元する。全変更へのmutation実行やsnapshot更新の機械的承認は要求しない。
 
 ## 4. Fixture とscenario
 
 - bare `Partial<Row>`を各testへ拡散せず、`tests/testing/sessionScenario.ts`の業務状態が分かるbuilder/scenarioを使う。候補日と状態に対応する締切をまとめて導出し、低水準row組立は`tests/testing/fixtures.ts`へ集約する。
 - scenario名は、全員回答、欠席、順延OK/NG、金曜/土曜cancelled、decided/reminder、dead-letter等の業務語彙で付ける。
 - stateを作るためだけの不正rowは、検証目的と破っているinvariantを明記する。
+- 入力builderから期待値まで同じ導出処理で組み立てない。境界日・曜日・関連ID等の前提はscenario上で読み取れるようにし、fixtureの不整合を通過条件にしない。mutableなstore・配列・Dateはtestごとに所有し、後続testへ状態を持ち越さない。
 - 実行リテラルや業務仕様をfixture commentへ再記述しない。requirements、config、time、schemaを参照する。
 - 仕様は`describe`/`it`名で語り、回帰理由が自明でない場合だけ`// regression:`を残す。
 
@@ -115,8 +121,9 @@ CI の実際の実行範囲は `.github/workflows/ci.yml` が正本であり、�
 
 ## 9. テスト設計の再評価
 
-- fakeとreal portの差分が繰り返しbugを生む場合、shared contract suiteを導入する。
-- integration runtimeが日常feedbackを妨げる場合、DB testの分割・parallelismを検討する。
+- fakeとreal portの差分がbugを生む場合、既存shared contract suiteへ契約を追加する。新しいportには共通化の利益とfakeの保守費を見て導入を判断する。
+- runtimeが日常feedbackを妨げる場合、同じruntime・対象・並列条件でimport、setup、test本体、cleanupの時間を切り分ける。支配的な待ち・重複初期化から直し、test件数の削減だけを高速化の証拠にしない。
+- 並列化ではDB・port・env・timer・mockの所有者とcleanupを先に確認する。独立fileを並列にし、shared stateを持つfile内を無条件にconcurrent化しない。CPU・接続数の上限と複数run同時実行も考慮する。
 - test fixtureがproduction modelより複雑になった場合、scenario ownershipとbuilder層を整理する。
 - call-order assertionがrefactorを頻繁に阻害する場合、state/output oracleへ置き換える。
 
