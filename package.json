@@ -31,6 +31,7 @@
     "setup": "cd ../momo-db && pnpm install && pnpm build && pnpm db:up && pnpm db:migrate && cd ../summit && pnpm install && pnpm db:seed"
   },
   "dependencies": {
+    "@discordjs/builders": "^1.14.1",
     "@momo/db": "file:../momo-db",
     "date-fns": "^4.4.0",
     "discord.js": "^14.27.0",

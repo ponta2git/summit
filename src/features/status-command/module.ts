@@ -5,6 +5,6 @@ import { handleStatusCommand } from "./handler.ts";
 export const statusCommandModule: FeatureModule = {
   id: "status-command",
   commands: [
-    { name: "status", builder: statusCommandBuilder, handle: handleStatusCommand }
+    { name: statusCommandBuilder.name, builder: statusCommandBuilder, handle: handleStatusCommand }
   ]
 };

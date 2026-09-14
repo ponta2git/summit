@@ -53,13 +53,13 @@ src/db/* ──> persistence boundary
 
 ### Registry
 
-各 Interaction feature は `module.ts` から route と slash builder を公開し、`src/discord/registry/modules.ts` に追加する。registry build は次を fail-fast で検証する。
+各 Interaction feature は `module.ts` から route と slash builder を公開し、`src/discord/registry/modules.ts` に追加する。slash builder は handler 非依存の feature 所有 module に置き、同期用 `src/commands/definitions.ts` からも同じ定義を参照する。同期のために実行用 registry、Effect、Bot 設定を初期化しない。二つの一覧の一致と既存 payload は test で検証する。registry build は次を fail-fast で検証する。
 
 - custom ID prefix が所定の終端形式を持つ。
 - prefix または command name が重複していない。
 - prefix 同士が包含関係を持たず、探索順に依存しない。
 
-dispatcher と command definitions に feature 名の分岐を追加しない。modal や select menu など新しい Interaction 種別を導入するときは、registry の route 種別を追加するか分離するかを先に設計する。
+dispatcher に feature 名の分岐を追加しない。同期用一覧のために handler を遅延ロードしたり、payload の手書きコピーを別管理したりしない。定義と実行の分離が同期の初期化コストを抑える。modal や select menu など新しい Interaction 種別を導入するときは、registry の route 種別を追加するか分離するかを先に設計する。
 
 ## 3. Composition と ports
 
