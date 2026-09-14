@@ -8,6 +8,7 @@ const manifest: { scripts: Record<string, string> } = JSON.parse(readFileSync(ne
 
 describe("development command argument forwarding", () => {
   it.each([
+    { name: "commands:sync", args: "--check", expected: ["src/commands/sync.ts", "--check"] },
     { name: "db:reset", args: "--all", expected: ["scripts/dev/reset.ts", "--all"] },
     { name: "dev:scenario", args: "shorten 5", expected: ["scripts/dev/scenario.ts", "shorten", "5"] }
   ])("forwards arguments through $name shell wrappers", ({ name, args, expected }) => {

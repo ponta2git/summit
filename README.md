@@ -101,7 +101,8 @@ Discord token、DB URL の実値は commit しないでください。
 | `pnpm run ci` | 主要な CI 検証を直列実行 |
 | `pnpm db:seed` | 設定からローカル members を seed |
 | `pnpm db:reset` | ローカルの週次 transient state をリセット |
-| `pnpm commands:sync` | guild-scoped slash commands を同期 |
+| `pnpm commands:sync [--check]` | 開発用 guild-scoped slash commands を同期（`--check` は読取のみ） |
+| `pnpm commands:sync:production [--check]` | 運用 PC から本番 command を手動同期（[手順](./docs/operations/README.md#本番discordコマンド同期)） |
 
 > スキーマ変更・migration は [`momo-db`](../momo-db/) リポジトリで管理します（`pnpm db:generate` / `pnpm db:migrate` / `pnpm db:check`）。`drizzle-kit push` は使いません。
 
@@ -137,7 +138,7 @@ deploy 前の基本手順:
 3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu` を実行する。
 4. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
 5. デプロイ禁止窓外で、リポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only` を実行する。
-6. slash command 定義を変えた場合は `pnpm commands:sync` を実行する。
+6. slash command 定義を変えた場合だけ、[本番同期手順](./docs/operations/README.md#本番discordコマンド同期) に従い、運用 PC で `pnpm commands:sync:production --check` → 必要な場合のみ適用する。Fly 内や Bot 起動時には実行しない。
 
 本番 migration は deploy とは独立したオペレーションです（`release_command` なし）。スキーマ変更を伴う deploy は必ず migration を先行適用してください。
 本番 deploy は `Dockerfile` を Fly の remote builder で build する前提です。

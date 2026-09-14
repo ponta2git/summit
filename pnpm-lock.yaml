@@ -11,12 +11,18 @@ importers:
       '@discordjs/builders':
         specifier: ^1.14.1
         version: 1.14.1
+      '@discordjs/rest':
+        specifier: ^2.6.3
+        version: 2.6.3
       '@momo/db':
         specifier: file:../momo-db
         version: file:../momo-db(postgres@3.4.9)
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      discord-api-types:
+        specifier: ^0.38.52
+        version: 0.38.52
       discord.js:
         specifier: ^14.27.0
         version: 14.27.0

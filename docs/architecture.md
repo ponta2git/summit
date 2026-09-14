@@ -61,6 +61,17 @@ src/db/* ──> persistence boundary
 
 dispatcher に feature 名の分岐を追加しない。同期用一覧のために handler を遅延ロードしたり、payload の手書きコピーを別管理したりしない。定義と実行の分離が同期の初期化コストを抑える。modal や select menu など新しい Interaction 種別を導入するときは、registry の route 種別を追加するか分離するかを先に設計する。
 
+### Standalone command sync
+
+`src/commands/sync.ts` は Bot とは別の単発 CLI。本番同期は運用 PC から手動実行し、Fly Machine、Bot startup、deploy hook、GitHub Actions では実行しない。Bot と同期処理のメモリ・CPU を競合させないことが目的であり、Machine の増強や heap 制限で共存させない。
+
+- 軽量な `sync.supervisor.ts` が worker 一つを所有し、SDK import 前から全体 deadline を管理する。SIGINT / SIGTERM / deadline で中断を要求し、猶予後も未終了ならその子だけを強制終了する。子の終了と IPC 切断まで確認し、timer を回収する。worker は親との接続喪失時にも終了する。
+- `sync.worker.ts` は Fly 環境・親所有権を SDK import 前に検査する。token と対象 ID 以外の本番設定、shell、Node 起動オプションを継承せず、Client、login、DB、scheduler を起動しない。開発経路のみ注入済み YAML の guild ID を参照する。
+- REST はリクエスト timeout と自動 retry 無効化を持ち、rate limit で待ち続けない。同期の確認・結果不明の扱いは `docs/discord-rule.md` §7、実行値は `src/commands/sync.protocol.ts`、手順は `docs/operations/README.md` を正本とする。
+- worker の生 stdout / stderr や例外本文を転送せず、親が許可した結果分類・待機時間だけを構造化ログへ出す。IPC 送達後は単発 worker を終了し、SDK 内部 timer を残さない。
+
+定義の実行用・同期用 payload を別々に手書きしたり、handler の全体的な lazy loading へ広げたりしない。手動同期の頻度・担当者が増えて実行管理が必要になった場合に、専用 workflow と secret 管理を再評価する。
+
 ## 3. Composition と ports
 
 唯一の production 合成点は `src/appContext.ts` とする。
@@ -182,7 +193,7 @@ interaction、aggregate command、startup/reconnect が新しい work を作っ�
 | Internal config | outbox、scheduler、retention、metrics 等の信頼性 tuning | `src/config.ts` |
 
 - application code は parse 済みの `env` / `appConfig` / exported constant だけを使う。
-- `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts`は運用接続設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。
+- `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts` と `src/commands/sync.ts` / `sync.worker.ts` は用途別の運用設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。同期設定の検証は `sync.settings.ts` が所有し、本番は明示した token / application ID / guild ID を必須とする。開発用 token / YAML 入力は既存 command の契約として維持し、開発側も ID 明示方式へ移行する際に整理する。
 - user config は重複しない固定4名のidentityを検証し、起動時に表示名と一つのtransactionでDBへreconcileする。過去履歴を守るため、設定から消えたmember rowは自動削除せず、既存IDも再利用しない。新規IDの生成はreconcileが所有し、設定の配列順に依存させない。
 - pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
 - log messageとDBへ保存する失敗診断は固定文言・分類とし、必要な識別子・状態・診断分類を構造化して出す。token、接続文字列、Authorizationのkey redactは追加防御として維持する。Discord rate limitはroute templateと待機時間を記録し、tokenを含み得るmajor parameterは記録しない。

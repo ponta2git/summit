@@ -8,7 +8,7 @@
   },
   "entry": [
     "src/index.ts",
-    "src/commands/sync.ts",
+    "src/commands/sync.worker.ts",
     "scripts/dev/{seed,reset,scenario}.ts"
   ],
   "project": [

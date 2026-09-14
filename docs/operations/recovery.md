@@ -100,7 +100,7 @@ guild 管理者が bot を kick / channel 権限を剥奪。
 
 1. guild 管理者に bot を再 invite してもらう (OAuth2 scope: `bot` `applications.commands`)
 2. Discord 管理画面で bot に `View Channel` / `Send Messages` / `Embed Links` 付与
-3. Fly redeploy で `commands:sync` を再走 → reconciler が新メッセージ投稿で復旧
+3. command 登録が失われている場合は [本番Discordコマンド同期](./README.md#本番discordコマンド同期) の手順で運用 PC から確認・同期する。Fly redeploy は command 同期を実行しない。Bot の接続・権限を確認し、reconciler による表示復旧を確認する。
 
 ### C. env 誤設定
 

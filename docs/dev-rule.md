@@ -43,14 +43,17 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm verify:docs` | 文書topologyとagent adapter検査 |
 | `pnpm docs:sync-agent` | `AGENTS.md` から agent adapter を生成し文書検査 |
 | `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
-| `pnpm commands:sync` | guild-scoped slash command同期 |
+| `pnpm commands:sync [--check]` | 開発用 guild-scoped slash command 同期。`--check` は読取のみ |
+| `pnpm commands:sync:production [--check]` | 運用 PC から本番 guild command を手動同期。明示した Discord 環境変数のみ使用 |
 | `pnpm notifications inspect/retry/settings ...` | 稼働中private receiverでOCR・分析通知を操作。権限・使い方は`docs/operations/result-notifications.md` |
 | `pnpm db:seed` | local member seed |
 | `pnpm db:reset` | local transient state reset |
 
 重要: `pnpm ci`はpackage scriptではなくpnpmのinstall系commandとして解釈される。品質ゲートには必ず`pnpm run ci`を使う。
 
-`package.json` を command の実体とする。`dev`、`start`、`commands:sync` は外部サービスへ接続し、`setup`、DB script、integration test は DB の変更を伴う。検証のためにアプリ起動や command 同期を追加しない。`.env.local` や git 管理外 YAML を読む script は、`AGENTS.md` の読取条件も満たす必要がある。
+`package.json` を command の実体とする。`dev`、`start`、`commands:sync`、`commands:sync:production` は外部サービスへ接続し、`setup`、DB script、integration test は DB の変更を伴う。検証のためにアプリ起動や command 同期を追加しない。`.env.local` や git 管理外 YAML を読む script は、`AGENTS.md` の読取条件も満たす必要がある。
+
+`commands:sync` は従来の `.env.local` / `summit.config.yml` を使い、引数を CLI へ転送する。本番用 script はこれらのファイルを暗黙に読まない。`DISCORD_TOKEN`、`DISCORD_APPLICATION_ID`、`DISCORD_GUILD_ID` のみが必須で、DB / member / schedule 設定は不要。両経路とも Fly 内では拒否する。実行・終了結果の判定は [本番同期の SOP](./operations/README.md#本番discordコマンド同期)、期限・終了コードの実体は `src/commands/sync.protocol.ts` を参照する。
 
 探索・検証は必要な path に限定する。`verify:docs` と `docs:sync-agent` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、生成 adapter を作業元へ戻して、検証したファイルが作業元と一致することを確認する。
 
@@ -144,7 +147,7 @@ module preambleは、file名だけでは複数module間のorchestration責務が
 
 - local secretは`.env.local`、commit可能なのはplaceholderだけの`.env.example`。
 - user向け非secret設定は`*.config.yml`の既定の追跡方針に従う。
-- runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。`src/envSchema.ts`は副作用のないparse定義、`src/env.ts`は注入された環境の検証だけを行う。local fileはpackage commandの`dotenv`で明示的に読む。
+- runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。`src/envSchema.ts`は副作用のないparse定義、`src/env.ts`は注入された環境の検証だけを行う。用途別 CLI の設定入口は `docs/architecture.md` §7 に従う。local fileはpackage commandの`dotenv`で明示的に読む。
 - 機密値の扱いは `AGENTS.md` に従う。monitor URL も同じ扱いとする。
 - `console.*`を残さずpino loggerを使う。
 - redact pathを狭める変更はsecurity-sensitiveとしてreviewする。

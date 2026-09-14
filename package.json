@@ -26,14 +26,17 @@
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/reset.ts \"$@\"' --",
     "dev:scenario": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/scenario.ts \"$@\"' --",
-    "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node src/commands/sync.ts'",
+    "commands:sync": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node src/commands/sync.ts \"$@\"' --",
+    "commands:sync:production": "node src/commands/sync.ts --production",
     "notifications": "node src/notifications/cli.ts",
     "setup": "cd ../momo-db && pnpm install && pnpm build && pnpm db:up && pnpm db:migrate && cd ../summit && pnpm install && pnpm db:seed"
   },
   "dependencies": {
     "@discordjs/builders": "^1.14.1",
+    "@discordjs/rest": "^2.6.3",
     "@momo/db": "file:../momo-db",
     "date-fns": "^4.4.0",
+    "discord-api-types": "^0.38.52",
     "discord.js": "^14.27.0",
     "drizzle-orm": "^0.45.2",
     "effect": "3.22.2",
