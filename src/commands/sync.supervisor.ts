@@ -5,11 +5,10 @@ import { getSyncExitCode, isFlyEnvironment, parseSyncOptions, parseSyncReport,
 
 interface SupervisorOptions {
   readonly signal?: AbortSignal;
-  readonly deadlineMs?: number;
-  readonly graceMs?: number;
   readonly worker?: URL;
 }
 
+/** Owns one worker through exit and IPC shutdown; a forcibly terminated apply remains uncertain. */
 export const superviseCommandSync = async (
   args: readonly string[], environment: Readonly<NodeJS.ProcessEnv>, options: SupervisorOptions = {}
 ): Promise<SyncReport> => {
@@ -37,9 +36,9 @@ export const superviseCommandSync = async (
       if (closed || stopped) { return; }
       stopped = reason;
       if (!exit) { child.kill("SIGTERM"); }
-      grace = setTimeout(() => { if (!closed && !exit) { child.kill("SIGKILL"); } }, options.graceMs ?? SYNC_EXIT_GRACE_MS);
+      grace = setTimeout(() => { if (!closed && !exit) { child.kill("SIGKILL"); } }, SYNC_EXIT_GRACE_MS);
     };
-    const deadline = setTimeout(() => stop("deadline_exceeded"), options.deadlineMs ?? SYNC_DEADLINE_MS);
+    const deadline = setTimeout(() => stop("deadline_exceeded"), SYNC_DEADLINE_MS);
     const abort = (): void => stop("cancelled");
     options.signal?.addEventListener("abort", abort, { once: true });
     child.on("message", (message: unknown) => { report = parseSyncReport(message); });

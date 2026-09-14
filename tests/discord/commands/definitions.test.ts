@@ -17,10 +17,23 @@ describe("standalone command definitions", () => {
       .toStrictEqual(slashCommands);
   });
 
-  it("exports definitions in a fresh process without any Bot environment", () => {
+  it("exports definitions without Bot settings, handlers or heavyweight runtime packages", () => {
     const entry = new URL("../../../src/commands/definitions.ts", import.meta.url).href;
     const result = spawnSync(process.execPath, ["--input-type=module", "-e",
-      `const { slashCommands } = await import(${JSON.stringify(entry)}); process.stdout.write(JSON.stringify(slashCommands));`
+      `
+        import { registerHooks } from 'node:module';
+        const blocked = ['discord.js', 'effect', '@momo/db', 'postgres', 'drizzle-orm'];
+        registerHooks({ resolve(specifier, context, nextResolve) {
+          if (blocked.some(name => specifier === name || specifier.startsWith(name + '/'))) throw new Error('Runtime dependency in command metadata');
+          const resolved = nextResolve(specifier, context);
+          if (/\\/src\\/(env|userConfig|appContext|index)\\.ts$/.test(resolved.url)
+            || /\\/src\\/discord\\/registry\\//.test(resolved.url)
+            || /\\/src\\/features\\/[^/]+\\/module\\.ts$/.test(resolved.url)) throw new Error('Runtime module in command metadata');
+          return resolved;
+        } });
+        const { slashCommands } = await import(${JSON.stringify(entry)});
+        process.stdout.write(JSON.stringify(slashCommands));
+      `
     ], { env: {}, encoding: "utf8", timeout: 10_000 });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(0);

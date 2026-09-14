@@ -53,7 +53,7 @@ src/db/* ──> persistence boundary
 
 ### Registry
 
-各 Interaction feature は `module.ts` から route と slash builder を公開し、`src/discord/registry/modules.ts` に追加する。slash builder は handler 非依存の feature 所有 module に置き、同期用 `src/commands/definitions.ts` からも同じ定義を参照する。同期のために実行用 registry、Effect、Bot 設定を初期化しない。二つの一覧の一致と既存 payload は test で検証する。registry build は次を fail-fast で検証する。
+各 Interaction feature は `module.ts` から route と slash builder を公開し、`src/discord/registry/modules.ts` に追加する。slash builder は handler 非依存の feature 所有 module に置き、同期用 `src/commands/definitions.ts` からも同じ定義を参照する。同期のために実行用 registry、Effect、Bot 設定を初期化しない。二つの一覧の一致・既存 payload・runtime package への依存禁止を test で検証する。registry build は次を fail-fast で検証する。
 
 - custom ID prefix が所定の終端形式を持つ。
 - prefix または command name が重複していない。
@@ -67,8 +67,9 @@ dispatcher に feature 名の分岐を追加しない。同期用一覧のため
 
 - 軽量な `sync.supervisor.ts` が worker 一つを所有し、SDK import 前から全体 deadline を管理する。SIGINT / SIGTERM / deadline で中断を要求し、猶予後も未終了ならその子だけを強制終了する。子の終了と IPC 切断まで確認し、timer を回収する。worker は親との接続喪失時にも終了する。
 - `sync.worker.ts` は Fly 環境・親所有権を SDK import 前に検査する。token と対象 ID 以外の本番設定、shell、Node 起動オプションを継承せず、Client、login、DB、scheduler を起動しない。開発経路のみ注入済み YAML の guild ID を参照する。
-- REST はリクエスト timeout と自動 retry 無効化を持ち、rate limit で待ち続けない。同期の確認・結果不明の扱いは `docs/discord-rule.md` §7、実行値は `src/commands/sync.protocol.ts`、手順は `docs/operations/README.md` を正本とする。
-- worker の生 stdout / stderr や例外本文を転送せず、親が許可した結果分類・待機時間だけを構造化ログへ出す。IPC 送達後は単発 worker を終了し、SDK 内部 timer を残さない。
+- REST は `sync.run.ts` の HTTP adapter が応答本文まで読んでから SDK に返す。SDK timeout が header 受信で解除される穴を防ぎ、実際の受信 byte 数を `SYNC_RESPONSE_MAX_BYTES` で制限して JSON 解析前に打ち切る。中断・超過時は stream と abort listener を回収する。これは現在の command 群に対する CLI の容量上限であり、Discord が許す全構成の上限ではない。定義の規模拡大時に再評価する。
+- 単発 REST は cache sweeper を起動せず、自動 retry を無効にして rate limit で待ち続けない。同期の確認・結果不明の扱いは `docs/discord-rule.md` §7、実行値は `src/commands/sync.protocol.ts`、手順は `docs/operations/README.md` を正本とする。
+- worker の生 stdout / stderr や例外本文を転送せず、親が許可した結果分類・待機時間だけを構造化ログへ出す。`SyncReport` は成功と失敗詳細の混在を型と IPC parser で拒否し、同期段階は `precheck` / `write` / `verification` の排他的な状態で管理する。IPC 送達後は単発 worker を終了し、SDK 内部 timer を残さない。
 
 定義の実行用・同期用 payload を別々に手書きしたり、handler の全体的な lazy loading へ広げたりしない。手動同期の頻度・担当者が増えて実行管理が必要になった場合に、専用 workflow と secret 管理を再評価する。
 

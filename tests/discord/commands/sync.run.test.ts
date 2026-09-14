@@ -6,16 +6,19 @@ import { deferred } from "../../helpers/deferred.ts";
 
 const settings = { production: true, check: false, token: "controlled-dummy-token", applicationId: "100000000000000001", guildId: "100000000000000002" };
 const makeRest = () => ({ read: vi.fn<(signal: AbortSignal) => Promise<unknown>>().mockResolvedValue(slashCommands),
-  overwrite: vi.fn<(signal: AbortSignal) => Promise<unknown>>().mockResolvedValue(slashCommands), dispose: vi.fn() });
+  overwrite: vi.fn<(signal: AbortSignal) => Promise<unknown>>().mockResolvedValue(slashCommands) });
 const rateLimit = () => new RateLimitError({ global: true, hash: "test", limit: 1, majorParameter: "PRIVATE", method: "PUT",
   retryAfter: 5000, route: "/applications/:id/guilds/:id/commands", scope: "user", sublimitTimeout: 0, timeToReset: 5000, url: "https://discord.com/PRIVATE" });
 
 describe("standalone command synchronization", () => {
+  it("classifies REST initialization failures before any write", async () => {
+    expect(await runCommandSync(settings, new AbortController().signal, () => { throw new Error("PRIVATE initialization error"); }))
+      .toStrictEqual({ status: "failed", reason: "request_failed" });
+  });
   it("does no write when registration already matches", async () => {
     const rest = makeRest();
     expect(await runCommandSync(settings, new AbortController().signal, () => rest)).toStrictEqual({ status: "matched" });
     expect(rest.overwrite).not.toHaveBeenCalled();
-    expect(rest.dispose).toHaveBeenCalledOnce();
   });
   it("checks differences without writing", async () => {
     const rest = makeRest(); rest.read.mockResolvedValue([]);
@@ -32,17 +35,21 @@ describe("standalone command synchronization", () => {
     pending.resolve(slashCommands);
     expect(await result).toStrictEqual({ status: "synced" });
     expect(rest.read).toHaveBeenCalledTimes(2);
-    expect(rest.dispose).toHaveBeenCalledOnce();
   });
-  it("does not overwrite if the initial response is invalid", async () => {
-    const rest = makeRest(); rest.read.mockResolvedValue({ private: "PRIVATE" });
+  it.each([
+    { private: "PRIVATE" },
+    [{ name: "ask", type: 1, description: 42 }],
+    [{ name: "ask", type: 1, description: "募集", options: [{}] }],
+    [{ name: "ask", type: 1, description: "募集", name_localizations: ["PRIVATE"] }]
+  ].map(response => ({ response })))("does not overwrite if the initial response is invalid", async ({ response }) => {
+    const rest = makeRest(); rest.read.mockResolvedValue(response);
     expect(await runCommandSync(settings, new AbortController().signal, () => rest)).toStrictEqual({ status: "failed", reason: "invalid_response" });
     expect(rest.overwrite).not.toHaveBeenCalled();
   });
   it("reports uncertainty without retrying a failed PUT", async () => {
     const rest = makeRest(); rest.read.mockResolvedValue([]); rest.overwrite.mockRejectedValue(new Error("PRIVATE Authorization token"));
     expect(await runCommandSync(settings, new AbortController().signal, () => rest)).toStrictEqual({ status: "unknown", reason: "request_failed" });
-    expect(rest.overwrite).toHaveBeenCalledOnce(); expect(rest.dispose).toHaveBeenCalledOnce();
+    expect(rest.overwrite).toHaveBeenCalledOnce();
   });
   it("reports a confirmed HTTP rejection differently from an uncertain write", async () => {
     const rest = makeRest(); rest.read.mockResolvedValue([]);
@@ -70,6 +77,6 @@ describe("standalone command synchronization", () => {
     const controller = new AbortController(); const rest = makeRest();
     rest.read.mockResolvedValueOnce([]).mockImplementation(async () => { controller.abort(); return slashCommands; });
     expect(await runCommandSync(settings, controller.signal, () => rest)).toStrictEqual({ status: "unknown", reason: "cancelled" });
-    expect(rest.overwrite).toHaveBeenCalledOnce(); expect(rest.dispose).toHaveBeenCalledOnce();
+    expect(rest.overwrite).toHaveBeenCalledOnce();
   });
 });

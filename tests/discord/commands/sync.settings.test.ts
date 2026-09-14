@@ -41,7 +41,16 @@ describe("command sync settings", () => {
     expect(parseSyncReport({ status: "failed", reason: "PRIVATE" })).toBeUndefined();
     expect(parseSyncReport({ status: "failed", retryAfterMs: Infinity })).toBeUndefined();
     expect([getSyncExitCode({ status: "matched" }), getSyncExitCode({ status: "synced" }),
-      getSyncExitCode({ status: "different" }), getSyncExitCode({ status: "unknown" }),
+      getSyncExitCode({ status: "different" }), getSyncExitCode({ status: "unknown", reason: "worker_failed" }),
       getSyncExitCode({ status: "unknown", reason: "deadline_exceeded" })]).toStrictEqual([0, 0, 2, 3, 124]);
+  });
+  it.each([
+    { status: "synced", reason: "request_failed" },
+    { status: "matched", retryAfterMs: 1000 },
+    { status: "failed" },
+    { status: "different", reason: "rate_limited" },
+    { status: "unknown", reason: "cancelled", retryAfterMs: 1000 }
+  ])("rejects contradictory or incomplete worker reports", report => {
+    expect(parseSyncReport(report)).toBeUndefined();
   });
 });

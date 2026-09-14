@@ -8,6 +8,7 @@ export interface SyncSettings extends SyncOptions {
 
 const validId = (value: unknown): value is string => typeof value === "string" && /^\d{17,20}$/.test(value);
 
+/** Validates injected settings only; production requires explicit IDs and never loads local config. */
 export const readSyncSettings = async (
   options: SyncOptions, environment: Readonly<NodeJS.ProcessEnv>
 ): Promise<SyncSettings | undefined> => {

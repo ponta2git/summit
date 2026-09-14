@@ -108,7 +108,7 @@ A/Bは`result-notifications` rendererで保存済みsnapshotから描画する�
 
 - command登録はguild-scoped bulk overwriteのみ。global登録は使用しない。
 - command定義変更時だけ同期する。開発は `pnpm commands:sync`、本番は運用 PC の `pnpm commands:sync:production` を使う。本番の準備・実行・復旧は [運用手順](./operations/README.md#本番discordコマンド同期) に従う。Bot 再起動・Fly deploy は同期を実行しない。
-- 同期前の GET で名前だけでなく定義全体を比較し、一致時は書き込まない。Discord が付与する ID / version、既定値、localization の差は `src/commands/sync.compare.ts` で正規化する。guild に無効な global 専用フィールドは比較対象外とする。
+- 同期前の GET で名前だけでなく定義全体を比較し、一致時は書き込まない。Discord が付与する ID / version、既定値、localization の差は `src/commands/sync.compare.ts` で正規化する。guild に無効な global 専用フィールドは比較対象外とする。比較前に command / option / choice の必須構造と設定型を検証し、不正な応答を変更差分として PUT へ進めない。これは Discord の全入力制約を再実装するものではなく、比較するデータの構造を守る境界である。
 - `--check` は GET のみ。差分があっても書き込まず、同期実行とは異なる終了状態を返す。apply は差分がある場合だけ一度 PUT し、その後の GET 一致までを成功条件とする。
 - PUT 到達後の通信切断・timeout・確認失敗は結果不明として扱う。親が worker の完了を確認できない apply も保守的に結果不明とし、終了コードを成功にしない。自動 PUT retry はせず、登録内容を `--check` で確認してから次の操作を判断する。
 - rate limit は待機時間のみを報告して終了する。API 本文や token を出力せず、再試行前の確認も読み取り専用とする。

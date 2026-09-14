@@ -61,6 +61,10 @@ describe("command sync process ownership", () => {
     expect(await superviseCommandSync([], {}, { worker: fixture("process.send({status:'synced'}, () => process.exit(1));") }))
       .toStrictEqual({ status: "unknown", reason: "worker_failed" });
   });
+  it("does not turn a contradictory IPC report into a successful apply", async () => {
+    expect(await superviseCommandSync([], {}, { worker: fixture("process.send({status:'synced',reason:'request_failed'}, () => process.exit(0));") }))
+      .toStrictEqual({ status: "unknown", reason: "worker_failed" });
+  });
   it("rejects missing production settings through the actual worker without reading local files", async () => {
     expect(await superviseCommandSync(["--production", "--check"], { DATABASE_URL: "PRIVATE", SUMMIT_CONFIG_YAML: "PRIVATE" }))
       .toStrictEqual({ status: "failed", reason: "invalid_settings" });

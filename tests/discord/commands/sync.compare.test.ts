@@ -24,7 +24,18 @@ describe("guild command comparison", () => {
     expect(commandsMatch(expected, [{ ...command, options: [{ ...option, choices: [...option.choices].reverse() }] }])).toBe(false);
     expect(commandsMatch(expected, [{ ...command, options: [{ ...option, required: true }] }])).toBe(false);
   });
-  it.each([null, {}, [null], [{ name: "ask" }], [{ ...command, options: {} }]].map(registered => ({ registered })))("rejects malformed responses before overwriting", ({ registered }) => {
+  it("accepts documented omitted and nullable fields without creating false differences", () => {
+    expect(commandsMatch([command], [{ name: "ask", description: "募集", default_permission: null,
+      name_localizations: { ja: null }, description_localizations: null }])).toBe(true);
+    expect(commandsMatch([{ name: "User menu", type: 2 }], [{ name: "User menu", type: 2, description: "" }])).toBe(true);
+    expect(commandsMatch([{ ...command, name_localizations: { ja: null } }], [{ ...command, name_localizations: { ja: "別名" } }])).toBe(false);
+  });
+  it.each([null, {}, [null], [{ name: "ask" }], [{ ...command, options: {} }], [{ ...command, options: null }],
+    [{ ...command, nsfw: "false" }], [{ ...command, default_permission: 1 }], [{ ...command, default_member_permissions: 0 }],
+    [{ ...command, name_localizations: { ja: 1 } }], [{ ...command, type: 99 }],
+    ...[{ choices: [{}] }, { required: null }, { min_length: "1" }, { channel_types: ["0"] }, { file_types: {} }]
+      .map(extra => [{ ...command, options: [{ name: "value", description: "入力", type: 3, ...extra }] }])
+  ].map(registered => ({ registered })))("rejects malformed responses before overwriting", ({ registered }) => {
     expect(() => commandsMatch([command], registered)).toThrow(InvalidCommandResponseError);
   });
 });

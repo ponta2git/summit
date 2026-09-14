@@ -101,6 +101,7 @@ CLI 自体が GET → 差分時のみ PUT → GET で検証する。`synced` ま
 | `124` / `deadline_exceeded`、`130` / `cancelled` | 処理を中断。apply の結果は不明として、同様に `--check` から再開 |
 
 - `rate_limited` は報告された `retryAfterMs` 以上待ってから、手動で `--check` を行う。自動 retry やループ実行をしない。
+- `invalid_response` は command / option / choice 等の構造不正、`response_too_large` は本文の受信量が `SYNC_RESPONSE_MAX_BYTES`（`src/commands/sync.protocol.ts`）を超えたことを示す。対象・定義規模・API 状態を調べ、上限をその場で迂回したり強制 PUT したりしない。PUT 到達後なら結果不明の確認手順を使う。
 - PUT 後の確認失敗・通信切断でも Discord 側へ適用済みの可能性がある。`--check` が `matched` なら再適用不要、`different` なら対象・revision・権限を再確認して必要な適用を判断する。確認自体が失敗する間は状態を成功・未適用と断定しない。
 - 誤った定義の復旧は、対象 Bot と互換な復旧 revision を決め、その定義で同じ確認・適用手順を行う。CLI は自動 rollback しない。Bot の redeploy / restart や token rotation が必要になった場合は別の SOP と操作権限で扱う。
 

@@ -1,16 +1,17 @@
 export const SYNC_DEADLINE_MS = 60_000;
 export const SYNC_EXIT_GRACE_MS = 5_000;
 export const SYNC_REQUEST_TIMEOUT_MS = 10_000;
+export const SYNC_RESPONSE_MAX_BYTES = 1_048_576;
 
-const statuses = ["matched", "synced", "different", "failed", "unknown"] as const;
-const reasons = ["usage", "fly_environment", "invalid_settings", "request_failed", "rate_limited",
+const completedStatuses = ["matched", "synced", "different"] as const;
+const failureReasons = ["usage", "fly_environment", "invalid_settings", "request_failed", "response_too_large",
   "invalid_response", "verification_failed", "deadline_exceeded", "cancelled", "worker_failed"] as const;
 
-export interface SyncReport {
-  readonly status: typeof statuses[number];
-  readonly reason?: typeof reasons[number];
-  readonly retryAfterMs?: number;
-}
+/** A confirmed outcome has no failure details; an unconfirmed outcome always explains why. */
+export type SyncReport =
+  | { readonly status: typeof completedStatuses[number]; readonly reason?: never; readonly retryAfterMs?: never }
+  | { readonly status: "failed" | "unknown"; readonly reason: typeof failureReasons[number]; readonly retryAfterMs?: never }
+  | { readonly status: "failed" | "unknown"; readonly reason: "rate_limited"; readonly retryAfterMs?: number };
 
 export interface SyncOptions {
   readonly production: boolean;
@@ -28,13 +29,20 @@ export const isFlyEnvironment = (environment: Readonly<NodeJS.ProcessEnv>): bool
 // secret: IPC も許可した分類・数値だけに射影し、任意の worker 出力をログへ流さない。
 export const parseSyncReport = (value: unknown): SyncReport | undefined => {
   if (typeof value !== "object" || value === null) { return undefined; }
-  const status = statuses.find(candidate => "status" in value && value.status === candidate);
-  const reason = reasons.find(candidate => "reason" in value && value.reason === candidate);
-  if (!status || ("reason" in value && !reason)) { return undefined; }
-  const retryAfterMs = "retryAfterMs" in value ? value.retryAfterMs : undefined;
-  if (retryAfterMs !== undefined && (typeof retryAfterMs !== "number" || !Number.isFinite(retryAfterMs) || retryAfterMs < 0)) { return undefined; }
-  return { status, ...(reason === undefined ? {} : { reason }),
-    ...(retryAfterMs === undefined ? {} : { retryAfterMs }) };
+  const status = "status" in value ? value.status : undefined;
+  const completed = completedStatuses.find(candidate => status === candidate);
+  if (completed) {
+    return "reason" in value || "retryAfterMs" in value ? undefined : { status: completed };
+  }
+  if ((status !== "failed" && status !== "unknown") || !("reason" in value)) { return undefined; }
+  if (value.reason === "rate_limited") {
+    if (!("retryAfterMs" in value)) { return { status, reason: "rate_limited" }; }
+    const retryAfterMs = value.retryAfterMs;
+    return typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs >= 0
+      ? { status, reason: "rate_limited", retryAfterMs } : undefined;
+  }
+  const reason = failureReasons.find(candidate => value.reason === candidate);
+  return reason && !("retryAfterMs" in value) ? { status, reason } : undefined;
 };
 
 export const getSyncExitCode = (report: SyncReport): number => {
