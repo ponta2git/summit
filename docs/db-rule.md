@@ -145,7 +145,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 
 `ResultNotificationsPort`は生JSON受付、設定、配送、状態照会、明示再試行、保持を所有する。real/fakeに共通の契約testを適用し、数値精度・transaction・競合は実DBで検証する。本文形式と取消・再試行判断は`src/domain/`、更新境界は`resultNotifications.*`と`notifications.*`のrepositoryに置く。
 
-- 受付は親・固定payload・結果関連・取消対象とPENDINGまたはCANCELLEDを一つのcommandで保存する。既存IDの内容照合を新規version検証より先に行う。hashは旧JSONB数値正規化と互換にし、JSの数値丸めを使わない。
+- 受付は親・固定payload・結果関連・取消対象とPENDINGまたはCANCELLEDを一つのcommandで保存する。OCR v2・分析v1の対応versionを確認してから既存IDの内容を照合する。旧OCRは同一内容の再受付も拒否する。受信schemaVersionを保存列へ明示する。hashは旧JSONB数値正規化と互換にし、JSの数値丸めを使わない。
 - 設定変更はON/OFF・世代・未開始部分取消を同じcommitに含める。利用者向け設定はmomo-result APIが共有DBへ直接保存し、Summitの稼働に依存しない。Summitの運用設定commandと同じresult gateを使うため、受付・送信開始・再試行はAPIがcommitした世代とOFFを観測する。対象変更はmomo-resultの業務commandの末尾で通知を取り消す。transactionの集約単位とlock順はアプリの契約であり、DBの機能に判断を任せない。
 - `notificationTransaction`はREAD COMMITTEDとfamily gateを指定する。対象writerは業務行を書いてからresult gateを取得する。gate取得後は業務行のlockを取らず、Discord I/Oを行わない。全writerの取得順は[共有契約](../../momo-db/docs/discord-notifications.md#アプリケーションの更新境界)を守る。
 - 初回描画でrenderer・部分数・リンクorigin・チャンネルを保存する。各partの開始・結果確定は有効なclaimと順序を再検査する。取消時は開始済みpartの確定だけを許し、親を復帰させない。
@@ -153,6 +153,7 @@ PostgreSQLとDiscordを同一transactionにできないため、業務上必須�
 - 保持期限後の整理も上限付きbatchで処理し、呼出元へは状態別件数だけを返す。batchを跨いで対象行を蓄積せず、元の保持期限・進行中の除外・恒久identityの保全を維持する。
 - 通知IDの生成・入力検証・運用pathの検証は`@momo/db/notifications`の共通helperを使う。payload versionと既存IDの内容照合は受付の責務として分離する。
 - リンクoriginの検証はdomainの共通制約を使い、設定・保存計画・rendererで同じ判定にする。DB repositoryは表示用のリンクbuilderへ依存しない。
+- claim・次回時刻の検索とinspect/retryは同じ対応versionに限定し、旧OCRの履歴は変更しない。
 - A/BのFAILEDは起動時に復帰させず、保持中で取消条件のない行だけを明示retryする。期限回収・保持もfamilyを限定し、既存Session回復と混ぜない。
 - DB driverの例外には生payloadやSQL bindが含まれ得るため、result portは安全な分類だけを境界へ返し、元のcauseをlog・HTTPへ渡さない。
 

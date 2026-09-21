@@ -35,7 +35,7 @@ describe("result notification delivery", () => {
     const sending = deferred<void>(); const sent = deferred<{ id: string }>();
     h.channel.send.mockImplementationOnce(() => { sending.resolve(); return sent.promise; });
     const delivery = h.deliver(entry); await sending.promise;
-    await h.port.setSetting("ocr_completed", false, h.clock.now());
+    await h.port.setSetting("analysis_completed", false, h.clock.now());
     sent.resolve({ id: "accepted-before-cancellation" }); await delivery;
     expect(h.channel.send).toHaveBeenCalledOnce();
     const state = await h.port.inspect(id);

@@ -1,7 +1,7 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../config.ts";
 import type { DiscordNotificationReceipt } from "@momo/db/notifications";
-import { NotificationInputError, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
 import { parseTimestamp } from "../../time/index.ts";
 import { discordNotifications as notifications, discordNotificationResults as results, discordNotificationTargets as targets } from "../schema.ts";
 import { cancelNotification, loadResultCancellationReason, type NotificationDb } from "./notifications.storage.ts";
@@ -14,6 +14,7 @@ export const receiveResultNotification = async (
   let value: unknown;
   try { value = JSON.parse(rawJson); } catch { throw new NotificationInputError("invalid_input"); }
   const identity = readNotificationIdentity(value);
+  assertSupportedNotificationVersion(value);
   const normalized = await normalizeNotificationJson(tx, rawJson);
   if (normalized.bytes > RESULT_NOTIFICATION_MAX_JSONB_BYTES) { throw new NotificationInputError("payload_too_large"); }
   const [existing] = await tx.select({
@@ -33,7 +34,7 @@ export const receiveResultNotification = async (
   if (!occurredAt) { throw new NotificationInputError("invalid_input"); }
   await tx.insert(notifications).values({
     id: payload.notificationId, family: "result", kind: payload.kind, dedupeKey: payload.notificationId,
-    payload: sql`${normalized.text}::jsonb`, payloadHash: normalized.hash,
+    payload: sql`${normalized.text}::jsonb`, payloadHash: normalized.hash, schemaVersion: payload.schemaVersion,
     createdAt: now, updatedAt: now, nextAttemptAt: now
   });
   await tx.insert(results).values({

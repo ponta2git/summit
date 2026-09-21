@@ -8,41 +8,54 @@ import { analysisNotification, ocrNotification, rankComparisons } from "./fixtur
 const origin = "https://results.example.com";
 
 describe("fixed result notification rendering", () => {
-  it("renders the complete OCR confirmation from its snapshot", () => {
+  it("renders one completed submission without successful-image detail", () => {
     expect(renderResultNotification(ocrNotification(), origin)).toStrictEqual({
-      rendererVersion: 1,
+      rendererVersion: 2,
       parts: [{
-        content: [
-          "OCR完了 1/1",
-          "OCR完了: 要確認",
-          "画像種別: 総資産",
-          "作品: テスト作品",
-          "開催日: 2026-09-08",
-          "試合番号: 第2試合",
-          "処理日時: 2026-09-09 21:00:00 JST",
-          "",
-          "要約: 読み取りが完了しました。内容を確認してください。",
-          "",
-          "下書きを確認: <https://results.example.com/review/draft-1>"
-        ].join("\n"),
-        allowedMentions: { parse: [], users: [], roles: [], repliedUser: false },
-        flags: MessageFlags.SuppressEmbeds
+        content: ["OCRの処理が終了しました。", "作品: テスト作品", "開催日: 2026-09-08", "試合番号: 第2試合",
+          "完了日時: 2026-09-09 21:00:00 JST", "", "下書きを確認: <https://results.example.com/review/draft-1>"].join("\n"),
+        allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }, flags: MessageFlags.SuppressEmbeds
       }]
     });
   });
 
-  it.each([
-    ["revenue", "物件収益"],
-    ["incident_log", "事件簿"]
-  ] as const)("shows successful %s and omits unknown context", (screenType, label) => {
+  it("orders only failed image types and includes all failures in a single message", () => {
     const input = ocrNotification();
-    const rendered = renderResultNotification({ ...input, data: {
-      ...input.data, screenType, outcome: "succeeded",
-      context: { gameTitleName: null, heldDateIso: null, matchNoInEvent: null }
+    const rendered = renderResultNotification({ ...input, data: { ...input.data,
+      context: { gameTitleName: null, heldDateIso: null, matchNoInEvent: null },
+      failures: [
+        { screenType: "incident_log", reason: "cancelled" },
+        { screenType: "total_assets", reason: "ocr_timeout" },
+        { screenType: "revenue", reason: "admission_failed" }
+      ]
     } }, origin);
-    const content = rendered.parts[0]?.content;
-    expect(content).toContain(`OCR完了: 成功\n画像種別: ${label}\n処理日時:`);
-    expect(content).not.toMatch(/作品:|開催日:|試合番号:/);
+    expect(rendered.parts).toHaveLength(1);
+    expect(rendered.parts[0]?.content).toBe([
+      "OCRの処理が終了しました。", "完了日時: 2026-09-09 21:00:00 JST", "", "読み取れなかった画像:",
+      "総資産: 読み取りの制限時間を超えました。", "物件収益: 画像を受け付けられませんでした。",
+      "事件簿: 読み取りが中止されました。", "", "下書きを確認: <https://results.example.com/review/draft-1>"
+    ].join("\n"));
+    expect(rendered.parts[0]?.content).not.toMatch(/成功|要確認|件数|作品:|開催日:|試合番号:/);
+  });
+
+  it("bounds escaped context against the longest accepted link without dropping failures", () => {
+    const input = ocrNotification();
+    const longOrigin = `https://${"a".repeat(1_770)}.test`;
+    const rendered = renderResultNotification({ ...input, data: { ...input.data,
+      context: { gameTitleName: "😀*".repeat(67), heldDateIso: "2026-09-21", matchNoInEvent: 2_147_483_647 },
+      failures: ["total_assets", "revenue", "incident_log"].map(screenType => ({
+        screenType: screenType as "total_assets" | "revenue" | "incident_log", reason: "admission_failed" as const
+      }))
+    } }, longOrigin);
+    expect(rendered.parts).toHaveLength(1);
+    const content = rendered.parts[0]?.content ?? "";
+    expect(content.length).toBeLessThanOrEqual(2_000);
+    expect(content).toContain("…（省略）");
+    expect(content).not.toContain("\ufffd");
+    expect(content).toContain("総資産: 画像を受け付けられませんでした。");
+    expect(content).toContain("物件収益: 画像を受け付けられませんでした。");
+    expect(content).toContain("事件簿: 画像を受け付けられませんでした。");
+    expect(content).toContain(`下書きを確認: <${longOrigin}/review/draft-1>`);
   });
 
   it("keeps all four ranks, both aggregates, ginji, full notes, and authenticated routes", () => {
@@ -151,6 +164,6 @@ describe("fixed result notification rendering", () => {
     for (const invalid of ["http://example.com", "https://user:pass@example.com", "https://example.com/path", "https://example.com/?secret=x"]) {
       expect(() => renderResultNotification(input, invalid)).toThrow("application origin");
     }
-    expect(() => renderResultNotification(input, origin, 2)).toThrow("Unsupported notification renderer");
+    expect(() => renderResultNotification(input, origin, 99)).toThrow("Unsupported notification renderer");
   });
 });

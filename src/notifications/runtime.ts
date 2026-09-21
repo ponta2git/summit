@@ -1,3 +1,4 @@
+import type { AddressInfo } from "node:net";
 import type { Client } from "discord.js";
 import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
@@ -8,6 +9,7 @@ import { createNotificationReceiver } from "./http.ts";
 
 interface ResultNotificationRuntime {
   start(): Promise<void>;
+  address(): AddressInfo | null;
   wake(reason: string): void;
   stop(): void;
   drain(): Promise<void>;
@@ -31,6 +33,7 @@ export const createResultNotificationRuntime = (deps: {
     wake: reason => dispatcher.wake(reason), logger });
   return {
     start: () => receiver.start(deps.host, deps.port),
+    address: () => { const address = receiver.server.address(); return typeof address === "object" ? address : null; },
     wake: (reason: string) => dispatcher.wake(reason),
     stop: () => { try { receiver.stop(); } finally { dispatcher.stop(); } },
     drain: async () => {

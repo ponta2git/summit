@@ -54,7 +54,7 @@ Discord権限・到達性・描画互換性などの原因を解消し、`inspec
 pnpm notifications retry result:analysis_completed:example-job
 ```
 
-対応は `POST /internal/discord-notifications/:id/retry`。受付commit後に同じprocessをwakeし、同じpayload・renderer・部分計画・宛先・nonceで未配送partだけを再開する。回数を無制限に戻す処理ではなく、retryCycleを進めて新たな有限cycleを開始する。409は取消・未FAILED・保持終了などの不適格を示す。
+対応は `POST /internal/discord-notifications/:id/retry`。受付commit後に同じprocessをwakeし、同じpayload・renderer・部分計画・宛先・nonceで未配送partだけを再開する。回数を無制限に戻す処理ではなく、retryCycleを進めて新たな有限cycleを開始する。409は取消・未FAILED・保持終了・廃止済みOCR v1などの不適格を示す。inspectのretryableもfalseとなる。
 
 運用requestの応答を失った場合も、まず同じIDをinspectする。新しいIDや変更payloadで通知を作らない。Discord受理後の停止では重複があり得るため、送達記録と実際のmessageを照合する。
 
@@ -79,7 +79,7 @@ pnpm notifications settings ocr_completed on
 - `shutdown.drain_timeout` は未完了claimが残り得ることを示す。次の起動後に同じIDを確認する。
 - A/Bの長文・失敗と出欠通知の配送は独立する。出欠側の警告は別runbookで判断する。
 
-## 移行とrenderer互換性
+## 移行とrendererの保持
 
 [migration.md](migration.md#共有通知への停止切替)に従い、全writer・配送停止、復元確認済みbackup、対応するmomo-db・Summit・momo-result APIを揃える。
 
@@ -87,8 +87,21 @@ pnpm notifications settings ocr_completed on
 
 保持中のresultで `partCount>0` なのに旧宛先contextがない場合、`unsupported_renderer`へ収束する。現在の宛先で続きを送ることはしない。旧renderer・分割・宛先を確認できる回復版を別途検証する。単純retryでは原因は解消しない。
 
-rendererを変更・撤去できるのは、その版を必要とする保持中の通知がなく、対応するfixture・停止回復試験と切戻し方法を確認した場合だけ。リンクoriginやチャンネルの設定変更も、計画済み通知には反映しない。
+OCRはメンテナンスで旧画像job・受付・配送を収束して停止し、送出v2へ一括切替する。旧OCRのPENDING/IN_FLIGHTと送信中partが0件であることが再開条件。新OCRはrenderer 2、分析はrenderer 1を使用する。旧OCRのpayload・hash・identity・履歴を保持し、再受付・claim・次回配送検索・手動retryから外す。未終端の旧OCRが残る場合は切替を止め、対応版で収束させる。
+
+切戻しは全writer停止と復元確認済みbackupを前提に、DB・queue・object・全consumerを対応revisionへ戻す。新しい業務書込みまたはDiscord送信後は旧backupの全体復元で新データを失うため、データを保持するforward fixを原則とする。停止点・backup対象・対応revision・未終端0件・復元確認の結果を、導入前の共通runbookへ記録する。
+
+分析rendererを変更・撤去できるのは、その版を必要とする保持中の通知がなく、対応するfixture・停止回復試験と切戻し方法を確認した場合だけ。リンクoriginやチャンネルの設定変更も、計画済み通知には反映しない。
 
 ## 実環境での受入
 
 MOM-19では実producer・private network・Discordを通して、A/B正常系、長文、OFF・対象削除、起動回復、応答喪失と重複、業務成功から投稿までの目標時間を確認する。ローカルのfake Discord / 実DB testだけで実環境の到達性や時間目標を達成したと報告しない。
+
+
+ローカルの組合せ検証には`pnpm notifications:record:test`を使える。`TEST_DATABASE_URL`はloopbackの
+`mom24_`専用DBだけを許可し、通常のlocal設定やDiscord loginは使わない。`MOM24_RUN_DIR`は実行ごとの
+新規directoryとし、通知token・operations token・Web originを試験用環境変数で明示する。
+`RESULT_NOTIFICATION_WEB_ORIGIN`は試験Webのoriginを指定する。`summit-ready.json`のoriginへproducerを
+接続し、`summit-messages.jsonl`と実DBのschema/renderer/part状態を照合する。同じdirectoryへの再実行は
+拒否する。SIGINT/SIGTERMで受付停止・drain・pool解放を待ち、親harnessが自身のdirectory・DBを回収する。
+この経路は永続受付から本文・配送保存までを確認するが、実Discord到達・認証・外部通信は証明しない。

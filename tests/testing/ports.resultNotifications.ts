@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ResultNotificationKind } from "@momo/db";
 import type { ClaimedResultNotification, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/config.ts";
-import { NotificationInputError, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
 import { addMs } from "../../src/time/index.ts";
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.ts";
@@ -42,6 +42,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       let value: unknown;
       try { value = JSON.parse(rawJson); } catch { throw new NotificationInputError("invalid_input"); }
       const identity = readNotificationIdentity(value);
+      assertSupportedNotificationVersion(value);
       const canonical = semanticJson(value);
       if (Buffer.byteLength(canonical) > RESULT_NOTIFICATION_MAX_JSONB_BYTES) { throw new NotificationInputError("payload_too_large"); }
       const existing = [...entries.values()].find(n => n.id === identity.notificationId || (n.kind === identity.kind && n.sourceJobId === identity.sourceJobId));
@@ -51,7 +52,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       }
       const payload = validateNewNotification(value);
       const n: FakeResultEntry = { id: payload.notificationId, kind: payload.kind, sourceJobId: payload.sourceJobId,
-        identity: canonical, payload, status: "PENDING", attemptCount: 0, maxAttempts: OUTBOX_MAX_ATTEMPTS, retryCycle: 0,
+        identity: canonical, schemaVersion: payload.schemaVersion, payload, status: "PENDING", attemptCount: 0, maxAttempts: OUTBOX_MAX_ATTEMPTS, retryCycle: 0,
         claimToken: null, claimExpiresAt: null, nextAttemptAt: now, terminalAt: null, purgedAt: null,
         cancelReason: null, lastError: null, partCount: 0, rendererVersion: null, deliveryContext: null, parts: [] };
       entries.set(n.id, n);
@@ -66,7 +67,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
           if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
         }
       }
-      const candidates = [...entries.values()].filter(n => n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
+      const candidates = [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
         .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id)).slice(0, options.limit);
       const result: ClaimedResultNotification[] = [];
       for (const n of candidates) {
@@ -124,7 +125,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     },
     getNextDispatchAt: async (excluded = []) => {
       recordCall(calls, "getNextDispatchAt", {});
-      return [...entries.values()].filter(n => !excluded.includes(n.id) && !n.purgedAt)
+      return [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && !excluded.includes(n.id) && !n.purgedAt)
         .map(n => n.status === "PENDING" ? n.nextAttemptAt : n.claimExpiresAt).filter((at): at is Date => at !== null)
         .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
     },
@@ -134,10 +135,10 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         attemptCount: n.attemptCount, maxAttempts: n.maxAttempts, retryCycle: n.retryCycle, nextAttemptAt: n.nextAttemptAt,
         claimExpiresAt: n.claimExpiresAt, cancelReason: n.cancelReason, lastError: n.lastError, purgedAt: n.purgedAt,
         partCount: n.partCount, rendererVersion: n.rendererVersion, parts: n.parts,
-        retryable: n.status === "FAILED" && !n.purgedAt && reason(n) === null });
+        retryable: isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "FAILED" && !n.purgedAt && reason(n) === null });
     },
     retry: async (id, now) => {
-      const n = entries.get(id); if (!n || n.status !== "FAILED" || n.purgedAt) { return false; }
+      const n = entries.get(id); if (!n || !isSupportedResultNotification(n.kind, n.schemaVersion) || n.status !== "FAILED" || n.purgedAt) { return false; }
       const why = reason(n); if (why) { cancel(n, why, now); return false; }
       n.status = "PENDING"; n.attemptCount = 0; n.retryCycle += 1; n.terminalAt = null; n.lastError = null; n.nextAttemptAt = now;
       return true;

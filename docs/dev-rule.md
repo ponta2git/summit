@@ -45,6 +45,7 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
 | `pnpm commands:sync [--check]` | 開発用 guild-scoped slash command 同期。`--check` は読取のみ |
 | `pnpm commands:sync:production [--check]` | 運用 PC から本番 guild command を手動同期。明示した Discord 環境変数のみ使用 |
+| `pnpm notifications:record:test` | `mom24_`専用loopback DBで実受付・配送を動かし、Discord境界だけを所有run directoryへ記録 |
 | `pnpm notifications inspect/retry/settings ...` | 稼働中private receiverでOCR・分析通知を操作。権限・使い方は`docs/operations/result-notifications.md` |
 | `pnpm db:seed` | local member seed |
 | `pnpm db:reset` | local transient state reset |

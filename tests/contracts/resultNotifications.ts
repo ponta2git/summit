@@ -5,7 +5,7 @@ import { analysisNotification, ocrNotification } from "../features/result-notifi
 export const notificationNow = new Date("2026-09-09T12:00:00.000Z");
 const at = (ms: number): Date => new Date(notificationNow.getTime() + ms);
 const context = { channelId: "channel-1", webOrigin: "https://momo.example.com" };
-export const ocrReceiptPayload = () => ({ ...ocrNotification(), settingsGeneration: "0" });
+export const ocrReceiptPayload = (submissionId?: string) => ({ ...ocrNotification(submissionId), settingsGeneration: "0" });
 export interface ResultContractHarness {
   readonly port: ResultNotificationsPort;
   deleteMatch(): Promise<void>;
@@ -26,6 +26,7 @@ export const resultNotificationContract = (
       if (!entry) { throw new Error("Expected a result claim"); }
       return entry;
     };
+    // Port sequencing is renderer-independent; multi-part OCR plans here exercise the generic aggregate.
     const plan = (id: string, token: string, count = 2, ms = 0) => port.plan(id, token, { count, rendererVersion: 1, context, now: at(ms) });
     beforeEach(async () => { harness = await create(); port = harness.port; });
     afterEach(async () => { await harness?.close?.(); });
@@ -36,19 +37,19 @@ export const resultNotificationContract = (
       expect(outcomes.map(result => result.disposition).sort()).toEqual(["accepted", "duplicate"]);
       const reordered = Object.fromEntries(Object.entries(payload).reverse());
       expect((await port.receive(JSON.stringify(reordered), notificationNow)).disposition).toBe("duplicate");
-      await expect(port.receive(JSON.stringify({ ...payload, data: { ...payload.data, summary: "Different" } }), notificationNow))
+      await expect(port.receive(JSON.stringify({ ...payload, data: { ...payload.data, failures: [{ screenType: "total_assets", reason: "ocr_failed" }] } }), notificationNow))
         .rejects.toMatchObject({ code: "identity_conflict" });
       expect(await port.claim({ limit: 3, now: notificationNow, claimDurationMs: 1_000 })).toHaveLength(1);
     });
 
-    it("checks an existing identity before a new version and never persists malformed new input", async () => {
+    it("rejects retired wire before identity replay and never persists malformed new input", async () => {
       const payload = ocrReceiptPayload(); await receive();
-      await expect(port.receive(JSON.stringify({ ...payload, schemaVersion: 2 }), notificationNow)).rejects.toMatchObject({ code: "identity_conflict" });
-      const newPayload = { ...payload, sourceJobId: "new-job", notificationId: "result:ocr_completed:new-job", schemaVersion: 2 };
+      await expect(port.receive(JSON.stringify({ ...payload, schemaVersion: 1 }), notificationNow)).rejects.toMatchObject({ code: "unsupported_version" });
+      const newPayload = { ...ocrReceiptPayload("22222222-2222-4222-8222-222222222222"), schemaVersion: 3 };
       await expect(port.receive(JSON.stringify(newPayload), notificationNow)).rejects.toMatchObject({ code: "unsupported_version" });
       expect(await port.inspect(newPayload.notificationId)).toBeNull();
       await expect(port.receive("{invalid", notificationNow)).rejects.toMatchObject({ code: "invalid_input" });
-      await expect(port.receive(JSON.stringify({ ...newPayload, schemaVersion: 1, settingsGeneration: "invalid" }), notificationNow))
+      await expect(port.receive(JSON.stringify({ ...newPayload, schemaVersion: 2, settingsGeneration: "invalid" }), notificationNow))
         .rejects.toMatchObject({ code: "invalid_input" });
     });
 
@@ -58,7 +59,7 @@ export const resultNotificationContract = (
       expect(await port.setSetting("ocr_completed", false, at(1))).toMatchObject({ generation: "1" });
       expect(await port.setSetting("ocr_completed", true, at(2))).toMatchObject({ generation: "2" });
       expect(await port.inspect(id)).toMatchObject({ status: "CANCELLED", cancelReason: "setting_off", retryable: false });
-      const payload = { ...ocrReceiptPayload(), sourceJobId: "delayed", notificationId: "result:ocr_completed:delayed" };
+      const payload = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
       expect(await port.receive(JSON.stringify(payload), at(3))).toMatchObject({ disposition: "cancelled", status: "CANCELLED" });
       expect(await port.inspect(payload.notificationId)).toMatchObject({ cancelReason: "stale_generation" });
       expect(await port.retry(id, at(4))).toBe(false);
@@ -132,7 +133,7 @@ export const resultNotificationContract = (
         if (entry.kind === "ocr_completed") { await port.complete(entry.id, 0, entry.claimToken, "ocr-sent", at(5)); }
         await port.fail(entry.id, entry.claimToken, "delivery_uncertain", at(5_000), at(6));
       }
-      const newPayload = { ...ocr, notificationId: "result:ocr_completed:unplanned", sourceJobId: "unplanned" };
+      const newPayload = ocrReceiptPayload("33333333-3333-4333-8333-333333333333");
       await port.receive(JSON.stringify(newPayload), at(4_999));
       const batch = await port.claim({ limit: 3, now: at(5_000), claimDurationMs: 1_000 });
       expect(batch).toHaveLength(3);
@@ -203,13 +204,13 @@ export const resultNotificationContract = (
     it("retains failure detail for thirty days and never prunes active work", async () => {
       const id = await receive(); const entry = await claim();
       await port.fail(id, entry.claimToken, "invalid_payload", null, notificationNow);
-      const payload = { ...ocrReceiptPayload(), notificationId: "result:ocr_completed:active", sourceJobId: "active" };
+      const payload = ocrReceiptPayload("44444444-4444-4444-8444-444444444444");
       await port.receive(JSON.stringify(payload), notificationNow);
       const month = 30 * 86_400_000;
       expect(await port.prune(at(month - 1))).toBe(0); expect(await port.prune(at(month))).toBe(1);
       expect(await port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING", purgedAt: null });
       expect(await port.retry(id, at(month + 1))).toBe(false);
-      await expect(port.receive(JSON.stringify({ ...ocrReceiptPayload(), data: { ...ocrReceiptPayload().data, summary: "changed" } }), at(month + 1)))
+      await expect(port.receive(JSON.stringify({ ...ocrReceiptPayload(), data: { ...ocrReceiptPayload().data, failures: [{ screenType: "total_assets", reason: "ocr_failed" }] } }), at(month + 1)))
         .rejects.toMatchObject({ code: "identity_conflict" });
     });
 

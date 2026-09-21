@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  MOMO_DB_REF: 2389361364be369065d701ea660b52da02960e5d
+  MOMO_DB_REF: 87d18c6159e6cb046d6bdc13e9802cc0d93df8a1
 
 jobs:
   static-baseline:

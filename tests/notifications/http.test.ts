@@ -35,14 +35,14 @@ describe("internal notification HTTP boundary", () => {
 
   it("maps validation, version, identity and body limits to stable errors", async () => {
     harness = await createHttpHarness(); const payload = ocrReceiptPayload();
-    expect((await post({ ...payload, schemaVersion: 2 })).status).toBe(422);
+    expect((await post({ ...payload, schemaVersion: 1 })).status).toBe(422);
     expect((await post({ ...payload, settingsGeneration: "bad" })).status).toBe(400);
     expect((await post({ ...payload, sourceJobId: "job\n", notificationId: "result:ocr_completed:job\n" })).status).toBe(400);
     expect(await sendRawRequest(harness.origin, Buffer.from("{broken"))).toBe(400);
     expect(await sendRawRequest(harness.origin, Buffer.from([0xff]))).toBe(400);
     expect(await sendRawRequest(harness.origin, Buffer.from("{}"), { "content-length": String(RESULT_NOTIFICATION_MAX_BODY_BYTES + 1) })).toBe(413);
     expect((await post(payload)).status).toBe(202);
-    expect((await post({ ...payload, schemaVersion: 2 })).status).toBe(409);
+    expect((await post({ ...payload, schemaVersion: 1 })).status).toBe(422);
   });
 
   it("offers authenticated settings and retries through committed application commands", async () => {

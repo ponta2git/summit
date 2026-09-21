@@ -7,6 +7,7 @@ export interface FakeResultEntry {
   id: string;
   kind: ResultNotificationKind;
   sourceJobId: string;
+  schemaVersion: number;
   identity: string;
   payload: DiscordResultNotification | null;
   status: NotificationStatus;

@@ -79,11 +79,11 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
   try {
     let rendered;
     const context = entry.partCount === 0 ? deps.context : entry.deliveryContext;
-    if (!context || (entry.rendererVersion !== null && entry.rendererVersion !== 1)) {
+    if (!context || (entry.rendererVersion !== null && entry.rendererVersion !== (entry.kind === "ocr_completed" ? 2 : 1))) {
       await fail("unsupported_renderer", false); return;
     }
     try {
-      rendered = renderResultNotification(validateNewNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? 1);
+      rendered = renderResultNotification(validateNewNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? (entry.kind === "ocr_completed" ? 2 : 1));
     } catch { await fail("invalid_payload", false); return; }
     if (entry.partCount > 0 && rendered.parts.length !== entry.partCount) {
       await fail("unsupported_renderer", false); return;
