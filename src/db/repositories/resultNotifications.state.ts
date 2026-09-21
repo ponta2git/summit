@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
+import { isSupportedResultNotification } from "../../domain/resultNotificationPayload.ts";
 import { RESULT_NOTIFICATION_KINDS, discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationResults as results, discordNotificationSettings as settings } from "../schema.ts";
 import { assertEnum } from "../rows.ts";
@@ -69,13 +70,13 @@ export const inspectResultNotification = async (tx: NotificationDb, id: string):
     nextAttemptAt: n.nextAttemptAt, claimExpiresAt: n.claimExpiresAt, cancelReason: n.cancelReason,
     lastError: n.lastError, purgedAt: n.purgedAt, partCount: n.partCount, rendererVersion: n.rendererVersion,
     parts: (await loadResultParts(tx, [id])).get(id) ?? [],
-    retryable: n.status === "FAILED" && n.purgedAt === null && await loadResultCancellationReason(tx, id) === null
+    retryable: isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "FAILED" && n.purgedAt === null && await loadResultCancellationReason(tx, id) === null
   };
 };
 
 export const retryResultNotification = async (tx: NotificationDb, id: string, now: Date): Promise<boolean> => {
   const n = await lockNotification(tx, id);
-  if (!n || n.family !== "result" || n.status !== "FAILED" || n.purgedAt !== null) { return false; }
+  if (!n || n.family !== "result" || !isSupportedResultNotification(n.kind, n.schemaVersion) || n.status !== "FAILED" || n.purgedAt !== null) { return false; }
   const reason = await loadResultCancellationReason(tx, id);
   if (reason) { await cancelNotification(tx, id, reason, now); return false; }
   await tx.update(notifications).set({

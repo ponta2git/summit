@@ -1,3 +1,4 @@
+import { supportedResultNotification } from "./notifications.supported.ts";
 import { and, eq, isNotNull, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { discordNotifications as notifications } from "../schema.ts";
 import { parseDbTimestamp } from "../rows.ts";
@@ -7,7 +8,7 @@ import type { NotificationDb, NotificationFamily } from "./notifications.storage
 export const findNextNotificationDispatchAt = async (
   db: Pick<NotificationDb, "execute">, family: NotificationFamily, excludeIds: readonly string[] = []
 ): Promise<Date | null> => {
-  const retained = and(eq(notifications.family, family), isNull(notifications.purgedAt),
+  const retained = and(eq(notifications.family, family), family === "result" ? supportedResultNotification() : undefined, isNull(notifications.purgedAt),
     excludeIds.length ? notInArray(notifications.id, [...excludeIds]) : undefined);
   // why: 別々の min にして、次回時刻と claim 期限それぞれの index を利用する。
   const [row] = await db.execute<{ pending: unknown; expires: unknown }>(sql`SELECT

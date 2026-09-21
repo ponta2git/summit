@@ -58,16 +58,30 @@ const match = z.object({
   && new Set(value.players.map(p => p.rank)).size === 4
   && value.ginjiTotal === value.players.reduce((total, p) => total + p.ginjiCount, 0));
 const envelope = {
-  ...identitySchema.shape, schemaVersion: z.literal(1), occurredAt: timestamp, settingsGeneration: decimal
+  ...identitySchema.shape, occurredAt: timestamp, settingsGeneration: decimal
 };
-const ocrSchema = z.object({ ...envelope, kind: z.literal("ocr_completed"), data: z.object({
-  matchDraftId: id, ocrDraftId: id, imageId: id,
-  screenType: z.enum(["total_assets", "revenue", "incident_log"]), outcome: z.enum(["succeeded", "needs_review"]),
-  summary: z.string(), context: z.object({
-    gameTitleName: z.string().nullable(), heldDateIso: date.nullable(), matchNoInEvent: z.number().int().positive().nullable()
-  })
-}) }).strict();
-const analysisSchema = z.object({ ...envelope, kind: z.literal("analysis_completed"), data: z.object({
+
+export const isSupportedResultNotification = (kind: string, schemaVersion: unknown): boolean =>
+  (kind === "ocr_completed" && schemaVersion === 2) || (kind === "analysis_completed" && schemaVersion === 1);
+
+/** Reject retired wire versions even when their immutable identity is retained. */
+export const assertSupportedNotificationVersion = (value: unknown): void => {
+  if (typeof value !== "object" || value === null || !("kind" in value) || typeof value.kind !== "string"
+    || !("schemaVersion" in value) || !isSupportedResultNotification(value.kind, value.schemaVersion)) {
+    throw new NotificationInputError("unsupported_version");
+  }
+};
+const ocrSchema = z.object({ ...envelope, schemaVersion: z.literal(2), kind: z.literal("ocr_completed"), data: z.object({
+  submissionId: z.string().uuid(), matchDraftId: z.string().refine(isNotificationSourceJobId),
+  context: z.object({
+    gameTitleName: z.string().refine(value => [...value].length <= 201).nullable(), heldDateIso: date.nullable(), matchNoInEvent: z.number().int().positive().max(2_147_483_647).nullable()
+  }).strict(),
+  failures: z.array(z.object({
+    screenType: z.enum(["total_assets", "revenue", "incident_log"]),
+    reason: z.enum(["admission_failed", "admission_timeout", "ocr_failed", "ocr_timeout", "cancelled"])
+  }).strict()).max(3).refine(values => new Set(values.map(value => value.screenType)).size === values.length)
+}).strict() }).strict().refine(value => value.sourceJobId === `submission:${value.data.submissionId}`);
+const analysisSchema = z.object({ ...envelope, schemaVersion: z.literal(1), kind: z.literal("analysis_completed"), data: z.object({
   gameTitleId: id, gameTitleName: z.string(), disposition: z.enum(["published", "reused"]),
   previousAnalysis: analysisIdentity.nullable(), currentAnalysis: analysisIdentity,
   matches: z.array(match), overall: ranks, seasons: z.array(z.object({ seasonId: id, seasonName: z.string(), ranks }))
@@ -76,11 +90,9 @@ const analysisSchema = z.object({ ...envelope, kind: z.literal("analysis_complet
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();
 const notificationSchema = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]);
 
-/** Existing IDs are compared before this version-specific validator is called. */
+/** Validate a new fixed payload; content conflicts are checked by the receipt command. */
 export const validateNewNotification = (value: unknown): DiscordResultNotification => {
-  if (typeof value !== "object" || value === null || !("schemaVersion" in value) || value.schemaVersion !== 1) {
-    throw new NotificationInputError("unsupported_version");
-  }
+  assertSupportedNotificationVersion(value);
   const parsed = notificationSchema.safeParse(value);
   if (!parsed.success || parsed.data.notificationId !== buildDiscordNotificationId(parsed.data.kind, parsed.data.sourceJobId)) {
     throw new NotificationInputError("invalid_input");

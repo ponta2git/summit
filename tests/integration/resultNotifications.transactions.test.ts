@@ -105,12 +105,10 @@ const barrier = () => {
   });
 
   it("cancels a backlog atomically across batches while preserving delivered and started parts", async () => {
-    const payload = ocrReceiptPayload();
     await notificationTransaction(h.db, "result", async tx => {
       for (let index = 0; index < 300; index += 1) {
-        const sourceJobId = `backlog-${String(index).padStart(3, "0")}`;
-        await receiveResultNotification(tx, JSON.stringify({ ...payload, sourceJobId,
-          notificationId: `result:ocr_completed:${sourceJobId}` }), now);
+        const submissionId = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+        await receiveResultNotification(tx, JSON.stringify(ocrReceiptPayload(submissionId)), now);
       }
     });
     const [sending, unstarted, failed] = await h.port.claim({ limit: 3, now, claimDurationMs: 30_000 });
@@ -157,8 +155,7 @@ const barrier = () => {
     expect(await h.port.prune(expired)).toBe(300);
     expect(await h.port.prune(expired)).toBe(0);
     expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING", purgedAt: null });
-    expect(await h.port.receive(JSON.stringify({ ...payload, sourceJobId: "backlog-000",
-      notificationId: "result:ocr_completed:backlog-000" }), expired)).toMatchObject({ disposition: "duplicate", status: "CANCELLED" });
+    expect(await h.port.receive(JSON.stringify(ocrReceiptPayload("00000000-0000-4000-8000-000000000000")), expired)).toMatchObject({ disposition: "duplicate", status: "CANCELLED" });
   });
 
   it("matches hashes produced by the historical SQL contract without losing decimals or escaped text", async () => {

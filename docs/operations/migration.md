@@ -70,7 +70,7 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 
 停止中に戻す場合は DB と consumer を整合する組合せで復元する。再開後は新規データを守る forward fix を原則とする。過去の Session から不明な開催を補完せず、現存する開催履歴を維持する。
 
-A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。旧計画のdelivery contextが不明な場合は推測せず[通知運用](result-notifications.md#移行とrenderer互換性)に従う。
+A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。旧計画のdelivery contextが不明な場合は推測せず[通知運用](result-notifications.md#移行とrendererの保持)に従う。
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
 

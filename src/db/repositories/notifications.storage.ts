@@ -13,7 +13,7 @@ export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "dele
 
 // why: claim の制御や各 part の更新では、大きな immutable payload を読み直さない。
 export const notificationStateColumns = {
-  id: notifications.id, family: notifications.family, status: notifications.status,
+  id: notifications.id, family: notifications.family, kind: notifications.kind, schemaVersion: notifications.schemaVersion, status: notifications.status,
   claimToken: notifications.claimToken, claimExpiresAt: notifications.claimExpiresAt,
   attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts, retryCycle: notifications.retryCycle,
   partCount: notifications.partCount, rendererVersion: notifications.rendererVersion,

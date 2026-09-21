@@ -6,20 +6,17 @@ import type {
   RankComparison
 } from "@momo/db/notifications";
 
-export const ocrNotification = (): OcrCompletedNotification => ({
-  notificationId: "result:ocr_completed:ocr-job-1",
+export const ocrNotification = (submissionId = "11111111-1111-4111-8111-111111111111"): OcrCompletedNotification => ({
+  notificationId: `result:ocr_completed:submission:${submissionId}`,
   kind: "ocr_completed",
-  schemaVersion: 1,
-  sourceJobId: "ocr-job-1",
+  schemaVersion: 2,
+  sourceJobId: `submission:${submissionId}`,
   occurredAt: "2026-09-09T12:00:00.000Z",
   settingsGeneration: "9007199254740993",
   data: {
     matchDraftId: "draft-1",
-    ocrDraftId: "ocr-draft-1",
-    imageId: "image-1",
-    screenType: "total_assets",
-    outcome: "needs_review",
-    summary: "読み取りが完了しました。内容を確認してください。",
+    submissionId,
+    failures: [],
     context: { gameTitleName: "テスト作品", heldDateIso: "2026-09-08", matchNoInEvent: 2 }
   }
 });

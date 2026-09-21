@@ -1,11 +1,35 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 
-describe("result notification payload v1", () => {
+describe("result notification payload OCR v2 and analysis v1", () => {
+  it("accepts the actual Rust producer encoder fixture", () => {
+    const wire: unknown = JSON.parse(readFileSync(new URL("../../../momo-db/docs/examples/ocr-completed-v2.json", import.meta.url), "utf8"));
+    expect(validateNewNotification(wire)).toStrictEqual(wire);
+  });
+
   it("preserves bigint decimal strings, notes and unrounded deltas", () => {
     expect(validateNewNotification(ocrNotification())).toEqual(ocrNotification());
     expect(validateNewNotification(analysisNotification())).toEqual(analysisNotification());
+  });
+
+  it("accepts no failures and rejects unsafe or duplicate submission members", () => {
+    const payload = ocrNotification();
+    expect(validateNewNotification(payload)).toStrictEqual(payload);
+    expect(validateNewNotification({ ...payload, data: { ...payload.data, context: { ...payload.data.context, gameTitleName: "😀".repeat(201) } } })).toMatchObject({ data: { context: { gameTitleName: "😀".repeat(201) } } });
+    for (const data of [
+      { ...payload.data, submissionId: "not-a-submission" },
+      { ...payload.data, matchDraftId: "../draft" },
+      { ...payload.data, context: { ...payload.data.context, gameTitleName: "a".repeat(202) } },
+      { ...payload.data, failures: [{ screenType: "total_assets", reason: "raw_exception" }] },
+      { ...payload.data, failures: Array.from({ length: 2 }, () => ({ screenType: "total_assets", reason: "ocr_failed" })) },
+      { ...payload.data, summary: "Retired field" }
+    ]) { expect(() => validateNewNotification({ ...payload, data })).toThrow("invalid_input"); }
+    expect(() => validateNewNotification({ ...payload, sourceJobId: "submission:22222222-2222-4222-8222-222222222222" }))
+      .toThrow("invalid_input");
+    expect(() => validateNewNotification({ ...payload, schemaVersion: 1 })).toThrow("unsupported_version");
+    expect(() => validateNewNotification({ ...analysisNotification(), schemaVersion: 2 })).toThrow("unsupported_version");
   });
 
   it.each(["-1", "01", "9223372036854775808", "abc", "", "1e3"])("rejects invalid settings generation %s", generation => {

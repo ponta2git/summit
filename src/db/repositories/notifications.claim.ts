@@ -1,3 +1,4 @@
+import { supportedResultNotification } from "./notifications.supported.ts";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationAttendance as attendance } from "../schema.ts";
@@ -60,7 +61,7 @@ export const claimNotifications = async (
     throw new Error("Invalid notification claim options");
   }
   await releaseExpiredNotificationClaims(tx, family, options.now);
-  const due = and(eq(notifications.family, family), eq(notifications.status, "PENDING"),
+  const due = and(eq(notifications.family, family), family === "result" ? supportedResultNotification() : undefined, eq(notifications.status, "PENDING"),
     lte(notifications.nextAttemptAt, options.now), isNull(notifications.purgedAt),
     options.excludeIds?.length ? notInArray(notifications.id, [...options.excludeIds]) : undefined);
   const candidates = tx.select({ id: notifications.id, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts })

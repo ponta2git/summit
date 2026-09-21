@@ -24,19 +24,42 @@ const timestamp = (value: string): string => {
 
 const renderOcr = (notification: OcrCompletedNotification, links: NotificationLinks): string => {
   const { data } = notification;
-  const screen = { total_assets: "総資産", revenue: "物件収益", incident_log: "事件簿" } as const;
-  return [
-    `OCR完了: ${data.outcome === "needs_review" ? "要確認" : "成功"}`,
-    `画像種別: ${screen[data.screenType]}`,
-    ...(data.context.gameTitleName === null ? [] : [`作品: ${plain(data.context.gameTitleName)}`]),
+  const screens = ["total_assets", "revenue", "incident_log"] as const;
+  const labels = { total_assets: "総資産", revenue: "物件収益", incident_log: "事件簿" } as const;
+  const reasons = {
+    admission_failed: "画像を受け付けられませんでした。", admission_timeout: "画像の受付期限を過ぎました。",
+    ocr_failed: "画像を読み取れませんでした。", ocr_timeout: "読み取りの制限時間を超えました。", cancelled: "読み取りが中止されました。"
+  } as const;
+  const lines = [
+    "OCRの処理が終了しました。",
     ...(data.context.heldDateIso === null ? [] : [`開催日: ${data.context.heldDateIso}`]),
     ...(data.context.matchNoInEvent === null ? [] : [`試合番号: 第${data.context.matchNoInEvent}試合`]),
-    `処理日時: ${timestamp(notification.occurredAt)}`,
-    "",
-    `要約: ${plain(data.summary)}`,
-    "",
-    `下書きを確認: ${links.draft(data.matchDraftId)}`
-  ].join("\n");
+    `完了日時: ${timestamp(notification.occurredAt)}`,
+    ...(data.failures.length === 0 ? [] : ["", "読み取れなかった画像:", ...screens.flatMap(screen => {
+      const failure = data.failures.find(value => value.screenType === screen);
+      return failure ? [`${labels[screen]}: ${reasons[failure.reason]}`] : [];
+    })]),
+    "", `下書きを確認: ${links.draft(data.matchDraftId)}`
+  ];
+  // invariant: 必須の失敗・時刻・確認先は残し、任意の表示名だけを残り予算へ収める。
+  const available = 2_000 - lines.join("\n").length - "作品: \n".length;
+  if (data.context.gameTitleName !== null) {
+    const escaped = plain(data.context.gameTitleName);
+    if (escaped.length <= available) { lines.splice(1, 0, `作品: ${escaped}`); }
+    else {
+      const suffix = "…（省略）";
+      let shortened = "";
+      for (const point of data.context.gameTitleName) {
+        const next = plain(point);
+        if (shortened.length + next.length + suffix.length > available) { break; }
+        shortened += next;
+      }
+      lines.splice(1, 0, `作品: ${shortened}${suffix}`);
+    }
+  }
+  const body = lines.join("\n");
+  if (body.length > 2_000) { throw new Error("OCR notification exceeds its single-message budget."); }
+  return body;
 };
 
 const renderMatch = (match: AnalysisNotificationMatch, links: NotificationLinks): string => [
@@ -78,21 +101,25 @@ const renderAnalysis = (notification: AnalysisCompletedNotification, links: Noti
   ].join("\n");
 };
 
-/** Render only the successful job's snapshot. Version 1 must remain stable while retained. */
+/** Render the fixed snapshot with the renderer retained for its kind and wire version. */
 export const renderResultNotification = (
   notification: DiscordResultNotification,
   webOrigin: string,
-  rendererVersion = 1
+  rendererVersion = notification.kind === "ocr_completed" ? 2 : 1
 ): RenderedResultNotification => {
-  if (rendererVersion !== 1) { throw new Error("Unsupported notification renderer."); }
+  if (rendererVersion !== (notification.kind === "ocr_completed" ? 2 : 1)) { throw new Error("Unsupported notification renderer."); }
   const links = buildNotificationLinks(webOrigin);
   const body = notification.kind === "ocr_completed"
     ? renderOcr(notification, links) : renderAnalysis(notification, links);
+  if (notification.kind === "ocr_completed") {
+    return { rendererVersion, parts: [{ content: body, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false },
+      flags: MessageFlags.SuppressEmbeds }] };
+  }
   const chunks = splitNotificationText(body);
   if (chunks.length === 0 || chunks.length > 10_000) {
     throw new Error("Notification has an invalid part count.");
   }
-  const title = notification.kind === "ocr_completed" ? "OCR完了" : "分析完了";
+  const title = "分析完了";
   return {
     rendererVersion,
     parts: chunks.map((chunk, index) => ({
