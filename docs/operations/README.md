@@ -1,14 +1,6 @@
 # Summit Operations Runbook
 
-Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rotation / backup / 時刻 skew 等の SOP を集約する。AI/人間どちらも `症状 → 該当 SOP` で逆引きできることを目的とする。
-
-仕様・設計・AI の入口との関係は次の通り:
-
-- **What**: `requirements/base.md`
-- **Why / design contract**: `docs/architecture.md` と `docs/*-rule.md`
-- **How (運用)**: 本ディレクトリ ← ここ
-- **How (実装)**: production code と test。探索入口は `docs/README.md`
-- **AI protocol**: `AGENTS.md`
+Summit Discord Bot の運用入口。症状または対象操作から該当 SOP を選ぶ。文書の調査・修正では必要な手順と根拠を確認し、実操作を行う場合に「実行権限と準備」「共通原則」を適用する。
 
 ## 構成
 
@@ -43,7 +35,7 @@ Summit Discord Bot の **運用入口**。障害対応 / migration / secrets rot
 
 運用手順の調査・文書修正と、production での実行を区別する。runbook に command が載っていることや tool が利用可能なことは、実行許可ではない。production の変更には `AGENTS.md` の明示権限が必要で、同じ対象・操作について既に得た許可は再確認しない。
 
-実行前に対象環境、操作範囲、該当 SOP、禁止窓、成功判定、復旧方法を照合する。許可が未取得なら、許可済みの範囲で差分・手順・検証結果を具体化してから対象操作の承認を求める。調査中に運用境界の不明点・矛盾を見つけた場合は、対象操作を止めて根拠と必要な判断を示す。独立した文書確認は継続できる。
+実操作の前に対象環境、操作範囲、該当 SOP、禁止窓、成功判定、復旧方法を照合する。許可が未取得なら、許可済みの調査・ローカル修正・検証で手順を具体化し、残る操作だけの承認を求める。文書修正のために本番アクセスを必須にしない。不明点・矛盾がある場合は依存する操作を止め、根拠と必要な判断を示す。
 
 ## 共通原則
 

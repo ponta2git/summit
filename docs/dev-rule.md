@@ -18,14 +18,16 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 
 ### 外部 API・tool の資料確認
 
-ライブラリ、framework、SDK、API、CLI、cloud service の構文・設定・移行・固有の不具合を扱う場合は、記憶だけで実装せず現在の資料を確認する。
+ライブラリ、framework、SDK、API、CLI、cloud service の構文・設定・移行・固有の不具合を判断する場合に使う。対象 version と具体的な疑問を特定し、同じ作業で確認済みの根拠は再利用する。
 
 1. `package.json`、lockfile、toolchain 設定で対象 version を特定する。最新版の説明をそのまま導入済み version に適用しない。
 2. Context7 の `resolve-library-id` に正式名称と具体的な質問を渡し、公式性・version・内容が最も合う ID を選ぶ。ユーザーが正確な `/org/project` 形式の ID を指定した場合だけ解決を省略する。
 3. `query-docs` に選んだ ID と判断したい質問を渡す。取得内容が対象 version・機能を説明しているか確かめる。
-4. Context7 が利用不可、情報不足、または指定された公式ページの内容を確認できない場合は、公式ドキュメントを直接取得する。検索 snippet だけで結論を出さず、根拠の URL と適用 version を必要な説明に添える。
+4. Context7 が利用不可、情報不足、または指定された公式ページの内容を確認できない場合は、公式ドキュメントを直接取得する。検索 snippet だけで結論を出さず、根拠の URL と適用 version を必要な説明に添える。取得失敗は未確認であり、機能や資料の不在とは区別する。
 
 業務ロジックの調査、一般的な refactor、code review、独自 script の作成に、外部仕様の判断がなければ資料取得は不要。質問に secret、私有コード、個人情報を含めない。資料が取れなくても既存実装と test で確かめられる作業は進め、未確認の API 契約に依存する部分だけを保留する。
+
+OpenAI 製品・モデル固有の指示設計には、利用可能な OpenAI Docs skill を使う。ユーザーが取得順を指定した場合はそれを優先し、指定モデルの公式本文を確認する。API 移行を伴わない規約改訂のために、API key の読取やモデル設定の変更を追加しない。
 
 ## 2. 主要command
 
@@ -40,8 +42,8 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 | `pnpm build` | production JavaScript生成 |
 | `pnpm verify:forbidden` | 危険patternと依存方向の検査 |
 | `pnpm verify:file-size` | source file size advisory |
-| `pnpm verify:docs` | 文書topologyとagent adapter検査 |
-| `pnpm docs:sync-agent` | `AGENTS.md` から agent adapter を生成し文書検査 |
+| `pnpm verify:docs [--include <path>]` | Git 追跡対象と明示した新規ファイルの文書・adapter 検査 |
+| `pnpm docs:sync-agent [--include <path>]` | `AGENTS.md` から adapter を生成し、同じ範囲を検査 |
 | `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
 | `pnpm commands:sync [--check]` | 開発用 guild-scoped slash command 同期。`--check` は読取のみ |
 | `pnpm commands:sync:production [--check]` | 運用 PC から本番 guild command を手動同期。明示した Discord 環境変数のみ使用 |
@@ -56,9 +58,9 @@ Node native TypeScriptが現在のESM/importを扱えなくなった場合、ま
 
 `commands:sync` は従来の `.env.local` / `summit.config.yml` を使い、引数を CLI へ転送する。本番用 script はこれらのファイルを暗黙に読まない。`DISCORD_TOKEN`、`DISCORD_APPLICATION_ID`、`DISCORD_GUILD_ID` のみが必須で、DB / member / schedule 設定は不要。両経路とも Fly 内では拒否する。実行・終了結果の判定は [本番同期の SOP](./operations/README.md#本番discordコマンド同期)、期限・終了コードの実体は `src/commands/sync.protocol.ts` を参照する。
 
-探索・検証は必要な path に限定する。`verify:docs` と `docs:sync-agent` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、生成 adapter を作業元へ戻して、検証したファイルが作業元と一致することを確認する。
+文書検証は Git の index からファイル一覧を得て、作業中の内容を読む。未追跡の設定や生成物を自動走査しない。未追跡の新規ファイルは `--include <repository 内のファイルパス>` で追加し、複数なら option を繰り返す。新規文書の Markdown link / anchor と旧参照もこの指定で検査する。既存の正本・adapter の存在確認と、文書内の明示的な link / anchor の参照先確認は別途行う。
 
-一時コピーでは Node / pnpm の実効 version も確認する。外部依存のない文書 script に限り、実行時の `pnpm_config_verify_deps_before_run=false` で pnpm の自動 install を抑止できる。repository / global の設定は変更しない。
+文書 script に外部依存はない。pnpm が依存関係の再 install を要求する環境では、この command の実行時だけ `pnpm_config_verify_deps_before_run=false` を指定できる。固定 runtime を使い、repository / global 設定は変えない。
 
 ## 3. TypeScript
 
