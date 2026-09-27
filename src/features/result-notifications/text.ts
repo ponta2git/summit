@@ -1,6 +1,13 @@
 // Escape user text before it enters Discord Markdown; keep the stored snapshot untouched.
-export const escapeNotificationText = (value: string): string =>
-  value.replace(/[\\`*_~|<>[\]()#]/g, "\\$&");
+export const escapeNotificationText = (value: string): string => {
+  const chunks: string[] = [];
+  // why: 全文の global replace は Markdown が密な大メモの match 情報を大量保持する。
+  // ASCII だけを置換するため、UTF-16 の境界を跨ぐ文字も join 後の元の順序を保つ。
+  for (let start = 0; start < value.length; start += 8_192) {
+    chunks.push(value.slice(start, start + 8_192).replace(/[\\`*_~|<>[\]()#]/g, "\\$&"));
+  }
+  return chunks.join("");
+};
 
 const CONTENT_LIMIT = 1_900;
 

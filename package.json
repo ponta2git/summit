@@ -23,6 +23,7 @@
     "verify:forbidden": "bash scripts/verify/forbidden-patterns.sh",
     "verify:file-size": "bash scripts/verify/file-size.sh",
     "verify:runtime-image": "node scripts/verify/runtimeImage.ts",
+    "verify:notification-capacity": "node scripts/verify/notificationCapacity.ts",
     "ci": "pnpm typecheck && pnpm lint && pnpm lint:knip && pnpm test && pnpm build && pnpm verify:docs && pnpm verify:forbidden && pnpm verify:file-size",
     "db:seed": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/seed.ts'",
     "db:reset": "dotenv -e .env.local -- sh -c 'SUMMIT_CONFIG_YAML=\"$(cat summit.config.yml)\" exec node scripts/dev/reset.ts \"$@\"' --",

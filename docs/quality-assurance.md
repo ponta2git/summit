@@ -28,6 +28,7 @@
 | 性能・高 | DB / Discord 停滞中に Interaction を連打し、Promise / DB queue を増やす | 通常受付と拒否応答の有限枠、stop / drain / 枠回収。[100件 burst](../tests/discord/interactionAdmission.test.ts) |
 | 性能・高 | 本文上限内の HTTP を極小 chunk に分割し、Buffer 数でメモリを増幅 | byte 上限内の連続 buffer。[分割本文](../tests/notifications/http.body.test.ts) |
 | 性能・セキュリティ・高 | 最大本文を同時受付し、JSON 内に大量の空 object・深い配列・不正要素を入れる | 受付全体の byte 予約を DB settlement まで保持。parse 前の構造・深さ制限と配列の最初の不正での打切り。[受付容量](../tests/notifications/http.lifecycle.test.ts)、[悪性構造と8MiB近傍の正当入力](../tests/domain/notificationJson.test.ts) |
+| 性能・信頼性・高 | 上限内の長いメモや Markdown 記号だけのメモで、正規表現の作業領域を増幅させる | hash は有限走査と逐次更新、escape は断片単位。保存 identity と全文・Unicode を維持。[hash](../tests/notifications/hash.test.ts)、[実 DB の最大近傍](../tests/integration/resultNotifications.transactions.test.ts)、[escape 境界](../tests/features/result-notifications/text.test.ts) |
 | 性能・中 | 完了 Session を蓄積し、wake ごとに全件 CASE 集計を実行させる | status / 時刻 index の先頭を別々に取得。[1万件の実行計画](../tests/integration/schedulerQuery.performance.test.ts) |
 | 性能・信頼性・高 | 保守 backlog で family lock を保持し、配送 heartbeat を待たせる | 件数・pass 上限と batch ごとの commit、集合 SQL。[retention](../tests/integration/notifications.retention.test.ts)、[real / fake の保守上限](../tests/contracts/attendance.ts) |
 | 性能・信頼性・中 | 起動時 dead-letter の全 ID を IN 引数・メモリに展開する | Session の keyset page、DB 内の集合更新、同一チェーン原子性。[複数ページ](../tests/integration/outbox.recovery.capacity.test.ts) |
@@ -74,6 +75,12 @@
 
 負荷上限の正本は [config](../src/config.ts)・[notification config](../src/notifications/config.ts)、JSON の構造と schema は [payload parser](../src/domain/resultNotificationPayload.ts)。有限であることだけを理由に、すべての最大 payload の組合せが任意の process メモリ容量に収まるとは扱わない。
 
+### 実行メモリの容量契約
+
+[fly.toml](../fly.toml) の memory は 512 MiB とする。Node 24 / Debian の本番 image、swap なしで、約 8 MiB の Markdown 記号を含む有効 payload 3 件を実 DB から claim・validate・render し、26,469 parts を保持したまま追加の最大 wire 本文を受付する代表ケースを検証した。256 MiB では OOM、512 MiB では受付完了・cgroup peak 約 408 MiB を観測した。本文・配送並列数の契約を維持するための容量であり、測定値を厳密な上限とはしない。
+
+fixture 生成と負荷 client は container 外に置き、計測には本番依存・非 root の image と実 DB を使う。Discord への接続・長期 cache・heap 断片化・出欠の同時最大負荷はこの代表ケースに含まない。payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
+
 ## 4. 残る運用上の境界
 
 - Discord と DB の間の受理後 crash / 長い応答喪失では重複し得る。nonce は短時間の補助であり exactly-once の保証ではない。
@@ -91,5 +98,6 @@
 - discord.js 14 の [mentions](https://discord.js.org/docs/packages/discord.js/14.27.0/MessageMentionOptions%3AInterface) と [Discord Message API](https://docs.discord.com/developers/resources/message)：mention 制御、本文上限、nonce の短期性。
 - [Postgres.js transactions](https://github.com/porsager/postgres#transactions)、[Drizzle transactions](https://orm.drizzle.team/docs/transactions)、PostgreSQL の [期限](https://www.postgresql.org/docs/18/runtime-config-client.html)・[WITH](https://www.postgresql.org/docs/18/queries-with.html)：rollback、transaction-local 設定、集合更新。
 - [Docker Node.js guide](https://docs.docker.com/guides/nodejs/)：build と本番依存・runtime の分離、非 root 実行。
+- [Fly.io VM size](https://fly.io/docs/launch/scale-machine/)：`fly.toml` の memory 指定と deploy 時の設定優先順位。
 
 実行する gate は [テスト規約 §8](./test-rule.md#8-quality-gate) に集約する。unit の件数や coverage だけで DB 競合・資源上限・コンテナの実行条件を代替しない。依存監査は照会時点の既知情報であり、未知の脆弱性の不存在を保証しない。

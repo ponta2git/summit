@@ -81,6 +81,7 @@ client の既定値は mention を禁止し、必要な投稿だけ [固定 memb
 `result-notifications` renderer は保存済み snapshot を描画する。業務内容は [requirements §11](../requirements/base.md)、固定 plan の保存と互換性は [DB 規約 §6](./db-rule.md#6-ocr分析通知の保存と取消)。
 
 - 本文を上限内の連番 part へ分割し、メモ全文と Unicode 文字を欠落させない。Markdown を escape し、allowedMentions を空にして link embed を抑止する。
+- 巨大なメモの escape は上限付きの断片ごとに行い、全文の global replace に全 match の作業領域を持たせない。断片境界でも同じ表示結果を保ち、renderer version を変えない。
 - 平均順位・対象数は前 → 後で示し、差分は丸め前の符号を保つ。初回・対象なし・比較不能・結果再利用を区別し、link は「最新の分析」と明記する。
 - nonce は通知 ID + part 番号から安定生成して `enforceNonce` を使い、既送達 part は再送しない。Discord の短期重複抑止に exactly-once を依存しない。
 - 保持中の通知に必要な renderer version を残し、retry 時に最新内容の新通知へ差し替えない。

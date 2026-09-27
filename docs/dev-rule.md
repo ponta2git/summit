@@ -35,6 +35,7 @@ OpenAI 製品・モデル固有の指示設計は利用可能な OpenAI Docs ski
 | `pnpm test:integration` | 明示した `TEST_DATABASE_URL` から作る使い捨て DB の検証 |
 | `pnpm verify:forbidden` / `pnpm verify:file-size` | 禁止 pattern・依存方向 / file size advisory |
 | `pnpm verify:runtime-image <local-image>` | build 済み image を network なし・read-only で検査。非 root、依存解決、開発依存の除外を確認し、Bot は起動しない |
+| `pnpm verify:notification-capacity <local-image>` | 明示した local `TEST_DATABASE_URL` の使い捨て DB と本番 image を使用。最大入力の受付と3件描画を、fly.toml の memory 制限・swap なしで検証。Discord には接続しない |
 | `pnpm verify:docs [--include <path>]` | 追跡文書と明示した新規 file、link / adapter の検査 |
 | `pnpm docs:sync-agent [--include <path>]` | AGENTS から adapter を生成し、同じ範囲を検査 |
 | `pnpm run ci` | static / unit / build の品質 gate |
@@ -48,6 +49,8 @@ OpenAI 製品・モデル固有の指示設計は利用可能な OpenAI Docs ski
 品質 gate は **`pnpm run ci`**。`pnpm ci` は pnpm の install 系 command として解釈されるため使わない。`setup`、DB script、integration は DB 変更を伴う。品質検証のためだけにアプリ起動・DB reset・外部同期を追加しない。local secret / git 管理外設定を読む command には AGENTS の読取条件も適用する。
 
 本番 image は sibling を含む親 directory を context として `docker build --file summit/Dockerfile --tag summit-runtime-check .` で作る。[Dockerfile 固有の ignore](../Dockerfile.dockerignore) は必要な manifest / lock / source だけを許可し、local secret・別 project・node_modules を context に入れない。本番依存 stage と build stage を分け、runtime は root 所有の code を非 root で読む。build / ローカル image 検証を push / deploy の許可とは扱わない。
+
+容量検証は `TEST_DATABASE_URL` を明示し、Docker host へ公開した local PostgreSQL port を使う。負荷 client と fixture は host 側、実処理は本番 image 内で実行する。専用 DB と container は固有名で作成・回収し、入力には tracked example 設定を使う。失敗時は OOM・受付拒否・期限・準備失敗を固定診断で区別し、接続文字列を表示しない。
 
 開発用 command 同期は従来の `.env.local` / `summit.config.yml` を使い、引数を CLI に渡す。本番用はこれらを暗黙に読まず、`DISCORD_TOKEN`・`DISCORD_APPLICATION_ID`・`DISCORD_GUILD_ID` だけを必須入力にする。DB / member / schedule 設定は不要で、両経路とも Fly 内では拒否する。成功・結果不明と終了管理は [Discord 規約 §7](./discord-rule.md#7-slash-command-同期)、実操作は [本番同期 SOP](./operations/README.md#本番discordコマンド同期)。
 

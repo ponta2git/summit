@@ -7,6 +7,7 @@ import { notificationTransaction, cancelNotification, lockNotificationFamily } f
 import { receiveResultNotification } from "../../src/db/repositories/resultNotifications.receipt.ts";
 import { setResultSetting } from "../../src/db/repositories/resultNotifications.state.ts";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
+import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
 import { purgeNotifications } from "../../src/db/repositories/notifications.retention.ts";
 import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { ocrReceiptPayload, notificationNow as now } from "../contracts/resultNotifications.ts";
@@ -164,6 +165,20 @@ const barrier = () => {
     for (const vector of vectors) {
       expect((await normalizeNotificationJson(h.db, vector.raw)).hash).toBe(vector.hash);
     }
+  });
+
+  it("accepts and deduplicates a near-limit memo through PostgreSQL normalization", async () => {
+    const base = analysisNotification();
+    const match = base.data.matches[0];
+    if (!match) { throw new Error("Expected match fixture"); }
+    const note = "界" + "*".repeat(RESULT_NOTIFICATION_MAX_JSONB_BYTES - 8_192);
+    const payload = { ...base, data: { ...base.data, matches: [{ ...match, note }] } };
+    const raw = JSON.stringify(payload);
+    expect(await h.port.receive(raw, now)).toMatchObject({ disposition: "accepted", status: "PENDING" });
+    expect(await h.port.receive(`  ${raw}\n`, now)).toMatchObject({ disposition: "duplicate", status: "PENDING" });
+    expect(await h.countReceipts()).toBe(1);
+    const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
+    expect(entry?.payload).toEqual(payload);
   });
 
   it("measures canonical JSON in UTF-8 bytes, including non-BMP characters", async () => {

@@ -97,6 +97,8 @@ message ID が null の候補は、Session lock 後に現在の状態と ID を�
 
 content hash は JSONB と互換な数値・文字列の扱いを維持する。JSON の decimal を JS number へ丸めてから同一性を判断しない。通知 ID の生成と ops path の検証は `@momo/db/notifications` に集約し、ID の形と version / content の受入可否を別々に判断する。
 
+JSONB text の hash は引用文字列を順次走査し、引用外の数値の末尾 scale だけを除いて逐次更新する。巨大メモ全体を正規表現の反復 alternation で保持しない。過去の hash vector と上限近傍の受付・重複判定で identity の互換性を検証する。
+
 ON / OFF、generation 更新、未開始通知の取消を原子的に行う。momo-result API も共有 DB を直接更新し、Summit の起動を設定変更の前提にしない。receipt / begin / retry は共通 result gate を経由して commit 済み generation / OFF を観測する。
 
 ### Lock 順序と取消

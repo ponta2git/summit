@@ -115,11 +115,14 @@ real DB は repository・constraint・transaction・migration consumer 契約を
 | code・test・依存関係・実行設定・検証 script・CI | `git diff --check`、`pnpm run ci`、§6 の対象契約の検証 |
 | DB 契約 / schema consumer | code gate + `pnpm test:integration`。momo-db の schema / migration を変える場合は同 repository の必須 check と互換性確認 |
 | production image / 依存 closure | code gate + Docker build + `pnpm verify:runtime-image <local-image>`。接続を伴う Bot の起動は不要 |
+| payload 上限・並列数・巨大文字列処理・VM memory | code gate + 最新 image build + `pnpm verify:notification-capacity <local-image>`。§7 と同じ local DB guard を使用 |
 | 運用手順 | 文書 gate + runbook・実装・設定の照合。code 変更があれば code gate も適用 |
 
 AGENTS 変更時は `pnpm docs:sync-agent` で adapter を更新する。同 command は文書検査を含むため、後続の文書差分がなければ `verify:docs` を重ねない。未追跡の新規 file は `--include <path>` で指定する。command の入力範囲は [開発規約 §2](./dev-rule.md#2-主要command)。
 
 `pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
+
+runtime-image は実行権限・依存解決に加え、local PostgreSQL と設定済みメモリ制限で最大近傍の受付・描画を検証する。容量 test の成功は代表ケースの再現性であり、全入力・外部 Discord・長期運用の SLA を証明しない。測定条件と採用容量は [品質モデル](./quality-assurance.md#実行メモリの容量契約) を参照する。
 
 修正依頼には必要なローカル検証と、変更が原因の失敗修正・再検証を含む。各段階で再承認を求めない。integration は §7 の接続先・作成削除条件で実行し、品質 gate のためだけに DB reset・アプリ起動・外部同期を追加しない。
 
