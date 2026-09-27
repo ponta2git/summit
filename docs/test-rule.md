@@ -11,6 +11,7 @@
 | repository | lock、CAS、unique、transaction、outbox | real PostgreSQL の integration |
 | configuration | env / user config、registry | isolated input と fail-fast |
 | deterministic verification | 禁止 pattern、文書構成、adapter | `scripts/verify/` |
+| production image | 非 root、書込不能 code、本番依存、共有 package の解決 | `verify:runtime-image`、network なしの使い捨て container |
 
 厚さは誤動作の影響・復旧の難しさ・競合から決める。回答・状態・順延先・開催履歴・intent を一括確定する集約には、pure な判断網羅に加え real DB の代表成功・拒否・rollback を持つ。表示や薄い委譲の組合せを全て real DB に複製しない。
 
@@ -90,6 +91,7 @@ arbitrary sleep や wall-clock 待ちを使わず、deferred promise・barrier�
 | schema / migration consumer | momo-db check、Summit real DB integration、新旧 compatibility と適用順 |
 | 文書 / agent 規約 / adapter / template | 正本・参照先との整合、`verify:docs`。agent 判断に影響する場合は §10 |
 | 検証 script / CI / agent harness code | 正常入力、違反検出、検査自体の失敗、適用する品質 gate |
+| production Dockerfile / package closure | 実 image build、非 root、code 権限、runtime import、dev tool 除外 |
 
 ## 7. Integration test の環境
 
@@ -112,11 +114,12 @@ real DB は repository・constraint・transaction・migration consumer 契約を
 | 説明・link・agent 規約・adapter・PR template のみ | `git diff --check`、`pnpm verify:docs`、影響する正本・参照先との整合確認 |
 | code・test・依存関係・実行設定・検証 script・CI | `git diff --check`、`pnpm run ci`、§6 の対象契約の検証 |
 | DB 契約 / schema consumer | code gate + `pnpm test:integration`。momo-db の schema / migration を変える場合は同 repository の必須 check と互換性確認 |
+| production image / 依存 closure | code gate + Docker build + `pnpm verify:runtime-image <local-image>`。接続を伴う Bot の起動は不要 |
 | 運用手順 | 文書 gate + runbook・実装・設定の照合。code 変更があれば code gate も適用 |
 
 AGENTS 変更時は `pnpm docs:sync-agent` で adapter を更新する。同 command は文書検査を含むため、後続の文書差分がなければ `verify:docs` を重ねない。未追跡の新規 file は `--include <path>` で指定する。command の入力範囲は [開発規約 §2](./dev-rule.md#2-主要command)。
 
-`pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db が動く。ローカルの選択を理由に CI job / assertion を skip しない。
+`pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
 
 修正依頼には必要なローカル検証と、変更が原因の失敗修正・再検証を含む。各段階で再承認を求めない。integration は §7 の接続先・作成削除条件で実行し、品質 gate のためだけに DB reset・アプリ起動・外部同期を追加しない。
 

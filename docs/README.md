@@ -17,6 +17,7 @@
 | schema / migration の作成・変更 | `docs/db-rule.md` §1・§9、`../momo-db/docs/development.md` | 適用・復旧は `docs/operations/migration.md` |
 | JST、deadline、ISO week、clock | `docs/time-rule.md`、`src/time/` | 業務上の意味は `requirements/base.md` |
 | test、fake、race、CI | `docs/test-rule.md` §6 で契約、§8 で gate を選ぶ | 設計方法は §1〜5、real DB の実行条件は §7 |
+| 横断的な品質 review、資源上限、攻撃・障害モデル | `docs/quality-assurance.md` | 個別契約の変更は同書から領域の正本へ進む |
 | env / user config、log、秘匿値の実装 | `docs/architecture.md` §7 | local file は `docs/dev-rule.md` §7、rotation は該当 runbook |
 | command、外部資料、命名、Git・PR・Linear | `docs/dev-rule.md` の該当章 | 品質 gate は `docs/test-rule.md` §8 |
 | 障害調査、本番操作、復旧 | `docs/operations/README.md` から該当 runbook | 操作の原因や設計を変える場合だけ領域の正本 |
@@ -38,6 +39,7 @@
 | `docs/db-rule.md` | schema 所有権、port、集約競合、出欠 / A/B の永続化、retention、migration consumer |
 | `docs/time-rule.md` | JST、ISO week、clock、deadline の計算契約 |
 | `docs/test-rule.md` | テスト設計、変更別 gate、agent 規約の確認シナリオ |
+| `docs/quality-assurance.md` | 4品質特性の横断評価、設計不変条件・脅威と回帰根拠、評価限界 |
 | `docs/dev-rule.md` | toolchain、command の入力・副作用、資料確認、TypeScript・命名・comment、local DB、Git・PR・Linear |
 | `docs/operations/` | 実行可能な運用 SOP、禁止窓、操作後の確認と復旧 |
 | `../momo-db/docs/development.md` | schema / migration authoring、custom SQL、検証・rollback |

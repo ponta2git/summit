@@ -83,6 +83,28 @@ jobs:
         run: pnpm verify:file-size
         working-directory: summit
 
+  runtime-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout summit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: summit
+      - name: Checkout momo-db
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ponta2git/momo-db
+          ref: ${{ env.MOMO_DB_REF }}
+          path: momo-db
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 24.x
+      - name: Build production image
+        run: docker build --file summit/Dockerfile --tag summit-runtime-check .
+      - name: Verify isolated runtime
+        run: node summit/scripts/verify/runtimeImage.ts summit-runtime-check
+
   integration-db:
     runs-on: ubuntu-latest
     services:

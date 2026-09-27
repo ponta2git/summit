@@ -19,8 +19,12 @@ run_rule() {
   local pattern="$2"
   shift 2
 
-  local output
-  output=$(rg --line-number --no-heading --color=never "$pattern" "$@" 2>/dev/null || true)
+  local output search_status=0
+  output=$(rg --no-config --line-number --no-heading --color=never "$pattern" . "$@" 2>/dev/null) || search_status=$?
+  if [[ "${search_status}" -gt 1 ]]; then
+    echo "❌ [${rule_id}] search failed; verification is incomplete" >&2
+    exit "${search_status}"
+  fi
 
   local count=0
   if [[ -n "${output}" ]]; then
@@ -29,8 +33,8 @@ run_rule() {
       local path="${line%%:*}"
       local rest="${line#*:}"
       local line_number="${rest%%:*}"
-      local text="${rest#*:}"
-      echo "❌ [${rule_id}] ${path}:${line_number}: ${text}"
+      # secret: 別の禁止 pattern と同じ行に credential がある場合も本文を転載しない。
+      echo "❌ [${rule_id}] ${path}:${line_number}: forbidden pattern detected"
       count=$((count + 1))
       total_matches=$((total_matches + 1))
     done <<< "${output}"
@@ -41,7 +45,7 @@ run_rule() {
 
 run_rule "no-sql-raw" "\\bsql\\.raw\\(" -g "src/**"
 
-run_rule "no-drizzle-kit-push" "drizzle-kit\\s+push" . \
+run_rule "no-drizzle-kit-push" "drizzle-kit\\s+push" \
   -g "*.ts" -g "*.mjs" -g "*.cjs" -g "*.js" -g "*.json" -g "*.yml" -g "*.yaml" -g "*.sh" \
   -g "!node_modules/**" \
   -g "!dist/**" \
@@ -59,10 +63,10 @@ run_rule "no-adhoc-date" "new\\s+Date\\s*\\(|Date\\.parse\\s*\\(" -g "src/**" -g
 run_rule "no-direct-url-in-src" "DIRECT_URL" -g "src/**" -g "!src/logger.ts" -g "!src/db/client.ts"
 
 run_rule "no-cross-feature-side-effect-import" \
-  "from\\s+\"\\.\\./[a-z-]+/(send|settle|messageEditor)\\.js\"" \
+  "from\\s+['\"]\\.\\./[a-z-]+/(send|settle|messageEditor)\\.(ts|js)['\"]" \
   -g "src/features/**"
 
-run_rule "no-secret-shape" "[A-Za-z0-9_-]{23,28}\\.[A-Za-z0-9_-]{6,7}\\.[A-Za-z0-9_-]{27,}" . \
+run_rule "no-secret-shape" "[A-Za-z0-9_-]{23,28}\\.[A-Za-z0-9_-]{6,7}\\.[A-Za-z0-9_-]{27,}" \
   -g "!node_modules/**" \
   -g "!dist/**" \
   -g "!.git/**" \
