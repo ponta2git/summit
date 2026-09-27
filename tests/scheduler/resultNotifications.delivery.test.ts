@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageFlags } from "discord.js";
-import { deliverResultNotification, resultNotificationNonce } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { deliverResultNotification } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { notificationNonce } from "../../src/scheduler/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
@@ -17,7 +18,7 @@ describe("result notification delivery", () => {
     expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", lastError: "delivery_uncertain" });
     const firstPayload = h.channel.send.mock.calls[0]?.[0];
     const uncertainPayload = h.channel.send.mock.calls[1]?.[0];
-    expect(firstPayload).toMatchObject({ nonce: resultNotificationNonce(id, 0), enforceNonce: true,
+    expect(firstPayload).toMatchObject({ nonce: notificationNonce(id, 0), enforceNonce: true,
       allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }, flags: MessageFlags.SuppressEmbeds });
     await vi.advanceTimersByTimeAsync(1_000);
     const retry = await h.claim();
@@ -27,7 +28,7 @@ describe("result notification delivery", () => {
     expect(h.client.channels.fetch).toHaveBeenLastCalledWith("channel-1");
     expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" });
     expect(String(firstPayload?.nonce).length).toBeLessThanOrEqual(25);
-    expect(resultNotificationNonce(id, 0)).not.toBe(resultNotificationNonce(id, 1));
+    expect(notificationNonce(id, 0)).not.toBe(notificationNonce(id, 1));
   });
 
   it("records an already-started send after OFF and stops all later parts", async () => {

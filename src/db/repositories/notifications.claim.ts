@@ -4,8 +4,9 @@ import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizz
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationAttendance as attendance } from "../schema.ts";
 import { addMs } from "../../time/index.ts";
 import { afterDeliveryFailure } from "../../domain/notification.ts";
+import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../notifications/config.ts";
 import {
-  cancelNotification, loadResultCancellationReason, type NotificationDb,
+  cancelLockedNotifications, cancelNotification, loadResultCancellationReason, type NotificationDb,
   notificationStateColumns, type NotificationFamily
 } from "./notifications.storage.ts";
 
@@ -17,12 +18,10 @@ export const cancelAttendanceSuccessors = async (tx: NotificationDb, now: Date):
       JOIN discord_notifications predecessor ON predecessor.id = previous.notification_id
       WHERE previous.session_id = ${attendance.sessionId} AND predecessor.status = 'FAILED'
         AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal})
-    )`)).orderBy(notifications.id);
-  let count = 0;
-  for (const row of rows) {
-    if (await cancelNotification(tx, row.id, "predecessor_failed", now)) { count += 1; }
-  }
-  return count;
+    )`)).orderBy(notifications.id).limit(NOTIFICATION_MAINTENANCE_BATCH_SIZE)
+    .for("update", { of: notifications, skipLocked: true });
+  if (rows.length > 0) { await cancelLockedNotifications(tx, rows.map(row => row.id), "predecessor_failed", now); }
+  return rows.length;
 };
 
 export const releaseExpiredNotificationClaims = async (
@@ -31,16 +30,22 @@ export const releaseExpiredNotificationClaims = async (
   const rows = await tx.select(notificationStateColumns).from(notifications).where(and(
     eq(notifications.family, family), lte(notifications.claimExpiresAt, now),
     inArray(notifications.status, ["IN_FLIGHT", "CANCELLED"])
-  )).orderBy(notifications.id).for("update", { skipLocked: true });
+  )).orderBy(notifications.id).limit(NOTIFICATION_MAINTENANCE_BATCH_SIZE).for("update", { skipLocked: true });
+  const groups: Record<"CANCELLED" | "FAILED" | "PENDING", string[]> = { CANCELLED: [], FAILED: [], PENDING: [] };
   for (const row of rows) {
-    const status = afterDeliveryFailure(row, true);
+    groups[afterDeliveryFailure(row, true)].push(row.id);
+  }
+  // why: batch 内の SQL 往復数も固定し、remote DB の latency を件数倍にしない。
+  for (const status of ["CANCELLED", "FAILED", "PENDING"] as const) {
+    const ids = groups[status];
+    if (ids.length === 0) { continue; }
     await tx.update(parts).set({ status: status === "CANCELLED" ? status : "PENDING", claimToken: null })
-      .where(and(eq(parts.notificationId, row.id), eq(parts.status, "IN_FLIGHT")));
+      .where(and(inArray(parts.notificationId, ids), eq(parts.status, "IN_FLIGHT")));
     await tx.update(notifications).set({
       status, claimToken: null, claimExpiresAt: null, nextAttemptAt: now, updatedAt: now,
-      terminalAt: status === "FAILED" ? now : status === "CANCELLED" ? row.terminalAt : null,
-      lastError: status === "FAILED" ? "attempt_limit" : row.lastError
-    }).where(eq(notifications.id, row.id));
+      terminalAt: status === "FAILED" ? now : status === "CANCELLED" ? notifications.terminalAt : null,
+      ...(status === "FAILED" ? { lastError: "attempt_limit" } : {})
+    }).where(inArray(notifications.id, ids));
   }
   if (family === "attendance") { await cancelAttendanceSuccessors(tx, now); }
   return rows.length;
@@ -57,7 +62,7 @@ export const claimNotifications = async (
   tx: NotificationDb, family: NotificationFamily, options: NotificationClaimOptions
 ): Promise<readonly string[]> => {
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
-    || options.claimDurationMs < 1 || options.claimDurationMs > 300_000) {
+    || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000) {
     throw new Error("Invalid notification claim options");
   }
   await releaseExpiredNotificationClaims(tx, family, options.now);

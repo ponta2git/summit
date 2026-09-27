@@ -1,5 +1,6 @@
-import { isPrivateNotificationBind, RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS, RESULT_NOTIFICATION_DEFAULT_PORT } from "./config.ts";
+import { isNotificationToken, isPrivateNotificationBind, RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS, RESULT_NOTIFICATION_DEFAULT_PORT } from "./config.ts";
 import { parseDiscordNotificationId } from "@momo/db/notifications";
+import { NotificationResponseError, readNotificationResponse } from "./cli.response.ts";
 
 const usage = "Usage: notifications inspect <notification-id> | retry <notification-id> | settings <ocr_completed|analysis_completed> [on|off]";
 
@@ -25,7 +26,7 @@ export const runNotificationCli = async (
   if (args.length === 0 || args[0] === "--help") { output(usage); return; }
   const operation = buildNotificationOperation(args);
   const token = environment["RESULT_NOTIFICATION_OPERATIONS_TOKEN"];
-  if (!token || token.length < 32) { throw new Error("RESULT_NOTIFICATION_OPERATIONS_TOKEN is required"); }
+  if (!token || !isNotificationToken(token)) { throw new Error("A valid RESULT_NOTIFICATION_OPERATIONS_TOKEN is required"); }
   const host = environment["RESULT_NOTIFICATION_BIND_HOST"] ?? "fly-local-6pn";
   const port = environment["RESULT_NOTIFICATION_PORT"] ?? String(RESULT_NOTIFICATION_DEFAULT_PORT);
   let url: URL;
@@ -37,15 +38,22 @@ export const runNotificationCli = async (
     || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
     throw new Error("Notification operations require a private HTTP service origin");
   }
-  let response: Response;
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS);
   try {
-    response = await fetch(new URL(operation.path, url), { method: operation.method,
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      ...(operation.body === undefined ? {} : { body: operation.body }), redirect: "error",
-      signal: AbortSignal.timeout(RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS) });
-  } catch { throw new Error("Notification service is unavailable; inspect the same ID before retrying"); }
-  if (!response.ok) { throw new Error(`Notification operation rejected (HTTP ${response.status})`); }
-  let state: unknown;
-  try { state = await response.json(); } catch { throw new Error("Invalid notification service response"); }
-  output(JSON.stringify(state, null, 2));
+    let response: Response;
+    try {
+      response = await fetch(new URL(operation.path, url), { method: operation.method,
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        ...(operation.body === undefined ? {} : { body: operation.body }), redirect: "error", signal: controller.signal });
+    } catch { throw new Error("Notification service is unavailable; inspect the same ID before retrying"); }
+    let state: unknown;
+    try { state = await readNotificationResponse(response, controller.signal); }
+    catch (error) {
+      // secret: transport/body errors may contain URLs, request headers or service payloads.
+      if (error instanceof NotificationResponseError) { throw error; }
+      throw new Error("Notification service response unavailable; inspect the same ID before retrying", { cause: error });
+    }
+    output(JSON.stringify(state, null, 2));
+  } finally { clearTimeout(deadline); }
 };

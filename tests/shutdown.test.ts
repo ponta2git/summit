@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "../src/config.ts";
+import { setImmediate } from "node:timers/promises";
+import { deferred } from "./helpers/deferred.ts";
 
 import {
   isShuttingDown,
@@ -58,6 +60,22 @@ describe("shutdown", () => {
     expect(waitForInFlightSend).toHaveBeenCalledTimes(1);
     expect(closeDb).toHaveBeenCalledTimes(1);
     expect(destroyClient).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["resolve", "reject"] as const)("awaits asynchronous Discord destruction even when it will %s", async outcome => {
+    const destruction = deferred<void>();
+    const started = deferred<void>();
+    let completed = false;
+    const shutdown = shutdownGracefully({ signal: "SIGTERM", stopScheduler: () => undefined,
+      waitForInFlightSend: async () => undefined, closeDb: async () => undefined,
+      destroyClient: () => { started.resolve(); return destruction.promise; }
+    }).then(result => { completed = true; return result; });
+    await started.promise;
+    await setImmediate();
+    expect(completed).toBe(false);
+    if (outcome === "resolve") { destruction.resolve(); }
+    else { destruction.reject(new Error("Discord close failed")); }
+    expect(await shutdown).toBe(true);
   });
 
   it("continues shutdown even when waiting in-flight send fails", async () => {

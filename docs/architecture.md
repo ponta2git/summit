@@ -71,7 +71,9 @@ timeout は待機の限界であり、Discord send や DB commit が取り消さ
 
 message 再作成は send と message ID 保存までを中断から保護する。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-A/B の delivery scope は heartbeat を所有し、timer を止めた後に進行中の renew を待つ。plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
+出欠と A/B の delivery scope は共通の [heartbeat](../src/scheduler/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
+
+複数 resource の stop / drain は [lifecycle](../src/runtime/lifecycle.ts) に thunk を渡す。先行 owner の同期 throw で後続 owner を省略せず、非同期の Discord destroy も await する。失敗は settlement 後に元の原因で返す。
 
 ## 6. Scheduler と lifecycle
 
@@ -82,6 +84,8 @@ calendar cron は ask・retention・supervisor に限定し、実行値は設定
 due work を処理した後に DB を再読込し、新たに due になった種類と生成済み intent を同じ再計算で拾う。一回の再計算では同種 work を一度だけ実行し、未完了 reminder を即時 loop させない。同種 timer / 再計算は一つの owned Promise にまとめ、配送・確定・次時刻取得まで待つ。実行中の wake は pending として保持し、完了時に取りこぼさない。cron callback も処理全体の Promise を返し、`noOverlap` と drain の範囲を揃える。
 
 Interaction / 集約更新 / 起動 / 再接続後は `wakeScheduler` を呼ぶ。supervisor は missed wake・claim expiry・drift の回復手段であり、通常配送の待ち時間を決める polling には使わない。
+
+hint 取得・tick・配送後の次時刻取得が失敗したら、有限 backoff で再計算する。batch の item failure も失敗として扱い、正常完了した段階で retry 回数を戻す。上限到達後は新しい wake / supervisor が再開する。観測 metrics の失敗で claim 回収や再計算を止めず、cron の途中登録失敗では登録済み task も破棄する。
 
 ### 起動・再接続・終了
 
@@ -100,6 +104,10 @@ receiver は DB commit 後にだけ 2xx と wake を返す。request deadline �
 
 dispatcher は出欠とは独立した上限付き slot を持つ。完了 wake と次 retry / claim expiry の one-shot で起動し、実行中・idle 移行中の wake を保持する。DB failure の backoff は有限回とし、claim と必要な次時刻取得がともに成功したときに reset する。停止後も新しい wake / supervisor で再開できる。
 
+連続 wake は予約済みの最早起動時刻を後ろへ動かさない。受付が続くことを理由に配送を無期限延期しない。HTTP 接続数・受付中 command 数・header と本文の期限・本文 byte 数はそれぞれ制限し、断片数に比例する buffer 配列を保持しない。未認証の未完了 header は stop 時に即回収し、受付済み DB command の所有とは分ける。
+
+本文は受付全体の byte 予算も予約し、応答期限後も DB command の settlement まで解放しない。長さ不明なら一本文の最大量を予約する。JSON.parse 前の構造数・深さの検査と、配列検証の最初の不正での打切りにより、byte 上限内の悪性入力が大量の object / validation issue を生成する経路も抑える。長い正当なメモや契約内の配列は維持する。
+
 supervisor は出欠処理より先に A/B を wake する。一方の family の失敗が他方の配送や retention を止めないようにし、idle 時の短周期 polling を増やさない。設定値は [notifications/config](../src/notifications/config.ts)、保存契約は [DB 規約 §6](./db-rule.md#6-ocr分析通知の保存と取消) を参照する。
 
 ## 7. 設定と観測
@@ -115,6 +123,8 @@ runtime は parse 済み export を使い、個別 module で環境変数を読�
 member は固定 4 人・ID 重複なしを検証する。起動時 reconcile は identity と表示名を一 transaction で整合し、設定から消えた row を削除したり、配列順で過去の ID を再利用したりしない。
 
 A/B は受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。運用は [A/B runbook](./operations/result-notifications.md)。
+
+YAML は Bot と同期 CLI の共通 [parser](../src/userConfig.yaml.ts) で byte / alias 上限を適用し、warning を含む曖昧入力を拒否する。parser の入力断片を stderr に出さない。A/B token は Bearer 構文を検証し、HTTP は単一 Authorization だけを受理する。運用 CLI も本文読取まで deadline を維持し、実 byte 上限・UTF-8 / JSON を検証して失敗時の stream を回収する。
 
 log は pino の JSON stdout に統一する。外部 error の message / stack / URL / body / SQL bind をそのまま渡さず、固定の診断文、code / status、上限のある cause 分類へ変換する。AppError の内部 cause 保持と log への出力は区別する。DB に保存する failure reason も同じ扱いにする。key redact は追加防御であり、未加工 payload を出力する根拠にはしない。
 

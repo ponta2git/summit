@@ -1,6 +1,7 @@
 import { and, eq, gt, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, RESULT_NOTIFICATION_SQL_TIMEOUT_MS } from "../../config.ts";
 import type { DbLike } from "../rows.ts";
+import { runTransaction } from "../transaction.ts";
 import {
   discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationResults as results, discordNotificationSettings as settings,
@@ -33,14 +34,10 @@ export const lockNotificationFamily = async (tx: NotificationDb, family: Notific
 
 export const notificationTransaction = <T>(
   db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>
-): Promise<T> => db.transaction(async tx => {
-  // Bound the shared gate and every SQL statement even when the HTTP caller leaves.
-  await tx.execute(sql`SELECT
-    set_config('lock_timeout', ${String(RESULT_NOTIFICATION_LOCK_TIMEOUT_MS)}, true),
-    set_config('statement_timeout', ${String(RESULT_NOTIFICATION_SQL_TIMEOUT_MS)}, true)`);
+): Promise<T> => runTransaction(db, async tx => {
   await lockNotificationFamily(tx, family);
   return command(tx);
-}, { isolationLevel: "read committed" });
+}, { lockTimeoutMs: RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, statementTimeoutMs: RESULT_NOTIFICATION_SQL_TIMEOUT_MS });
 
 export const lockNotification = async (tx: NotificationDb, id: string): Promise<NotificationStateRow | undefined> => {
   const [row] = await tx.select(notificationStateColumns).from(notifications).where(eq(notifications.id, id)).for("update");
@@ -77,7 +74,7 @@ export const cancelMatchingResultNotifications = async (
 };
 
 /** Parents are already locked; read send evidence in a later statement after any lock wait. */
-const cancelLockedNotifications = async (
+export const cancelLockedNotifications = async (
   tx: NotificationDb, ids: readonly string[], reason: string, now: Date
 ): Promise<void> => {
   await tx.update(parts).set({ status: "CANCELLED", claimToken: null })

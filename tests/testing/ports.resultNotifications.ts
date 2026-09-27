@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { ResultNotificationKind } from "@momo/db";
 import type { ClaimedResultNotification, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/config.ts";
-import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
 import { addMs } from "../../src/time/index.ts";
+import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES } from "../../src/notifications/config.ts";
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.ts";
 import { createFakeResultState, semanticJson, type FakeResultEntry } from "./ports.resultNotifications.state.ts";
 
@@ -39,8 +40,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     },
     receive: async (rawJson, now) => {
       recordCall(calls, "receive", {});
-      let value: unknown;
-      try { value = JSON.parse(rawJson); } catch { throw new NotificationInputError("invalid_input"); }
+      const value = parseNotificationJson(rawJson);
       const identity = readNotificationIdentity(value);
       assertSupportedNotificationVersion(value);
       const canonical = semanticJson(value);
@@ -61,11 +61,11 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     },
     claim: async options => {
       recordCall(calls, "claim", options);
-      for (const n of entries.values()) {
-        if (n.claimExpiresAt && n.claimExpiresAt <= options.now) {
-          resetClaim(n, options.now, options.now);
-          if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
-        }
+      const expired = [...entries.values()].filter(n => n.claimExpiresAt && n.claimExpiresAt <= options.now)
+        .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+      for (const n of expired) {
+        resetClaim(n, options.now, options.now);
+        if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
       }
       const candidates = [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
         .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id)).slice(0, options.limit);
@@ -146,6 +146,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     prune: async now => {
       let count = 0;
       for (const n of entries.values()) {
+        if (count >= NOTIFICATION_MAINTENANCE_BATCH_SIZE * NOTIFICATION_RETENTION_MAX_BATCHES) { break; }
         const keep = n.status === "DELIVERED" ? OUTBOX_RETENTION_DELIVERED_MS : OUTBOX_RETENTION_FAILED_MS;
         if (!n.terminalAt || n.purgedAt || n.claimToken || n.parts.some(p => p.status === "IN_FLIGHT") || now.getTime() - n.terminalAt.getTime() < keep) { continue; }
         n.payload = null; n.deliveryContext = null; n.parts = []; n.purgedAt = now; n.lastError = null; count += 1;

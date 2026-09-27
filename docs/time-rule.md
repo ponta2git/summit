@@ -10,6 +10,8 @@ JST、clock、ISO week、candidate / deadline の計算契約を定める。業�
 
 現在時刻は `AppContext.clock` から得る。handler / scheduler / repository fake が global system clock を直接読まない。集約は渡された同一の clock snapshot で lock 後の期限・状態を判定し、read と write の間に別の global now を挟まない。
 
+`/ask` の重複抑止キーと Session 作成、開催確定と reminder skip はそれぞれ一つの snapshot を共有する。Discord 編集の待機時間を開催確定時刻として扱わない。process 内の募集抑止は AppContext ごとに所有する。
+
 ## 2. 計算の所有者
 
 `src/time/` が現在時刻、ISO week、候補日、金曜から土曜への変換、deadline、slot からの開始時刻、reminder、JST format、HH:MM 境界、duration 加減算を所有する。
@@ -26,9 +28,12 @@ slot の業務意味は [slot](../src/slot.ts)、candidate との合成は time 
 | 金曜から土曜 | 元 Session の week key を引き継ぐ。年跨ぎでも土曜側で再計算して分裂させない |
 | `/ask` | 実行時点の ISO week に初回募集を一件だけ作る。非金曜の候補日は requirements の意味に従う |
 | `24:00` | 候補日の翌日 00:00 だけを表す特別な境界。それ以外の 24 時超表記は parse で拒否 |
+| candidate ISO date | 実在日付だけを許可し、翌月への繰上がりや 0〜99 年への 1900 加算を許さない |
 | deadline / reminder | 同じ clock snapshot と正本の設定値で判定する。直前・同時・直後、送信 / skip を区別 |
 
 HH:MM、lead time、skip threshold は user config / `src/config.ts` を参照し、文書・comment に実行値を複製しない。値を変える前に、それが表す業務条件を requirements で確認する。
+
+reminder lead duration は正の分数として表示にも使い、予定時刻の計算だけで減算する。文面の期待値を符号付き計算用定数から生成しない。
 
 ## 4. Scheduler との接続
 

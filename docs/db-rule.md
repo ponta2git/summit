@@ -25,6 +25,8 @@ Session、Response、HeldEvent、notification intent が状態の正本。Discor
 
 DB client は parse 済み設定と `src/db/client.ts` の pooler 設定を使う。値は parameter 化し、user input を `sql.raw` に渡さない。動的 identifier / order が必要なら allowlist で固定する。接続文字列・SQL bind・driver の未加工 error は log / HTTP に出さない。
 
+集約の書込は [runTransaction](../src/db/transaction.ts) で READ COMMITTED と transaction-local の lock / statement timeout を設定する。timeout は rollback の完了まで owner が待ち、次の pool 利用へ設定を漏らさない。これは SQL ごとの制限であり、任意の件数の loop 全体や network 待機の上限ではない。保守処理は下記の batch 境界でも制限する。
+
 本番データを手動の INSERT / UPDATE / DELETE / TRUNCATE / DROP で修復しない。application の回復経路、履歴付き migration、該当 [runbook](./operations/README.md) を使う。local reset は [開発規約 §8](./dev-rule.md#8-local-db) の guard 付き経路を使う。
 
 ## 3. Port と書込の所有者
@@ -66,17 +68,20 @@ read-modify-write は transaction と期待値付き CAS で閉じる。競合�
 |---|---|
 | claim | token で owner と期限を定める。共有 `notifications.dispatch` では family と処理中 ID の除外を維持する |
 | send 直前 | begin で有効 claim・取消・期限を再確認する。失効 / claim loss なら送信しない |
+| render / send / 確定待機中 | heartbeat が token・family・status・未失効条件付きで renew する。失効済み owner は復活させない |
 | send 後 | 有効 owner だけが CAS で確定する。旧 owner の確定は no-op |
 | 初回 message | null 条件の CAS で canonical message ID を保存する |
 | retry / 次回起動 | retry limit は config。PENDING の retry と claim expiry を分けて次時刻を得て、終端履歴全体を毎回 scan しない |
 
 Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確定前の停止や claim expiry では外部投稿が重複し得るため、欠落回避を優先する。DB fencing を exactly-once 配送の保証と表現しない。
 
+両 family とも通知 ID / part から安定 nonce を生成し、Discord の短時間の重複抑止を利用する。nonce の保持期間を越えた配送保証には使わない。時刻取得は状態を書き戻す境界でも行う。
+
 reminder tick は enqueue までを行う。Discord 受理後に Session 完了と HeldEvent を原子的に確定し、その後 delivered を記録する。送信 skip の経路も同じ完了 command を使う。再送の可能性があっても、開催履歴を欠落させない。
 
 ### 回復
 
-期限切れ claim は試行数に応じて PENDING / FAILED へ戻す。FAILED chain の再投入は startup に限定し、attempt と失敗に伴う後続取消を同じ transaction で戻す。手動取消と A/B は復活させず、reconnect / tick の hot loop にしない。
+期限切れ claim は試行数に応じて PENDING / FAILED へ戻す。回収と後続取消は上限付き batch の集合更新とし、残件は次回の dispatch / supervisor で拾う。FAILED chain の再投入は startup に限定し、Session のページごとに family gate を解放する。同一 Session の attempt と失敗に伴う後続取消は同じ transaction で戻し、通知全件の ID 配列を作らない。手動取消と A/B は復活させず、reconnect / tick の hot loop にしない。
 
 message ID が null の候補は、Session lock 後に現在の状態と ID を再確認してから予約 ordinal の intent を補う。古い候補 read だけで enqueue しない。`UnknownMessage` の best-effort 再作成は [Discord 規約 §5](./discord-rule.md#5-永続化後の表示更新)。
 
@@ -114,7 +119,9 @@ claim / 次時刻取得 / inspect / retry は同じ対応 version を扱う。�
 
 active notification は削除対象にしない。終端状態ごとの policy で payload / parts 等の詳細だけを削り、ID・dedupe・content hash・終端状態は恒久保持する。詳細削除済み FAILED を retry で復活させない。
 
-retention deadline と consumer cutoff の両方を満たす対象を、bounded batch の lock 付き command で原子的に処理する。backlog 全件をメモリに読み込まず、status 別件数を返す。cutoff と閾値の正本は config と共有契約。根拠は [retention integration](../tests/integration/notifications.retention.test.ts)。
+retention deadline と consumer cutoff の両方を満たす対象を、上限付き batch ごとに原子的に処理する。batch 間では commit して family gate を解放し、配送・renew を進める。一回の保守で処理する batch 数も有限とし、残件は次回の retention に残す。途中失敗しても前の batch の確定を巻き戻さないが、一通知の parent / parts / targets を部分削除しない。backlog 全件をメモリに読み込まず、status 別件数を返す。上限の正本は [notification config](../src/notifications/config.ts)、根拠は [retention integration](../tests/integration/notifications.retention.test.ts)。
+
+scheduler hint は状態・時刻の索引で各最小値を取得する。終端履歴全体に CASE 集計を掛けない。[実行計画テスト](../tests/integration/schedulerQuery.performance.test.ts) は多数の終端行を入れ、実際の query が必要な索引先頭だけを読むことを確認する。
 
 pending / in-flight / failed の件数と経過時間を観測する。`/status` は read-only を保ち、配送・再投入・詳細 parse を行わない。log の形式と秘匿境界は [Architecture §7](./architecture.md#7-設定と観測)、障害判断は該当 runbook が所有する。
 

@@ -4,6 +4,7 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../appContext.ts";
 import type { SessionRow } from "../db/rows.ts";
 import { fromDatabaseCall } from "../errors/effect.ts";
+import { bestEffortMessageUpdate } from "../discord/shared/messageUpdates.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import type { SettleCancelReason } from "../features/ask-session/messages.ts";
 import { logger } from "../logger.ts";
@@ -79,7 +80,7 @@ const promoteStranded = (
     "Failed to settle stranded CANCELLED session."
   ), (result) => {
     if (result.kind !== "transitioned") {return Effect.succeed(undefined);}
-    return Effect.map(updateAskMessage(client, ctx, result.session), () => {
+    return Effect.map(bestEffortMessageUpdate(updateAskMessage(client, ctx, result.session), session.id, "ask"), () => {
       const next = result.session.status === "POSTPONE_VOTING"
         ? { to: "POSTPONE_VOTING" as const, reason: "friday_cancel_resumed" }
         : {

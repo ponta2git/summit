@@ -25,41 +25,46 @@ export interface SendAskMessageResult {
   sessionId?: string;
 }
 
-// single-instance: プロセス内 in-flight マップ。複数インスタンスでは効かず、DB の
-//   `(weekKey, postponeCount)` unique 制約が最終防衛線。
-// race: キーは `${weekKey}:${postponeCount}`。金 (0) / 土 (1) は別キーで独立に並走。
-// idempotent: ロック外でも `findSessionByWeekKeyAndPostponeCount` + unique で重複は防がれる。
-//   このマップは Discord API 呼び出し前の無駄な往復を省く最適化。
-const inFlightSends = new Map<string, Promise<unknown>>();
+// single-instance: 同じ AppContext / ISO週の初回募集をまとめ、余分な DB 往復を抑える。
+//   複数 instance 間の一意性は DB の `(weekKey, postponeCount)` 制約が守る。
+//   settlement 後に context ごと削除し、失敗した作成を次の invocation で再試行できる。
+const inFlightSends = new Map<AppContext, Map<string, Promise<SendAskMessageResult>>>();
 
-const withInFlight = <T>(
+const withInFlight = (
+  context: AppContext,
   key: string,
-  start: () => Promise<T>
-): { promise: Promise<T>; reused: boolean } => {
-  const ongoing = inFlightSends.get(key) as Promise<T> | undefined;
+  start: () => Promise<SendAskMessageResult>
+): { promise: Promise<SendAskMessageResult>; reused: boolean } => {
+  let requests = inFlightSends.get(context);
+  if (!requests) {
+    requests = new Map();
+    inFlightSends.set(context, requests);
+  }
+  const ongoing = requests.get(key);
   if (ongoing) {
     return { promise: ongoing, reused: true };
   }
-  const current = start();
-  inFlightSends.set(key, current);
+  const current = Promise.resolve().then(start);
+  requests.set(key, current);
   const promise = current.finally(() => {
-    if (inFlightSends.get(key) === current) {
-      inFlightSends.delete(key);
+    if (requests.get(key) === current) {
+      requests.delete(key);
+      if (requests.size === 0) { inFlightSends.delete(context); }
     }
   });
   return { promise, reused: false };
 };
 
 const doSendAskMessage = async (
-  context: SendAskMessageContext
+  context: SendAskMessageContext,
+  now: Date,
+  weekKey: string
 ): Promise<SendAskMessageResult> => {
   if (isShuttingDown()) {
     throw new ShutdownError("Shutdown in progress.");
   }
 
-  const { ports, clock } = context.context;
-  const now = clock.now();
-  const weekKey = isoWeekKey(now);
+  const { ports } = context.context;
   const candidateDate = candidateDateForAsk(now);
   const candidateIso = formatCandidateDateIso(candidateDate);
   const deadline = deadlineFor(candidateDate);
@@ -147,9 +152,11 @@ const doSendAskMessage = async (
 export const sendAskMessage = async (
   context: SendAskMessageContext
 ): Promise<SendAskMessageResult> => {
-  const weekKey = isoWeekKey(context.context.clock.now());
-  const { promise, reused } = withInFlight(`${weekKey}:0`, () =>
-    doSendAskMessage(context)
+  // iso-week: in-flight key と永続化する候補日/週は、週境界でも同じ snapshot を使う。
+  const now = context.context.clock.now();
+  const weekKey = isoWeekKey(now);
+  const { promise, reused } = withInFlight(context.context, `${weekKey}:0`, () =>
+    doSendAskMessage(context, now, weekKey)
   );
   const settled = await promise;
   if (!reused) {
@@ -163,7 +170,7 @@ export const sendAskMessage = async (
 };
 
 export const waitForInFlightSend = async (): Promise<void> => {
-  const inflight = [...inFlightSends.values()];
+  const inflight = [...inFlightSends.values()].flatMap(requests => [...requests.values()]);
   if (inflight.length === 0) {return;}
   await Promise.allSettled(inflight);
 };

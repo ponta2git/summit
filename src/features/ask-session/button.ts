@@ -27,6 +27,7 @@ import {
 import type { InteractionHandlerDeps } from "../../discord/shared/dispatcher.ts";
 import { buildAbsentConfirmRow } from "./absentConfirm.ts";
 import { handleAskPipelineError } from "./buttonError.ts";
+import { bestEffortMessageUpdate } from "../../discord/shared/messageUpdates.ts";
 
 interface AskPipelineStart {
   readonly interaction: ButtonInteraction;
@@ -114,6 +115,7 @@ const recordResponseStep = (context: AskPipelineReady): Effect.Effect<AskPipelin
       "Failed to record ask response atomically."
     );
     const current = yield* resolveAskCommandResult(context, result, now);
+    context.deps.wakeScheduler?.("ask_button_recorded");
     logger.info({ sessionId: current.sessionId, weekKey: current.session.weekKey,
       userId: current.interaction.user.id, memberId: current.memberId, choice: current.choice },
       "Ask response recorded.");
@@ -121,12 +123,11 @@ const recordResponseStep = (context: AskPipelineReady): Effect.Effect<AskPipelin
   });
 
 const refreshAskMessageStep = (context: AskPipelineReady): Effect.Effect<void, AppError> =>
-  updateAskMessage(context.deps.client, context.context, context.session, context.interaction.message)
-    .pipe(Effect.catchAll(error => {
-      if (error.code !== "DISCORD_API") { return Effect.fail(error); }
-      logger.warn({ error, sessionId: context.sessionId }, "Failed to edit ask message after response.");
-      return Effect.void;
-    }));
+  bestEffortMessageUpdate(
+    updateAskMessage(context.deps.client, context.context, context.session, context.interaction.message),
+    context.sessionId,
+    "ask"
+  );
 
 /**
  * Handle ask button interactions via cheap-first validation and DB-backed pipeline composition.
@@ -187,7 +188,6 @@ export const handleAskButton = async (
 
   await Either.match(result, {
     onRight: async (context) => {
-      deps.wakeScheduler?.("ask_button_recorded");
       logger.info(
         {
           userId: interaction.user.id,

@@ -3,7 +3,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { members, responses, sessions } from "../schema.ts";
 import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type {
-  DbLike,
   ResponseChoice,
   ResponseRow,
   SessionRow
@@ -17,9 +16,8 @@ import type {
 } from "./sessionCommands.types.ts";
 import { buildAskBodyIntent } from "./sessionOutboxIntents.ts";
 import type { PostponeDecisionResult } from "../../domain/postponeDecision.ts";
-
-export type DbTransaction =
-  Parameters<Parameters<DbLike["transaction"]>[0]>[0];
+import type { DbTransaction } from "../transaction.ts";
+export type { DbTransaction } from "../transaction.ts";
 
 export const lockSession = async (
   tx: DbTransaction,

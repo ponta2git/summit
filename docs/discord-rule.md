@@ -13,6 +13,8 @@ readiness は入口で判定し、ack の完了を待ってから入力検証・
 
 startup / reconnect replay 中は処理を開始せず、ephemeral で再試行を案内する。Component は未 ready の拒否時も先に defer する。押下元の文面・custom ID・表示状態を最新の DB 状態として信用しない。
 
+dispatcher は通常処理と飽和時の拒否応答を別の有限枠で所有する。通常枠が満杯なら ephemeral で再試行を案内し、拒否枠も満杯なら追加 I/O を開始しない。両経路の Promise を開始前に追跡し、完了まで枠を保持して stop / drain に含める。上限は [config](../src/config.ts)、回帰は [admission test](../tests/discord/interactionAdmission.test.ts) を参照する。
+
 ## 2. Guard と拒否
 
 cheap-first の順序を `configured guild → configured channel → fixed member → typed payload → persisted Session / status` に揃える。入口の検証前に DB read や状態変更をしない。user ID は Discord が認証した actor として使い、payload 内の Session / choice に権限を委ねない。
@@ -42,6 +44,8 @@ format を変える場合は、投稿済みの stale button、後方互換、拒
 
 Interaction は `SessionCommandsPort` の集約 command を使い、Response write と状態遷移を別 call で構成しない。DB が同時押下・遅延 snowflake・deadline との競合を解決し、Discord API は commit 後に呼ぶ。
 
+commit 後の scheduler wake と必要な永続処理を公開 edit より先に行う。再描画の失敗は [bestEffortMessageUpdate](../src/discord/shared/messageUpdates.ts) に集約し、確定した業務操作を失敗へ戻さない。開始済み edit は settlement まで所有するが、意図した新規通知の wake をその完了待ちに置かない。
+
 公開メッセージは最新 Session + Response から render する。同じ message の再読込・edit・削除復旧を editor で直列化し、古い描画の後着を防ぐ。別 Session は並列に進め、押下元 ID が保存 ID と一致する場合は余分な fetch を省く。
 
 | 結果 | 回復 |
@@ -69,6 +73,8 @@ Interaction は `SessionCommandsPort` の集約 command を使い、Response wri
 | 土曜中止、開催決定、開始前 reminder | 次 action の有無だけで除外せず、見落とし防止の対象 mention を維持 |
 
 mention 対象の業務仕様は requirements に従う。`dev.suppressMentions` は開発時だけ plain text にし、user config の表示名と member identity を保つ。個別成功通知を求める継続的な feedback、member / channel 増加による通知過多があれば方針を再評価する。
+
+client の既定値は mention を禁止し、必要な投稿だけ [固定 member の許可リスト](../src/discord/shared/mentions.ts) を付ける。表示名に含まれる everyone / role / 設定外 user mention を発火させず、edit にも同じ方針を適用する。`/status` は本文上限を守り、過去の診断行は省略件数を示して短縮する。現在週・次回予定・警告合計を保つ。
 
 ### OCR・分析
 

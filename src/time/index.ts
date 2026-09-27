@@ -67,20 +67,13 @@ export type AskTimeChoice = SlotKey;
  * Parses a `YYYY-MM-DD` string as the JST midnight of that date.
  *
  * @remarks
- * jst: `process.env.TZ=Asia/Tokyo` 前提。UTC として解釈すると candidateDate / deadlineAt が
- * 9 時間ズレるため必ずこの関数経由で復元する。
- * @throws if `value` does not match `YYYY-MM-DD`.
+ * jst: 日付を UTC midnight と解釈せず、明示した JST offset で候補日を復元する。
+ * @throws if `value` is not a real calendar date in `YYYY-MM-DD` form.
  */
 export const parseCandidateDateIso = (value: string): Date => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {throw new Error(`Invalid candidate date: ${value}`);}
-  const [, y, m, d] = match;
-  return set(startOfDay(new Date(Number(y), Number(m) - 1, Number(d))), {
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    milliseconds: 0
-  });
+  if (!isIsoDate(value)) { throw new Error("Invalid candidate date."); }
+  // jst: 明示 offset は Date の year 0..99 補正と host timezone の暗黙解釈を避ける。
+  return new Date(`${value}T00:00:00.000+09:00`);
 };
 
 /**
@@ -154,7 +147,7 @@ export const decidedStartAt = (
 };
 
 export const reminderAtFor = (startAt: Date): Date =>
-  addMinutes(startAt, REMINDER_LEAD_MINUTES);
+  addMinutes(startAt, -REMINDER_LEAD_MINUTES);
 
 // why: `new Date()` を src/time/ 外で直接生成しないルールに従い、相対オフセット計算も time 層に集約する。
 export const addMs = (now: Date, ms: number): Date =>

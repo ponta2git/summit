@@ -70,7 +70,9 @@ export const failNotification = async (
 export const renewNotificationClaim = async (
   tx: NotificationDb, id: string, token: string, now: Date, claimDurationMs: number, family: NotificationFamily = "attendance"
 ): Promise<boolean> => {
-  if (claimDurationMs < 1 || claimDurationMs > 300_000) { throw new Error("Invalid notification claim duration"); }
+  if (!Number.isSafeInteger(claimDurationMs) || claimDurationMs < 1 || claimDurationMs > 300_000) {
+    throw new Error("Invalid notification claim duration");
+  }
   const changed = await tx.update(notifications).set({ claimExpiresAt: addMs(now, claimDurationMs), updatedAt: now })
     .where(and(eq(notifications.id, id), eq(notifications.family, family), eq(notifications.status, "IN_FLIGHT"), eq(notifications.claimToken, token), gt(notifications.claimExpiresAt, now)))
     .returning({ id: notifications.id });

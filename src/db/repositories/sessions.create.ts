@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 // source-of-truth: sessions repository の生成・message id 書き戻し。
 
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -19,7 +20,7 @@ export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
 ): Promise<SessionRow | undefined> =>
-  db.transaction(async (tx) => {
+  runTransaction(db, async (tx) => {
     const rows = await tx
       .insert(sessions)
       .values({

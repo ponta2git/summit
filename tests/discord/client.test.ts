@@ -11,15 +11,15 @@ describe("createDiscordClient", () => {
     vi.resetModules();
   });
 
-  // regression: dev.suppressMentions=false では Client-level allowedMentions が全抑止にならない。discord.js は未指定時の値に `{}`/`undefined` のぶれがあるため `parse !== []` だけを invariant として検証。
-  it("does not suppress mentions when dev.suppressMentions is false", async () => {
+  it("allows only configured members and never parses role/everyone mentions", async () => {
     vi.stubEnv("SUMMIT_CONFIG_YAML", withSuppressMentions(false));
     vi.resetModules();
     const { createDiscordClient } = await import("../../src/discord/client.js");
+    const { appConfig } = await import("../../src/userConfig.js");
     const client = createDiscordClient();
 
     const am = client.options.allowedMentions;
-    expect(am?.parse).not.toEqual([]);
+    expect(am).toStrictEqual({ parse: [], users: appConfig.memberUserIds, roles: [], repliedUser: false });
   });
 
   it("sets allowedMentions.parse=[] when dev.suppressMentions is true", async () => {
@@ -28,6 +28,6 @@ describe("createDiscordClient", () => {
     const { createDiscordClient } = await import("../../src/discord/client.js");
     const client = createDiscordClient();
 
-    expect(client.options.allowedMentions).toStrictEqual({ parse: [] });
+    expect(client.options.allowedMentions).toStrictEqual({ parse: [], users: [], roles: [], repliedUser: false });
   });
 });

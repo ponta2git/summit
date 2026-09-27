@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultNotificationDispatcher, type ResultNotificationDispatcher } from "../../src/scheduler/resultNotifications.ts";
-import { resultNotificationNonce } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { notificationNonce } from "../../src/scheduler/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
@@ -16,6 +16,19 @@ describe("result notification dispatcher", () => {
   });
   const tick = () => vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
 
+  it("starts delivery by the first wake deadline while receipts keep arriving", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue("continuous-receipts", "Short summary");
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("first_receipt");
+    for (let elapsed = 50; elapsed < SCHEDULER_WAKE_DEBOUNCE_MS; elapsed += 50) {
+      await vi.advanceTimersByTimeAsync(50);
+      dispatcher.wake("another_receipt");
+    }
+    expect(h.channel.send).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(50);
+    expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
+    expect(h.channel.send).toHaveBeenCalledOnce();
+  });
+
   it("continues filling free slots while a long delivery is pending and becomes idle after completion", async () => {
     const h = resultWorkerHarness(); const longId = await h.enqueue("a-long", "Long summary");
     const shortIds = [];
@@ -24,7 +37,7 @@ describe("result notification dispatcher", () => {
     let inFlight = 0; let peak = 0;
     h.channel.send.mockImplementation(async body => {
       inFlight += 1; peak = Math.max(peak, inFlight);
-      try { return body.nonce === resultNotificationNonce(longId, 0) ? await release.promise : { id: String(body.nonce) }; }
+      try { return body.nonce === notificationNonce(longId, 0) ? await release.promise : { id: String(body.nonce) }; }
       finally { inFlight -= 1; }
     });
     dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("receipt");

@@ -10,6 +10,7 @@ import type {
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
 import { createFakeOutboxMaintenance } from "./ports.outbox.maintenance.js";
 import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.js";
+import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims } from "./ports.outbox.claims.ts";
 
 export interface FakeOutboxPort extends OutboxPort {
   readonly calls: ReadonlyArray<AnyCall>;
@@ -109,44 +110,9 @@ export const createFakeOutboxPort = (
     },
     claimNextBatch: async ({ limit, now, claimDurationMs }) => {
       recordCall(calls, "claimNextBatch", { limit, now, claimDurationMs });
-      for (const entry of byId.values()) {
-        if (entry.status === "IN_FLIGHT" && entry.claimExpiresAt !== null && entry.claimExpiresAt <= now) {
-          byId.set(entry.id, {
-            ...entry, status: entry.attemptCount >= OUTBOX_MAX_ATTEMPTS ? "FAILED" : "PENDING",
-            claimToken: null, claimExpiresAt: null, nextAttemptAt: now, updatedAt: now
-          });
-          sendingTokens.delete(entry.id);
-        }
-      }
-      for (const entry of Array.from(byId.values())) {
-        const blockedByFailure = Array.from(byId.values()).some(
-          (predecessor) =>
-            predecessor.sessionId === entry.sessionId &&
-            predecessor.status === "FAILED" &&
-            (predecessor.aggregateRevision < entry.aggregateRevision ||
-              (predecessor.aggregateRevision === entry.aggregateRevision &&
-                predecessor.ordinal < entry.ordinal))
-        );
-        if (
-          blockedByFailure &&
-          (entry.status === "PENDING" || entry.status === "IN_FLIGHT")
-        ) {
-          cancellationReasons.set(entry.id, "predecessor_failed");
-          byId.set(entry.id, {
-            ...entry,
-            status: "CANCELLED",
-            claimExpiresAt: null,
-            claimToken: null,
-            updatedAt: now
-          });
-        }
-      }
-      const deliverable = Array.from(byId.values()).filter((entry) =>
-        (entry.status === "PENDING" && entry.nextAttemptAt <= now) ||
-        (entry.status === "IN_FLIGHT" &&
-          entry.claimExpiresAt !== null &&
-          entry.claimExpiresAt <= now)
-      );
+      releaseExpiredFakeOutboxClaims(byId, sendingTokens, now);
+      cancelFailedFakeOutboxSuccessors(byId, cancellationReasons, sendingTokens, now);
+      const deliverable = Array.from(byId.values()).filter(entry => entry.status === "PENDING" && entry.nextAttemptAt <= now);
       const candidates = deliverable
         .filter((entry) =>
           !Array.from(byId.values()).some(
@@ -169,7 +135,12 @@ export const createFakeOutboxPort = (
         )
         .slice(0, limit);
       const claimToken = randomUUID();
-      return candidates.map((entry) => {
+      const result: OutboxEntry[] = [];
+      for (const entry of candidates) {
+        if (entry.attemptCount >= OUTBOX_MAX_ATTEMPTS) {
+          byId.set(entry.id, { ...entry, status: "FAILED", lastError: "attempt_limit", updatedAt: now });
+          continue;
+        }
         sendingTokens.delete(entry.id);
         const claimed: OutboxEntry = {
           ...entry,
@@ -180,8 +151,10 @@ export const createFakeOutboxPort = (
           updatedAt: now
         };
         byId.set(entry.id, claimed);
-        return cloneEntry(claimed);
-      });
+        result.push(cloneEntry(claimed));
+      }
+      cancelFailedFakeOutboxSuccessors(byId, cancellationReasons, sendingTokens, now);
+      return result;
     },
     beginDelivery: async (id, options) => {
       recordCall(calls, "beginDelivery", { id, ...options });
@@ -191,6 +164,17 @@ export const createFakeOutboxPort = (
         return false;
       }
       sendingTokens.set(id, options.claimToken);
+      return true;
+    },
+    renewClaim: async (id, options) => {
+      recordCall(calls, "renewClaim", { id, ...options });
+      if (!Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000) {
+        throw new Error("Invalid notification claim duration");
+      }
+      const found = byId.get(id);
+      if (!found || found.status !== "IN_FLIGHT" || found.claimToken !== options.claimToken
+        || found.claimExpiresAt === null || found.claimExpiresAt <= options.now) { return false; }
+      byId.set(id, { ...found, claimExpiresAt: new Date(options.now.getTime() + options.claimDurationMs), updatedAt: options.now });
       return true;
     },
     markDelivered: async (id, options) => {
@@ -239,24 +223,7 @@ export const createFakeOutboxPort = (
         updatedAt: now
       });
       if (failed && found.status !== "CANCELLED") {
-        for (const successor of byId.values()) {
-          if (
-            successor.sessionId === found.sessionId &&
-            (successor.status === "PENDING" || successor.status === "IN_FLIGHT") &&
-            (successor.aggregateRevision > found.aggregateRevision ||
-              (successor.aggregateRevision === found.aggregateRevision &&
-                successor.ordinal > found.ordinal))
-          ) {
-            cancellationReasons.set(successor.id, "predecessor_failed");
-            byId.set(successor.id, {
-              ...successor,
-              status: "CANCELLED",
-              claimExpiresAt: null,
-              claimToken: null,
-              updatedAt: now
-            });
-          }
-        }
+        cancelFailedFakeOutboxSuccessors(byId, cancellationReasons, sendingTokens, now);
       }
       return true;
     },

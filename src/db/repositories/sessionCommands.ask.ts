@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 import { eq, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.ts";
@@ -101,7 +102,7 @@ export const submitAskResponse = async (
   db: DbLike,
   input: SubmitAskResponseInput
 ): Promise<SubmitAskResponseResult> =>
-  db.transaction(async (tx) => {
+  runTransaction(db, async (tx) => {
     const current = await lockSession(tx, input.sessionId);
     if (!current) {return { kind: "session_not_found" };}
     if (current.status !== "ASKING") {return { kind: "closed", session: current };}
@@ -148,7 +149,7 @@ export const settleAskingCancellation = async (
   db: DbLike,
   input: SettleAskingCancellationInput
 ): Promise<SettleAskingCancellationResult> =>
-  db.transaction(async (tx) => {
+  runTransaction(db, async (tx) => {
     const current = await lockSession(tx, input.sessionId);
     if (!current) {return { kind: "session_not_found" };}
     if (current.status !== "ASKING" && current.status !== "CANCELLED") {
@@ -164,7 +165,7 @@ export const settleAskingDeadline = async (
   db: DbLike,
   input: SettleDeadlineInput
 ): Promise<AskingDeadlineResult> =>
-  db.transaction(async (tx) => {
+  runTransaction(db, async (tx) => {
     const current = await lockSession(tx, input.sessionId);
     if (!current) {return { kind: "session_not_found" };}
     if (current.status !== "ASKING") {return { kind: "closed", session: current };}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AppPorts, EnqueueOutboxInput, ResponseRow, SessionRow } from "../../src/db/ports.ts";
 import { makeResponse, makeSession } from "../testing/fixtures.ts";
-import { fridayPostponeVoting, saturdayAsking } from "../testing/sessionScenario.ts";
+import { buildSessionRow, fridayPostponeVoting, saturdayAsking } from "../testing/sessionScenario.ts";
+import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../src/notifications/config.ts";
 
 export interface AttendanceHarness {
   ports: AppPorts;
@@ -26,6 +27,87 @@ export const attendanceIntent = (sessionId: string, revision = 0, ordinal = 0): 
 
 export const attendanceContract = (label: string, create: (seed?: AttendanceSeed) => Promise<AttendanceHarness>): void => {
   describe(`attendance sequential contract (${label})`, () => {
+    it("bounds expiry recovery and keeps remaining claims visible until later work reclaims them", async () => {
+      const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE + 2;
+      const sessions = Array.from({ length: count }, (_, index) => buildSessionRow({
+        id: `expiry-${index}`, candidateDateIso: new Date(Date.parse("2026-04-24T00:00:00Z") + index * 7 * 86_400_000).toISOString().slice(0, 10)
+      }));
+      const h = await create({ sessions });
+      for (let start = 0; start < sessions.length; start += 32) {
+        await Promise.all(sessions.slice(start, start + 32).map(row => h.ports.outbox.enqueue(attendanceIntent(row.id))));
+      }
+      const now = new Date("2100-01-01T00:00:00Z");
+      let claimed = 0;
+      for (let batch = 0; batch < 3; batch += 1) {
+        claimed += (await h.ports.outbox.claimNextBatch({ limit: 100, now, claimDurationMs: 1_000 })).length;
+      }
+      expect(claimed).toBe(count);
+      const expiry = new Date(now.getTime() + 1_000);
+      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+      expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 2, failed: 0 });
+      expect(await h.ports.outbox.getNextDispatchAt(expiry)).toEqual(expiry);
+      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(2);
+      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(0);
+      expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: count, inFlight: 0, failed: 0 });
+    });
+
+    it("finishes a large failed chain in bounded cancellation passes without sending a successor", async () => {
+      const session = makeSession();
+      const h = await create({ sessions: [session] });
+      const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE * 2 + 5;
+      for (let start = 0; start < count; start += 32) {
+        await Promise.all(Array.from({ length: Math.min(32, count - start) }, (_, offset) =>
+          h.ports.outbox.enqueue(attendanceIntent(session.id, 0, start + offset))));
+      }
+      const now = new Date("2100-01-01T00:00:00Z");
+      const [first] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      if (!first?.claimToken) { throw new Error("Expected predecessor claim"); }
+      expect(await h.ports.outbox.markFailed(first.id, { claimToken: first.claimToken, now, nextAttemptAt: null, error: "controlled_failure" })).toBe(true);
+      expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: count - 1 - NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 0, failed: 1 });
+      expect(await h.ports.outbox.getNextDispatchAt(now)).not.toBeNull();
+      expect(await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 })).toEqual([]);
+      expect(await h.ports.outbox.getNextDispatchAt(now)).toBeNull();
+      expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: 0, inFlight: 0, failed: 1 });
+    });
+
+    it("renews a live delivery across its original expiry and releases the lease after completion", async () => {
+      const session = makeSession();
+      const h = await create({ sessions: [session] });
+      await h.ports.outbox.enqueue(attendanceIntent(session.id));
+      const now = new Date("2100-01-01T00:00:00Z");
+      const [claim] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      if (!claim?.claimToken) { throw new Error("Expected a live claim"); }
+      const options = { claimToken: claim.claimToken, now: new Date(now.getTime() + 10_000), claimDurationMs: 30_000 };
+      expect(await h.ports.outbox.renewClaim(claim.id, options)).toBe(true);
+      expect(await h.ports.outbox.releaseExpiredClaims(new Date(now.getTime() + 30_000))).toBe(0);
+      const afterOriginalExpiry = new Date(now.getTime() + 35_000);
+      expect(await h.ports.outbox.beginDelivery(claim.id, { ...options, now: afterOriginalExpiry })).toBe(true);
+      expect(await h.ports.outbox.markDelivered(claim.id, { ...options, now: afterOriginalExpiry, deliveredMessageId: "message" })).toBe(true);
+      expect(await h.ports.outbox.renewClaim(claim.id, { ...options, now: afterOriginalExpiry })).toBe(false);
+      expect(await h.ports.outbox.claimNextBatch({ limit: 1, now: new Date(now.getTime() + 60_000), claimDurationMs: 30_000 })).toEqual([]);
+    });
+
+    it("never renews another owner's token or resurrects a claim at its expiry", async () => {
+      const session = makeSession();
+      const h = await create({ sessions: [session] });
+      await h.ports.outbox.enqueue(attendanceIntent(session.id));
+      const now = new Date("2100-01-01T00:00:00Z");
+      const [old] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      if (!old?.claimToken) { throw new Error("Expected a live claim"); }
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: "00000000-0000-4000-8000-000000000001", now, claimDurationMs: 30_000 })).toBe(false);
+      const expiry = new Date(now.getTime() + 30_000);
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBe(false);
+      const [current] = await h.ports.outbox.claimNextBatch({ limit: 1, now: expiry, claimDurationMs: 30_000 });
+      expect(current?.claimToken).not.toBe(old.claimToken);
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBe(false);
+      expect(current?.attemptCount).toBe(2);
+    });
+
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 0.5, 300_001])("rejects invalid lease duration %s", async claimDurationMs => {
+      const h = await create();
+      await expect(h.ports.outbox.renewClaim("missing", { claimToken: "token", now: attendanceNow, claimDurationMs })).rejects.toThrow("Invalid notification claim duration");
+    });
+
     it("repairs missing messages once at the current revision without changing the Session", async () => {
       const row = fridayPostponeVoting({ id: "session-1", revision: 4 });
       const h = await create({ sessions: [row] });

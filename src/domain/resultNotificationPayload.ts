@@ -8,6 +8,42 @@ export class NotificationInputError extends Error {
   constructor(code: NotificationInputCode) { super(code); this.name = "NotificationInputError"; this.code = code; }
 }
 
+/** Limit allocation before JSON.parse; quoted text and escaped delimiters consume no structural budget. */
+export const parseNotificationJson = (raw: string): unknown => {
+  let quoted = false;
+  let depth = 0;
+  let structures = 0;
+  // why: 有効 payload の固定 field 名に対して十分な余裕を持ち、巨大メモの文字数は制限しない。
+  for (let offset = 0; offset < raw.length; offset += 1) {
+    const character = raw.charCodeAt(offset);
+    if (quoted) {
+      if (character === 92) { offset += 1; }
+      else if (character === 34) { quoted = false; }
+      continue;
+    }
+    if (character === 34) { quoted = true; }
+    else if (character === 123 || character === 91) { depth += 1; structures += 1; }
+    else if (character === 125 || character === 93) { depth -= 1; }
+    else if (character === 44) { structures += 1; }
+    if (depth > 64 || structures > 1_000_000) { throw new NotificationInputError("payload_too_large"); }
+  }
+  try { return JSON.parse(raw); } catch { throw new NotificationInputError("invalid_input"); }
+};
+
+// why: z.array(item) は不正な全要素の issues を保持する。境界では最初の不正だけで拒否する。
+const collection = <T>(schema: z.ZodType<T>, maxLength?: number): z.ZodType<T[]> => {
+  const input = z.array(z.unknown());
+  return (maxLength === undefined ? input : input.max(maxLength)).transform((values, ctx) => {
+    const parsed: T[] = [];
+    for (const value of values) {
+      const item = schema.safeParse(value);
+      if (!item.success) { ctx.addIssue({ code: "custom", message: "Invalid collection item" }); return z.NEVER; }
+      parsed.push(item.data);
+    }
+    return parsed;
+  });
+};
+
 const id = z.string().min(1).max(200);
 const integer = z.number().int().nonnegative();
 const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/).max(19).refine(value => /^(0|[1-9][0-9]*)$/.test(value) && BigInt(value) <= 9_223_372_036_854_775_807n);
@@ -76,15 +112,15 @@ const ocrSchema = z.object({ ...envelope, schemaVersion: z.literal(2), kind: z.l
   context: z.object({
     gameTitleName: z.string().refine(value => [...value].length <= 201).nullable(), heldDateIso: date.nullable(), matchNoInEvent: z.number().int().positive().max(2_147_483_647).nullable()
   }).strict(),
-  failures: z.array(z.object({
+  failures: collection(z.object({
     screenType: z.enum(["total_assets", "revenue", "incident_log"]),
     reason: z.enum(["admission_failed", "admission_timeout", "ocr_failed", "ocr_timeout", "cancelled"])
-  }).strict()).max(3).refine(values => new Set(values.map(value => value.screenType)).size === values.length)
+  }).strict(), 3).refine(values => new Set(values.map(value => value.screenType)).size === values.length)
 }).strict() }).strict().refine(value => value.sourceJobId === `submission:${value.data.submissionId}`);
 const analysisSchema = z.object({ ...envelope, schemaVersion: z.literal(1), kind: z.literal("analysis_completed"), data: z.object({
   gameTitleId: id, gameTitleName: z.string(), disposition: z.enum(["published", "reused"]),
   previousAnalysis: analysisIdentity.nullable(), currentAnalysis: analysisIdentity,
-  matches: z.array(match), overall: ranks, seasons: z.array(z.object({ seasonId: id, seasonName: z.string(), ranks }))
+  matches: collection(match), overall: ranks, seasons: collection(z.object({ seasonId: id, seasonName: z.string(), ranks }))
 }).refine(value => new Set(value.matches.map(m => m.matchId)).size === value.matches.length
   && new Set(value.seasons.map(season => season.seasonId)).size === value.seasons.length
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();

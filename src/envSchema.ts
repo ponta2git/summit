@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isNotificationWebOrigin, isPrivateNotificationBind, RESULT_NOTIFICATION_DEFAULT_PORT } from "./notifications/config.ts";
+import { isNotificationToken, isNotificationWebOrigin, isPrivateNotificationBind, RESULT_NOTIFICATION_DEFAULT_PORT } from "./notifications/config.ts";
 
 export const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
@@ -13,8 +13,8 @@ export const envSchema = z.object({
   // why: デプロイ追跡用。Fly の FLY_IMAGE_REF を優先、CI inject の GIT_SHA をフォールバックに使う。
   FLY_IMAGE_REF: z.string().optional(),
   GIT_SHA: z.string().optional(),
-  RESULT_NOTIFICATION_TOKEN: z.string().min(32).max(512).optional(),
-  RESULT_NOTIFICATION_OPERATIONS_TOKEN: z.string().min(32).max(512).optional(),
+  RESULT_NOTIFICATION_TOKEN: z.string().refine(isNotificationToken, "Expected a 32–512 character Bearer token").optional(),
+  RESULT_NOTIFICATION_OPERATIONS_TOKEN: z.string().refine(isNotificationToken, "Expected a 32–512 character Bearer token").optional(),
   RESULT_NOTIFICATION_WEB_ORIGIN: z.string().refine(isNotificationWebOrigin, "Application origin is required").optional(),
   RESULT_NOTIFICATION_BIND_HOST: z.string().refine(isPrivateNotificationBind, "Private or loopback bind is required").default("fly-local-6pn"),
   RESULT_NOTIFICATION_PORT: z.coerce.number().int().min(1).max(65_535).default(RESULT_NOTIFICATION_DEFAULT_PORT)

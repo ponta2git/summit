@@ -14,7 +14,7 @@ export interface ShutdownDeps {
   stopScheduler: () => void;
   waitForInFlightSend: () => Promise<void>;
   closeDb: () => Promise<void>;
-  destroyClient: () => void;
+  destroyClient: () => void | Promise<void>;
 }
 
 export const isShuttingDown = (): boolean => shuttingDown;
@@ -49,7 +49,7 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
 
   const closeResources = Effect.gen(function* () {
     yield* attempt(promiseCall(deps.closeDb), "Database close failed during shutdown.");
-    yield* attempt(Effect.sync(deps.destroyClient), "Discord client destroy failed during shutdown.");
+    yield* attempt(promiseCall(async () => deps.destroyClient()), "Discord client destroy failed during shutdown.");
   });
 
   await runPromiseBoundary(Effect.gen(function* () {

@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 // source-of-truth: HeldEvent (実開催履歴) 集約ルート。
 //   DECIDED→COMPLETED CAS と HeldEvent 挿入を **単一 tx** で行う。COMPLETED は終端で起動時リカバリが
 //   拾わないため、別 tx にすると「COMPLETED なのに HeldEvent 無し」の永続不整合が残る。
@@ -8,7 +9,6 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 
 import {
-  SESSION_STATUSES,
   heldEventParticipants,
   heldEvents,
   sessions
@@ -19,26 +19,7 @@ import type {
   HeldEventRow,
   SessionRow
 } from "../rows.ts";
-import { assertEnum } from "../rows.ts";
-
-const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
-  id: row.id,
-  weekKey: row.weekKey,
-  postponeCount: row.postponeCount,
-  candidateDateIso: row.candidateDateIso,
-  status: assertEnum(SESSION_STATUSES, row.status, "session status"),
-  channelId: row.channelId,
-  askMessageId: row.askMessageId,
-  postponeMessageId: row.postponeMessageId,
-  deadlineAt: row.deadlineAt,
-  decidedStartAt: row.decidedStartAt,
-  cancelReason: row.cancelReason,
-  reminderAt: row.reminderAt,
-  reminderSentAt: row.reminderSentAt,
-  revision: row.revision,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt
-});
+import { mapSession } from "./sessions.internal.ts";
 
 export interface CompleteDecidedSessionAsHeldInput {
   readonly sessionId: string;
@@ -67,7 +48,7 @@ export const completeDecidedSessionAsHeld = async (
   db: DbLike,
   input: CompleteDecidedSessionAsHeldInput
 ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
-  return db.transaction(async (tx) => {
+  return runTransaction(db, async (tx) => {
     // race: CAS primitive。WHERE status = 'DECIDED' 一致のみ遷移成功。
     const updated = await tx
       .update(sessions)
@@ -75,7 +56,7 @@ export const completeDecidedSessionAsHeld = async (
         status: "COMPLETED",
         reminderSentAt: input.reminderSentAt,
         revision: sql`${sessions.revision} + 1`,
-        updatedAt: sql`now()` as unknown as Date
+        updatedAt: sql`now()`
       })
       .where(
         and(eq(sessions.id, input.sessionId), eq(sessions.status, "DECIDED"))

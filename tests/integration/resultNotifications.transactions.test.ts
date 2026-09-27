@@ -149,7 +149,7 @@ const barrier = () => {
     const expired = new Date(now.getTime() + 31 * 86_400_000);
     await expect(notificationTransaction(h.db, "result", async tx => {
       await purgeNotifications(tx, "result", expired, { deliveredOlderThan: expired, failedOlderThan: expired });
-      throw new Error("abort purge after all batches");
+      throw new Error("abort purge batch");
     })).rejects.toThrow("abort purge");
     expect((await h.client`SELECT id FROM discord_notifications WHERE purged_at IS NOT NULL`).length).toBe(0);
     expect(await h.port.prune(expired)).toBe(300);

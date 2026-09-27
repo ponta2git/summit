@@ -9,9 +9,15 @@ import type { ShutdownDeps } from "../../src/shutdown.ts";
 // why: bootstrapのcompositionを駆動し、停止が途中の起動やresource drainを追い越さないことを検証する。
 const h = vi.hoisted(() => ({
   phase: "", pending: Promise.resolve(), calls: [] as string[], shuttingDown: false,
+  failures: new Set<string>(),
   signals: new Map<string | symbol, () => void>(), shutdown: undefined as Promise<void> | undefined,
   step: async (phase: string): Promise<void> => { h.calls.push(phase); if (h.phase === phase) { await h.pending; } },
-  resource: (name: string) => ({ stop: () => { h.calls.push(`${name}.stop`); }, drain: () => h.step(`${name}.drain`) })
+  resource: (name: string) => ({ stop: () => {
+    h.calls.push(`${name}.stop`); if (h.failures.has(`${name}.stop`)) { throw new Error("stop failed"); }
+  }, drain: () => {
+    if (h.failures.has(`${name}.drain`)) { h.calls.push(`${name}.drain`); throw new Error("drain failed"); }
+    return h.step(`${name}.drain`);
+  } })
 }));
 vi.mock("../../src/appContext.ts", () => ({ createAppContext: () => ({}) }));
 vi.mock("../../src/db/client.ts", () => ({ db: {}, closeDb: () => h.step("database.close") }));
@@ -42,8 +48,12 @@ vi.mock("../../src/notifications/runtime.ts", () => ({ createResultNotificationR
 vi.mock("../../src/shutdown.ts", () => ({
   isShuttingDown: () => h.shuttingDown,
   shutdownGracefully: (deps: ShutdownDeps) => {
-    h.shuttingDown = true; deps.stopScheduler();
-    h.shutdown = (async () => { await deps.waitForInFlightSend(); await deps.closeDb(); deps.destroyClient(); })();
+    h.shuttingDown = true;
+    try { deps.stopScheduler(); } catch { /* The real boundary logs and continues cleanup. */ }
+    h.shutdown = (async () => {
+      try { await deps.waitForInFlightSend(); } catch { /* The real boundary logs and continues cleanup. */ }
+      await deps.closeDb(); await deps.destroyClient();
+    })();
     // The process exit belongs to shutdownGracefully's caller; retain this test process.
     return h.shutdown.then(() => false);
   }
@@ -53,7 +63,7 @@ describe("bootstrap shutdown ownership", () => {
   let releaseWork: (() => void) | undefined;
   const phases = ["members", "receiver", "login", "reconcile", "recovery"];
   beforeEach(() => {
-    releaseWork = undefined; vi.resetModules(); h.calls = []; h.shuttingDown = false; h.signals.clear(); h.shutdown = undefined;
+    releaseWork = undefined; vi.resetModules(); h.calls = []; h.shuttingDown = false; h.signals.clear(); h.shutdown = undefined; h.failures.clear();
     vi.spyOn(process, "once").mockImplementation((event, listener) => { h.signals.set(event, () => { listener(); }); return process; });
   });
   afterEach(async () => {
@@ -84,6 +94,18 @@ describe("bootstrap shutdown ownership", () => {
     expect(h.calls).toContain("scheduler.create");
     h.signals.get("SIGTERM")?.(); await setImmediate();
     expect(h.calls).toContain(`${resource}.stop`); expect(h.calls).not.toContain("database.close");
+    gate.resolve(); await h.shutdown;
+    expect(h.calls.slice(-2)).toEqual(["database.close", "discord.destroy"]);
+  });
+
+  it.each(["interactions.stop", "interactions.drain"])("retains all other owners when %s throws synchronously", async failure => {
+    const gate = deferred<void>(); releaseWork = () => gate.resolve(); h.phase = "results.drain"; h.pending = gate.promise;
+    h.failures.add(failure);
+    await import("../../src/index.ts"); await setImmediate();
+    h.signals.get("SIGTERM")?.(); await setImmediate();
+    expect(h.calls).toEqual(expect.arrayContaining(["interactions.stop", "reconnect.stop", "results.stop", "scheduler.stop",
+      "interactions.drain", "reconnect.drain", "results.drain", "scheduler.drain", "asks.drain"]));
+    expect(h.calls).not.toContain("database.close");
     gate.resolve(); await h.shutdown;
     expect(h.calls.slice(-2)).toEqual(["database.close", "discord.destroy"]);
   });

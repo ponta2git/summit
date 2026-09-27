@@ -218,6 +218,23 @@ describe("buildStatusViewModel", () => {
 });
 
 describe("renderStatusText", () => {
+  it("keeps diagnostics usable below Discord's limit when old cancelled sessions accumulate", () => {
+    const session = makeSession({ status: "ASKING", deadlineAt: new Date("2026-04-25T13:00:00.000Z"), askMessageId: "msg-1" });
+    const vm = buildStatusViewModel({
+      now: NOW, sessions: [session], responsesBySessionId: new Map(), heldEventBySessionId: new Map(),
+      strandedCancelledSessions: Array.from({ length: 1_000 }, (_, index) => makeSession({ id: `stranded-${index}`, status: "CANCELLED" }))
+    });
+    const rendered = renderStatusText(vm);
+    expect(rendered.length).toBeLessThanOrEqual(2_000);
+    expect(rendered).toContain("現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17");
+    expect(rendered).toContain("[ASKING]");
+    expect(rendered).toContain("1000 件");
+    expect(rendered).toMatch(/診断 \d+ 行を省略/);
+    expect(rendered).toContain("次のイベント予定: 2026-04-25 22:00");
+    expect(rendered).toContain(`⚠ 合計 ${vm.totalWarnings} 件の invariant 警告`);
+    expect(rendered.endsWith("\n```" )).toBe(true);
+  });
+
   it("renders 'なし' when no sessions exist", () => {
     const vm = buildStatusViewModel({
       now: NOW,

@@ -24,14 +24,20 @@ export const createResultNotificationDispatcher = (deps: {
   const logger = deps.logger ?? defaultLogger;
   const active = new Map<string, Promise<void>>();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timerDueAt: number | undefined;
   let pumping: Promise<void> | undefined;
   let queued = false;
   let stopped = false;
   let recoveryAttempt = 0;
   const schedule = (delay: number): void => {
-    clearTimeout(timer);
     if (stopped) { return; }
-    timer = setTimeout(() => { timer = undefined; void pump(); }, Math.min(delay, 2_147_483_647));
+    const boundedDelay = Math.max(0, Math.min(delay, 2_147_483_647));
+    const dueAt = performance.now() + boundedDelay;
+    // invariant: 新しい wake は既存の起動期限を遅らせない。継続的な受付でも配送を開始する。
+    if (timer !== undefined && timerDueAt !== undefined && timerDueAt <= dueAt) { return; }
+    clearTimeout(timer);
+    timerDueAt = dueAt;
+    timer = setTimeout(() => { timer = undefined; timerDueAt = undefined; void pump(); }, boundedDelay);
   };
   const pump = (): Promise<void> => {
     if (stopped) { return Promise.resolve(); }
@@ -74,7 +80,7 @@ export const createResultNotificationDispatcher = (deps: {
       logger.info({ event: "result_notification.wake", reason });
       if (!pumping) { schedule(SCHEDULER_WAKE_DEBOUNCE_MS); }
     },
-    stop: () => { stopped = true; clearTimeout(timer); },
+    stop: () => { stopped = true; clearTimeout(timer); timer = undefined; timerDueAt = undefined; },
     drain: async () => { await pumping; await Promise.all(active.values()); }
   };
   return dispatcher;

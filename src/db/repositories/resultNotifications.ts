@@ -4,7 +4,7 @@ import { NotificationInputError } from "../../domain/resultNotificationPayload.t
 import { notificationTransaction, type NotificationDb } from "./notifications.storage.ts";
 import { claimNotifications } from "./notifications.claim.ts";
 import { beginNotificationPart, completeNotificationPart, failNotification, renewNotificationClaim } from "./notifications.delivery.ts";
-import { purgeNotifications } from "./notifications.retention.ts";
+import { pruneNotificationBatches } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { receiveResultNotification } from "./resultNotifications.receipt.ts";
 import { planResultNotification } from "./resultNotifications.plan.ts";
@@ -40,10 +40,9 @@ export const makeResultNotificationsPort = (db: DbLike): ResultNotificationsPort
     getNextDispatchAt: excludeIds => findNextNotificationDispatchAt(db, "result", excludeIds).catch(sanitizeFailure),
     inspect: id => run(tx => inspectResultNotification(tx, id)),
     retry: (id, now) => run(tx => retryResultNotification(tx, id, now)),
-    prune: now => run(async tx => {
-      const counts = await purgeNotifications(tx, "result", now, { deliveredOlderThan: now, failedOlderThan: now });
+    prune: now => pruneNotificationBatches(db, "result", now, { deliveredOlderThan: now, failedOlderThan: now }).then(counts => {
       return counts.deliveredPruned + counts.failedPruned + counts.cancelledPruned;
-    }),
+    }).catch(sanitizeFailure),
     getSetting: kind => run(tx => getResultSetting(tx, kind)),
     setSetting: (kind, enabled, now) => run(tx => setResultSetting(tx, kind, enabled, now))
   };

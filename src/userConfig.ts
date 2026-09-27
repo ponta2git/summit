@@ -1,7 +1,7 @@
-import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
 import { env } from "./env.ts";
+import { parseUserConfigYaml } from "./userConfig.yaml.ts";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 const hhmm = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
@@ -52,8 +52,6 @@ const formatConfigIssues = (error: z.ZodError): string =>
     .map((issue) => `${issue.path.join(".") || "config"}: ${issue.message}`)
     .join("\n");
 
-const parseUserConfigYaml = (value: string): unknown => parseYaml(value);
-
 interface UserConfigInputSource {
   readonly configYaml: string;
 }
@@ -81,8 +79,7 @@ const loadAppConfig = (): AppConfig => {
       process.stderr.write(`Invalid user configuration:\n${formatConfigIssues(error)}\n`);
       process.exit(1);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Invalid user configuration:\n${message}\n`);
+    process.stderr.write("Invalid user configuration: configuration YAML could not be loaded\n");
     process.exit(1);
   }
 };

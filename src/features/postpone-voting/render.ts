@@ -13,6 +13,7 @@ import {
 import { postponeMessages } from "./messages.ts";
 import { buildCustomId } from "../../discord/shared/customId.ts";
 import type { PostponeMessageViewModel } from "./viewModel.ts";
+import { memberMentions } from "../../discord/shared/mentions.ts";
 
 const buildPostponeRow = (
   sessionId: string,
@@ -61,6 +62,7 @@ export const renderPostponeBody = (
 
   return {
     content: lines.join("\n"),
+    allowedMentions: memberMentions(vm.memberUserIds, vm.suppressMentions),
     components: [buildPostponeRow(vm.sessionId, { disabled: vm.disabled })]
   };
 };

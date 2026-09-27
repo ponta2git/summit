@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { sendReminderForSession } from "../../../src/features/reminder/send.js";
 import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
-import { REMINDER_LEAD_MINUTES } from "../../../src/config.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { sentPayload } from "../../helpers/discord.js";
 import { runEffect } from "../../helpers/assertions.js";
@@ -14,7 +13,7 @@ import {
   timeResponses
 } from "./harness.js";
 
-const reminderBody = `⏰ ${REMINDER_LEAD_MINUTES}分後に開始です（22:00 開始）`;
+const reminderBody = "⏰ 15分後に開始です（22:00 開始）";
 
 const expectedReminderContent = (): string =>
   appConfig.dev.suppressMentions
@@ -34,7 +33,7 @@ describe("sendReminderForSession", () => {
     await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledOnce();
-    expect(sentPayload(send)).toStrictEqual({ content: expectedReminderContent() });
+    expect(sentPayload(send)).toStrictEqual({ content: expectedReminderContent(), nonce: expect.any(String), enforceNonce: true });
     const [persisted] = ctx.ports.sessions.listSessions();
     expect({
       status: persisted?.status,
@@ -110,7 +109,7 @@ describe("sendReminderForSession", () => {
       await sendReminderForSession(client, ctx, session.id, TEST_NOW);
       await runEffect(runOutboxWorkerTick(client, ctx));
 
-      expect(sentPayload(send)).toStrictEqual({ content: reminderBody });
+      expect(sentPayload(send)).toStrictEqual({ content: reminderBody, nonce: expect.any(String), enforceNonce: true });
     } finally {
       (appConfig.dev as { suppressMentions: boolean }).suppressMentions = originalFlag;
     }

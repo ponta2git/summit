@@ -72,6 +72,17 @@ describe("time utilities", () => {
     expect(parsed.toISOString()).toBe("2026-04-23T15:00:00.000Z");
   });
 
+  it.each(["2026-02-29", "2026-02-30", "2026-04-31", "2026-00-01", "2026-13-01", "2026-01-00", "2026-1-1"])(
+    "rejects invalid candidate dates instead of silently normalizing %s", value => {
+      expect(() => parseCandidateDateIso(value)).toThrow("Invalid candidate date.");
+    }
+  );
+
+  it("keeps leap days and years below 100 without Date's 1900 offset", () => {
+    expect(parseCandidateDateIso("2024-02-29").toISOString()).toBe("2024-02-28T15:00:00.000Z");
+    expect(parseCandidateDateIso("0099-01-01").toISOString()).toBe("0098-12-31T15:00:00.000Z");
+  });
+
   it("computes deadline at 21:30 JST on the candidate date", () => {
     const candidate = parseCandidateDateIso("2026-04-24");
     const deadline = deadlineFor(candidate);

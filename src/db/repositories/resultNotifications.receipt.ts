@@ -1,7 +1,7 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../config.ts";
 import type { DiscordNotificationReceipt } from "@momo/db/notifications";
-import { NotificationInputError, assertSupportedNotificationVersion, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, parseNotificationJson, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
 import { parseTimestamp } from "../../time/index.ts";
 import { discordNotifications as notifications, discordNotificationResults as results, discordNotificationTargets as targets } from "../schema.ts";
 import { cancelNotification, loadResultCancellationReason, type NotificationDb } from "./notifications.storage.ts";
@@ -11,8 +11,7 @@ import { assertEnum } from "../rows.ts";
 export const receiveResultNotification = async (
   tx: NotificationDb, rawJson: string, now: Date
 ): Promise<DiscordNotificationReceipt> => {
-  let value: unknown;
-  try { value = JSON.parse(rawJson); } catch { throw new NotificationInputError("invalid_input"); }
+  const value = parseNotificationJson(rawJson);
   const identity = readNotificationIdentity(value);
   assertSupportedNotificationVersion(value);
   const normalized = await normalizeNotificationJson(tx, rawJson);

@@ -49,7 +49,8 @@ import {
   markOutboxFailed,
   pruneOutbox,
   requeueFailedOutboxChains,
-  releaseExpiredOutboxClaims
+  releaseExpiredOutboxClaims,
+  renewOutboxClaim
 } from "./repositories/outbox.ts";
 import type {
   AppPorts,
@@ -112,6 +113,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   enqueue: (input) => enqueueOutbox(db, input),
   claimNextBatch: (options) => claimNextOutboxBatch(db, options),
   beginDelivery: (id, options) => beginOutboxDelivery(db, id, options),
+  renewClaim: (id, options) => renewOutboxClaim(db, id, options),
   markDelivered: (id, options) => markOutboxDelivered(db, id, options),
   markFailed: (id, options) => markOutboxFailed(db, id, options),
   requeueFailedChains: (now) => requeueFailedOutboxChains(db, now),

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
 import * as Effect from "effect/Effect";
@@ -11,9 +10,8 @@ import type { ResultDeliveryError } from "../domain/notification.ts";
 import { renderResultNotification } from "../features/result-notifications/render.ts";
 import { promiseCall, runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 import { addMs, type Clock } from "../time/index.ts";
-
-export const resultNotificationNonce = (id: string, partNo: number): string =>
-  createHash("sha256").update(JSON.stringify([id, partNo])).digest("base64url").slice(0, 25);
+import { withClaimHeartbeat } from "./claimHeartbeat.ts";
+import { notificationNonce } from "./deliveryNonce.ts";
 
 class DeliveryTimeout extends Error {}
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
@@ -50,23 +48,6 @@ export interface ResultDeliveryDeps {
 /** A notification owns ordered parts; no database transaction spans Discord I/O. */
 export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry: ClaimedResultNotification): Promise<void> => {
   const { port, clock, logger } = deps;
-  let lostClaim = false;
-  const heartbeat = Effect.gen(function* () {
-    while (!lostClaim) {
-      yield* Effect.sleep(RESULT_NOTIFICATION_HEARTBEAT_MS);
-      // invariant: PostgreSQL Promise は中断できないため、scope は実際の更新完了まで所有する。
-      const renewed = yield* settledCall(() => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS))
-        .pipe(Effect.match({
-          onFailure: () => {
-            lostClaim = true;
-            logger.warn({ event: "result_notification.lease_uncertain", notificationId: entry.id });
-            return false;
-          },
-          onSuccess: ok => ok
-        }));
-      lostClaim ||= !renewed;
-    }
-  });
   const fail = async (code: ResultDeliveryError, retry: boolean): Promise<void> => {
     const now = clock.now();
     const delay = OUTBOX_BACKOFF_MS_SEQUENCE[Math.min(Math.max(0, entry.attemptCount - 1), OUTBOX_BACKOFF_MS_SEQUENCE.length - 1)] ?? 60_000;
@@ -90,21 +71,27 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
     }
     if (deps.isStopping()) { return; }
     const notification = rendered;
-    await runPromiseBoundary(Effect.scoped(Effect.gen(function* () {
-      yield* Effect.forkScoped(heartbeat);
+    await runPromiseBoundary(withClaimHeartbeat({
+      intervalMs: RESULT_NOTIFICATION_HEARTBEAT_MS,
+      renew: () => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS),
+      onLost: reason => { logger.warn({
+        event: reason === "uncertain" ? "result_notification.lease_uncertain" : "result_notification.claim_lost",
+        notificationId: entry.id
+      }); }
+    }, isClaimLost => Effect.gen(function* () {
       if (!(yield* databaseCall(() => port.plan(entry.id, entry.claimToken, {
         count: notification.parts.length, rendererVersion: notification.rendererVersion, context, now: clock.now()
       })))) { return; }
-      if (lostClaim || deps.isStopping()) { return; }
+      if (isClaimLost() || deps.isStopping()) { return; }
       const channel = yield* boundedSend(() => getTextChannel(deps.client, context.channelId));
       const delivered = new Set(entry.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo));
       for (const [partNo, body] of notification.parts.entries()) {
         if (delivered.has(partNo)) { continue; }
-        if (lostClaim || deps.isStopping()) { return; }
+        if (isClaimLost() || deps.isStopping()) { return; }
         if (!(yield* databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())))) { return; }
-        if (lostClaim || deps.isStopping()) { return; }
+        if (isClaimLost() || deps.isStopping()) { return; }
         sending = true;
-        const message = yield* boundedSend(() => channel.send({ ...body, nonce: resultNotificationNonce(entry.id, partNo), enforceNonce: true }));
+        const message = yield* boundedSend(() => channel.send({ ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true }));
         // Cancellation may preserve this already-started part. Always try to record
         // its message ID; the port fences ownership again even if the heartbeat failed.
         const changed = yield* databaseCall(() => port.complete(entry.id, partNo, entry.claimToken, message.id, clock.now()));

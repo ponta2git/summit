@@ -8,6 +8,7 @@ import { fromDatabaseCall } from "../errors/effect.ts";
 import type { CancelReason } from "../features/ask-session/cancelReason.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { logger } from "../logger.ts";
+import { bestEffortMessageUpdate } from "../discord/shared/messageUpdates.ts";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
@@ -17,7 +18,7 @@ export const reflectAskingCancellation = (
   settled: SessionRow
 ): Effect.Effect<void, AppError> =>
   Effect.gen(function* () {
-    yield* updateAskMessage(client, ctx, settled);
+    yield* bestEffortMessageUpdate(updateAskMessage(client, ctx, settled), settled.id, "ask");
     logger.info(
       {
         sessionId: settled.id,
@@ -44,7 +45,8 @@ export const settleAskingSession = (
   client: Client,
   ctx: AppContext,
   sessionId: string,
-  reason: CancelReason
+  reason: CancelReason,
+  onCommitted?: () => void
 ): Effect.Effect<void, AppError> =>
   Effect.gen(function* () {
     const resolvedReason: AskingCancelReason =
@@ -75,5 +77,6 @@ export const settleAskingSession = (
       );
       return;
     }
+    onCommitted?.();
     yield* reflectAskingCancellation(client, ctx, result.session);
   });

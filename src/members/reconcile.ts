@@ -1,3 +1,4 @@
+import { runTransaction } from "../db/transaction.ts";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 
@@ -73,7 +74,7 @@ export const reconcileMembers = async (
   memberInputs: ReadonlyArray<MemberReconcileInput>,
   db: DbLike
 ): Promise<void> => {
-  const plan = await db.transaction(async tx => {
+  const plan = await runTransaction(db, async tx => {
     const existing = await tx
       .select({
         id: members.id,

@@ -9,9 +9,16 @@ export const isNotificationWebOrigin = (origin: string): boolean => {
   try { parseNotificationWebOrigin(origin); return true; } catch { return false; }
 };
 
+export const isNotificationToken = (token: string): boolean =>
+  token.length >= 32 && token.length <= 512 && /^[A-Za-z0-9._~+/-]+=*$/.test(token);
+
 // Result notification I/O is bounded separately from attendance and calendar work.
 export const RESULT_NOTIFICATION_MAX_BODY_BYTES = 16 * 1024 * 1024;
+export const RESULT_NOTIFICATION_BODY_BUDGET_BYTES = 16 * 1024 * 1024;
 export const RESULT_NOTIFICATION_MAX_JSONB_BYTES = 8 * 1024 * 1024;
+export const RESULT_NOTIFICATION_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+export const NOTIFICATION_MAINTENANCE_BATCH_SIZE = 256;
+export const NOTIFICATION_RETENTION_MAX_BATCHES = 16;
 export const RESULT_NOTIFICATION_MAX_RECEIPTS = 4;
 export const RESULT_NOTIFICATION_MAX_CONNECTIONS = 32;
 export const RESULT_NOTIFICATION_BODY_TIMEOUT_MS = 10_000;
