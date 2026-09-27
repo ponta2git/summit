@@ -1,227 +1,134 @@
 # Architecture
 
-Summit の現在の runtime 構造、依存方向、scheduler、依存注入、エラー境界、設定境界を定める。ユーザーに見える挙動は `requirements/base.md`、DB の詳細は `docs/db-rule.md`、Discord Interaction は `docs/discord-rule.md` を正本とする。
+Summit の runtime、依存方向、非同期処理の所有者を定める。変更する境界の章から読む。業務挙動は [requirements](../requirements/base.md)、永続化は [DB 規約](./db-rule.md)、Interaction と command 同期は [Discord 規約](./discord-rule.md) が正本。
 
-## 1. Runtime topology
+## 1. Runtime と状態の正本
 
-- Node.js / TypeScript / ESM の単一 Bot process を Fly.io の単一 machine で常時起動する。
-- horizontal scale、scale-to-zero、外部 cron からの短時間起動は現在の設計対象外とする。
-- cron と Discord client は process 起動中に一度だけ登録する。ローカルを含め、同じ設定で Bot を二重起動しない。
-- 永続状態の正本は PostgreSQL。Discord 表示と process 内の timer、lock、cache は再構築可能な派生状態とする。
-- 起動・再接続時は DB から非終端 Session と未配送 intent を再読込し、処理を冪等に収束させる。
-- 同じprocessがA/B通知用のprivate HTTP受信と配送を所有する。公開HTTP serviceや追加Machineを作らず、private bindを設定時と起動時に検査する。
+Node.js / TypeScript / ESM の Bot を、Fly の常時起動する単一 Machine・単一 process で動かす。同じ設定の Bot をローカルと本番で同時起動しない。Discord client と cron は process ごとに一度だけ登録し、水平増設・scale-to-zero・外部の一時 cron は現在の構成に持ち込まない。
 
-単一インスタンスを採用する理由は、固定4名の個人 Bot に分散 leader election や複数 scheduler の運用コストを持ち込まないためである。ただし DB の unique、CAS、claim token は interaction 同時押下や期限切れ worker の競合を防ぐため、単一 process でも必須とする。
+状態の正本は DB。Discord message、timer、process 内の lock / cache は再構築できる派生状態とする。起動・再接続・再実行で同じ DB 状態へ収束させる。単一 instance は固定 4 人向けの運用を簡単にする前提であり、unique、CAS、claim fencing を省略する根拠にはならない。
 
-### 再評価条件
+OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ process が所有する。private bind は設定時と listen 時に検証し、public service や別 Machine を追加しない。topology を変える場合の再評価は §8、実際の変更手順は [運用入口](./operations/README.md)。
 
-- 複数 application instance または複数 outbox worker を常時動かす必要が生じる。
-- 可用性要件が単一 machine の再起動回復では満たせなくなる。
-- Fly または Discord が安全な event-driven wake / leader election を提供する。
+## 2. Module の所有範囲
 
-該当時は、scheduler ownership、cron 排他、outbox claim、startup recovery を一体で再設計する。scale 数だけを先に変更しない。
+| 配置 | 所有する責務・依存の境界 |
+|---|---|
+| `src/features/<feature>/` | handler、render、messages、view model、feature 固有の pure な値。小さいという理由だけで共通化しない |
+| `src/discord/shared/` | dispatch、guard、custom ID codec、共通 DTO、Discord SDK の薄い adapter |
+| `src/orchestration/` | 複数 feature をまたぐ send・settle・messageEditor 等の副作用の順序 |
+| `src/domain/` | ASKING / POSTPONE_VOTING 等の pure な集約判断。I/O と global clock を持たない |
+| `src/db/`、`src/time/`、`src/members/` | DB consumer、時刻計算、member identity の横断契約 |
+| `src/scheduler/` | clock / DB に基づく起動時刻と配送の所有 |
+| `src/runtime/` | Promise / Effect の実行・settlement、process lifecycle |
+| `src/notifications/` | A/B の HTTP 認証・入力制限・運用 CLI・receiver lifecycle |
+| `scripts/dev/`、`scripts/verify/` | local tool と決定論的な検証。production runtime は `src/` に置く |
 
-## 2. Source layout と依存方向
+feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
 
-```text
-src/index.ts
-├── src/appContext.ts ──> src/db/ports.real.ts ──> repositories
-├── src/discord/registry/ ──> src/features/* entry handlers
-└── src/scheduler/ ──> src/orchestration/ ──> src/features/*
+A/B の本文は `features/result-notifications`、配送は `scheduler/resultNotifications*` が所有する。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
 
-src/features/* ──> pure feature assets / AppContext ports
-src/orchestration/* ──>複数 feature の副作用順序
-src/domain/* ──> pure aggregate decision
-src/time/* ──> project-wide clock / JST calculation
-src/db/* ──> persistence boundary
-```
+## 3. Composition root
 
-依存規則:
+[AppContext](../src/appContext.ts) が production の依存注入入口で、`ports` と `clock` を渡す。handler / scheduler / orchestration から real repository、DB client、system clock を直接取得しない。
 
-- `src/features/<feature>/` は handler、render、message、view model、feature 固有の pure decision を所有する。
-- feature 固有の資材は、ファイルが小さいという理由だけで `src/discord/shared/` へ移さない。
-- feature 間では pure 型・builder・定数だけを参照できる。`send.ts`、`settle.ts`、`messageEditor.ts` の副作用 import は禁止する。
-- 複数 feature を跨ぐ副作用は `src/orchestration/` が順序駆動する。feature から orchestration への逆向き依存は作らない。
-- `src/discord/shared/` は dispatcher、guard、custom ID codec、共通 DTO、Discord SDK の薄い helper に限定する。
-- `src/domain/` は I/O と global clock を持たない aggregate decision の配置先とする。現在は ASKING と POSTPONE_VOTING の判定を所有する。
-- `src/time/`、`src/scheduler/`、`src/db/`、`src/members/` は横断 infrastructure であり、feature 配下へ分散しない。`src/runtime/effect.ts`は外部Promiseの開始・settlement・実行境界を所有する。
-- `src/` は production runtime、`scripts/dev/` は開発用の seed/reset/scenario を所有する。
-- `src/notifications/`はA/BのHTTP認証・受付制限・運用CLIとresource合成、`src/features/result-notifications/`は固定本文、`src/scheduler/resultNotifications*`は配送を所有する。
-- generic な `types.ts` や `util/` に責務を隠さず、型は所有 module、共有 assertion は用途名の module に置く。
+- production は `makeRealPorts`、test は `createTestAppContext` で同じ interface を満たす。port 変更時は real / fake を同時に整合させる。
+- port は業務単位の入出力を公開し、SQL・join・lock の知識を実装内に閉じる。各 port の責務は [DB 規約 §3](./db-rule.md#3-port-と書込の所有者)。
+- Discord SDK は豊かな object model のまま境界で扱い、SDK 全体を独自 port に写さない。初期化順と resource の所有は factory / AppContext で見える形にする。
 
-`src/features/` を locality 単位にする理由は、変更時に user-facing copy、render、handler、テスト対象を同じ機能名で探索できるようにするためである。shared 抽出で import 数を減らすことより、ownership の明確さを優先する。
+## 4. Domain の表現
 
-### Registry
+用語・状態の意味は requirements、DB row 型は schema inference に合わせる。判断結果は discriminated union で表し、pending・cancel・競合負けを例外にしない。
 
-各 Interaction feature は `module.ts` から route と slash builder を公開し、`src/discord/registry/modules.ts` に追加する。slash builder は handler 非依存の feature 所有 module に置き、同期用 `src/commands/definitions.ts` からも同じ定義を参照する。同期のために実行用 registry、Effect、Bot 設定を初期化しない。二つの一覧の一致・既存 payload・runtime package への依存禁止を test で検証する。registry build は次を fail-fast で検証する。
+業務 command は必要な row を lock し、同じ snapshot と渡された時刻で回答・締切・状態を判定する。任意の状態遷移を外から指定する API を作らず、その操作に必要な入力と CAS 条件を公開する。
 
-- custom ID prefix が所定の終端形式を持つ。
-- prefix または command name が重複していない。
-- prefix 同士が包含関係を持たず、探索順に依存しない。
+Session の `CANCELLED` は収束途中の短命な状態になり得る。一方、通知の `CANCELLED` は終端であり、A/B を復活させない。同名の状態を領域間で同じ意味とみなさない。
 
-dispatcher に feature 名の分岐を追加しない。同期用一覧のために handler を遅延ロードしたり、payload の手書きコピーを別管理したりしない。定義と実行の分離が同期の初期化コストを抑える。modal や select menu など新しい Interaction 種別を導入するときは、registry の route 種別を追加するか分離するかを先に設計する。
+## 5. 非同期処理とエラー
 
-### Standalone command sync
+### 結果の分類
 
-`src/commands/sync.ts` は Bot とは別の単発 CLI。本番同期は運用 PC から手動実行し、Fly Machine、Bot startup、deploy hook、GitHub Actions では実行しない。Bot と同期処理のメモリ・CPU を競合させないことが目的であり、Machine の増強や heap 制限で共存させない。
+同期 guard は `Either`、非同期 application operation は `Effect<A, AppError>`、port は Promise と domain value を返す。分類と I/O の error 変換は [src/errors](../src/errors/) が所有する。独自 Result 型で既存 API を再現せず、`AppError.code` と既存 AppError の identity を保つ。duplicate、claim loss、race-lost、no-op は型付きの結果で表す。
 
-- 軽量な `sync.supervisor.ts` が worker 一つを所有し、SDK import 前から全体 deadline を管理する。SIGINT / SIGTERM / deadline で中断を要求し、猶予後も未終了ならその子だけを強制終了する。子の終了と IPC 切断まで確認し、timer を回収する。worker は親との接続喪失時にも終了する。
-- `sync.worker.ts` は Fly 環境・親所有権を SDK import 前に検査する。token と対象 ID 以外の本番設定、shell、Node 起動オプションを継承せず、Client、login、DB、scheduler を起動しない。開発経路のみ注入済み YAML の guild ID を参照する。
-- REST は `sync.run.ts` の HTTP adapter が応答本文まで読んでから SDK に返す。SDK timeout が header 受信で解除される穴を防ぎ、実際の受信 byte 数を `SYNC_RESPONSE_MAX_BYTES` で制限して JSON 解析前に打ち切る。中断・超過時は stream と abort listener を回収する。これは現在の command 群に対する CLI の容量上限であり、Discord が許す全構成の上限ではない。定義の規模拡大時に再評価する。
-- 単発 REST は cache sweeper を起動せず、自動 retry を無効にして rate limit で待ち続けない。同期の確認・結果不明の扱いは `docs/discord-rule.md` §7、実行値は `src/commands/sync.protocol.ts`、手順は `docs/operations/README.md` を正本とする。
-- worker の生 stdout / stderr や例外本文を転送せず、親が許可した結果分類・待機時間だけを構造化ログへ出す。`SyncReport` は成功と失敗詳細の混在を型と IPC parser で拒否し、同期段階は `precheck` / `write` / `verification` の排他的な状態で管理する。IPC 送達後は単発 worker を終了し、SDK 内部 timer を残さない。
+batch の item failure は集計して次へ進み、同期 throw と非同期 reject で扱いを変えない。既存 AppError 以外の予期しない失敗は invariant error とする。対象の取得・識別、集計、失敗報告自体が壊れた場合は phase failure として伝える。interruption を item failure に変換して続行しない。
 
-定義の実行用・同期用 payload を別々に手書きしたり、handler の全体的な lazy loading へ広げたりしない。手動同期の頻度・担当者が増えて実行管理が必要になった場合に、専用 workflow と secret 管理を再評価する。
+env / config 不正、`assertNever`、成立しない起動前提は fail-fast にする。callback と fire-and-forget の最外周は失敗を必ず受け取り、裸の Promise を残さない。result dispatcher の公開境界は `Promise<void>` とし、内部で最終 DB 状態と安全な log に収束させる。送信前の DB failure は `delivery_failed`、送信後の確定失敗は `delivery_uncertain` と区別する。
 
-## 3. Composition と ports
+### 実行と所有権
 
-唯一の production 合成点は `src/appContext.ts` とする。
+[Effect adapter](../src/runtime/effect.ts) を application の実行境界で使う。Effect v3 の安定版で非同期処理と resource lifetime を合成し、内部で Effect → Promise → Effect を往復しない。port や DI 全体は置き換えない。API の根拠は [導入 version に合う資料](./dev-rule.md#外部仕様を判断するとき) で確認し、別 major の preview と混在させない。
 
-```ts
-interface AppContext {
-  readonly ports: AppPorts;
-  readonly clock: Clock;
-}
-```
+| 境界 | 維持する契約 |
+|---|---|
+| operation の生成 | I/O・clock 読取・lock 取得を始めない。`gen` / `suspend` 内で実行時の状態を使う |
+| 外部 Promise | thunk を `promiseCall` に渡し、同期 throw も失敗として受け取る |
+| process / callback への出口 | `runPromiseBoundary` で一度だけ実行し、終了まで owner が追跡する。元の error を保持し、`Cause.pretty` や既定 console 出力で情報を漏らさない |
+| expected failure / defect | 前者は `either` / `catchAll`、後者と interruption は別の失敗として扱う |
+| 中断できない I/O | `settledCall` 等で実際の完了を待つ。並列の一つが失敗しても、未完了の兄弟より先に lock や drain の所有権を解放しない |
+| resource 解放 | stop / drain の失敗後も後続 finalizer を実行する。fiber を fork するなら owner と join / interrupt を定め、daemon に逃がさない |
 
-- handler、scheduler、orchestration は `AppContext` を受け取り、DB へは `ctx.ports.*`、時刻へは `ctx.clock` でアクセスする。
-- repository、DB client、`systemClock` をこれらの call-site から直接 import しない。
-- production は `makeRealPorts`、test は `createTestAppContext` が同じ `AppPorts` 契約を実装する。
-- port interface を変更したら real と fake を同じ変更で更新する。
-- `/status` は `StatusPort.loadCurrentWeekSnapshot` が current-week Session と画面用の Response / HeldEvent を
-  batch 取得する。ResponsesPort / HeldEventsPort に汎用 batch API を増やさず、read model の結合知識を status
-  repository 内へ隠す。
-- Discord client は意図的に port 化しない。discord.js の rich type を薄い独自抽象へ写す利益が現在の規模では小さいためである。
-- DI container は使わない。resource graph が factory 合成で追跡できなくなった場合にだけ再評価する。
+timeout は待機の限界であり、Discord send や DB commit が取り消された証拠ではない。中断できない I/O の完了待ちは timeout 後も続き得る。write を一般的な Effect retry で繰り返さず、durable claim・nonce・CAS による回復を使う。
 
-## 4. Domain と state transition
+message 再作成は send と message ID 保存までを中断から保護する。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-- 業務状態と許可遷移の語彙は `requirements/base.md`、実装型は `../momo-db/src/schema.ts` と `src/db/rows.ts` を参照する。
-- pure decision は discriminated union を返し、業務上の中止・pending・決定を例外で表現しない。
-- write path は Session aggregate を lock し、同じ snapshot で入力、期限、Response、遷移を評価する。
-- 任意の from/to を受け取る汎用遷移 API は公開しない。edge-specific command と期待状態付き更新で許可遷移を閉じる。
-- Sessionの`CANCELLED`は外部通知を同じaggregate commandで確定する短命中間状態。通知自体の`CANCELLED`は終端であり、A/Bを起動時に復帰させない。
+A/B の delivery scope は heartbeat を所有し、timer を止めた後に進行中の renew を待つ。plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
 
-XState と event sourcing は採用しない。現在の状態数と監査要求では、DB state、pure decision、typed command、CAS の方が小さく直接的である。並行状態、履歴状態、過去時点再生、監査イベントが実要件になったとき再評価する。
+## 6. Scheduler と lifecycle
 
-## 5. Error boundary
+### 起動時刻
 
-エラー分類の実装正本は `src/errors/` とする。
+calendar cron は ask・retention・supervisor に限定し、実行値は設定を参照する。通常の出欠処理は `SessionsPort.getSchedulerSessionHints` と `OutboxPort.getNextDispatchAt` から one-shot timer を再構築し、due work は `runEffectTickSafely` で実行する。outbox は work がある間だけ burst 配送し、idle で停止する。
 
-- `AppError.code` で invariant、validation、not found、Discord API、database、shutdown を判別する。
-- `cause`は内部の分類・回復判断に保持し、logには`err`/`error`のserializerが許可したcode/statusと有限深度のcause分類だけを出す。外部Errorのmessage、stack、URL、request body、SQL bindを出さない。
-- 同期のguard・validationはEffectの`Either`、Interaction pipeline・cross-feature orchestration・schedulerの非同期合成は`Effect.Effect<A, AppError>`を使う。値の合成はnativeの`Either.gen` / `Effect.gen` / operatorsで表し、独自のResult互換APIを置かない。
-- repository・portsはPromise、pure domainは具体値の契約を維持する。外部I/Oとの変換は`src/errors/effect.ts`が所有する。
-- CAS race、重複、claim lost、no-op は例外ではなく typed return / state return で表現する。
-- cron / timer callback は `Promise<void>` adapter でEffectを実行し、失敗をtick外へ持ち越さない。
-- batch scheduler は item 単位の失敗をreportに集め、同期throwと非同期rejectで後続itemの継続方針を変えない。既知AppErrorは保持し、その他のitem異常はinvariantとして記録する。query全体、識別・集計・失敗通知などreport自体の生成に失敗した場合はphase全体の失敗を上位へ返す。
-- config/env parse、`assertNever`、起動不能な impossible state は fail-fast を許可する。
-- fire-and-forget は最外周で明示的に catch し、unhandled rejection を作らない。
-- A/B配送の結果はDB状態へ確定するため、dispatcher境界は`Promise<void>`を受け取る。配送内部が送達不明・恒久失敗・claim失効を分類し、最終保存の失敗も回収可能な状態と安全なlogへ収束させる。
-- 配送前のDB操作失敗はretry可能な`delivery_failed`、送信開始後の確定失敗は`delivery_uncertain`とする。DBエラーをDiscordの障害と誤分類しない。
+due work を処理した後に DB を再読込し、新たに due になった種類と生成済み intent を同じ再計算で拾う。一回の再計算では同種 work を一度だけ実行し、未完了 reminder を即時 loop させない。同種 timer / 再計算は一つの owned Promise にまとめ、配送・確定・次時刻取得まで待つ。実行中の wake は pending として保持し、完了時に取りこぼさない。cron callback も処理全体の Promise を返し、`noOverlap` と drain の範囲を揃える。
 
-### Effect の利用境界
+Interaction / 集約更新 / 起動 / 再接続後は `wakeScheduler` を呼ぶ。supervisor は missed wake・claim expiry・drift の回復手段であり、通常配送の待ち時間を決める polling には使わない。
 
-Effect v3の安定版を非同期application operationの共通表現とし、resourceの所有・待機期限・並列I/O・終了時のfinalizerも同じEffectで合成する。既存の`AppContext`によるDI、Promise ports、pure domainとtransaction境界は維持する。Effectの実行はInteraction・startup・timer等のPromise adapterに閉じ、内部でEffect→Promise→Effectを往復しない。
+### 起動・再接続・終了
 
-- 外部I/Oは`src/runtime/effect.ts`の`promiseCall`等へthunkで渡す。開始済みPromiseをwrapして同期例外を取りこぼさない。外部の失敗はtyped error channel、pure計算のbugはdefectとして区別する。
-- Effectの生成ではI/O・時刻取得・lock取得を開始しない。実行時に読む値は`Effect.gen` / `Effect.suspend`内で求める。Effectを`await`するだけでは実行されないため、最外周は`runPromiseBoundary`で一度実行し、そのPromiseをdrainまで追跡する。
-- `Effect.either` / `catchAll`で扱うのはexpected failureだけとし、defectまで成功に変換しない。item隔離や終了処理など全causeを扱う境界を明示し、batchのinterruptionは次itemへ継続せず伝播する。
-- DBなど中断APIを持たないI/Oは`settledCall`で実際のsettlementまで所有する。並列queryの一件が失敗しても、兄弟queryを待ってからownerのdrain・排他枠を解放する。独立した配送の失敗を理由に他の配送を中断しない。
-- message再生成の送信からID保存までは一つの中断不能区間とし、送信成功後の中断で保存を飛ばさない。同じmessageのread/editはEffectの排他内で実行し、待機者の中断でもactiveな更新のlockを解放しない。
-- `timeout`は待機の期限であり、外部sendやcommitの取消を意味しない。送達不明は永続claim・nonce・CAS・既存retry方針で回復し、Effectの汎用retryで書込みや送信を再実行しない。中断不能I/O全体へtimeoutをかけても即座に終了するとは限らない。
-- Promise境界の`runPromiseBoundary`は`Exit`から元の失敗を取り出し、既存のAppError/status分類を保つ。`Cause.pretty`やEffectの既定console loggerへ外部errorを出さず、§5のsafe loggerを使う。
-- finalizerは後続の資源解放を飛ばさない。shutdownは受付停止・drainの失敗後もDB・Discordの解放を試みる。scope/fiberを導入する場合はownerとjoinの責務を明示し、無所有のdaemon fiberを作らない。
-- A/B配送は1配送のScopeがheartbeat fiberを所有し、終了時にtimerを中断して開始済みrenewの実完了を待つ。plan/beginの待機中に判明したclaim喪失も確認してから次のDiscord I/Oへ進む。開始済み送信の結果は既存のCASで保存を試みる。
+| phase | 完了・回復の境界 |
+|---|---|
+| startup | readiness を閉じ、期限切れ claim、dead-letter chain、取り残された遷移、欠落 intent / message、期限超過を DB から回復する。各 phase 後に shutdown を確認する |
+| ready 判定 | startup phase 完了と接続中を別に判定する。回復中の切断を見落とさず、ready と理由を log する。未 ready の Interaction は ephemeral で拒否する |
+| reconnect | `shardReady` / `shardResume` の接続世代を追跡する。開始前に in-flight lock を取り、成功完了から debounce する。失敗は次の再接続で再試行し、回復中の新世代要求を保持する。同期 / Effect の失敗でも lock を解放する |
+| shutdown | 新規受付と readiness を止め、startup・Interaction・reconnect・scheduler・outbox・A/B の処理中 work を上限付きで drain してから DB / Discord を閉じる。片方の失敗で他方の実 I/O の追跡を捨てない |
 
-全portのEffect化やLayer/ServiceによるDI置換は、現状の明示依存に対して変換層を増やすため採用しない。resource graphが既存AppContextでは表現できない場合に再評価する。
+active message の存在 probe と出欠の FAILED chain 再投入は startup だけで行う。reconnect / tick に poison retry を持ち込まない。通常 edit の `UnknownMessage` は [Discord 規約 §5](./discord-rule.md#5-永続化後の表示更新) で回復する。shutdown と競合した HTTP listen は完了を待って close する。残った claim は次回起動で回復する。
 
-資料: [同期・非同期APIの対応](https://effect.website/docs/v3/additional-resources/effect-vs-neverthrow)、[v3のerror分類](https://effect.website/docs/v3/error-management/two-error-types)、[並列性](https://effect.website/docs/v3/concurrency/basic-concurrency)、[resource管理](https://effect.website/docs/v3/resource-management/introduction)、[timeout](https://effect.website/docs/v3/error-management/timing-out)。APIは`package.json`の導入版と照合する。v4のpreview資料をv3の根拠として混在させない。
+### A/B の独立した受付と配送
 
-## 6. Scheduler architecture
+receiver は DB commit 後にだけ 2xx と wake を返す。request deadline で実行中 command の slot を先に解放せず、commit 後の切断を受付失敗に戻さない。初回 startup 完了前は 503、その後の一時的な Discord 切断中は DB 受付を続ける。
 
-### Calendar cron と DB-driven controller
+dispatcher は出欠とは独立した上限付き slot を持つ。完了 wake と次 retry / claim expiry の one-shot で起動し、実行中・idle 移行中の wake を保持する。DB failure の backoff は有限回とし、claim と必要な次時刻取得がともに成功したときに reset する。停止後も新しい wake / supervisor で再開できる。
 
-process 起動時に登録する固定 cron は、calendar 起点の募集、retention、scheduler supervisor に限定する。cron 式と間隔の実値は `src/config.ts` が正本であり、本書へ写さない。
+supervisor は出欠処理より先に A/B を wake する。一方の family の失敗が他方の配送や retention を止めないようにし、idle 時の短周期 polling を増やさない。設定値は [notifications/config](../src/notifications/config.ts)、保存契約は [DB 規約 §6](./db-rule.md#6-ocr分析通知の保存と取消) を参照する。
 
-deadline、postpone deadline、reminder、outbox dispatch は DB の次回時刻から one-shot timer を再構築する。
+## 7. 設定と観測
 
-1. `SessionsPort.getSchedulerSessionHints` と `OutboxPort.getNextDispatchAt` を読む。
-2. future work は one-shot timer を張る。
-3. due work は既存 operation を `runEffectTickSafely` 経由で実行する。
-4. work 後に DB を再読込し、同じ recompute 中に新しい種類の due work と新規 outbox intentを認識する。
-5. 同じ due kind は一回の recompute で一度だけ試す。reminder は配送完了まで due のままになり得るため、無制限再計算を防ぐ。
-6. outbox は作業がある間だけ burst worker を動かし、idle なら停止する。
+| 正本 | 所有する情報 |
+|---|---|
+| `src/userConfig.ts` と YAML | guild / channel / member、schedule、mention 方針。起動時に zod で検証 |
+| `src/envSchema.ts` / `src/env.ts` | secret、DB 接続、設定本文、deploy metadata。schema は pure、env 入口で一度 parse |
+| `src/config.ts`、領域別 config | retry・timeout・信頼性の内部設定 |
 
-timerとrecomputeが共有する同種workは実行Promiseを一つだけ保持し、outbox batchの配送・確定・次回時刻取得までを所有する。配送中のwakeは完了後の再読込へ引き継ぐ。cron callbackも非同期tick全体を返し、`noOverlap`とshutdownの待機対象を一致させる。
+runtime は parse 済み export を使い、個別 module で環境変数を読み直さない。用途別 CLI は必要な入力だけの設定入口を持つ。command 同期に Bot 全体の env / DB / scheduler 初期化を持ち込まない。local file の読取条件は [開発規約 §7](./dev-rule.md#7-environment-と-secret)。
 
-interaction、aggregate command、startup/reconnect が新しい work を作った場合は `wakeScheduler(reason)` を呼ぶ。supervisor は missed wake、claim expiry、timer drift の fallback であり、通常経路が supervisor の次回実行を待つ設計にしない。
+member は固定 4 人・ID 重複なしを検証する。起動時 reconcile は identity と表示名を一 transaction で整合し、設定から消えた row を削除したり、配列順で過去の ID を再利用したりしない。
 
-### Startup と reconnect
+A/B は受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。運用は [A/B runbook](./operations/result-notifications.md)。
 
-- startup 中と reconnect replay 中は application readiness を false にし、Interaction を ephemeral で拒否する。
-- startup完了時も接続状態を確認し、起動recovery中に切断した場合はreadyにしない。再接続後のreplayでreadyへ戻す。起動完了logにも`applicationReady`と`readinessReason`を残し、起動phaseの完了と現在の受付可否を区別する。
-- startup は dead-letter chain recovery、expired claim、stranded transition、missing intent/message、期限超過 Session を DB から収束させる。
-- reconnect は`shardReady`と`shardResume`の両方を復旧入口とし、in-flight lock と debounce で初回readyと並行replayを区別する。replay中の切断はreadyへ戻さず、新しい接続世代の復旧要求を保持する。lockは処理開始前に登録し、同期例外・Effect失敗の両方で解放する。debounceは成功完了時から測り、失敗後は次の再接続で再試行できる。
-- Discord message の active probe は API 負荷が高いため startup に限定する。通常 tick は Unknown Message を検出したとき opportunistic に再生成する。
-- poison payload の FAILED 復帰は startup だけで行い、定期 tick や reconnect で hot loop を作らない。
+log は pino の JSON stdout に統一する。外部 error の message / stack / URL / body / SQL bind をそのまま渡さず、固定の診断文、code / status、上限のある cause 分類へ変換する。AppError の内部 cause 保持と log への出力は区別する。DB に保存する failure reason も同じ扱いにする。key redact は追加防御であり、未加工 payload を出力する根拠にはしない。
 
-### Shutdown
+Discord rate limit は route template と待ち時間を記録し、token や major parameter を除く。機密 URL も秘匿対象とし、redact path を狭める変更は review する。外部 healthcheck ping は追加せず、log / status の観測を使う。
 
-- Interaction、reconnect、HTTP受付、cron、one-shot timerの新規仕事を先に止め、readinessをfalseにする。
-- startup、処理中Interaction、reconnect replay、scheduler/outbox、A/B受付・配送を上限付きでdrainしてからDBとDiscordを閉じる。batch内の一件が失敗しても、他の処理のsettlementまで追跡を維持する。
-- startupは各非同期phaseの完了後に停止状態を確認し、停止開始後にlogin・recovery・scheduler生成を進めない。HTTPのlisten開始もPromiseで所有し、開始中のstopはその完了後にlistenerを閉じる。
-- 上限到達時の未完了claimは次の起動で回収する。待機上限は`src/config.ts`を正本とする。
+## 8. 設計を再評価する条件
 
-### A/Bの受信と配送
-
-- `ResultNotificationsPort`を通して受付commandをcommitしてから2xxとwakeを返す。HTTP deadlineを過ぎても実行中commandの受付枠を返さず、commit後の切断でも配送状態を失敗へ変更しない。
-- startup完了前は503。一度startupが完了すれば一時的なDiscord再接続中もDBへ受付でき、外部配送失敗はconsumerが処理する。
-- dispatcherは上限付きの独立slot、完了ごとのwake、次回retry/claim期限のone-shotを持つ。処理中・idleへの移行中のwakeを保持する。DB障害は有限backoff後に停止し、新しいwakeまたは既存supervisorで再開する。
-- DB障害の連続回数は、claimと必要な次回配送時刻の取得がすべて成功してから戻す。時刻取得だけの障害でも再試行上限を維持する。
-- supervisorのA/B wakeをattendance処理より先に呼び、一方の障害で他方を抑止しない。retentionもfamilyごとに独立させる。idle中に短周期DB pollingを追加しない。
-- Discord待機中はclaimを延長するがDB transactionを保持しない。開始・確定時のCASが失効ownerを排除する。部分数・renderer・宛先・リンクを初回計画から変更しない。
-- receiverとdispatcherのstop/drainは共通shutdownへ参加する。配送固有の実行値は`src/notifications/config.ts`を参照する。
-
-## 7. Configuration と logging
-
-設定境界は3層に分ける。
-
-| 層 | 所有する情報 | 実装 |
+| 現在採用しないもの | 現在の理由 | 再評価する変化 |
 |---|---|---|
-| User config | guild/channel、固定 member、利用者向けschedule/slot、dev mention抑止 | YAML本文を `src/userConfig.ts` が zod parse |
-| Environment | secret、DB接続、config YAML本文、deploy metadata | `src/env.ts` が起動時に一度 parse |
-| Internal config | outbox、scheduler、retention、metrics 等の信頼性 tuning | `src/config.ts` |
+| 複数 instance、外部 cron | 固定 4 人の負荷を単一 process で扱える | 可用性・負荷・provider 能力が変わる。scheduler、leader、claim、復旧を一体で設計する |
+| DI container / Effect Layer、全 port の Effect 化 | factory / AppContext と Promise ports で依存が見える | 依存 graph・resource lifetime を現在の合成で表せなくなった |
+| XState | pure decision と CAS で状態遷移が閉じる | 並行・階層・履歴状態や guard が複雑になる |
+| event sourcing | 現在の DB 状態で要件を満たす | replay / 履歴監査が要件になる |
+| broker / 外部 queue | PostgreSQL outbox で規模と運用を満たす | throughput・順序待ち・遅延・保守が実測上の制約になる |
+| OpenTelemetry 等の追加観測基盤 | 単一 process の log / status で追跡できる | service 間 trace や SLO の運用が必要になる |
 
-- application code は parse 済みの `env` / `appConfig` / exported constant だけを使う。
-- `process.env`は既存の設定入口と明示したCLI入口に限定する。`src/notifications/cli.ts` と `src/commands/sync.ts` / `sync.worker.ts` は用途別の運用設定だけを注入し、Bot全体のenv読込やDiscordログインを行わない。同期設定の検証は `sync.settings.ts` が所有し、本番は明示した token / application ID / guild ID を必須とする。開発用 token / YAML 入力は既存 command の契約として維持し、開発側も ID 明示方式へ移行する際に整理する。
-- user config は重複しない固定4名のidentityを検証し、起動時に表示名と一つのtransactionでDBへreconcileする。過去履歴を守るため、設定から消えたmember rowは自動削除せず、既存IDも再利用しない。新規IDの生成はreconcileが所有し、設定の配列順に依存させない。
-- pino の構造化 JSON を stdout へ出す。`console.*` は使用しない。
-- log messageとDBへ保存する失敗診断は固定文言・分類とし、必要な識別子・状態・診断分類を構造化して出す。token、接続文字列、Authorizationのkey redactは追加防御として維持する。Discord rate limitはroute templateと待機時間を記録し、tokenを含み得るmajor parameterは記録しない。
-- Interaction payload や SQL bind を丸ごと記録せず、必要な識別子と状態遷移の `from` / `to` / `reason` に限定する。
-- 外部 healthcheck ping はアプリから送信しない。運用観測は構造化ログと `/status` を基本とする。
-- A/B有効化は受信token・別の運用token・Web originの3項目を一組にする。部分設定や同じtokenの兼用を起動時に拒否する。状態・設定・再試行の専用CLIは[通知運用](operations/result-notifications.md)を参照する。
-
-OpenTelemetry は、単一 service のログ調査に collector / backend 運用を追加する価値がないため採用しない。複数 service の trace、SLO、相関 ID 横断が必要になったとき再評価する。
-
-## 8. 主要な非採用案
-
-| 案 | 現在採用しない理由 | 再評価条件 |
-|---|---|---|
-| DI container | factory と `AppContext` で graph が追える | resource lifecycle と provider 数が factory で追跡困難になる |
-| XState | typed state + pure decision + DB CAS で十分 | 並行/履歴状態や複雑な guard が増える |
-| ports・DIのEffect化 | application operationのEffect合成と既存Promise portsで依存を追跡できる | resource graphが既存AppContextで表現困難になる |
-| Event sourcing | 過去時点再構成・監査要求がない | replay、監査、過去ルール再計算が要件になる |
-| OpenTelemetry | 単一serviceの構造化ログで足りる | 複数service traceとSLO運用が必要になる |
-| 外部message broker | PostgreSQL outboxで規模と運用を満たす | outbox量・latency・運用負荷がbroker導入コストを上回る |
-
-## 9. 変更時の検証
-
-変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。
-
-- dependency direction: `pnpm verify:forbidden`
-- type/error/port contract: `pnpm typecheck` と unit tests
-- scheduler: fake clock、明示同期点、due-kind一回制約、wake/supervisor fallback
-- registry: duplicate/prefix conflict の fail-fast tests
-- startup/reconnect: readiness、in-flight lock、scope別 recovery tests
-- DB semantics を変える場合: `docs/db-rule.md` に従い real DB contract tests
+実装確認の入口は [runtime](../src/runtime/)、[scheduler](../src/scheduler/)、[notifications](../src/notifications/)。変更が壊し得る境界を [テスト規約 §6](./test-rule.md#6-変更種別ごとの必須テスト) で選び、[§8 の gate](./test-rule.md#8-quality-gate) まで確認する。

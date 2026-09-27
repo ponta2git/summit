@@ -1,6 +1,6 @@
 # Secrets Rotation
 
-Fly secrets として管理される秘匿値の rotation 手順と影響範囲。secretとloggingの実装規則は`docs/dev-rule.md`、設定境界は`docs/architecture.md`を参照する。
+Fly secrets として管理される秘匿値の rotation 手順と影響範囲。設定・log の実装境界は [Architecture §7](../architecture.md#7-設定と観測)、local file の扱いは [開発規約 §7](../dev-rule.md#7-environment-と-secret) を参照する。
 
 ## 対象 secrets
 

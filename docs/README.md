@@ -8,14 +8,16 @@
 |---|---|---|
 | 誤字・リンク・説明の修正 | 対象箇所・参照先 | 契約の意味も変わるなら下の該当行 |
 | 状態、締切、順延、参加条件、週キー | `requirements/base.md` の該当仕様 | 時刻計算は `docs/time-rule.md` |
-| feature / handler / workflow の境界 | `docs/architecture.md` §2〜5 | Discord の応答や入力も変わるなら `docs/discord-rule.md` |
-| Interaction、custom ID、表示・通知 | `docs/discord-rule.md` の該当章 | 業務挙動は `requirements/base.md`、永続化は `docs/db-rule.md` |
+| module の配置・依存方向、DI、Effect・error | `docs/architecture.md` §2〜5 | domain 固有の入出力が変わるときだけ DB / Discord 規約 |
+| Interaction、custom ID、表示・通知 | `docs/discord-rule.md` §1〜6・§8 | 業務挙動は `requirements/base.md`、永続化は `docs/db-rule.md` |
+| slash definition、同期 CLI・REST・子 process | `docs/discord-rule.md` §3・§7 | command 入力は `docs/dev-rule.md` §2、本番実行は同期 SOP |
 | scheduler、startup、reconnect、shutdown | `docs/architecture.md` §6 | 永続化・競合は `docs/db-rule.md`、実障害は該当 runbook |
-| OCR・分析通知の受付・配送 | `requirements/base.md` §11、`docs/db-rule.md` | 接続・起動は `docs/architecture.md`、運用 retry は `docs/operations/result-notifications.md` |
-| repository、transaction、outbox | `docs/db-rule.md` の該当章 | schema / migration 自体を変えるときだけ次の行 |
-| schema / migration の作成・変更 | `docs/db-rule.md` §1、`../momo-db/docs/development.md` | 適用・復旧は `docs/operations/migration.md` |
+| OCR・分析通知の受付・配送 | `requirements/base.md` §11、`docs/db-rule.md` §6〜7 | lifecycle は `docs/architecture.md` §6、表示は Discord 規約 §6、運用 retry は A/B runbook |
+| port、transaction、出欠 outbox | `docs/db-rule.md` §2〜5 | retention は §7、旧 reminder 互換は §8、schema 変更時だけ次の行 |
+| schema / migration の作成・変更 | `docs/db-rule.md` §1・§9、`../momo-db/docs/development.md` | 適用・復旧は `docs/operations/migration.md` |
 | JST、deadline、ISO week、clock | `docs/time-rule.md`、`src/time/` | 業務上の意味は `requirements/base.md` |
-| test、fake、race、CI | `docs/test-rule.md` の該当章 | 検証対象の契約が不明なら領域の正本 |
+| test、fake、race、CI | `docs/test-rule.md` §6 で契約、§8 で gate を選ぶ | 設計方法は §1〜5、real DB の実行条件は §7 |
+| env / user config、log、秘匿値の実装 | `docs/architecture.md` §7 | local file は `docs/dev-rule.md` §7、rotation は該当 runbook |
 | command、外部資料、命名、Git・PR・Linear | `docs/dev-rule.md` の該当章 | 品質 gate は `docs/test-rule.md` §8 |
 | 障害調査、本番操作、復旧 | `docs/operations/README.md` から該当 runbook | 操作の原因や設計を変える場合だけ領域の正本 |
 | agent 規約・skill・文書体系 | 本書 §2・§4〜7、変更対象 | 確認シナリオは `docs/test-rule.md` §10 |
@@ -31,12 +33,12 @@
 | `AGENTS.md` | 依頼の完了、判断・権限の境界、必要な根拠と報告 |
 | `requirements/base.md` | ユーザーに見える業務仕様、用語、状態、締切、順延 |
 | `docs/README.md` | 文書の選択・所有権・競合解消・保守方針 |
-| `docs/architecture.md` | runtime 構造、依存方向、scheduler、DI、error・設定境界 |
-| `docs/discord-rule.md` | ack、入力検証、routing、custom ID、再描画、通知 |
-| `docs/db-rule.md` | DB 所有権、書込境界、transaction、outbox、migration の consumer 契約 |
+| `docs/architecture.md` | module 所有・依存方向、DI、非同期処理、scheduler / lifecycle、設定・log |
+| `docs/discord-rule.md` | ack、guard、route / definition、custom ID、表示・通知、standalone command 同期 |
+| `docs/db-rule.md` | schema 所有権、port、集約競合、出欠 / A/B の永続化、retention、migration consumer |
 | `docs/time-rule.md` | JST、ISO week、clock、deadline の計算契約 |
 | `docs/test-rule.md` | テスト設計、変更別 gate、agent 規約の確認シナリオ |
-| `docs/dev-rule.md` | toolchain、command、資料確認、source layout、命名、comment、Git・PR・Linear |
+| `docs/dev-rule.md` | toolchain、command の入力・副作用、資料確認、TypeScript・命名・comment、local DB、Git・PR・Linear |
 | `docs/operations/` | 実行可能な運用 SOP、禁止窓、操作後の確認と復旧 |
 | `../momo-db/docs/development.md` | schema / migration authoring、custom SQL、検証・rollback |
 | `src/config.ts`, `src/env.ts`, `src/userConfig.ts`, `src/time/` | 実行される設定値・parse・時刻計算 |

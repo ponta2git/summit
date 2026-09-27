@@ -1,197 +1,135 @@
 # Database Rule
 
-Summit が共有 PostgreSQL を利用する際の所有権、persistence boundary、transaction、race、Discord outbox、migration 契約を定める。schema の実装正本は sibling `momo-db` リポジトリにあり、Summit はconsumerである。
+Summit が共有 PostgreSQL を使うときの所有権・原子性・再送契約を定める。出欠は §3〜5、OCR・分析通知（A/B）は §6、詳細削除は §7、schema 変更は §1・§9 を読む。業務上の状態と期限は [requirements](../requirements/base.md) が正本。
 
 ## 1. Schema と migration の所有権
 
-- `../momo-db` の schema、migration、Drizzle 設定・script、または DB の migration state を変更する前に、`../momo-db/docs/development.md` を最初から最後まで読み、その手順に従う。checkout / 文書の欠落や Summit 規約との矛盾があれば停止し、Summit 側で独自の authoring 手順を補わない。
-- schema、constraint、migration SQL、Drizzle設定は `../momo-db/src/schema.ts`、`../momo-db/drizzle/`、`../momo-db/drizzle.config.ts` が所有する。
-- Summit の `src/db/schema.ts` は `@momo/db` のre-export shimであり、独自schemaを追加しない。
-- 通常の schema migration と custom SQL migration の作り分け、履歴の不変性、data safety、検証、rollback は momo-db の正規文書だけを正本とする。
-- `drizzle-kit push`は使用しない。migration履歴を飛ばすschema同期は再現性とreviewを失うためである。
-- 本番migrationはdeployから独立して先行適用する。SummitのFly deployにrelease commandを追加しない。
-- applicationはpooled `DATABASE_URL`、migrationだけがunpooled `DIRECT_URL`を使う。Summit runtimeに`DIRECT_URL`を導入しない。
-- sibling repositoryのcheckout/buildが必要なため、local setup、Docker build、CIの相対配置を崩さない。
+schema、migration 履歴、Drizzle 設定は sibling [momo-db](../../momo-db/) が所有する。Summit は consumer であり、`src/db/schema.ts` の shim に schema 定義を複製せず、migration tool を追加しない。`drizzle-kit push` は使わない。
 
-共有DBが不要になった場合はrepository統合を、consumerが増えた場合はversioned package distributionを再評価する。file dependencyのままconsumer数だけを増やさない。
+schema / migration を作成・変更するときは、**着手前に [momo-db の開発手順](../../momo-db/docs/development.md) を全文読む**。対象 DB の migration 状態も確認する。checkout がない、手順と実態が矛盾する場合は、それに依存する authoring / 適用を進めない。Summit 側で代替手順を推測せず、独立した consumer 調査は続ける。
 
-## 2. Client とquery safety
+runtime は pooled `DATABASE_URL` を使い、migration 用の unpooled `DIRECT_URL` は momo-db の経路に限定する。本番 migration は app deploy と独立して先に適用し、Fly release command へ組み込まない。sibling の配置と build 順序は現在の package 構成に合わせる。consumer が増えて配置が制約になったときに package 配布を再評価する。
 
-- application DB clientは`src/env.ts`で検証済みの接続情報だけを使う。
-- postgres.jsはpooler互換設定を維持する。具体optionは`src/db/client.ts`を正本とする。
-- user inputを`sql.raw()`へ渡さない。動的column/orderはallowlistから選ぶ。
-- SQL bind値とconnection stringをlogへ出さない。
-- production DBへの手動`INSERT`、`UPDATE`、`DELETE`、`TRUNCATE`、`DROP`で状態を修復しない。reproducible migration、application recovery、documented runbookを使う。
-- local resetは`scripts/dev/reset.ts`のhost guardを通る`pnpm db:reset`だけを使う。
+## 2. DB に残す不変条件
 
-## 3. DB を正本にする
+Session、Response、HeldEvent、notification intent が状態の正本。Discord の失敗で確定済み DB を巻き戻さず、再実行時は現在の DB から回復する。process 内 lock や事前 read だけで、次の制約を代替しない。
 
-- Session、Response、HeldEvent、delivery intentの正本はPostgreSQL。
-- Discord message、in-memory timer、Promise lock、process readinessは派生状態。
-- Discord API失敗でpersist済み状態を巻き戻さない。
-- cron、startup、reconnectは毎回DBを読み、同じ処理を複数回実行しても同じ状態へ収束させる。
-- uniqueness、allowed state、foreign key、check constraintはDBでも守り、applicationだけの事前checkに依存しない。
+| 対象 | DB が守る契約 |
+|---|---|
+| Session | week と順延区分の unique、許可された状態 |
+| Response | Session + member の unique |
+| HeldEvent | Session との unique な対応、確定時点の参加者 |
+| notification | 全 status を通じた dedupe identity |
+| 出欠 intent | Session revision + ordinal の一意性と順序 |
+| 関連 row | FK / check / status 制約。途中状態を別々の commit に分けない |
 
-主要な一意性の意味:
+DB client は parse 済み設定と `src/db/client.ts` の pooler 設定を使う。値は parameter 化し、user input を `sql.raw` に渡さない。動的 identifier / order が必要なら allowlist で固定する。接続文字列・SQL bind・driver の未加工 error は log / HTTP に出さない。
 
-- 同じweek/postpone段階のSessionを一件にする。
-- 同じSession/memberのResponseを一件にする。
-- 同じSessionから作るHeldEventを一件にする。
-- 同じ意味のdelivery intentをstatusにかかわらず一件にする。
-- 同じSession revision/ordinalの意味順序を一件にする。
+本番データを手動の INSERT / UPDATE / DELETE / TRUNCATE / DROP で修復しない。application の回復経路、履歴付き migration、該当 [runbook](./operations/README.md) を使う。local reset は [開発規約 §8](./dev-rule.md#8-local-db) の guard 付き経路を使う。
 
-列名、index名、enum値はmomo-dbのschemaが正本なので、本書には複製しない。
+## 3. Port と書込の所有者
 
-## 4. Port とwrite boundary
+[port interface](../src/db/ports.ts) を consumer 契約とし、実装と fake を揃える。handler が複数の低水準 write を組み合わせて集約 command を再実装しない。
 
-`src/db/ports.ts`をapplicationから見たDB契約の正本とする。
+| Port / 操作 | 所有する単位 |
+|---|---|
+| Sessions | read、作成、message ID 保守、scheduler hint。業務遷移は持たず、初回 message ID は null 条件の CAS で保存 |
+| SessionCommands | Session lock 後の member・回答・締切・状態判断と、Response・状態・revision・intent の一括確定 |
+| HeldEvents | DECIDED の完了と開催履歴・参加者の同時確定。参加者はその Session の回答から得て、現行 config から再生成しない |
+| Outbox | 出欠 family の enqueue、claim、配送確定、回復、retention。message 欠落の復旧判断は SessionCommands に委ねる |
+| ResultNotifications | A/B の raw JSON 受付、設定、配送、inspect / retry、retention。§6 の共有 DB 契約を守る |
+| Status | `loadCurrentWeekSnapshot` で Session / Response / HeldEvent をまとめて取得。join の知識を閉じ、他 port に画面都合の汎用 batch API を増やさない |
 
-### `SessionsPort`
+cancelled / skipped を開催履歴にしない。必須通知 intent は、その原因となる集約変更・作成と可能な限り同じ transaction に置く。notification の parent / relation / parts は共有保存構造を使い、出欠の relation と A/B の relation を混同しない。業務判断の所有者は application command とし、DB function / trigger へ移さない。
 
-- read model、初回Session作成、message ID maintenance、scheduler hintを扱う。
-- business transitionを公開しない。
-- message ID backfillはNULLに対するCASでcanonical messageを先勝ち決定する。
+## 4. 競合時の判断
 
-### `SessionCommandsPort`
+read-modify-write は transaction と期待値付き CAS で閉じる。競合負けは typed result として返し、必要なら最新状態を表示する。古い Interaction snowflake が新しい Response や aggregate revision を上書きしないよう fencing する。ask の process 内重複抑止に加え、DB unique を最終防衛線とする。
 
-- Session aggregateのwrite boundary。
-- Sessionを先にlockし、member、deadline、Response、current statusを同じsnapshotで評価する。
-- Response、state transition、aggregate sequence、delivery intentを同じtransactionで確定する。
-- handlerが`ResponsesPort`と`SessionsPort`のwriteを組み合わせて独自transactionを作らない。
+`cancelWeek` は Session を決定論的な順序で lock する。金曜 Session の lock 待機中に土曜が作成され得るため、**金曜 lock の取得後、別 statement で週全体を読み直す**。Session がない場合も sentinel で後続作成を抑止し、週 skip、競合 intent の取消、通知 intent を一 transaction で確定する。Discord I/O は transaction の外で行う。
 
-### `HeldEventsPort`
+根拠は [SessionCommands](../src/db/repositories/sessionCommands.ts) と [金曜 lock 待機中の順延テスト](../tests/integration/cancelWeek.postpone-race.test.ts)。fake で SQL lock / MVCC を証明した扱いにしない。
 
-- 実開催履歴だけを扱う。
-- `DECIDED`からterminal状態へのtransitionとHeldEvent/participantsの作成を同じtransactionで行う。
-- 参加者は現在のconfigではなく、そのSessionに保存された回答snapshotから決める。
-- 中止・skipされたSessionからHeldEventを作らない。
+## 5. 出欠 outbox
 
-### `OutboxPort`
+### Identity と順序
 
-- 共通通知 DB の attendance family に限定し、enqueue、claim、送信開始、delivery確定、retry、retention、metrics、next dispatch hintを扱う。欠落messageの復旧判断はSession aggregate commandが所有し、汎用enqueueへ古いSession snapshotの判断を持ち込まない。
-- business transitionからのenqueueは、可能な限り`SessionCommandsPort`またはSession作成transaction内で行う。
-- A/B の設定・固定 payload・取消は [momo-db の共有通知契約](../../momo-db/docs/discord-notifications.md) に従う。既存アンケートの設定・順序・起動時回復を A/B へ適用しない。
+必須の新規投稿は typed intent として保存する。対象は実装済みの募集・順延・締切収束・投票・決定・reminder・週取消であり、未実装 kind を先回りして追加しない。
 
-## 5. Transaction とrace
+同一集約は revision / ordinal 順に処理し、先行 PENDING や dead-letter を飛ばさない。dead-letter の後続は取消し、dedupe identity は終端状態でも保持する。retry のために別 row を作らない。
 
-- read-modify-writeをtransaction外で行わない。
-- state transitionは期待from-stateを条件にしたCASとして実行する。
-- race lostはerrorではなくtyped result/no-opとして返し、最新rowを再取得して表示を収束させる。
-- interaction由来ResponseはDiscord snowflakeでfenceし、遅れて届いた古いInteractionが新しい回答やaggregate revisionを上書きしない。
-- 同時`/ask`とcalendar tickはprocess内in-flight最適化とDB uniqueの二段で吸収する。正しさはDB uniqueが担う。
-- `/cancel_week`は対象Sessionを決定論的順序でlockし、skip、競合intent取消、通知intentを一つのtransactionで確定する。金曜lockの待機中に順延transactionが土曜を作成し得るため、金曜を保持した後の新しいstatement snapshotで週全体を再読込する。Session未作成時はsentinelで後続作成を抑止する。
-- transaction中にDiscord APIを待たない。
+不正 payload / 状態や未対応 renderer は FAILED（dead-letter）にする。claim transaction 内の不正 row は item 単位で隔離し、他 Session の正常な claim を巻き戻さない。`/status` は保存状態から集計し、本文を parse しない。claim / read / cancel / parts は必要な projection を使い、一度取得した batch 本文を無目的に読み直さない。projection の最適化でも validity と fencing を落とさない。
 
-## 6. アンケートの Discord 配送
+### 配送の境界
 
-PostgreSQLとDiscordを同一transactionにできないため、業務上必須の新規投稿はtyped delivery intentとしてDBへ保存し、at-least-onceで配送する。
+| phase | 契約 |
+|---|---|
+| claim | token で owner と期限を定める。共有 `notifications.dispatch` では family と処理中 ID の除外を維持する |
+| send 直前 | begin で有効 claim・取消・期限を再確認する。失効 / claim loss なら送信しない |
+| send 後 | 有効 owner だけが CAS で確定する。旧 owner の確定は no-op |
+| 初回 message | null 条件の CAS で canonical message ID を保存する |
+| retry / 次回起動 | retry limit は config。PENDING の retry と claim expiry を分けて次時刻を得て、終端履歴全体を毎回 scan しない |
 
-保存先は共有通知本体とアンケート関連・配送部分の組合せとする。repository が attendance DTO を組み立て、アプリケーションの command として claim / 開始 / 確定 / 整理を実行する。通知の業務関数・trigger は DB に置かない。A/B は Session を作らず、別 family の契約で接続する。
+Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確定前の停止や claim expiry では外部投稿が重複し得るため、欠落回避を優先する。DB fencing を exactly-once 配送の保証と表現しない。
 
-### Enqueue と順序
+reminder tick は enqueue までを行う。Discord 受理後に Session 完了と HeldEvent を原子的に確定し、その後 delivered を記録する。送信 skip の経路も同じ完了 command を使う。再送の可能性があっても、開催履歴を欠落させない。
 
-- 初回募集、順延募集、settlement通知、順延確認、開催決定、reminder、週取消通知をtyped rendererで表現する。
-- Session aggregate revisionと同一変更内ordinalで意味順序を付ける。
-- workerは同じSessionの未完了またはdead-letterの先行intentを飛び越えない。
-- 先行intentがdead letterになった場合、意味上の後続を取消し、誤順序の通知を防ぐ。
-- dedupe keyはstatusを問わず一意とし、retryのために別rowを作らない。
-- 実装済みkindだけをschema/rendererへ公開する。宣言だけで処理経路のないkindを追加しない。
+### 回復
 
-### Claim とdelivery
+期限切れ claim は試行数に応じて PENDING / FAILED へ戻す。FAILED chain の再投入は startup に限定し、attempt と失敗に伴う後続取消を同じ transaction で戻す。手動取消と A/B は復活させず、reconnect / tick の hot loop にしない。
 
-- claimごとに所有権tokenを発行する。
-- Discord 呼出し直前に beginDelivery を行う。取消・期限切れ・所有権喪失なら送らない。
-- delivered/failedの確定は同じ有効tokenのownerだけが成功できる。
-- claim expiry後は旧workerと新workerの両方がDiscord受理へ到達し得る。古いownerのDB確定はno-opにするが、外部投稿の重複までは排除できない。
-- message ID backfillはCAS-on-NULLでcanonical messageを決める。
-- Discord受理後・DB確定前のcrashでは、欠落より重複を選ぶ。
-- payload/state mismatchや未対応rendererは握りつぶさずdead letterへ送る。
-- 保存payloadのshape不正はclaim transaction内でrowごとにFAILEDへ隔離し、別Sessionの健全なclaimをrollbackしない。`/status`用の診断取得は配送payloadをparseせず、必要な状態列だけを読む。
-- retry/backoff/max attempt/claim duration/batch sizeの実値は`src/config.ts`が正本。
-- claim制御・part更新・状態照会では必要な状態列だけを読む。配送本文はclaimが確定したバッチから一度取得し、取消確認のために本文を読み直さない。対象の生存確認とclaim fencingは省略しない。
-- 次回配送時刻はPENDINGのretry時刻と残存claimの期限を別々に検索する。永久保持する終端履歴の全走査を避け、family・処理中IDの除外を共通の`notifications.dispatch.ts`で扱う。
+message ID が null の候補は、Session lock 後に現在の状態と ID を再確認してから予約 ordinal の intent を補う。古い候補 read だけで enqueue しない。`UnknownMessage` の best-effort 再作成は [Discord 規約 §5](./discord-rule.md#5-永続化後の表示更新)。
 
-### Reminder completion
+実装と契約例は [outbox repository](../src/db/repositories/outbox.ts)・[attendance 共通契約](../tests/contracts/attendance.ts)・[outbox integration](../tests/integration/outbox.contract.test.ts)。運用 retry / 観測は [outbox runbook](./operations/outbox.md)。
 
-- reminder schedulerはdue intentのenqueueだけを行う。
-- workerがDiscord受理後、Session completionとHeldEvent作成を同じDB transactionで確定し、その後intentをdeliveredにする。
-- reminder不要条件ではDiscordを介さず同じcompletion contractへ収束する。
-- Discord受理とcompletionの間で停止した場合はreminderが重複し得るが、HeldEvent欠落を避ける。
+## 6. OCR・分析通知の保存と取消
 
-### Recovery
+[共有通知契約](../../momo-db/docs/discord-notifications.md) と [ResultNotifications 共通テスト](../tests/contracts/resultNotifications.ts) を使う。A/B は Session に従属せず、出欠の再投入・retention・claim release に混ぜない。
 
-- expired claimはreconcilerが回復し、試行上限内ならPENDING、上限到達ならFAILEDにする。
-- poison payloadのFAILED chain復帰はstartupだけで行い、attemptと先行失敗に由来する後続cancelを同じtransactionでresetする。手動週取消と A/B の通知は復帰させない。
-- reconnectや定期supervisorでFAILEDを無条件復帰させずhot loopを防ぐ。
-- non-terminal Sessionのmessage IDがNULLなら、直接sendせず予約ordinalのrecovery intentをenqueueする。候補一覧のsnapshotだけで確定せず、Session lockを取得したaggregate command内で現在状態とmessage IDを再検査し、週取消後の募集intent復活を防ぐ。
-- Discord上で既存messageが削除済みと確認できた場合のedit対象再生成はbest-effort reconcilerが担う。
+### 受付と generation
 
-外部brokerは現在採用しない。DB outboxの量、head-of-line blocking、latency、maintenance costがbroker追加コストを上回る場合に再評価する。
+受付では parent、固定 payload、result relation、取消対象と PENDING / CANCELLED を一 command で確定する。OCR v2 / analysis v1 の version を**既存 ID との照合より先に**検証し、同一 ID でも旧 OCR の再受付を拒否する。受け取った schemaVersion を保存する。
 
-## 7. Retention とobservability
+content hash は JSONB と互換な数値・文字列の扱いを維持する。JSON の decimal を JS number へ丸めてから同一性を判断しない。通知 ID の生成と ops path の検証は `@momo/db/notifications` に集約し、ID の形と version / content の受入可否を別々に判断する。
 
-- active stateはpruneしない。
-- terminal 通知は status 別 policy で本文・配送詳細を整理し、通知 ID / dedupe / 内容照合情報と終端状態を永久保持する。本文整理後の失敗通知を起動時に復帰させない。
-- retention schedule と consumer の cutoff は `src/config.ts`、アプリ間の保持期間と整理条件は momo-db の共有通知契約を正本とする。判断・実行はアプリが所有する。
-- 保持期限とconsumer cutoffの両方を満たす行だけをlockし、上限付きの一括更新で詳細を整理する。複数バッチでも一つのcommandとしてrollbackでき、IDと内容照合情報を残す。
-- metricsはpending/in-flight/failedとoldest ageを構造化logへ出す。
-- warn thresholdは`src/config.ts`が正本。
-- `/status`はstranded Session/outbox/HeldEvent invariantをread-onlyで表示する。
-- 外部healthcheck pingをoutboxやschedulerへ混在させない。
+ON / OFF、generation 更新、未開始通知の取消を原子的に行う。momo-result API も共有 DB を直接更新し、Summit の起動を設定変更の前提にしない。receipt / begin / retry は共通 result gate を経由して commit 済み generation / OFF を観測する。
 
-詳細な調査・復旧は`docs/operations/outbox.md`と`docs/operations/recovery.md`を参照する。
+### Lock 順序と取消
 
-### A/Bの受付・取消・配送
+`notificationTransaction` は READ COMMITTED と family gate を使う。source の業務 write を先に済ませ、末尾で result gate と通知取消へ進む。gate 後に source row lock を取り直さず、Discord I/O を入れない。consumer 間の lock 順序は共有契約に合わせる。
 
-`ResultNotificationsPort`は生JSON受付、設定、配送、状態照会、明示再試行、保持を所有する。real/fakeに共通の契約testを適用し、数値精度・transaction・競合は実DBで検証する。本文形式と取消・再試行判断は`src/domain/`、更新境界は`resultNotifications.*`と`notifications.*`のrepositoryに置く。
+OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後の statement で開始済み part を確認する**。全 batch と設定更新は一 transaction に含める。途中 commit と全 backlog の一括メモリ読込を避ける。
 
-- 受付は親・固定payload・結果関連・取消対象とPENDINGまたはCANCELLEDを一つのcommandで保存する。OCR v2・分析v1の対応versionを確認してから既存IDの内容を照合する。旧OCRは同一内容の再受付も拒否する。受信schemaVersionを保存列へ明示する。hashは旧JSONB数値正規化と互換にし、JSの数値丸めを使わない。
-- 設定変更はON/OFF・世代・未開始部分取消を同じcommitに含める。利用者向け設定はmomo-result APIが共有DBへ直接保存し、Summitの稼働に依存しない。Summitの運用設定commandと同じresult gateを使うため、受付・送信開始・再試行はAPIがcommitした世代とOFFを観測する。対象変更はmomo-resultの業務commandの末尾で通知を取り消す。transactionの集約単位とlock順はアプリの契約であり、DBの機能に判断を任せない。
-- `notificationTransaction`はREAD COMMITTEDとfamily gateを指定する。対象writerは業務行を書いてからresult gateを取得する。gate取得後は業務行のlockを取らず、Discord I/Oを行わない。全writerの取得順は[共有契約](../../momo-db/docs/discord-notifications.md#アプリケーションの更新境界)を守る。
-- 初回描画でrenderer・部分数・リンクorigin・チャンネルを保存する。各partの開始・結果確定は有効なclaimと順序を再検査する。取消時は開始済みpartの確定だけを許し、親を復帰させない。
-- 設定OFFの取消はID順の上限付きbatchで親をlockし、単件取消と同じ更新を使う。対象を全件メモリへ載せず、開始済みpartの判定は親lock取得後のstatementで行う。全batchを設定と同じtransactionに保ち、途中commitで原子性を分割しない。
-- 保持期限後の整理も上限付きbatchで処理し、呼出元へは状態別件数だけを返す。batchを跨いで対象行を蓄積せず、元の保持期限・進行中の除外・恒久identityの保全を維持する。
-- 通知IDの生成・入力検証・運用pathの検証は`@momo/db/notifications`の共通helperを使う。payload versionと既存IDの内容照合は受付の責務として分離する。
-- リンクoriginの検証はdomainの共通制約を使い、設定・保存計画・rendererで同じ判定にする。DB repositoryは表示用のリンクbuilderへ依存しない。
-- claim・次回時刻の検索とinspect/retryは同じ対応versionに限定し、旧OCRの履歴は変更しない。
-- A/BのFAILEDは起動時に復帰させず、保持中で取消条件のない行だけを明示retryする。期限回収・保持もfamilyを限定し、既存Session回復と混ぜない。
-- DB driverの例外には生payloadやSQL bindが含まれ得るため、result portは安全な分類だけを境界へ返し、元のcauseをlog・HTTPへ渡さない。
+取消は新しい part の開始を止める。開始済み part の結果保存は許すが、親通知を復活させない。
 
-旧resultの部分計画にdelivery contextがない場合は宛先を推測して再送しない。旧rendererを撤去する条件と移行手順は[通知運用](operations/result-notifications.md)に従う。
+### 配送と互換性
 
-## 8. Legacy reminder marker bridge
+最初の plan で renderer、part 数、origin、channel を固定する。各 part の開始・確定は有効 claim と順序を検証する。origin 検証は config / plan / renderer で共有し、DB 層を表示 link builder に依存させない。
 
-旧claim-first reminder経路が残したmarkerは、migrationで書き換えず監査値として保持する。`DECIDED`かつreminder dueのSessionはmarkerの有無で除外せず、現在のoutboxへenqueueする。外部送信済みか不明な場合は、重複を許容して欠落を避ける。
+claim / 次時刻取得 / inspect / retry は同じ対応 version を扱う。退役 OCR の既存 identity は維持し、通常配送や retry に戻さない。A/B の FAILED は期限内・未取消の明示 retry だけを許し、startup で自動復活させない。ResultNotifications port は DB driver error を安全な分類へ変換し、raw payload / bind / cause を HTTP や log に漏らさない。
 
-この互換処理は次をすべて満たすまで削除しない。
+古い plan に delivery context がなければ宛先等を推測して再送しない。renderer 互換を残す条件と停止切替は [A/B runbook](./operations/result-notifications.md)。受付・設定競合・rollback の根拠は [実 DB テスト](../tests/integration/resultNotifications.transactions.test.ts)。
 
-1. 対象となる全環境が現在のoutbox migrationを適用済みである。
-2. production auditで旧経路由来の`DECIDED` reminder markerを持つ未完了Sessionが存在しない。
-3. startup/recoveryのcontract testから旧marker fixtureを外しても、旧versionからupgradeするsupported pathが残らない。
-4. 撤去PRに監査結果、rollback方法、migration compatibilityの確認を記録する。
+## 7. Retention と観測
 
-日付だけ、または「しばらく問題がなかった」だけを撤去根拠にしない。
+active notification は削除対象にしない。終端状態ごとの policy で payload / parts 等の詳細だけを削り、ID・dedupe・content hash・終端状態は恒久保持する。詳細削除済み FAILED を retry で復活させない。
 
-## 9. Migration protocol
+retention deadline と consumer cutoff の両方を満たす対象を、bounded batch の lock 付き command で原子的に処理する。backlog 全件をメモリに読み込まず、status 別件数を返す。cutoff と閾値の正本は config と共有契約。根拠は [retention integration](../tests/integration/notifications.retention.test.ts)。
 
-1. `requirements/base.md`と設計文書で必要な契約を確認する。
-2. `../momo-db/docs/development.md` に従って migration の分類、生成、SQL review、fresh / existing DB 検証、commit を行う。
-3. Summit側のconsumer codeとreal DB integration testを更新する。
-4. backupとdeploy禁止窓を確認する。
-5. momo-db の production approval と migration 完了を確認してからapplicationをdeployする。
+pending / in-flight / failed の件数と経過時間を観測する。`/status` は read-only を保ち、配送・再投入・詳細 parse を行わない。log の形式と秘匿境界は [Architecture §7](./architecture.md#7-設定と観測)、障害判断は該当 runbook が所有する。
 
-互換期間が必要な変更はexpand→application→contractの順で行う。migrationに曖昧なbusiness state修復を混ぜず、危険な既存dataはfail-closed preflightで停止する。
+## 8. 旧 reminder marker の互換性
 
-所有者が停止切替を選んだ共有通知の再構成は、momo-db の正規文書に従い全 writer・配送を止めて DB と consumer を一括で切り替える。開催履歴・参加者・試合を保全し、既存アンケートの reminder completion を確認してから再開する。
+旧 reminder marker は監査情報として保持し、migration で書き換えない。DECIDED かつ reminder due の Session は marker の有無にかかわらず現行 outbox へ enqueue する。移行時の重複を許容し、未完了の開催履歴を回復する。
 
-## 10. 変更時の検証
+互換処理を撤去するには、全環境が対応 migration 済みであること、本番監査で旧 marker に依存する未完了 Session が残っていないこと、対応 upgrade 経路が旧 fixture を必要としないことを確認する。PR に監査・rollback / compatibility の根拠を残し、日付だけを撤去条件にしない。
 
-変更で影響を受ける契約について、次の観点と `docs/test-rule.md` の品質 gate を適用する。DB 契約変更の real DB 検証は省略しない。
+## 9. Migration と deploy の接続
 
-- real portとfake portのcontractが一致する。
-- unique、CAS、transaction rollback、lock orderをreal DB integration testで確認する。
-- concurrent interaction、deadline、cancelが一つのwinnerへ収束する。
-- outbox dedupe、Session内順序、claim lost、dead-letter cancellation/recoveryを確認する。
-- Discord受理後のcompletion失敗で欠落ではなくretryへ進む。
-- migrationはmomo-dbの正規文書が要求する証拠と、Summit consumerのcontract checkを通す。
-- `pnpm verify:forbidden`でraw SQL、runtime DIRECT_URL、pushを検出する。
+authoring は §1 の手順に従い、requirements / 設計から必要な変更を特定する。momo-db 側の分類・生成・SQL review・新規 DB / 既存 DB の検証を行い、Summit の consumer と test を揃える。適用は [migration runbook](./operations/migration.md) に従う。local な文書・実装変更の完了条件に本番適用を追加しない。
+
+通常は expand → app 更新 → contract の互換順序を使う。業務状態を推測して修復する migration は作らず、危険な既存データは preflight で fail-closed にする。
+
+停止切替が必要な場合は、対象操作の権限・backup・禁止窓を確認し、全 writer と配送を停止する。開催履歴・参加者・試合を保全し、reminder の完了を確認してから再開する。
+
+DB 契約を変えたときは [テスト規約 §6](./test-rule.md#6-変更種別ごとの必須テスト)・[§8](./test-rule.md#8-quality-gate) の real DB 検証まで行う。文章の整理と DB 契約の変更は区別する。
