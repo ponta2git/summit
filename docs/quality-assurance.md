@@ -69,7 +69,7 @@
 
 | 特性 | 評価する性質 | 合格根拠と評価限界 |
 |---|---|---|
-| 性能効率性 | 応答遅延、保持資源、容量・公平性 | index の実行計画、入口と保守の上限、連続 wake 下の開始保証。実 Discord / Neon の p95・p99 は未計測で、速度改善率を推定しない |
+| 性能効率性 | 応答遅延、保持資源、容量・公平性 | index の実行計画、入口と保守の上限、連続 wake 下の開始保証。[通知性能レポート](./performance.md)でlocal DB・本番imageの上限負荷を計測。実 Discord / Neon の p95・p99 は未計測で、速度改善率を推定しない |
 | 信頼性 | 通常動作、可用性、故障隔離、復旧 | state / intent の原子性、lease、backoff、再起動回復、stop / drain の障害注入。単一 instance と外部停止の限界は残る |
 | セキュリティ | 秘匿、完全性、真正性、追跡可能性、攻撃への耐性 | actor / token 分離、parameter SQL、ログ非出力、資源制限、least privilege。共有 token の操作履歴は個人の否認防止署名ではない |
 | 保守性 | module 境界、再利用、原因分析、変更容易性、テスト可能性 | parser / heartbeat / lifecycle の責務集約、real / fake 共通契約、決定論的 race、検証器と実行 image の検証 |
@@ -92,6 +92,8 @@
 標準ケースは192 MiB以下の必須目標を達成した。本文は正規化後261,691 byte、HTTPは524,288 byteを使用し、配送時の取得batchは最大523,382 byteだった。両ケースで正規化後8,006,627 byteになる異内容の4受付を重ね、409と保存状態の不変を確認した。旧通知本体は8,382,648 byteで、他の配送との同時claimを許していない。旧ケースも今回の測定では192 MiB以内だったが、目標との差は約1 MiBにとどまる。標準ケースの余裕と同等には扱わない。RSSとcgroupは計上対象が異なるため、値を合算・同一視しない。
 
 fixture 生成と負荷 client は container 外に置き、計測には本番依存・非 root の image と実 DB を使う。起動後の baseline 取得時だけ GC を実行し、負荷中に手動 GC を挟まない。cgroup peak はコンテナ全体の高水位であり、host の負荷生成と別コンテナの PostgreSQL は含まない。Discord への実接続・長期 cache・heap 断片化・出欠の同時最大負荷はこの代表ケースに含まない。
+
+速度・CPU・heap の診断、旧8,823投稿の全件確定、100通知の連続負荷は[性能レポート](./performance.md)で別に測定する。上表は容量gateの結果であり、追加のprofile採取やCPU quota付き計測の数値と混在させない。
 
 payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
 

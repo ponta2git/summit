@@ -1,0 +1,1552 @@
+{
+  "manifest": {
+    "schemaVersion": 1,
+    "startedAt": "2026-09-29T12:35:55.921Z",
+    "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "hostRuntime": {
+      "node": "v24.19.0",
+      "platform": "darwin",
+      "arch": "arm64"
+    },
+    "sourceHashes": {
+      "src/db/repositories/notifications.delivery.ts": "7da188b81eaee61455ff379794d2b07a963e03e0d1e5efa94e41226ce27197ee",
+      "scripts/perf/notificationPerformance.explain.ts": "3c154b28d475d2cbe1e74fcf41943eec2ab3d2cc94faf92a21c16d27ca8fa6c8",
+      "scripts/perf/notificationPerformance.storage.ts": "6fe9feeb5d4e178ac5b213415ffda32e35c51de80724b09122870e64decc659a",
+      "../momo-db/src/schema.ts": "5b7efffd3018ec834f74f866c2fc2f4d62e14382bb0e2a8829ec9e5b48991fe8",
+      "pnpm-lock.yaml": "210ed2851fe1318b10c7981a20af652f49bafcd5d6f0897f3be5ee91282b25b6"
+    },
+    "settings": [
+      {
+        "name": "block_size",
+        "setting": "8192",
+        "unit": null
+      },
+      {
+        "name": "cpu_tuple_cost",
+        "setting": "0.01",
+        "unit": null
+      },
+      {
+        "name": "effective_cache_size",
+        "setting": "524288",
+        "unit": "8kB"
+      },
+      {
+        "name": "jit",
+        "setting": "on",
+        "unit": null
+      },
+      {
+        "name": "max_parallel_workers_per_gather",
+        "setting": "2",
+        "unit": null
+      },
+      {
+        "name": "random_page_cost",
+        "setting": "4",
+        "unit": null
+      },
+      {
+        "name": "seq_page_cost",
+        "setting": "1",
+        "unit": null
+      },
+      {
+        "name": "server_version_num",
+        "setting": "180004",
+        "unit": null
+      },
+      {
+        "name": "shared_buffers",
+        "setting": "16384",
+        "unit": "8kB"
+      },
+      {
+        "name": "track_io_timing",
+        "setting": "off",
+        "unit": null
+      },
+      {
+        "name": "work_mem",
+        "setting": "4096",
+        "unit": "kB"
+      }
+    ],
+    "indexes": [
+      {
+        "indexname": "discord_notification_parts_pk",
+        "indexdef": "CREATE UNIQUE INDEX discord_notification_parts_pk ON public.discord_notification_parts USING btree (notification_id, part_no)"
+      }
+    ],
+    "fixtures": [
+      {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 112,
+        "id": "explain-parts-112-first"
+      },
+      {
+        "position": "middle",
+        "frontier": 56,
+        "partCount": 112,
+        "id": "explain-parts-112-middle"
+      },
+      {
+        "position": "last",
+        "frontier": 111,
+        "partCount": 112,
+        "id": "explain-parts-112-last"
+      },
+      {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 8823,
+        "id": "explain-parts-8823-first"
+      },
+      {
+        "position": "middle",
+        "frontier": 4411,
+        "partCount": 8823,
+        "id": "explain-parts-8823-middle"
+      },
+      {
+        "position": "last",
+        "frontier": 8822,
+        "partCount": 8823,
+        "id": "explain-parts-8823-last"
+      }
+    ],
+    "methodology": {
+      "scope": "Two SELECTs from begin/complete only; not the full port commands or total delivery time",
+      "fixture": "Synthetic SQL-only parents with non-domain payload {}; no receiver, dispatcher or Discord is started",
+      "progress": "Static delivered prefixes with one additional UPDATE before complete; not a replay of delivery updates or autovacuum history",
+      "sampling": "One warmup plus three adopted executions per query; no p95/p99 interpretation",
+      "timing": "TIMING OFF removes per-node clock reads; total statement Execution Time is still measured and instrumentation remains",
+      "buffers": "Root counters include child nodes and repeated buffer accesses; counters are not distinct pages and are not summed across nodes",
+      "rowCounts": "Node actual rows and removed rows are averages per loop; multiply by Actual Loops to estimate totals",
+      "limits": "Server EXPLAIN timing excludes client network and, without SERIALIZE, output conversion; no advisory lock contention or transaction round trips are measured",
+      "cache": "Fixtures and ANALYZE warm the cache; no cold-cache claim, planner forcing, index changes or concurrent workload",
+      "statistics": "Each case recreates parts for one parent and runs ANALYZE in the owned disposable DB; unrelated parents do not affect scan length",
+      "references": [
+        "https://www.postgresql.org/docs/18/sql-explain.html",
+        "https://www.postgresql.org/docs/18/using-explain.html"
+      ]
+    }
+  },
+  "schemaVersion": 1,
+  "completedAt": "2026-09-29T12:35:56.216Z",
+  "methodology": {
+    "scope": "Two SELECTs from begin/complete only; not the full port commands or total delivery time",
+    "fixture": "Synthetic SQL-only parents with non-domain payload {}; no receiver, dispatcher or Discord is started",
+    "progress": "Static delivered prefixes with one additional UPDATE before complete; not a replay of delivery updates or autovacuum history",
+    "sampling": "One warmup plus three adopted executions per query; no p95/p99 interpretation",
+    "timing": "TIMING OFF removes per-node clock reads; total statement Execution Time is still measured and instrumentation remains",
+    "buffers": "Root counters include child nodes and repeated buffer accesses; counters are not distinct pages and are not summed across nodes",
+    "rowCounts": "Node actual rows and removed rows are averages per loop; multiply by Actual Loops to estimate totals",
+    "limits": "Server EXPLAIN timing excludes client network and, without SERIALIZE, output conversion; no advisory lock contention or transaction round trips are measured",
+    "cache": "Fixtures and ANALYZE warm the cache; no cold-cache claim, planner forcing, index changes or concurrent workload",
+    "statistics": "Each case recreates parts for one parent and runs ANALYZE in the owned disposable DB; unrelated parents do not affect scan length",
+    "references": [
+      "https://www.postgresql.org/docs/18/sql-explain.html",
+      "https://www.postgresql.org/docs/18/using-explain.html"
+    ]
+  },
+  "results": [
+    {
+      "fixture": {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 112,
+        "id": "explain-parts-112-first"
+      },
+      "operation": "begin",
+      "artifact": "parts-112-first-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.008,
+        "median": 0.01,
+        "max": 0.02,
+        "mean": 0.012666666666666666
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.015,
+        "median": 0.02,
+        "max": 0.048,
+        "mean": 0.02766666666666667
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 1,
+        "median": 1,
+        "max": 1,
+        "mean": 1
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 0) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 0) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 0) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 112,
+        "id": "explain-parts-112-first"
+      },
+      "operation": "complete",
+      "artifact": "parts-112-first-complete.json",
+      "expectedRows": 1,
+      "executionMs": {
+        "count": 3,
+        "min": 0.005,
+        "median": 0.007,
+        "max": 0.007,
+        "mean": 0.006333333333333333
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.011,
+        "median": 0.017,
+        "max": 0.018,
+        "mean": 0.015333333333333332
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 1,
+        "median": 1,
+        "max": 1,
+        "mean": 1
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 1,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "middle",
+        "frontier": 56,
+        "partCount": 112,
+        "id": "explain-parts-112-middle"
+      },
+      "operation": "begin",
+      "artifact": "parts-112-middle-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.007,
+        "median": 0.007,
+        "max": 0.009,
+        "mean": 0.007666666666666666
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.011,
+        "median": 0.012,
+        "max": 0.016,
+        "mean": 0.013
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 56) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 56) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 56) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "middle",
+        "frontier": 56,
+        "partCount": 112,
+        "id": "explain-parts-112-middle"
+      },
+      "operation": "complete",
+      "artifact": "parts-112-middle-complete.json",
+      "expectedRows": 1,
+      "executionMs": {
+        "count": 3,
+        "min": 0.006,
+        "median": 0.006,
+        "max": 0.007,
+        "mean": 0.006333333333333333
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.01,
+        "median": 0.011,
+        "max": 0.012,
+        "mean": 0.011000000000000001
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 56,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 56,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 56,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "last",
+        "frontier": 111,
+        "partCount": 112,
+        "id": "explain-parts-112-last"
+      },
+      "operation": "begin",
+      "artifact": "parts-112-last-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.008,
+        "median": 0.008,
+        "max": 0.015,
+        "mean": 0.010333333333333333
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.011,
+        "median": 0.013,
+        "max": 0.013,
+        "mean": 0.012333333333333333
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 111) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 111) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 111) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "last",
+        "frontier": 111,
+        "partCount": 112,
+        "id": "explain-parts-112-last"
+      },
+      "operation": "complete",
+      "artifact": "parts-112-last-complete.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.007,
+        "median": 0.008,
+        "max": 0.01,
+        "mean": 0.008333333333333333
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.01,
+        "median": 0.01,
+        "max": 0.013,
+        "mean": 0.011000000000000001
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-112-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 112,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 8823,
+        "id": "explain-parts-8823-first"
+      },
+      "operation": "begin",
+      "artifact": "parts-8823-first-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.005,
+        "median": 0.006,
+        "max": 0.007,
+        "mean": 0.005999999999999999
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.015,
+        "median": 0.018,
+        "max": 0.019,
+        "mean": 0.017333333333333336
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Index Scan",
+              "relation": "discord_notification_parts",
+              "index": "discord_notification_parts_pk",
+              "indexCondition": "((notification_id = 'explain-parts-8823-first'::text) AND (part_no < 0))",
+              "filter": "(status <> 'DELIVERED'::text)",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Index Scan",
+              "relation": "discord_notification_parts",
+              "index": "discord_notification_parts_pk",
+              "indexCondition": "((notification_id = 'explain-parts-8823-first'::text) AND (part_no < 0))",
+              "filter": "(status <> 'DELIVERED'::text)",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Index Scan",
+              "relation": "discord_notification_parts",
+              "index": "discord_notification_parts_pk",
+              "indexCondition": "((notification_id = 'explain-parts-8823-first'::text) AND (part_no < 0))",
+              "filter": "(status <> 'DELIVERED'::text)",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "first",
+        "frontier": 0,
+        "partCount": 8823,
+        "id": "explain-parts-8823-first"
+      },
+      "operation": "complete",
+      "artifact": "parts-8823-first-complete.json",
+      "expectedRows": 1,
+      "executionMs": {
+        "count": 3,
+        "min": 0.005,
+        "median": 0.006,
+        "max": 0.006,
+        "mean": 0.005666666666666667
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.011,
+        "median": 0.011,
+        "max": 0.012,
+        "mean": 0.011333333333333334
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 2,
+        "median": 2,
+        "max": 2,
+        "mean": 2
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-first'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 0,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 2,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "middle",
+        "frontier": 4411,
+        "partCount": 8823,
+        "id": "explain-parts-8823-middle"
+      },
+      "operation": "begin",
+      "artifact": "parts-8823-middle-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.299,
+        "median": 0.307,
+        "max": 0.333,
+        "mean": 0.313
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.018,
+        "median": 0.018,
+        "max": 0.021,
+        "mean": 0.019
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 101,
+        "median": 101,
+        "max": 101,
+        "mean": 101
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 4411) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 101,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 4411) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 101,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 4411) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 101,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "middle",
+        "frontier": 4411,
+        "partCount": 8823,
+        "id": "explain-parts-8823-middle"
+      },
+      "operation": "complete",
+      "artifact": "parts-8823-middle-complete.json",
+      "expectedRows": 1,
+      "executionMs": {
+        "count": 3,
+        "min": 0.147,
+        "median": 0.148,
+        "max": 0.152,
+        "mean": 0.149
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.01,
+        "median": 0.01,
+        "max": 0.014,
+        "mean": 0.011333333333333334
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 60,
+        "median": 60,
+        "max": 60,
+        "mean": 60
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 4411,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 60,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 4411,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 60,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-middle'::text))",
+              "actualRowsPerLoop": 1,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 4411,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 60,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "last",
+        "frontier": 8822,
+        "partCount": 8823,
+        "id": "explain-parts-8823-last"
+      },
+      "operation": "begin",
+      "artifact": "parts-8823-last-begin.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.334,
+        "median": 0.34,
+        "max": 0.347,
+        "mean": 0.3403333333333333
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.01,
+        "median": 0.011,
+        "max": 0.017,
+        "mean": 0.012666666666666666
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 118,
+        "median": 118,
+        "max": 118,
+        "mean": 118
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 8822) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 8822) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((part_no < 8822) AND (status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": {
+        "position": "last",
+        "frontier": 8822,
+        "partCount": 8823,
+        "id": "explain-parts-8823-last"
+      },
+      "operation": "complete",
+      "artifact": "parts-8823-last-complete.json",
+      "expectedRows": 0,
+      "executionMs": {
+        "count": 3,
+        "min": 0.295,
+        "median": 0.303,
+        "max": 0.304,
+        "mean": 0.30066666666666664
+      },
+      "planningMs": {
+        "count": 3,
+        "min": 0.009,
+        "median": 0.011,
+        "max": 0.013,
+        "mean": 0.010999999999999998
+      },
+      "rootSharedHitBlocks": {
+        "count": 3,
+        "min": 118,
+        "median": 118,
+        "max": 118,
+        "mean": 118
+      },
+      "rootSharedReadBlocks": {
+        "count": 3,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "scans": [
+        {
+          "repetition": 1,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 2,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        },
+        {
+          "repetition": 3,
+          "nodes": [
+            {
+              "path": "0.0",
+              "type": "Seq Scan",
+              "relation": "discord_notification_parts",
+              "index": null,
+              "indexCondition": null,
+              "filter": "((status <> 'DELIVERED'::text) AND (notification_id = 'explain-parts-8823-last'::text))",
+              "actualRowsPerLoop": 0,
+              "actualLoops": 1,
+              "rowsRemovedByFilterPerLoop": 8823,
+              "rowsRemovedByIndexRecheckPerLoop": 0,
+              "buffers": {
+                "sharedHit": 118,
+                "sharedRead": 0,
+                "sharedDirtied": 0,
+                "sharedWritten": 0,
+                "tempRead": 0,
+                "tempWritten": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "passed": true,
+    "ownedDatabaseCleanedUp": true
+  }
+}

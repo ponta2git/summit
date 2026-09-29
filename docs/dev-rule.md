@@ -36,6 +36,7 @@ OpenAI 製品・モデル固有の指示設計は利用可能な OpenAI Docs ski
 | `pnpm verify:forbidden` / `pnpm verify:file-size` | 禁止 pattern・依存方向 / file size advisory |
 | `pnpm verify:runtime-image <local-image>` | build 済み image を network なし・read-only で検査。非 root、依存解決、開発依存の除外を確認し、Bot は起動しない |
 | `pnpm verify:notification-capacity <local-image>` | 明示した local `TEST_DATABASE_URL` の使い捨て DB と本番 image を使用。新規標準上限の同時受付・配送と旧巨大通知を、256 MiB・swap なしで検証。標準ケースの cgroup peak は192 MiB以下を必須とし、Discord には接続しない |
+| `pnpm profile:notifications <local-image> --output <new-directory>` | 専用 DB・256 MiB・1 CPU の本番 image で通知速度、GC、heap、event loop を計測。`--profile` は CPU / allocation profile を別実行に採取する。[性能レポート](./performance.md)の再現条件と評価限界を参照 |
 | `pnpm verify:docs [--include <path>]` | 追跡文書と明示した新規 file、link / adapter の検査 |
 | `pnpm docs:sync-agent [--include <path>]` | AGENTS から adapter を生成し、同じ範囲を検査 |
 | `pnpm run ci` | static / unit / build の品質 gate |
