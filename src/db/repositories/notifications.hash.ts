@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { NotificationInputError } from "../../domain/notificationInput.ts";
+import { assertNotificationNumericBudget } from "../../domain/notificationNumericBudget.ts";
+import { RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES } from "../../notifications/config.ts";
 import type { NotificationDb } from "./notifications.storage.ts";
 
 /**
@@ -41,9 +44,19 @@ export const hashJsonbText = (text: string): string => {
 };
 
 export const normalizeNotificationJson = async (
-  tx: Pick<NotificationDb, "execute">, text: string
+  tx: Pick<NotificationDb, "execute">, text: string, maximumBytes = RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES
 ): Promise<{ readonly text: string; readonly hash: string; readonly bytes: number }> => {
-  const [row] = await tx.execute<{ body: string }>(sql`SELECT ${text}::jsonb::text AS body`);
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES) {
+    throw new Error("Invalid notification normalization budget");
+  }
+  assertNotificationNumericBudget(text, maximumBytes);
+  // Reject numeric/escaping expansion in PostgreSQL before its text crosses the
+  // driver boundary. The bound concerns decoded UTF-8 text, not TOAST storage.
+  const [row] = await tx.execute<{ body: string | null; bytes: number }>(sql`
+    WITH canonical AS MATERIALIZED (SELECT ${text}::jsonb::text AS body)
+    SELECT CASE WHEN octet_length(body) <= ${maximumBytes} THEN body ELSE NULL END AS body,
+      octet_length(body) AS bytes FROM canonical`);
   if (!row) { throw new Error("Notification JSON normalization failed"); }
-  return { text: row.body, hash: hashJsonbText(row.body), bytes: Buffer.byteLength(row.body, "utf8") };
+  if (row.body === null || row.bytes > maximumBytes) { throw new NotificationInputError("payload_too_large"); }
+  return { text: row.body, hash: hashJsonbText(row.body), bytes: row.bytes };
 };

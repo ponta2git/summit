@@ -19,6 +19,8 @@ token2項目とWeb originをすべて設定するとreceiverとconsumerが有効
 
 producerはprivate接続の `POST /internal/discord-notifications` にBearerとJSONを送る。startup前は503、commitした新規受付は202、重複・取消受付は200。400/409/413/422は内容・識別・上限・versionを確認する。503やtimeoutだけでは未受付と断定しない。接続・本文・並行受付・DB・送信の上限は `src/notifications/config.ts` が正本。
 
+Summit の新規受付は共有 producer 契約より厳しい容量・件数・文字数・投稿数上限を持つ。超過の413は通知を保存せず、本文を短縮して再作成もしない。momo-result 側の送出上限・分割・再送は別途合わせる必要がある。既受理通知は保存済み payload と ID 指定 retry で継続できるが、HTTP 本文上限は重複 POST にも適用するため、旧巨大 payload を再 POST しての回復に依存しない。
+
 ## 通知IDで確認する
 
 稼働中の同じreceiverへ、設定を安全に注入した運用環境からCLIを実行する。CLIは別Botを起動せず、Discordへの直接送信も行わない。

@@ -122,7 +122,7 @@ AGENTS 変更時は `pnpm docs:sync-agent` で adapter を更新する。同 com
 
 `pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
 
-runtime-image は実行権限・依存解決に加え、local PostgreSQL と設定済みメモリ制限で最大近傍の受付・描画を検証する。容量 test の成功は代表ケースの再現性であり、全入力・外部 Discord・長期運用の SLA を証明しない。測定条件と採用容量は [品質モデル](./quality-assurance.md#実行メモリの容量契約) を参照する。
+runtime-image は実行権限・依存解決に加え、local PostgreSQL と容量検証用の256 MiB制限・swapなしで最大近傍の受付・配送を検証する。新規標準ケースは192 MiB以下の cgroup peak を必須とし、旧巨大通知の単独配送は別 container で計測する。容量 test の成功は代表ケースの再現性であり、全入力・外部 Discord・長期運用の SLA を証明しない。測定条件と稼働設定は [品質モデル](./quality-assurance.md#実行メモリの容量契約) を参照する。
 
 修正依頼には必要なローカル検証と、変更が原因の失敗修正・再検証を含む。各段階で再承認を求めない。integration は §7 の接続先・作成削除条件で実行し、品質 gate のためだけに DB reset・アプリ起動・外部同期を追加しない。
 

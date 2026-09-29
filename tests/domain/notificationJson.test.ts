@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseNotificationJson, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
-import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
+import { parseNotificationJson, validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
+import { RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
 import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 
 describe("notification JSON allocation boundary", () => {
@@ -29,10 +29,12 @@ describe("notification JSON allocation boundary", () => {
     const base = analysisNotification();
     const first = base.data.matches[0];
     if (!first) { throw new Error("Expected match fixture"); }
-    const note = "界" + "x".repeat(RESULT_NOTIFICATION_MAX_JSONB_BYTES - 8_192);
+    const note = "界" + "x".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192);
     const input = { ...base, data: { ...base.data, matches: [{ ...first, note }] } };
-    const parsed = validateNewNotification(parseNotificationJson(JSON.stringify(input)));
+    const value = parseNotificationJson(JSON.stringify(input));
+    const parsed = validateStoredNotification(value);
     expect(parsed).toEqual(input);
+    expect(() => validateNewNotification(value)).toThrow("payload_too_large");
   });
 
   it.each(["matches", "seasons"] as const)("stops validating %s after the first invalid item", field => {
@@ -64,13 +66,15 @@ describe("notification JSON allocation boundary", () => {
     } : { seasonId: "0", seasonName: "", ranks };
     // Fixed schema keys dominate structure density. This uses minimally sized values and accounts for longer unique IDs.
     const itemBytes = Buffer.byteLength(JSON.stringify(minimum)) + 8;
-    const count = Math.floor((RESULT_NOTIFICATION_MAX_JSONB_BYTES - 8_192) / itemBytes);
+    const count = Math.floor((RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192) / itemBytes);
     const values = Array.from({ length: count }, (_, index) => ({ ...minimum, [field === "matches" ? "matchId" : "seasonId"]: String(index) }));
     const raw = JSON.stringify({ ...base, data: { ...base.data, [field]: values } });
-    expect(Buffer.byteLength(raw)).toBeLessThan(RESULT_NOTIFICATION_MAX_JSONB_BYTES);
-    expect(Buffer.byteLength(raw)).toBeGreaterThan(RESULT_NOTIFICATION_MAX_JSONB_BYTES * 0.98);
-    const parsed = validateNewNotification(parseNotificationJson(raw));
+    expect(Buffer.byteLength(raw)).toBeLessThan(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES);
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES * 0.98);
+    const value = parseNotificationJson(raw);
+    const parsed = validateStoredNotification(value);
     if (parsed.kind !== "analysis_completed") { throw new Error("Expected analysis payload"); }
     expect(parsed.data[field]).toHaveLength(count);
+    expect(() => validateNewNotification(value)).toThrow("payload_too_large");
   });
 });

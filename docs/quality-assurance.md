@@ -28,6 +28,7 @@
 | 性能・高 | DB / Discord 停滞中に Interaction を連打し、Promise / DB queue を増やす | 通常受付と拒否応答の有限枠、stop / drain / 枠回収。[100件 burst](../tests/discord/interactionAdmission.test.ts) |
 | 性能・高 | 本文上限内の HTTP を極小 chunk に分割し、Buffer 数でメモリを増幅 | byte 上限内の連続 buffer。[分割本文](../tests/notifications/http.body.test.ts) |
 | 性能・セキュリティ・高 | 最大本文を同時受付し、JSON 内に大量の空 object・深い配列・不正要素を入れる | 受付全体の byte 予約を DB settlement まで保持。parse 前の構造・深さ制限と配列の最初の不正での打切り。[受付容量](../tests/notifications/http.lifecycle.test.ts)、[悪性構造と8MiB近傍の正当入力](../tests/domain/notificationJson.test.ts) |
+| 性能・セキュリティ・高 | 小さな指数表記を DB で巨大な decimal へ展開させる、旧 ID の内容照合を同時に行う | SQL 前の数値展開作業量と SQL 内の正規化 byte 数を別々に制限。旧容量での内容照合もストレス対象とする。[数値予算](../tests/domain/notificationNumericBudget.test.ts)、[実 PostgreSQL との境界比較](../tests/integration/notificationNumericBudget.test.ts) |
 | 性能・信頼性・高 | 上限内の長いメモや Markdown 記号だけのメモで、正規表現の作業領域を増幅させる | hash は有限走査と逐次更新、escape は断片単位。保存 identity と全文・Unicode を維持。[hash](../tests/notifications/hash.test.ts)、[実 DB の最大近傍](../tests/integration/resultNotifications.transactions.test.ts)、[escape 境界](../tests/features/result-notifications/text.test.ts) |
 | 性能・中 | 完了 Session を蓄積し、wake ごとに全件 CASE 集計を実行させる | status / 時刻 index の先頭を別々に取得。[1万件の実行計画](../tests/integration/schedulerQuery.performance.test.ts) |
 | 性能・信頼性・高 | 保守 backlog で family lock を保持し、配送 heartbeat を待たせる | 件数・pass 上限と batch ごとの commit、集合 SQL。[retention](../tests/integration/notifications.retention.test.ts)、[real / fake の保守上限](../tests/contracts/attendance.ts) |
@@ -77,9 +78,22 @@
 
 ### 実行メモリの容量契約
 
-[fly.toml](../fly.toml) の memory は 512 MiB とする。Node 24 / Debian の本番 image、swap なしで、約 8 MiB の Markdown 記号を含む有効 payload 3 件を実 DB から claim・validate・render し、26,469 parts を保持したまま追加の最大 wire 本文を受付する代表ケースを検証した。256 MiB では OOM、512 MiB では受付完了・cgroup peak 約 408 MiB を観測した。本文・配送並列数の契約を維持するための容量であり、測定値を厳密な上限とはしない。
+標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。設定の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を単独配送する。
 
-fixture 生成と負荷 client は container 外に置き、計測には本番依存・非 root の image と実 DB を使う。Discord への接続・長期 cache・heap 断片化・出欠の同時最大負荷はこの代表ケースに含まない。payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
+合格条件は Node 24 / Debian の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
+
+2026-09-29、最新 source から build した `summit-runtime-standard-check`（image ID `8843a4795286`）と local PostgreSQL 18で、次の結果を得た。
+
+| ケース | cgroup peak | Node最大RSS | 配送の検証範囲 |
+|---|---:|---:|---|
+| 新規標準 | 147.30 MiB | 190.18 MiB | 17通知・932投稿を全件確定。5連続burst、拒否9ケース |
+| 旧容量の単独配送 | 191.00 MiB | 233.05 MiB | 8,823投稿を計画、先頭1投稿を確定、残り8,822投稿はPENDING |
+
+標準ケースは192 MiB以下の必須目標を達成した。本文は正規化後261,691 byte、HTTPは524,288 byteを使用し、配送時の取得batchは最大523,382 byteだった。両ケースで正規化後8,006,627 byteになる異内容の4受付を重ね、409と保存状態の不変を確認した。旧通知本体は8,382,648 byteで、他の配送との同時claimを許していない。旧ケースも今回の測定では192 MiB以内だったが、目標との差は約1 MiBにとどまる。標準ケースの余裕と同等には扱わない。RSSとcgroupは計上対象が異なるため、値を合算・同一視しない。
+
+fixture 生成と負荷 client は container 外に置き、計測には本番依存・非 root の image と実 DB を使う。起動後の baseline 取得時だけ GC を実行し、負荷中に手動 GC を挟まない。cgroup peak はコンテナ全体の高水位であり、host の負荷生成と別コンテナの PostgreSQL は含まない。Discord への実接続・長期 cache・heap 断片化・出欠の同時最大負荷はこの代表ケースに含まない。
+
+payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は512 MiBを維持し、今回の256 MiB検証とは分ける。試験成功だけで稼働中 Machine の縮小や deploy を行わず、実際の変更は運用手順と別の権限に従う。
 
 ## 4. 残る運用上の境界
 

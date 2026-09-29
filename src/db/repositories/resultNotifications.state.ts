@@ -42,6 +42,7 @@ export const findClaimedResultNotifications = async (
   if (ids.length === 0) { return []; }
   const rows = await tx.select({
     id: notifications.id, kind: notifications.kind, payload: notifications.payload,
+    payloadBytes: sql<number>`octet_length(${notifications.payload}::text)`,
     claimToken: notifications.claimToken, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts,
     partCount: notifications.partCount, rendererVersion: notifications.rendererVersion, deliveryContext: notifications.deliveryContext
   }).from(notifications).where(inArray(notifications.id, [...ids])).orderBy(notifications.nextAttemptAt, notifications.id);

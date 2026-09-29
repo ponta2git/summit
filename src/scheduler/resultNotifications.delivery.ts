@@ -5,9 +5,9 @@ import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificati
 import { OUTBOX_BACKOFF_MS_SEQUENCE, OUTBOX_CLAIM_DURATION_MS, RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../config.ts";
 import { DatabaseError } from "../errors/index.ts";
 import { getTextChannel } from "../discord/shared/channels.ts";
-import { validateNewNotification } from "../domain/resultNotificationPayload.ts";
+import { validateStoredNotification } from "../domain/resultNotificationPayload.ts";
 import type { ResultDeliveryError } from "../domain/notification.ts";
-import { renderResultNotification } from "../features/result-notifications/render.ts";
+import { planResultNotification } from "../features/result-notifications/render.ts";
 import { promiseCall, runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 import { addMs, type Clock } from "../time/index.ts";
 import { withClaimHeartbeat } from "./claimHeartbeat.ts";
@@ -64,9 +64,9 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
       await fail("unsupported_renderer", false); return;
     }
     try {
-      rendered = renderResultNotification(validateNewNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? (entry.kind === "ocr_completed" ? 2 : 1));
+      rendered = planResultNotification(validateStoredNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? (entry.kind === "ocr_completed" ? 2 : 1));
     } catch { await fail("invalid_payload", false); return; }
-    if (entry.partCount > 0 && rendered.parts.length !== entry.partCount) {
+    if (entry.partCount > 0 && rendered.partCount !== entry.partCount) {
       await fail("unsupported_renderer", false); return;
     }
     if (deps.isStopping()) { return; }
@@ -80,12 +80,14 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
       }); }
     }, isClaimLost => Effect.gen(function* () {
       if (!(yield* databaseCall(() => port.plan(entry.id, entry.claimToken, {
-        count: notification.parts.length, rendererVersion: notification.rendererVersion, context, now: clock.now()
+        count: notification.partCount, rendererVersion: notification.rendererVersion, context, now: clock.now()
       })))) { return; }
       if (isClaimLost() || deps.isStopping()) { return; }
       const channel = yield* boundedSend(() => getTextChannel(deps.client, context.channelId));
       const delivered = new Set(entry.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo));
-      for (const [partNo, body] of notification.parts.entries()) {
+      let nextPartNo = 0;
+      for (const body of notification.parts()) {
+        const partNo = nextPartNo++;
         if (delivered.has(partNo)) { continue; }
         if (isClaimLost() || deps.isStopping()) { return; }
         if (!(yield* databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())))) { return; }

@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { buildDiscordNotificationId, isNotificationSourceJobId, type DiscordResultNotification } from "@momo/db/notifications";
 import { isIsoDate, isUtcMillisecondTimestamp } from "../time/index.ts";
+import {
+  RESULT_NOTIFICATION_MAX_DISPLAY_NAME_CODEPOINTS, RESULT_NOTIFICATION_MAX_MATCHES,
+  RESULT_NOTIFICATION_MAX_NAME_CODEPOINTS, RESULT_NOTIFICATION_MAX_NOTE_CODEPOINTS,
+  RESULT_NOTIFICATION_MAX_SEASONS
+} from "../notifications/config.ts";
+import { NotificationInputError } from "./notificationInput.ts";
 
-export type NotificationInputCode = "invalid_input" | "unsupported_version" | "identity_conflict" | "payload_too_large";
-export class NotificationInputError extends Error {
-  readonly code: NotificationInputCode;
-  constructor(code: NotificationInputCode) { super(code); this.name = "NotificationInputError"; this.code = code; }
-}
+export { NotificationInputError } from "./notificationInput.ts";
 
 /** Limit allocation before JSON.parse; quoted text and escaped delimiters consume no structural budget. */
 export const parseNotificationJson = (raw: string): unknown => {
@@ -49,6 +51,12 @@ const integer = z.number().int().nonnegative();
 const decimal = z.string().regex(/^(0|[1-9][0-9]*)$/).max(19).refine(value => /^(0|[1-9][0-9]*)$/.test(value) && BigInt(value) <= 9_223_372_036_854_775_807n);
 const timestamp = z.string().refine(isUtcMillisecondTimestamp);
 const date = z.string().refine(isIsoDate);
+const withinCodePointLimit = (value: string, limit: number): boolean => {
+  let count = 0;
+  const points = value[Symbol.iterator]();
+  while (!points.next().done) { if (++count > limit) { return false; } }
+  return true;
+};
 const identitySchema = z.object({
   notificationId: z.string().min(1).max(512),
   kind: z.enum(["ocr_completed", "analysis_completed"]),
@@ -110,7 +118,7 @@ export const assertSupportedNotificationVersion = (value: unknown): void => {
 const ocrSchema = z.object({ ...envelope, schemaVersion: z.literal(2), kind: z.literal("ocr_completed"), data: z.object({
   submissionId: z.string().uuid(), matchDraftId: z.string().refine(isNotificationSourceJobId),
   context: z.object({
-    gameTitleName: z.string().refine(value => [...value].length <= 201).nullable(), heldDateIso: date.nullable(), matchNoInEvent: z.number().int().positive().max(2_147_483_647).nullable()
+    gameTitleName: z.string().refine(value => withinCodePointLimit(value, 201)).nullable(), heldDateIso: date.nullable(), matchNoInEvent: z.number().int().positive().max(2_147_483_647).nullable()
   }).strict(),
   failures: collection(z.object({
     screenType: z.enum(["total_assets", "revenue", "incident_log"]),
@@ -126,12 +134,49 @@ const analysisSchema = z.object({ ...envelope, schemaVersion: z.literal(1), kind
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();
 const notificationSchema = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]);
 
-/** Validate a new fixed payload; content conflicts are checked by the receipt command. */
-export const validateNewNotification = (value: unknown): DiscordResultNotification => {
+/** Preserve the payload contract under which an existing notification was accepted. */
+export const validateStoredNotification = (value: unknown): DiscordResultNotification => {
   assertSupportedNotificationVersion(value);
   const parsed = notificationSchema.safeParse(value);
   if (!parsed.success || parsed.data.notificationId !== buildDiscordNotificationId(parsed.data.kind, parsed.data.sourceJobId)) {
     throw new NotificationInputError("invalid_input");
   }
   return parsed.data;
+};
+
+/** Validate new admission limits without applying them to retained notifications. */
+export const validateNewNotification = (value: unknown): DiscordResultNotification => {
+  assertSupportedNotificationVersion(value);
+  // why: 配列の複製と item 検証を始める前に、新規受付の件数予算を適用する。
+  if (typeof value === "object" && value !== null && "kind" in value && value.kind === "analysis_completed"
+    && "data" in value && typeof value.data === "object" && value.data !== null) {
+    for (const [key, limit] of [["matches", RESULT_NOTIFICATION_MAX_MATCHES], ["seasons", RESULT_NOTIFICATION_MAX_SEASONS]] as const) {
+      const values = key in value.data ? Reflect.get(value.data, key) : undefined;
+      if (Array.isArray(values) && values.length > limit) { throw new NotificationInputError("payload_too_large"); }
+    }
+  }
+  const notification = validateStoredNotification(value);
+  if (notification.kind === "analysis_completed") {
+    const bounded = (text: string, maximum: number): void => {
+      if (!withinCodePointLimit(text, maximum)) { throw new NotificationInputError("payload_too_large"); }
+    };
+    const displayNames = (values: readonly { readonly displayName: string }[]): void => {
+      for (const item of values) { bounded(item.displayName, RESULT_NOTIFICATION_MAX_DISPLAY_NAME_CODEPOINTS); }
+    };
+    const { data } = notification;
+    bounded(data.gameTitleName, RESULT_NOTIFICATION_MAX_NAME_CODEPOINTS);
+    displayNames(data.overall);
+    for (const season of data.seasons) {
+      bounded(season.seasonName, RESULT_NOTIFICATION_MAX_NAME_CODEPOINTS);
+      displayNames(season.ranks);
+    }
+    for (const item of data.matches) {
+      bounded(item.mapName, RESULT_NOTIFICATION_MAX_NAME_CODEPOINTS);
+      bounded(item.seasonName, RESULT_NOTIFICATION_MAX_NAME_CODEPOINTS);
+      bounded(item.ownerName, RESULT_NOTIFICATION_MAX_DISPLAY_NAME_CODEPOINTS);
+      displayNames(item.players);
+      if (item.note !== null) { bounded(item.note, RESULT_NOTIFICATION_MAX_NOTE_CODEPOINTS); }
+    }
+  }
+  return notification;
 };

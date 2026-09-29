@@ -10,6 +10,7 @@ export interface FakeResultEntry {
   schemaVersion: number;
   identity: string;
   payload: DiscordResultNotification | null;
+  payloadBytes: number;
   status: NotificationStatus;
   attemptCount: number;
   maxAttempts: number;

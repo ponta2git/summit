@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { makeRealPorts } from "../../src/db/ports.real.ts";
+import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { sessions, responses, members, discordNotifications, discordNotificationAttendance, discordNotificationParts, heldEvents, heldEventParticipants } from "../../src/db/schema.ts";
 import { attendanceMembers, type AttendanceHarness, type AttendanceSeed } from "../contracts/attendance.ts";
 import { createIntegrationDb, truncatePerTestTables } from "./_support.ts";
 
 export const createAttendanceHarness = () => {
   const { db, client } = createIntegrationDb({ maxConnections: 4 });
-  const ports = makeRealPorts(db);
+  const ports = makeRealPorts(db, payload => assertNewNotificationPartLimit(payload, "https://example.test"));
   const create = async (seed: AttendanceSeed = {}): Promise<AttendanceHarness> => {
     await truncatePerTestTables(db);
     for (const member of attendanceMembers) {

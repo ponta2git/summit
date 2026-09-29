@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES } from "../../src/config.ts";
 import { ocrReceiptPayload } from "../contracts/resultNotifications.ts";
+import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { createHttpHarness, operationsToken, receiverToken, sendRawRequest } from "./http.harness.ts";
 
 describe("internal notification HTTP boundary", () => {
@@ -43,6 +44,31 @@ describe("internal notification HTTP boundary", () => {
     expect(await sendRawRequest(harness.origin, Buffer.from("{}"), { "content-length": String(RESULT_NOTIFICATION_MAX_BODY_BYTES + 1) })).toBe(413);
     expect((await post(payload)).status).toBe(202);
     expect((await post({ ...payload, schemaVersion: 1 })).status).toBe(422);
+  });
+
+  it("rejects an encoded link that exceeds the render budget without reporting temporary unavailability", async () => {
+    harness = await createHttpHarness();
+    const base = analysisNotification();
+    const payload = { ...base, data: { ...base.data, gameTitleId: "界".repeat(200) } };
+    const response = await post(payload);
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "payload_too_large" });
+    expect(await harness.port.inspect(payload.notificationId)).toBeNull();
+    expect(harness.wake).not.toHaveBeenCalled();
+    expect(harness.logger.warn).not.toHaveBeenCalled();
+  });
+
+  it.each(["gameTitleId", "matchId"] as const)("rejects a malformed Unicode %s before URI encoding or replacement", async field => {
+    harness = await createHttpHarness();
+    const base = analysisNotification();
+    const data = field === "gameTitleId" ? { ...base.data, gameTitleId: "\ud800" }
+      : { ...base.data, matches: base.data.matches.map(match => ({ ...match, matchId: "\ud800" })) };
+    const response = await post({ ...base, data });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_input" });
+    expect(await harness.port.inspect(base.notificationId)).toBeNull();
+    expect(harness.wake).not.toHaveBeenCalled();
+    expect(harness.logger.warn).not.toHaveBeenCalled();
   });
 
   it("offers authenticated settings and retries through committed application commands", async () => {

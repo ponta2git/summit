@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeNotificationText, splitNotificationText } from "../../../src/features/result-notifications/text.ts";
+import { escapeNotificationText, splitNotificationText, splitNotificationTextParts } from "../../../src/features/result-notifications/text.ts";
 
 describe("notification text boundaries", () => {
   it.each([8_191, 8_192, 16_383])("preserves every escape and Unicode pair across text processing boundaries (%i)", offset => {
@@ -24,5 +24,9 @@ describe("notification text boundaries", () => {
     ["a".repeat(1_898) + "\\\\next", ["a".repeat(1_898) + "\\\\", "next"]]
   ] as const)("keeps version 1 chunks stable (case %#)", (text, expected) => {
     expect(splitNotificationText(text)).toStrictEqual(expected);
+    for (const width of [1, 7, 1_899, 1_900, 8_192]) {
+      const parts = Array.from({ length: Math.ceil(text.length / width) }, (_, index) => text.slice(index * width, (index + 1) * width));
+      expect([...splitNotificationTextParts(parts)]).toStrictEqual(expected);
+    }
   });
 });

@@ -7,11 +7,11 @@ import { notificationTransaction, cancelNotification, lockNotificationFamily } f
 import { receiveResultNotification } from "../../src/db/repositories/resultNotifications.receipt.ts";
 import { setResultSetting } from "../../src/db/repositories/resultNotifications.state.ts";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
-import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
+import { RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
 import { purgeNotifications } from "../../src/db/repositories/notifications.retention.ts";
 import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { ocrReceiptPayload, notificationNow as now } from "../contracts/resultNotifications.ts";
-import { createResultNotificationHarness } from "./_resultNotifications.ts";
+import { checkNotificationAdmission, createResultNotificationHarness } from "./_resultNotifications.ts";
 import { isIntegration } from "./_support.ts";
 
 const barrier = () => {
@@ -37,7 +37,7 @@ const barrier = () => {
   it("rolls back receipt, targets and parts together when its command fails after insertion", async () => {
     const payload = ocrReceiptPayload();
     await expect(notificationTransaction(h.db, "result", async tx => {
-      await receiveResultNotification(tx, JSON.stringify(payload), now);
+      await receiveResultNotification(tx, JSON.stringify(payload), now, checkNotificationAdmission);
       throw new Error("abort receipt command");
     })).rejects.toThrow("abort receipt command");
     expect(await h.countReceipts()).toBe(0);
@@ -52,7 +52,7 @@ const barrier = () => {
     const payload = ocrReceiptPayload();
     const receiving = notificationTransaction(h.db, "result", async tx => {
       pid = Number((await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`))[0]?.pid);
-      const result = await receiveResultNotification(tx, JSON.stringify(payload), now);
+      const result = await receiveResultNotification(tx, JSON.stringify(payload), now, checkNotificationAdmission);
       inserted.release(); await commit.promise; return result;
     });
     await inserted.promise;
@@ -109,7 +109,7 @@ const barrier = () => {
     await notificationTransaction(h.db, "result", async tx => {
       for (let index = 0; index < 300; index += 1) {
         const submissionId = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
-        await receiveResultNotification(tx, JSON.stringify(ocrReceiptPayload(submissionId)), now);
+        await receiveResultNotification(tx, JSON.stringify(ocrReceiptPayload(submissionId)), now, checkNotificationAdmission);
       }
     });
     const [sending, unstarted, failed] = await h.port.claim({ limit: 3, now, claimDurationMs: 30_000 });
@@ -167,14 +167,14 @@ const barrier = () => {
     }
   });
 
-  it("accepts and deduplicates a near-limit memo through PostgreSQL normalization", async () => {
+  it("deduplicates and reads an already accepted legacy near-limit memo", async () => {
     const base = analysisNotification();
     const match = base.data.matches[0];
     if (!match) { throw new Error("Expected match fixture"); }
-    const note = "界" + "*".repeat(RESULT_NOTIFICATION_MAX_JSONB_BYTES - 8_192);
+    const note = "界" + "*".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192);
     const payload = { ...base, data: { ...base.data, matches: [{ ...match, note }] } };
     const raw = JSON.stringify(payload);
-    expect(await h.port.receive(raw, now)).toMatchObject({ disposition: "accepted", status: "PENDING" });
+    await h.seedStoredNotification(payload);
     expect(await h.port.receive(`  ${raw}\n`, now)).toMatchObject({ disposition: "duplicate", status: "PENDING" });
     expect(await h.countReceipts()).toBe(1);
     const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 1_000 });

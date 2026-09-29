@@ -146,6 +146,21 @@ export const resultNotificationContract = (
       expect(byId.get(newPayload.notificationId)).toMatchObject({ payload: newPayload, attemptCount: 1, partCount: 0, parts: [] });
     });
 
+    it("reserves a whole payload before claiming and leaves an over-budget item untouched", async () => {
+      const id = await receive();
+      const first = await claim();
+      expect(first.payloadBytes).toBeGreaterThan(Buffer.byteLength(JSON.stringify(ocrReceiptPayload())));
+      await port.fail(id, first.claimToken, "discord_unavailable", notificationNow, notificationNow);
+      const options = { limit: 2, now: notificationNow, claimDurationMs: 1_000, allowOversizedPayload: false };
+      expect(await port.claim({ ...options, payloadBudgetBytes: first.payloadBytes - 1 })).toEqual([]);
+      expect(await port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 1, claimExpiresAt: null });
+      const second = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
+      await port.receive(JSON.stringify(second), notificationNow);
+      const exact = await port.claim({ ...options, payloadBudgetBytes: first.payloadBytes });
+      expect(exact.map(entry => ({ id: entry.id, bytes: entry.payloadBytes }))).toEqual([{ id, bytes: first.payloadBytes }]);
+      expect(await port.inspect(second.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0, claimExpiresAt: null });
+    });
+
     it("discovers the earlier retry or cancelled send expiry and excludes active IDs", async () => {
       const id = await receive(); const sending = await claim(); await plan(id, sending.claimToken);
       await port.begin(id, 0, sending.claimToken, at(1));

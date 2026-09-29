@@ -102,11 +102,11 @@ active message の存在 probe と出欠の FAILED chain 再投入は startup �
 
 receiver は DB commit 後にだけ 2xx と wake を返す。request deadline で実行中 command の slot を先に解放せず、commit 後の切断を受付失敗に戻さない。初回 startup 完了前は 503、その後の一時的な Discord 切断中は DB 受付を続ける。
 
-dispatcher は出欠とは独立した上限付き slot を持つ。完了 wake と次 retry / claim expiry の one-shot で起動し、実行中・idle 移行中の wake を保持する。DB failure の backoff は有限回とし、claim と必要な次時刻取得がともに成功したときに reset する。停止後も新しい wake / supervisor で再開できる。
+dispatcher は出欠とは独立した上限付き slot と、実行中 payload の byte 予算を持つ。DB で本文サイズを確認してから claim し、予算待ちは配送完了で wake する。予算超過の既受理通知だけは単独配送を許す。完了 wake と次 retry / claim expiry の one-shot で起動し、実行中・idle 移行中の wake を保持する。DB failure の backoff は有限回とし、claim と必要な次時刻取得がともに成功したときに reset する。停止後も新しい wake / supervisor で再開できる。
 
 連続 wake は予約済みの最早起動時刻を後ろへ動かさない。受付が続くことを理由に配送を無期限延期しない。HTTP 接続数・受付中 command 数・header と本文の期限・本文 byte 数はそれぞれ制限し、断片数に比例する buffer 配列を保持しない。未認証の未完了 header は stop 時に即回収し、受付済み DB command の所有とは分ける。
 
-本文は受付全体の byte 予算も予約し、応答期限後も DB command の settlement まで解放しない。長さ不明なら一本文の最大量を予約する。JSON.parse 前の構造数・深さの検査と、配列検証の最初の不正での打切りにより、byte 上限内の悪性入力が大量の object / validation issue を生成する経路も抑える。長い正当なメモや契約内の配列は維持する。
+本文は受付全体の byte 予算も予約し、応答期限後も DB command の settlement まで解放しない。長さ不明なら一本文の最大量を予約する。JSON.parse 前の構造数・深さの検査と、配列検証の最初の不正での打切りにより、byte 上限内の悪性入力が大量の object / validation issue を生成する経路も抑える。新規受付の件数・文字数・正規化容量・描画後投稿数を別々に検査し、保存済み通知の再送とは validator を分ける。
 
 supervisor は出欠処理より先に A/B を wake する。一方の family の失敗が他方の配送や retention を止めないようにし、idle 時の短周期 polling を増やさない。設定値は [notifications/config](../src/notifications/config.ts)、保存契約は [DB 規約 §6](./db-rule.md#6-ocr分析通知の保存と取消) を参照する。
 

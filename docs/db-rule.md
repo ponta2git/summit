@@ -99,6 +99,10 @@ content hash は JSONB と互換な数値・文字列の扱いを維持する。
 
 JSONB text の hash は引用文字列を順次走査し、引用外の数値の末尾 scale だけを除いて逐次更新する。巨大メモ全体を正規表現の反復 alternation で保持しない。過去の hash vector と上限近傍の受付・重複判定で identity の互換性を検証する。
 
+新規 ID は掲載件数・文字数と描画後の投稿数を受付前に検査し、上限超過を `payload_too_large` とする。描画検査は application context から port factory へ注入し、repository を renderer に依存させない。DB へ渡す前に文字列外の数値 token の展開 byte 数を合算し、種別別の正規化予算を超える場合は拒否する。重複 key で後から破棄される数値も作業量に含め、小さい指数表記による DB 内の巨大展開を抑える。その後 PostgreSQL の正規化済み `jsonb::text` の UTF-8 byte 数も確認し、超過した本文は Node へ返さず、parent / relation / targets を保存しない。上限の正本は [notification config](../src/notifications/config.ts)、境界の根拠は [受付上限 integration](../tests/integration/resultNotifications.limits.test.ts)。
+
+対応 version の既存 ID は新規制約より先に旧容量で hash を照合し、詳細整理後も同内容の重複と異内容の conflict を維持する。ただし HTTP 本文上限と数値展開の作業量制約は重複にも適用するため、旧容量の本文や大量の重複 key をそのまま POST できる保証ではない。保存済み通知の配送・ID 指定 retry は新規の件数・文字数・投稿数制約を適用せず、旧 renderer 契約を維持する。共有 schema / producer の上限は変更しない。
+
 ON / OFF、generation 更新、未開始通知の取消を原子的に行う。momo-result API も共有 DB を直接更新し、Summit の起動を設定変更の前提にしない。receipt / begin / retry は共通 result gate を経由して commit 済み generation / OFF を観測する。
 
 ### Lock 順序と取消
@@ -112,6 +116,8 @@ OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後
 ### 配送と互換性
 
 最初の plan で renderer、part 数、origin、channel を固定する。各 part の開始・確定は有効 claim と順序を検証する。origin 検証は config / plan / renderer で共有し、DB 層を表示 link builder に依存させない。
+
+claim は payload 本文を取得する前に DB 内で正規化 byte 数を調べ、実行中の通知を含む byte 予算と配送 slot の両方に収める。予算より大きい既受理 payload は、他に実行中の通知がない場合だけ単独で取得する。配送中に保持する予算は実処理の settlement まで解放せず、予算待ちの due row を短周期で再取得しない。本文は part 数を先に数えてから一投稿ずつ生成し、全投稿の文字列配列を保持しない。
 
 claim / 次時刻取得 / inspect / retry は同じ対応 version を扱う。退役 OCR の既存 identity は維持し、通常配送や retry に戻さない。A/B の FAILED は期限内・未取消の明示 retry だけを許し、startup で自動復活させない。ResultNotifications port は DB driver error を安全な分類へ変換し、raw payload / bind / cause を HTTP や log に漏らさない。
 

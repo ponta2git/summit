@@ -1,20 +1,27 @@
 import { randomUUID } from "node:crypto";
 import type { ResultNotificationKind } from "@momo/db";
-import type { ClaimedResultNotification, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
+import type { DiscordResultNotification } from "@momo/db/notifications";
+import type { ClaimedResultNotification, ResultNotificationAdmissionCheck, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/config.ts";
-import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
 import { addMs } from "../../src/time/index.ts";
-import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES } from "../../src/notifications/config.ts";
+import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
+  RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES } from "../../src/notifications/config.ts";
+import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.ts";
 import { createFakeResultState, semanticJson, type FakeResultEntry } from "./ports.resultNotifications.state.ts";
 
 export interface FakeResultNotificationsPort extends ResultNotificationsPort {
   readonly calls: readonly AnyCall[];
   setTargetAvailable(kind: "match_draft" | "match", id: string, available: boolean): void;
+  /** Seed an already accepted historical payload without applying new admission limits. */
+  seedStoredNotification(payload: DiscordResultNotification): void;
 }
 
-export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLOCK): FakeResultNotificationsPort => {
+export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLOCK,
+  admissionCheck: ResultNotificationAdmissionCheck = payload => assertNewNotificationPartLimit(payload, "https://momo.example.com")
+): FakeResultNotificationsPort => {
   const { entries, settings, available, cancel, reason } = createFakeResultState();
   const calls: AnyCall[] = [];
   const getSetting = (kind: ResultNotificationKind) => {
@@ -32,8 +39,27 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     n.claimToken = null; n.claimExpiresAt = null; n.nextAttemptAt = next ?? now;
     n.terminalAt = n.status === "CANCELLED" ? n.terminalAt : n.status === "FAILED" ? now : null;
   };
+  const store = (payload: DiscordResultNotification, canonical: string, now: Date): FakeResultEntry => {
+    const n: FakeResultEntry = { id: payload.notificationId, kind: payload.kind, sourceJobId: payload.sourceJobId,
+      identity: canonical, payloadBytes: Buffer.byteLength(canonical), schemaVersion: payload.schemaVersion, payload: structuredClone(payload),
+      status: "PENDING", attemptCount: 0, maxAttempts: OUTBOX_MAX_ATTEMPTS, retryCycle: 0,
+      claimToken: null, claimExpiresAt: null, nextAttemptAt: new Date(now), terminalAt: null, purgedAt: null,
+      cancelReason: null, lastError: null, partCount: 0, rendererVersion: null, deliveryContext: null, parts: [] };
+    entries.set(n.id, n);
+    const why = reason(n); if (why) { cancel(n, why, now); }
+    return n;
+  };
   return {
     calls,
+    seedStoredNotification: payload => {
+      const stored = validateStoredNotification(payload);
+      if (entries.has(stored.notificationId) || [...entries.values()].some(n => n.kind === stored.kind && n.sourceJobId === stored.sourceJobId)) {
+        throw new Error("Duplicate stored notification fixture");
+      }
+      const canonical = semanticJson(stored);
+      if (Buffer.byteLength(canonical) > RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES) { throw new Error("Stored fixture exceeds legacy byte limit"); }
+      store(stored, canonical, clock.now());
+    },
     setTargetAvailable: (kind, id, isAvailable) => {
       if (isAvailable) { available.add(`${kind}:${id}`); } else { available.delete(`${kind}:${id}`); }
       for (const n of entries.values()) { const why = reason(n); if (why) { cancel(n, why, clock.now()); } }
@@ -44,23 +70,28 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       const identity = readNotificationIdentity(value);
       assertSupportedNotificationVersion(value);
       const canonical = semanticJson(value);
-      if (Buffer.byteLength(canonical) > RESULT_NOTIFICATION_MAX_JSONB_BYTES) { throw new NotificationInputError("payload_too_large"); }
+      const bytes = Buffer.byteLength(canonical);
       const existing = [...entries.values()].find(n => n.id === identity.notificationId || (n.kind === identity.kind && n.sourceJobId === identity.sourceJobId));
       if (existing) {
+        if (bytes > RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES) { throw new NotificationInputError("payload_too_large"); }
         if (existing.id !== identity.notificationId || existing.identity !== canonical) { throw new NotificationInputError("identity_conflict"); }
         return { notificationId: existing.id, disposition: "duplicate", status: existing.status };
       }
       const payload = validateNewNotification(value);
-      const n: FakeResultEntry = { id: payload.notificationId, kind: payload.kind, sourceJobId: payload.sourceJobId,
-        identity: canonical, schemaVersion: payload.schemaVersion, payload, status: "PENDING", attemptCount: 0, maxAttempts: OUTBOX_MAX_ATTEMPTS, retryCycle: 0,
-        claimToken: null, claimExpiresAt: null, nextAttemptAt: now, terminalAt: null, purgedAt: null,
-        cancelReason: null, lastError: null, partCount: 0, rendererVersion: null, deliveryContext: null, parts: [] };
-      entries.set(n.id, n);
-      const why = reason(n); if (why) { cancel(n, why, now); }
-      return { notificationId: n.id, disposition: why ? "cancelled" : "accepted", status: n.status };
+      admissionCheck(payload);
+      if (bytes > (identity.kind === "ocr_completed" ? RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES : RESULT_NOTIFICATION_MAX_JSONB_BYTES)) {
+        throw new NotificationInputError("payload_too_large");
+      }
+      const n = store(payload, canonical, now);
+      return { notificationId: n.id, disposition: n.status === "CANCELLED" ? "cancelled" : "accepted", status: n.status };
     },
     claim: async options => {
       recordCall(calls, "claim", options);
+      if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
+        || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000
+        || (options.payloadBudgetBytes !== undefined && (!Number.isSafeInteger(options.payloadBudgetBytes) || options.payloadBudgetBytes < 0))) {
+        throw new Error("Invalid notification claim options");
+      }
       const expired = [...entries.values()].filter(n => n.claimExpiresAt && n.claimExpiresAt <= options.now)
         .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
       for (const n of expired) {
@@ -68,14 +99,20 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
       }
       const candidates = [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
-        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id)).slice(0, options.limit);
+        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
       const result: ClaimedResultNotification[] = [];
+      const payloadBudget = options.payloadBudgetBytes ?? RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
+      let claimedBytes = 0;
       for (const n of candidates) {
         if (n.attemptCount >= n.maxAttempts) { n.status = "FAILED"; n.lastError = "attempt_limit"; n.terminalAt = options.now; continue; }
         const why = reason(n); if (why) { cancel(n, why, options.now); continue; }
+        if (n.payloadBytes > payloadBudget - claimedBytes && !(result.length === 0 && (options.allowOversizedPayload ?? true))) { break; }
         n.status = "IN_FLIGHT"; n.claimToken = randomUUID(); n.claimExpiresAt = addMs(options.now, options.claimDurationMs); n.attemptCount += 1;
         result.push(structuredClone({ id: n.id, kind: n.kind, payload: n.payload, claimToken: n.claimToken, attemptCount: n.attemptCount,
+          payloadBytes: n.payloadBytes,
           maxAttempts: n.maxAttempts, partCount: n.partCount, rendererVersion: n.rendererVersion, deliveryContext: n.deliveryContext, parts: n.parts }));
+        claimedBytes += n.payloadBytes;
+        if (claimedBytes > payloadBudget || result.length === options.limit) { break; }
       }
       return result;
     },

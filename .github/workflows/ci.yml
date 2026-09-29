@@ -132,7 +132,7 @@ jobs:
         run: docker build --file summit/Dockerfile --tag summit-runtime-check .
       - name: Verify isolated runtime
         run: node summit/scripts/verify/runtimeImage.ts summit-runtime-check
-      - name: Verify notification capacity at configured memory
+      - name: Verify notification capacity at 256 MiB with 192 MiB target
         run: pnpm verify:notification-capacity summit-runtime-check
         working-directory: summit
 
