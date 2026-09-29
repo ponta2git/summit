@@ -93,7 +93,7 @@
 
 fixture 生成と負荷 client は container 外に置き、計測には本番依存・非 root の image と実 DB を使う。起動後の baseline 取得時だけ GC を実行し、負荷中に手動 GC を挟まない。cgroup peak はコンテナ全体の高水位であり、host の負荷生成と別コンテナの PostgreSQL は含まない。Discord への実接続・長期 cache・heap 断片化・出欠の同時最大負荷はこの代表ケースに含まない。
 
-payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は512 MiBを維持し、今回の256 MiB検証とは分ける。試験成功だけで稼働中 Machine の縮小や deploy を行わず、実際の変更は運用手順と別の権限に従う。
+payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
 
 ## 4. 残る運用上の境界
 
