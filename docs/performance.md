@@ -2,7 +2,41 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
-## 結果と判断
+## 2026-10-02 の最適化結果
+
+**配送SQLの削減、待機中の不要なpayload参照の解放、結果投稿のSDK cache解放を実装した。** 1投稿の正常経路は20→17 SQL、2 transactionsを維持する。family gate後の取消確認、claim fencing、part順序、開始済み送信の結果保存も維持した。[DB回帰テスト](../tests/integration/notifications.delivery.test.ts)では112 / 8,823 partsの未完了検索が1回のscanであることを確認している。
+
+claimは配送済み番号だけを取得し、inspectは詳細を残す。配送は同期の検証・描画準備後にraw payloadを手放し、完了callbackはIDとbyte数だけを保持する。結果投稿は送信成功時にそのmessageだけをcacheから除き、DB確定にはIDを渡す。全体の並列数、受付上限、SDK全体のcache、Fly 256 MiBは変更していない。
+
+旧runtime `ab15042` と新runtime `b67cf9c` を同じNode base digest `sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6` でbuildした。image IDは旧 `f884975c12a2`、新 `77e68c5a1188`。Node 24.21.0 / Linux arm64、local PostgreSQL 18.4、256 MiB・swapなし・1 CPU、同一fixtureと計測probeで各7ケース×3回を比較した。probeの代替message cacheはSDKと同じ200件上限の最小 `{id}` objectであり、実SDKの保持byte数を再現していない。
+
+| ケース | 全完了の秒数：中央値（旧→新） | 秒数の範囲（旧／新） | cgroup peak MiB：最大（旧→新） |
+|---|---:|---|---:|
+| normal | 3.190 → 3.137 | 3.141–3.208 ／ 3.128–3.184 | 100.93 → 79.96 |
+| unicode | 12.204 → 10.342 | 12.098–12.836 ／ 10.212–10.530 | 94.83 → 96.56 |
+| markdown | 17.231 → 12.536 | 14.743–17.943 ／ 12.102–12.651 | 98.21 → 97.71 |
+| parts | 27.451 → 22.168 | 25.846–29.329 ／ 19.309–24.662 | 106.80 → 103.66 |
+| overlap | 2.966 → 2.543 | 2.945–2.989 ／ 2.539–2.579 | 141.15 → 144.78 |
+| legacy | 88.125 → 78.720 | 87.968–89.439 ／ 78.003–78.842 | 154.39 → 144.23 |
+| soak | 61.331 → 53.217 | 60.840–62.346 ／ 52.842–53.351 | 106.57 → 110.88 |
+
+採用42実行は全通知のDB確定まで完走し、OOM・投稿契約違反・計測欠落はなかった。通常通知の受付→完了p95は357.21→315.95 ms、soakは5.923→5.093秒。overlapの時間は意図的な送信保留を含む。normalの旧peakは初回100.93 MiBに対し残り2回は77.85–78.35 MiBであり、表の差を安定した21 MiB削減とは扱わない。全ケースでpeak memoryが低下したわけではない。
+
+速度測定とは別にnormal / partsを各variantで1回ずつsampling profileした。推定累積割当はnormal 58.63→57.03 MiB、parts 2,526.34→2,219.95 MiB（12.1%減、1 partあたり1,154.90→1,014.84 KiB）。partsのDrizzle `sql.js` 内の割当は786.29→618.36 MiB（21.4%減）だった。累積割当は解放済みobjectを含み、live heap・RSS削減率ではない。各1回のsamplingであり、候補partsのtree外sample 1件・65,624 bytesは関数別集計へ混ぜていない。
+
+送信を保留した独立のWeakRef診断では、旧実装が保持していたraw entry / payload / nested objectが新実装ではGCで回収された。9,778 bytes・5 partsの旧互換fixtureで、必要な配送済み番号は保持し、GC後に残り4 partsの本文SHA-256が一致した。GC後heapは両者とも約35.70 MiBで、この小fixtureから削減byte数は評価していない。強制GCを速度・容量測定の負荷中に挟んではいない。
+
+[実SDKのオフライン試験](../tests/discord/shared/sendResultMessage.test.ts)では、cold / warm / full cache、220結果投稿、通常投稿205件、503 retry、429待機、遅延成功、清掃失敗を検証した。結果220件後の出欠message取得に伴う追加GETはwarm / fullとも旧1回→新0回。fullでは最初のSDK追加時に最古1件が除かれる挙動は残る。SDK内の3送信がアプリの45秒待機期限後も残るケースも確認し、論理slot数をSDK内の未完了数の上限とは扱っていない。
+
+容量gateの標準17通知・932 partsはcgroup peak **146.71 MiB**で、必須目標192 MiBを達成した。別条件の「旧8 MiB通知＋8 MiB近傍に展開する異内容4受付」は旧185.96 MiBに対し新196.60 / 193.21 MiBだった。この条件のpeak改善は確認できず、192 MiB比較目標も未達である。両候補実行とも256 MiB内で完了し、旧通知は8,823 partsの計画と先頭1 partの確定までを検証した。上表の全件配送legacyとは分けて判断する。
+
+`pnpm run ci` は112 files / 867 testsと型・lint・knip・build・docs・禁止patternが成功。実DB integrationは26 files / 131 tests、本番imageの非root・read-only検証も成功した。file-sizeは既存4件のadvisoryのみ。許可された実Discordチャンネルでも新しい送信関数による1投稿・cache解放・読み戻しを確認し、検証投稿を削除した。実Gateway、Neon、本番の長期性能は測定していない。
+
+旧legacyの1実行は他のDB統合テストと重なったため除外し、DB負荷を分離した1実行で置き換えた（除外値118.677秒）。同時実行中に5秒期限を超えた統合テスト3件は、負荷分離後の全suite再実行で成功した。WeakRef診断の初回はMarkdown escapeを考慮しない検出条件が失敗し、診断を修正して旧・新を同条件で再確認した。いずれも失敗や除外を成功sampleへ混ぜていない。
+
+比較は現在の計測器に旧・新imageを渡して再現できる。今回の一時スクリプト、raw profile、比較用source複製、専用DB・container・imageは検証後に回収し、恒久回帰テストと上記の集計を残す。以下の図表・集計JSONは最適化前の初回測定資料であり、今回の比較値とは区別する。
+
+## 初回測定の結果と判断（最適化前）
 
 **256 MiB・swapなし・1 CPUで、7ケース各3回の速度測定と、各ケース1回のCPU / heap profile採取を完了した。** 通常測定21実行で555通知・61,023 parts、profileを含む28実行で740通知・81,364 partsをDB確定まで処理した。warmupの48通知はこの集計から除外している。採用実行にOOM、未完了通知、予期しないHTTP失敗、Discord本文・mention・nonce契約違反、計測sampleの取りこぼしはなかった。
 
@@ -186,7 +220,7 @@ legacy全配送は3回とも8,823 partsを確定し、111.171 / 91.208 / 80.902�
 
 測定は専用DB内の、通知配送に使わないSQL診断用parentとpartsだけを対象にしている。更新履歴・dead tuple・autovacuum・大量の他通知・advisory lock競合は再現していない。`ANALYZE`とwarmup後の温かいcacheであり、cold cacheの数値ではない。`TIMING OFF`でもstatement全体のExecution Timeは採取される一方、clientとのnetwork往復は含まれない。BUFFERSはrootの延べ参照を使い、子nodeの値を重複加算していない。[PostgreSQL 18 EXPLAIN](https://www.postgresql.org/docs/18/sql-explain.html)、[計画の解釈](https://www.postgresql.org/docs/18/using-explain.html)
 
-## 改善の優先順位
+## 初回測定時の改善候補
 
 | 優先 | 観測根拠 | 次の改善・確認 |
 |---|---|---|
@@ -195,7 +229,7 @@ legacy全配送は3回とも8,823 partsを確定し、111.171 / 91.208 / 80.902�
 | 3 | 旧巨大通知の文字列割当と最大354 msのevent-loop遅延、overlapのexternal peak65.87 MiB | 旧互換のrenderer / hash処理を個別に測り、不要な再生成・buffer複製を減らす候補を検証する。hashの同一性や投稿境界を変えない |
 | 4 | soakの初回送信p95 6.97秒、完了p95 8.65秒。実Discordは未測定 | 本番のqueue最古age・受付→送信・DB transaction・REST rate limit・event-loop最大・cgroup / RSS / externalを観測し、業務上のlatency目標を決める |
 
-この測定を理由に受付上限・並列数を増やす根拠はない。現在の標準制限とFly 256 MiBを維持し、次の性能変更は上記の同じfixture・3反復・互換性検証で比較する。index変更や配送のtransaction削減は本レポート作成の範囲では実装していない。
+この初回測定を理由に受付上限・並列数を増やす根拠はない。上記の2026-10-02比較でSQL往復と不要参照を減らした。index変更や配送のtransaction削減は実装せず、標準制限とFly 256 MiBを維持している。
 
 ## 計測器と変更の検証
 

@@ -16,8 +16,9 @@ const fixtures = [112, 8_823].flatMap(partCount => [
 ].map(value => ({ ...value, partCount, id: `explain-parts-${partCount}-${value.position}` })));
 type Fixture = typeof fixtures[number];
 
-// The two SELECTs in notifications.delivery.ts, including their absence of
-// ORDER BY. All SQL is fixed here; even synthetic fixture values are bound.
+// Historical SELECTs from notifications.delivery.ts at ab15042, before query
+// consolidation. This diagnoses the published baseline, not current commands.
+// All SQL is fixed here; even synthetic fixture values are bound.
 const statements = {
   begin: 'SELECT "part_no" FROM "discord_notification_parts" WHERE ("discord_notification_parts"."notification_id" = $1 AND "discord_notification_parts"."part_no" < $2 AND "discord_notification_parts"."status" <> $3) LIMIT $4',
   complete: 'SELECT "part_no" FROM "discord_notification_parts" WHERE ("discord_notification_parts"."notification_id" = $1 AND "discord_notification_parts"."status" <> $2) LIMIT $3'
@@ -135,7 +136,7 @@ const capture = async (client: postgres.Sql, fixture: Fixture, operation: Operat
 
 const references = ["https://www.postgresql.org/docs/18/sql-explain.html", "https://www.postgresql.org/docs/18/using-explain.html"];
 const methodology = {
-  scope: "Two SELECTs from begin/complete only; not the full port commands or total delivery time",
+  scope: "Historical SELECTs at ab15042 only; not current begin/complete commands or total delivery time",
   fixture: "Synthetic SQL-only parents with non-domain payload {}; no receiver, dispatcher or Discord is started",
   progress: "Static delivered prefixes with one additional UPDATE before complete; not a replay of delivery updates or autovacuum history",
   sampling: "One warmup plus three adopted executions per query; no p95/p99 interpretation",

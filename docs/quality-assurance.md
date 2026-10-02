@@ -82,6 +82,8 @@
 
 合格条件は Node 24 / Debian の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
 
+最新の実装比較と容量結果は [性能レポート](./performance.md) に記録する。2026-10-02の標準ケースは146.71 MiBで合格。旧巨大通知と4競合受付の別ケースは193.21–196.60 MiBで比較目標192 MiBを超えたが、256 MiB内で完了した。この条件のpeak改善は確認できていない。
+
 2026-09-29、最新 source から build した `summit-runtime-standard-check`（image ID `8843a4795286`）と local PostgreSQL 18で、次の結果を得た。
 
 | ケース | cgroup peak | Node最大RSS | 配送の検証範囲 |
