@@ -11,8 +11,13 @@ export const resultWorkerHarness = () => {
   const port = createFakeResultNotificationsPort(clock);
   port.setTargetAvailable("match", "match-1", true);
   let messageCount = 0;
-  const channel = { type: ChannelType.GuildText, isSendable: () => true,
-    send: vi.fn(async (_body: MessageCreateOptions): Promise<{ id: string }> => ({ id: `message-${++messageCount}` })) };
+  const messages = { cache: new Map<string, { id: string }>() };
+  const channel = { type: ChannelType.GuildText, isSendable: () => true, messages,
+    send: vi.fn(async (_body: MessageCreateOptions): Promise<{ id: string }> => {
+      const message = { id: `message-${++messageCount}` };
+      messages.cache.set(message.id, message);
+      return message;
+    }) };
   const client = stubClient(channel);
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   let stopping = false;

@@ -4,6 +4,7 @@ import { notificationPerformanceTelemetry } from "./notificationPerformance.tele
 // Only the Discord transport is replaced; admission, SQL and dispatch stay real.
 export const notificationPerformanceProbe = `
 import assert from 'node:assert/strict';
+import { LimitedCollection } from 'discord.js';
 import { createServer as createProxy, createConnection } from 'node:net';
 import { createServer } from 'node:http';
 import { createAppContext } from './dist/appContext.js';
@@ -103,7 +104,8 @@ port.complete = async (id, partNo, ...args) => {
   return result;
 };
 port.fail = async (id, ...args) => { try { return await call('fail', [id, ...args]); } finally { traces.delete(id); } };
-client.channels.fetch = async () => ({ type: 0, isSendable: () => true, send: async body => {
+const messages = { cache: new LimitedCollection({ maxSize: 200 }) };
+client.channels.fetch = async () => ({ type: 0, isSendable: () => true, messages, send: async body => {
   let part;
   try {
     assert.equal(typeof body.content, 'string'); assert.ok(body.content.length > 0 && body.content.length <= 2000);
@@ -118,7 +120,12 @@ client.channels.fetch = async () => ({ type: 0, isSendable: () => true, send: as
     if (part.trace.claimAt !== undefined) telemetry.append(latencies.claimToFirstSend, now - part.trace.claimAt);
   }
   pendingSends++; sendAttempts++; maxPendingSends = Math.max(maxPendingSends, pendingSends); changed();
-  try { await waitFor(() => !holdDelivery); return { id: 'performance-message-' + (++sentParts) }; }
+  try {
+    await waitFor(() => !holdDelivery);
+    const message = { id: 'performance-message-' + (++sentParts) };
+    messages.cache.set(message.id, message);
+    return message;
+  }
   finally { pendingSends--; begun.delete(body.nonce); changed(); }
 } });
 const dispatcher = createResultNotificationDispatcher({ client, port, clock: context.clock,

@@ -31,6 +31,21 @@ describe("result notification delivery", () => {
     expect(notificationNonce(id, 0)).not.toBe(notificationNonce(id, 1));
   });
 
+  it("resumes undelivered parts when persisted delivered numbers have gaps", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue("noncontiguous", "x".repeat(6_000)); const entry = await h.claim();
+    // regression: 配送境界は過去の非連続な完了番号を許容し、連続 prefix とみなさない。
+    const begin = vi.fn(h.port.begin).mockResolvedValue(true);
+    const complete = vi.fn(h.port.complete).mockResolvedValue(true);
+    h.port.begin = begin; h.port.complete = complete;
+    await h.deliver({ ...entry, deliveredPartNos: [0, 2] });
+    expect((await h.port.inspect(id))?.partCount).toBe(5);
+    expect(begin.mock.calls.map(([, partNo]) => partNo)).toEqual([1, 3, 4]);
+    expect(complete.mock.calls.map(([, partNo, , messageId]) => ({ partNo, messageId }))).toEqual([
+      { partNo: 1, messageId: "message-1" }, { partNo: 3, messageId: "message-2" }, { partNo: 4, messageId: "message-3" }
+    ]);
+    expect(h.channel.send.mock.calls.map(([body]) => body.nonce)).toEqual([notificationNonce(id, 1), notificationNonce(id, 3), notificationNonce(id, 4)]);
+  });
+
   it("records an already-started send after OFF and stops all later parts", async () => {
     const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
     const sending = deferred<void>(); const sent = deferred<{ id: string }>();

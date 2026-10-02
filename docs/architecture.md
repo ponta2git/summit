@@ -104,6 +104,10 @@ receiver は DB commit 後にだけ 2xx と wake を返す。request deadline �
 
 dispatcher は出欠とは独立した上限付き slot と、実行中 payload の byte 予算を持つ。DB で本文サイズを確認してから claim し、予算待ちは配送完了で wake する。予算超過の既受理通知だけは単独配送を許す。完了 wake と次 retry / claim expiry の one-shot で起動し、実行中・idle 移行中の wake を保持する。DB failure の backoff は有限回とし、claim と必要な次時刻取得がともに成功したときに reset する。停止後も新しい wake / supervisor で再開できる。
 
+claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別 Promise の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。早く参照を捨てても byte 予算は配送の settlement まで予約する。
+
+結果投稿の SDK cache は送信成功時にその message だけを解放し、DB 確定には message ID を渡す。送信 timeout は SDK 内の実 I/O を中止しないため、待機期限後の成功でも cache 解放を行う。dispatcher の論理 slot 上限を SDK 内の未完了 request 数の上限とは扱わない。
+
 連続 wake は予約済みの最早起動時刻を後ろへ動かさない。受付が続くことを理由に配送を無期限延期しない。HTTP 接続数・受付中 command 数・header と本文の期限・本文 byte 数はそれぞれ制限し、断片数に比例する buffer 配列を保持しない。未認証の未完了 header は stop 時に即回収し、受付済み DB command の所有とは分ける。
 
 本文は受付全体の byte 予算も予約し、応答期限後も DB command の settlement まで解放しない。長さ不明なら一本文の最大量を予約する。JSON.parse 前の構造数・深さの検査と、配列検証の最初の不正での打切りにより、byte 上限内の悪性入力が大量の object / validation issue を生成する経路も抑える。新規受付の件数・文字数・正規化容量・描画後投稿数を別々に検査し、保存済み通知の再送とは validator を分ける。

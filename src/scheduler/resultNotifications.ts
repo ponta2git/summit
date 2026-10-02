@@ -2,7 +2,7 @@ import type { Client } from "discord.js";
 import type { Logger } from "pino";
 import { OUTBOX_CLAIM_DURATION_MS, RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS,
   RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, SCHEDULER_MIN_TIMER_DELAY_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../config.ts";
-import type { ResultDeliveryContext, ResultNotificationsPort } from "../db/ports.resultNotifications.ts";
+import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificationsPort } from "../db/ports.resultNotifications.ts";
 import { logger as defaultLogger } from "../logger.ts";
 import type { Clock } from "../time/index.ts";
 import { deliverResultNotification } from "./resultNotifications.delivery.ts";
@@ -30,6 +30,7 @@ export const createResultNotificationDispatcher = (deps: {
   let queued = false;
   let stopped = false;
   let recoveryAttempt = 0;
+  const deliveryDeps = { ...deps, logger, isStopping: () => stopped };
   const schedule = (delay: number): void => {
     if (stopped) { return; }
     const boundedDelay = Math.max(0, Math.min(delay, 2_147_483_647));
@@ -40,6 +41,18 @@ export const createResultNotificationDispatcher = (deps: {
     timerDueAt = dueAt;
     timer = setTimeout(() => { timer = undefined; timerDueAt = undefined; void pump(); }, boundedDelay);
   };
+  const trackDelivery = (notificationId: string, payloadBytes: number, work: Promise<void>): void => {
+    const delivery = work.catch(() => { logger.error({ event: "result_notification.dispatch_failed", notificationId }); })
+      .finally(() => { active.delete(notificationId); activePayloadBytes -= payloadBytes; dispatcher.wake("delivery_finished"); });
+    active.set(notificationId, delivery);
+  };
+  const startBatch = (batch: readonly ClaimedResultNotification[]): void => {
+    if (stopped) { return; }
+    for (const entry of batch) {
+      activePayloadBytes += entry.payloadBytes;
+      trackDelivery(entry.id, entry.payloadBytes, deliverResultNotification(deliveryDeps, entry));
+    }
+  };
   const pump = (): Promise<void> => {
     if (stopped) { return Promise.resolve(); }
     if (pumping) { queued = true; return pumping; }
@@ -49,16 +62,10 @@ export const createResultNotificationDispatcher = (deps: {
         const capacity = RESULT_NOTIFICATION_CONCURRENCY - active.size;
         const payloadBudgetBytes = RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - activePayloadBytes;
         if (capacity <= 0 || payloadBudgetBytes <= 0) { return; }
-        const batch = await deps.port.claim({ limit: capacity, now: deps.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS,
-          excludeIds: [...active.keys()], payloadBudgetBytes, allowOversizedPayload: active.size === 0 });
+        // why: batch と raw payload は同期処理へ渡し、次の DB 待機や配送 callback に保持しない。
+        startBatch(await deps.port.claim({ limit: capacity, now: deps.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS,
+          excludeIds: [...active.keys()], payloadBudgetBytes, allowOversizedPayload: active.size === 0 }));
         if (stopped) { return; }
-        for (const entry of batch) {
-          activePayloadBytes += entry.payloadBytes;
-          const delivery = deliverResultNotification({ ...deps, logger, isStopping: () => stopped }, entry)
-            .catch(() => { logger.error({ event: "result_notification.dispatch_failed", notificationId: entry.id }); })
-            .finally(() => { active.delete(entry.id); activePayloadBytes -= entry.payloadBytes; dispatcher.wake("delivery_finished"); });
-          active.set(entry.id, delivery);
-        }
         if (active.size < RESULT_NOTIFICATION_CONCURRENCY && activePayloadBytes < RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES) {
           const next = await deps.port.getNextDispatchAt([...active.keys()]);
           // A due item may be waiting for the remaining byte budget. Completion

@@ -110,7 +110,8 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         n.status = "IN_FLIGHT"; n.claimToken = randomUUID(); n.claimExpiresAt = addMs(options.now, options.claimDurationMs); n.attemptCount += 1;
         result.push(structuredClone({ id: n.id, kind: n.kind, payload: n.payload, claimToken: n.claimToken, attemptCount: n.attemptCount,
           payloadBytes: n.payloadBytes,
-          maxAttempts: n.maxAttempts, partCount: n.partCount, rendererVersion: n.rendererVersion, deliveryContext: n.deliveryContext, parts: n.parts }));
+          maxAttempts: n.maxAttempts, partCount: n.partCount, rendererVersion: n.rendererVersion, deliveryContext: n.deliveryContext,
+          deliveredPartNos: n.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo).sort((a, b) => a - b) }));
         claimedBytes += n.payloadBytes;
         if (claimedBytes > payloadBudget || result.length === options.limit) { break; }
       }

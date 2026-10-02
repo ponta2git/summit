@@ -117,7 +117,11 @@ OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後
 
 最初の plan で renderer、part 数、origin、channel を固定する。各 part の開始・確定は有効 claim と順序を検証する。origin 検証は config / plan / renderer で共有し、DB 層を表示 link builder に依存させない。
 
+配送 query の集約でも family gate 取得後の新しい statement で取消を確認する。begin は前の未完了 part がないことと対象の PENDING を条件付き UPDATE で検証する。complete は part の DELIVERED 更新後、別 statement で残件を確認して親を確定する。同一 statement 内の更新 CTE と残件照会が更新後の状態を読めるとは仮定しない。
+
 claim は payload 本文を取得する前に DB 内で正規化 byte 数を調べ、実行中の通知を含む byte 予算と配送 slot の両方に収める。予算より大きい既受理 payload は、他に実行中の通知がない場合だけ単独で取得する。配送中に保持する予算は実処理の settlement まで解放せず、予算待ちの due row を短周期で再取得しない。本文は part 数を先に数えてから一投稿ずつ生成し、全投稿の文字列配列を保持しない。
+
+claim の part 情報は昇順・重複なしの配送済み番号に限定する。番号の欠落を許し、連続した prefix と決めつけず再開する。inspect は status・試行回数・message ID を含む詳細を維持する。
 
 claim / 次時刻取得 / inspect / retry は同じ対応 version を扱う。退役 OCR の既存 identity は維持し、通常配送や retry に戻さない。A/B の FAILED は期限内・未取消の明示 retry だけを許し、startup で自動復活させない。ResultNotifications port は DB driver error を安全な分類へ変換し、raw payload / bind / cause を HTTP や log に漏らさない。
 

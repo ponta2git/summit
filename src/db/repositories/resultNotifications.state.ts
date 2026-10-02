@@ -35,6 +35,21 @@ const loadResultParts = async (
   return grouped;
 };
 
+const loadDeliveredPartNos = async (
+  tx: NotificationDb, ids: readonly string[]
+): Promise<ReadonlyMap<string, readonly number[]>> => {
+  const rows = await tx.select({ notificationId: parts.notificationId, partNo: parts.partNo }).from(parts)
+    .where(and(inArray(parts.notificationId, [...ids]), eq(parts.status, "DELIVERED")))
+    .orderBy(parts.notificationId, parts.partNo);
+  const grouped = new Map<string, number[]>();
+  for (const row of rows) {
+    const group = grouped.get(row.notificationId) ?? [];
+    group.push(row.partNo);
+    grouped.set(row.notificationId, group);
+  }
+  return grouped;
+};
+
 /** Hydrate a claimed batch once, inside the command that owns its parent locks. */
 export const findClaimedResultNotifications = async (
   tx: NotificationDb, ids: readonly string[]
@@ -46,12 +61,12 @@ export const findClaimedResultNotifications = async (
     claimToken: notifications.claimToken, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts,
     partCount: notifications.partCount, rendererVersion: notifications.rendererVersion, deliveryContext: notifications.deliveryContext
   }).from(notifications).where(inArray(notifications.id, [...ids])).orderBy(notifications.nextAttemptAt, notifications.id);
-  const grouped = await loadResultParts(tx, ids);
+  const grouped = await loadDeliveredPartNos(tx, ids);
   return rows.map(row => {
     if (!row.claimToken) { throw new Error("Missing notification claim token"); }
     return {
       ...row, claimToken: row.claimToken, kind: assertEnum(RESULT_NOTIFICATION_KINDS, row.kind, "result notification kind"),
-      deliveryContext: readDeliveryContext(row.deliveryContext), parts: grouped.get(row.id) ?? []
+      deliveryContext: readDeliveryContext(row.deliveryContext), deliveredPartNos: grouped.get(row.id) ?? []
     };
   });
 };

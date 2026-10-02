@@ -86,6 +86,7 @@ client の既定値は mention を禁止し、必要な投稿だけ [固定 memb
 - 平均順位・対象数は前 → 後で示し、差分は丸め前の符号を保つ。初回・対象なし・比較不能・結果再利用を区別し、link は「最新の分析」と明記する。
 - nonce は通知 ID + part 番号から安定生成して `enforceNonce` を使い、既送達 part は再送しない。Discord の短期重複抑止に exactly-once を依存しない。
 - 保持中の通知に必要な renderer version を残し、retry 時に最新内容の新通知へ差し替えない。
+- 編集しない結果投稿は、SDK の send 成功後にその message だけ cache から除き、message ID を返す。呼出側が timeout しても遅延成功時の除去を行い、cache 清掃失敗を再送の原因にしない。出欠投稿を含む SDK 全体の cache 設定は変えない。満杯時は SDK の追加処理が先に最古 entry を削除するため、既存 entry の完全な保持は保証しない。
 
 ## 7. Slash command 同期
 

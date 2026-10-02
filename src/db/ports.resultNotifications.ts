@@ -24,7 +24,8 @@ export interface ClaimedResultNotification {
   readonly partCount: number;
   readonly rendererVersion: number | null;
   readonly deliveryContext: ResultDeliveryContext | null;
-  readonly parts: readonly ResultNotificationPart[];
+  /** Sorted, unique delivered part numbers; gaps are permitted. */
+  readonly deliveredPartNos: readonly number[];
 }
 export interface ResultNotificationState {
   readonly notificationId: string;

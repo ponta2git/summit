@@ -143,6 +143,24 @@ describe("result notification dispatcher", () => {
     expect(await h.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
   });
 
+  it("settles invalid preparation individually, delivers the rest of its batch, and releases its byte reservation", async () => {
+    const h = resultWorkerHarness();
+    const invalid = await h.enqueue("a-invalid", "x".repeat(300 * 1_024));
+    const sameBatch = await h.enqueue("b-valid", "Short summary");
+    const waiting = await h.enqueue("c-waiting", "x".repeat(300 * 1_024));
+    const claim = h.port.claim; const availableBudgets: Array<number | undefined> = [];
+    h.port.claim = async options => {
+      availableBudgets.push(options.payloadBudgetBytes);
+      return (await claim(options)).map(entry => entry.id === invalid ? { ...entry, payload: {} } : entry);
+    };
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick(); await tick();
+    expect(await h.port.inspect(invalid)).toMatchObject({ status: "FAILED", lastError: "invalid_payload" });
+    expect(await h.port.inspect(sameBatch)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(await h.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(availableBudgets.slice(0, 2)).toEqual([RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES]);
+    expect(h.channel.send.mock.calls.some(([body]) => body.nonce === notificationNonce(invalid, 0))).toBe(false);
+  });
+
   it("drains a claim that settles after stop without starting delivery and leaves lease recovery intact", async () => {
     const h = resultWorkerHarness(); const id = await h.enqueue("late-claim", "Short summary");
     const entered = deferred<void>(); const release = deferred<void>(); releases.push(() => release.resolve());
