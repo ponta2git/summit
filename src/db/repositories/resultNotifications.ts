@@ -1,10 +1,10 @@
 import type { DbLike } from "../rows.ts";
-import type { ResultNotificationsPort } from "../ports.resultNotifications.ts";
+import type { ResultNotificationAdmissionCheck, ResultNotificationsPort } from "../ports.resultNotifications.ts";
 import { NotificationInputError } from "../../domain/resultNotificationPayload.ts";
 import { notificationTransaction, type NotificationDb } from "./notifications.storage.ts";
 import { claimNotifications } from "./notifications.claim.ts";
 import { beginNotificationPart, completeNotificationPart, failNotification, renewNotificationClaim } from "./notifications.delivery.ts";
-import { purgeNotifications } from "./notifications.retention.ts";
+import { pruneNotificationBatches } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { receiveResultNotification } from "./resultNotifications.receipt.ts";
 import { planResultNotification } from "./resultNotifications.plan.ts";
@@ -23,11 +23,11 @@ const sanitizeFailure = (error: unknown): never => {
   throw new Error("Notification database operation failed");
 };
 
-export const makeResultNotificationsPort = (db: DbLike): ResultNotificationsPort => {
+export const makeResultNotificationsPort = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck): ResultNotificationsPort => {
   const run = <T>(command: (tx: NotificationDb) => Promise<T>): Promise<T> =>
     notificationTransaction(db, "result", command).catch(sanitizeFailure);
   return {
-    receive: (rawJson, now) => run(tx => receiveResultNotification(tx, rawJson, now)),
+    receive: (rawJson, now) => run(tx => receiveResultNotification(tx, rawJson, now, admissionCheck)),
     claim: options => run(async tx => {
       const ids = await claimNotifications(tx, "result", options);
       return findClaimedResultNotifications(tx, ids);
@@ -40,10 +40,9 @@ export const makeResultNotificationsPort = (db: DbLike): ResultNotificationsPort
     getNextDispatchAt: excludeIds => findNextNotificationDispatchAt(db, "result", excludeIds).catch(sanitizeFailure),
     inspect: id => run(tx => inspectResultNotification(tx, id)),
     retry: (id, now) => run(tx => retryResultNotification(tx, id, now)),
-    prune: now => run(async tx => {
-      const counts = await purgeNotifications(tx, "result", now, { deliveredOlderThan: now, failedOlderThan: now });
+    prune: now => pruneNotificationBatches(db, "result", now, { deliveredOlderThan: now, failedOlderThan: now }).then(counts => {
       return counts.deliveredPruned + counts.failedPruned + counts.cancelledPruned;
-    }),
+    }).catch(sanitizeFailure),
     getSetting: kind => run(tx => getResultSetting(tx, kind)),
     setSetting: (kind, enabled, now) => run(tx => setResultSetting(tx, kind, enabled, now))
   };

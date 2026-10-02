@@ -105,9 +105,11 @@ const recordNgAndApplyStep = (
       "Postpone NG response recorded via confirmation.");
     switch (result.kind) {
       case "transitioned":
+        context.deps.wakeScheduler?.("postpone_ng_confirmed");
         return yield* applyPostponeTransition(context.deps.client, context.context, result);
       case "stale_interaction":
       case "accepted_pending":
+        context.deps.wakeScheduler?.("postpone_ng_confirmed");
         return;
       case "closed":
         yield* guardSessionPostponeVoting(result.session);
@@ -221,7 +223,6 @@ export const handlePostponeNgConfirmButton = async (
 
   await Either.match(result, {
     onRight: async () => {
-      deps.wakeScheduler?.("postpone_ng_confirmed");
       await interaction.editReply({
         content: postponeMessages.ngConfirm.confirmed,
         components: []

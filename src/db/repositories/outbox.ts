@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 import { randomUUID } from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../schema.ts";
@@ -9,7 +10,7 @@ import type { EnqueueOutboxInput, EnqueueResult } from "./outbox.types.ts";
 export type { EnqueueOutboxInput, EnqueueResult, OutboxDiagnostic, OutboxEntry, OutboxPayload } from "./outbox.types.ts";
 export { findStrandedOutboxEntries, getNextOutboxDispatchAt, getOutboxMetrics, pruneOutbox } from "./outbox.metrics.ts";
 export { claimNextOutboxBatch, releaseExpiredOutboxClaims } from "./outbox.claim.ts";
-export { beginOutboxDelivery, markOutboxDelivered, markOutboxFailed } from "./outbox.delivery.ts";
+export { beginOutboxDelivery, renewOutboxClaim, markOutboxDelivered, markOutboxFailed } from "./outbox.delivery.ts";
 export { requeueFailedOutboxChains } from "./outbox.recovery.ts";
 
 /** Persist attendance context and shared delivery state in the caller's transaction. */
@@ -37,4 +38,4 @@ export const enqueueOutboxInTransaction = async (
 };
 
 export const enqueueOutbox = (db: DbLike, input: EnqueueOutboxInput): Promise<EnqueueResult> =>
-  db.transaction(tx => enqueueOutboxInTransaction(tx, input));
+  runTransaction(db, tx => enqueueOutboxInTransaction(tx, input));

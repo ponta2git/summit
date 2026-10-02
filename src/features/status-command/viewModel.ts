@@ -53,6 +53,25 @@ export interface StatusViewModel {
   readonly strandedOutboxWarning: InvariantWarning | null;
 }
 
+const statusCodeBlock = (lines: readonly string[]): string => `\`\`\`\n${lines.join("\n")}\n\`\`\``;
+
+const boundedStatusText = (lines: readonly string[], footer: readonly string[]): string => {
+  const lineSize = (total: number, line: string): number => total + line.length + 1;
+  const completeLength = 8 + lines.reduce(lineSize, 0) + footer.reduce(lineSize, 0);
+  if (completeLength <= 2_000) { return statusCodeBlock([...lines, "", ...footer]); }
+  const omission = (count: number): readonly string[] => ["", `… 表示上限のため診断 ${count} 行を省略`, "", ...footer];
+  // why: 次回予定と警告合計は障害時にも残し、詳細は行単位で削るためUnicodeを切断しない。
+  const budget = 2_000 - statusCodeBlock(omission(lines.length)).length;
+  const visible: string[] = [];
+  let size = 0;
+  for (const line of lines) {
+    if (size + line.length + 1 > budget) { break; }
+    visible.push(line);
+    size += line.length + 1;
+  }
+  return statusCodeBlock([...visible, ...omission(lines.length - visible.length)]);
+};
+
 const buildSessionStatusViewModel = (
   session: SessionRow,
   responses: readonly ResponseRow[],
@@ -198,11 +217,10 @@ export const renderStatusText = (vm: StatusViewModel): string => {
     lines.push(`⚠ ${vm.strandedOutboxWarning.message}`);
   }
 
-  lines.push("");
-  lines.push(`次のイベント予定: ${vm.nextEventAt ?? "なし"}`);
+  const footer = [`次のイベント予定: ${vm.nextEventAt ?? "なし"}`];
   if (vm.totalWarnings > 0) {
-    lines.push(`⚠ 合計 ${vm.totalWarnings} 件の invariant 警告`);
+    footer.push(`⚠ 合計 ${vm.totalWarnings} 件の invariant 警告`);
   }
 
-  return `\`\`\`\n${lines.join("\n")}\n\`\`\``;
+  return boundedStatusText(lines, footer);
 };

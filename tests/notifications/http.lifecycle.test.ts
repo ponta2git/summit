@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RESULT_NOTIFICATION_MAX_RECEIPTS, RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS } from "../../src/config.ts";
+import { request as createHttpRequest } from "node:http";
+import { RESULT_NOTIFICATION_MAX_BODY_BYTES, RESULT_NOTIFICATION_MAX_RECEIPTS, RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifications.ts";
-import { createHttpHarness, receiverToken } from "./http.harness.ts";
+import { createHttpHarness, operationsToken, receiverToken } from "./http.harness.ts";
 
 describe("notification receipt lifetime", () => {
   let harness: Awaited<ReturnType<typeof createHttpHarness>>;
@@ -70,5 +71,56 @@ describe("notification receipt lifetime", () => {
     expect(harness.wake).toHaveBeenCalledOnce();
     expect(await fake.inspect(ocrReceiptPayload().notificationId)).toMatchObject({ status: "PENDING" });
     expect((await post()).status).toBe(200);
+  });
+
+  it("holds both maximum body reservations after timeout, while allowing bodyless inspection", async () => {
+    vi.useFakeTimers();
+    const fake = port(); const entered = deferred<void>(); const release = deferred<void>();
+    releases.push(() => release.resolve());
+    let calls = 0;
+    fake.receive = async () => {
+      calls += 1; if (calls === 2) { entered.resolve(); } await release.promise;
+      return { notificationId: ocrReceiptPayload().notificationId, disposition: "accepted", status: "PENDING" };
+    };
+    harness = await createHttpHarness({ port: fake });
+    const large = Array.from({ length: 2 }, () => fetch(`${harness.origin}/internal/discord-notifications`, {
+      method: "POST", headers: { authorization: `Bearer ${receiverToken}`, "content-type": "application/json" },
+      body: Buffer.alloc(RESULT_NOTIFICATION_MAX_BODY_BYTES, " ")
+    }));
+    await entered.promise;
+    expect((await post()).status).toBe(503);
+    const inspected = await fetch(`${harness.origin}/internal/discord-notifications/settings/ocr_completed`, {
+      headers: { authorization: `Bearer ${operationsToken}` }
+    });
+    expect(inspected.status).toBe(200); await inspected.arrayBuffer();
+    await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS);
+    expect((await Promise.all(large)).map(response => response.status)).toEqual([503, 503]);
+    expect((await post()).status).toBe(503);
+    expect(calls).toBe(2);
+    release.resolve(); await harness.receiver.drain();
+    expect((await post()).status).toBe(202);
+    expect(calls).toBe(3);
+  });
+
+  it("reserves unknown chunked bodies at their maximum and frees that reservation on disconnect", async () => {
+    harness = await createHttpHarness();
+    const incoming = [];
+    for (let index = 0; index < 2; index += 1) {
+      const started = deferred<void>();
+      harness.receiver.server.once("request", () => started.resolve());
+      const pending = createHttpRequest(`${harness.origin}/internal/discord-notifications`, {
+        method: "POST", headers: { authorization: `Bearer ${receiverToken}`, "content-type": "application/json" }
+      });
+      pending.on("error", () => undefined);
+      releases.push(() => pending.destroy());
+      incoming.push(pending);
+      pending.write("{");
+      await started.promise;
+    }
+    expect((await post()).status).toBe(503);
+    expect(harness.wake).not.toHaveBeenCalled();
+    for (const pending of incoming) { pending.destroy(); }
+    await harness.receiver.drain();
+    expect((await post()).status).toBe(202);
   });
 });

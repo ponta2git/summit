@@ -1,177 +1,130 @@
 # Development Rule
 
-Summit のtoolchain、package command、source layout、TypeScript、命名、comment、local DB、Git/PR運用を定める。業務仕様は`requirements/base.md`、設計は各`docs/*-rule.md`を参照する。
+toolchain、command、外部資料、source の書き方、local DB、Git / PR の契約を定める。依存方向は [Architecture](./architecture.md)、検証の選択と完了条件は [テスト規約 §8](./test-rule.md#8-quality-gate) を使う。
 
-## 1. Toolchain
+## 1. Toolchain と資料確認
 
-- Node.jsとpnpmは`package.json`およびmiseで固定したversionを使う。
-- package managerをnpm/yarnへ切り替えず、lockfileを手編集しない。
-- Node.js 24のnative TypeScript type strippingで開発entrypointとdev scriptを実行する。
-- local relative importは`.ts`拡張子を正規形とし、TypeScript buildが出力時に`.js`へrewriteする。
-- sourceはESM固定。`require()`、CommonJS module、暗黙のextension解決を追加しない。
-- native TypeScript runtimeは型検査をしない。runtime 実装の変更は `docs/test-rule.md` の code gate で型検査と build を含める。
-- Node runtimeでeraseできないTypeScript syntaxを導入しない。`erasableSyntaxOnly`を弱めない。
-- optional peerを含む利用toolはmanifestへ明示し、pnpmのpeer自動installを有効へ戻さない。
-- `tsx`、`ts-node`、`jiti`等の別TypeScript runtimeを安易に追加しない。
+Node.js / pnpm は `package.json` と mise の固定 version を使う。package manager を切り替えず、lockfile を手編集しない。optional peer を含め必要な tool を manifest に明示し、peer の自動 install を有効へ戻さない。
 
-Node native TypeScriptが現在のESM/importを扱えなくなった場合、またはnon-erasable syntaxが実要件になった場合にruntimeを再評価する。単なる好みで複数のdev実行基盤を併存させない。
+開発 entrypoint / script は Node.js 24 の native TypeScript、production は build 後の JavaScript を実行する。ESM と relative import の `.ts` を正規形とし、build が `.js` へ rewrite する。CommonJS・暗黙の extension 解決・erase できない syntax を追加しない。native 実行は型検査ではないため、code gate で typecheck / build も通す。
 
-### 外部 API・tool の資料確認
+別の TypeScript runtime は、現在の ESM / import を扱えなくなった場合や non-erasable syntax が実要件になった場合に再評価する。
 
-ライブラリ、framework、SDK、API、CLI、cloud service の構文・設定・移行・固有の不具合を扱う場合は、記憶だけで実装せず現在の資料を確認する。
+### 外部仕様を判断するとき
 
-1. `package.json`、lockfile、toolchain 設定で対象 version を特定する。最新版の説明をそのまま導入済み version に適用しない。
-2. Context7 の `resolve-library-id` に正式名称と具体的な質問を渡し、公式性・version・内容が最も合う ID を選ぶ。ユーザーが正確な `/org/project` 形式の ID を指定した場合だけ解決を省略する。
-3. `query-docs` に選んだ ID と判断したい質問を渡す。取得内容が対象 version・機能を説明しているか確かめる。
-4. Context7 が利用不可、情報不足、または指定された公式ページの内容を確認できない場合は、公式ドキュメントを直接取得する。検索 snippet だけで結論を出さず、根拠の URL と適用 version を必要な説明に添える。
+ライブラリ、framework、SDK、API、CLI、cloud service の構文・設定・移行・固有の不具合を扱うときに資料を取得する。同じ作業で確認済みの根拠は再利用する。
 
-業務ロジックの調査、一般的な refactor、code review、独自 script の作成に、外部仕様の判断がなければ資料取得は不要。質問に secret、私有コード、個人情報を含めない。資料が取れなくても既存実装と test で確かめられる作業は進め、未確認の API 契約に依存する部分だけを保留する。
+1. manifest / lockfile / toolchain から対象 version と具体的な疑問を定める。
+2. Context7 の `resolve-library-id` に正式名称と質問を渡し、公式性・version・内容が合う ID を選ぶ。正確な `/org/project` がユーザーから指定された場合だけ解決を省略する。
+3. `query-docs` でその質問を取得し、対象 version / 機能への適用を確認する。
+4. 利用不可・情報不足・指定公式ページを確認できない場合は公式本文を直接取得する。検索 snippet だけで判断せず、必要な説明に URL と適用 version を添える。
+
+外部仕様の判断を伴わない業務ロジック調査・一般的 refactor / review・独自 script 作成では資料取得を追加しない。secret・私有コード・個人情報を query に含めない。取得失敗は未確認であって不在の証拠ではなく、依存する判断だけを保留する。
+
+OpenAI 製品・モデル固有の指示設計は利用可能な OpenAI Docs skill を使い、指定モデルの公式本文を確認する。ユーザーが指定した取得順を優先する。API 移行を伴わない文書改訂に API key 読取やモデル設定変更を追加しない。
 
 ## 2. 主要command
 
-| command | 用途 |
+実体は [package.json](../package.json)。実行対象と副作用を選んで使う。
+
+| Command | 用途・境界 |
 |---|---|
-| `pnpm dev` | native TypeScript + Node watchで起動 |
-| `pnpm typecheck` | TypeScript型検査 |
-| `pnpm lint` | oxlint |
-| `pnpm lint:knip` | 未使用ファイル・export・依存関係の検査 |
-| `pnpm test` | unit/application tests |
-| `pnpm test:integration` | 明示した`TEST_DATABASE_URL`上の使い捨てDBでintegration |
-| `pnpm build` | production JavaScript生成 |
-| `pnpm verify:forbidden` | 危険patternと依存方向の検査 |
-| `pnpm verify:file-size` | source file size advisory |
-| `pnpm verify:docs` | 文書topologyとagent adapter検査 |
-| `pnpm docs:sync-agent` | `AGENTS.md` から agent adapter を生成し文書検査 |
-| `pnpm run ci` | 全static/unit品質ゲート。変更別の適用条件は `docs/test-rule.md` |
-| `pnpm commands:sync [--check]` | 開発用 guild-scoped slash command 同期。`--check` は読取のみ |
-| `pnpm commands:sync:production [--check]` | 運用 PC から本番 guild command を手動同期。明示した Discord 環境変数のみ使用 |
-| `pnpm notifications:record:test` | `mom24_`専用loopback DBで実受付・配送を動かし、Discord境界だけを所有run directoryへ記録 |
-| `pnpm notifications inspect/retry/settings ...` | 稼働中private receiverでOCR・分析通知を操作。権限・使い方は`docs/operations/result-notifications.md` |
-| `pnpm db:seed` | local member seed |
-| `pnpm db:reset` | local transient state reset |
+| `pnpm typecheck` / `pnpm build` | 型検査 / production JavaScript 生成 |
+| `pnpm lint` / `pnpm lint:knip` | oxlint / 未使用 file・export・依存検査 |
+| `pnpm test` | unit / application tests |
+| `pnpm test:integration` | 明示した `TEST_DATABASE_URL` から作る使い捨て DB の検証 |
+| `pnpm verify:forbidden` / `pnpm verify:file-size` | 禁止 pattern・依存方向 / file size advisory |
+| `pnpm verify:runtime-image <local-image>` | build 済み image を network なし・read-only で検査。非 root、依存解決、開発依存の除外を確認し、Bot は起動しない |
+| `pnpm verify:notification-capacity <local-image>` | 明示した local `TEST_DATABASE_URL` の使い捨て DB と本番 image を使用。新規標準上限の同時受付・配送と旧巨大通知を、256 MiB・swap なしで検証。標準ケースの cgroup peak は192 MiB以下を必須とし、Discord には接続しない |
+| `pnpm profile:notifications <local-image> --output <new-directory>` | 専用 DB・256 MiB・1 CPU の本番 image で通知速度、GC、heap、event loop を計測。`--profile` は CPU / allocation profile を別実行に採取する。[性能レポート](./performance.md)の再現条件と評価限界を参照 |
+| `pnpm verify:docs [--include <path>]` | 追跡文書と明示した新規 file、link / adapter の検査 |
+| `pnpm docs:sync-agent [--include <path>]` | AGENTS から adapter を生成し、同じ範囲を検査 |
+| `pnpm run ci` | static / unit / build の品質 gate |
+| `pnpm dev` / `pnpm start` | watch 開発 / production 起動。外部サービスへ接続 |
+| `pnpm commands:sync [--check]` | 開発 guild の同期。`--check` は外部 read のみ |
+| `pnpm commands:sync:production [--check]` | 運用 PC から本番 guild を手動同期 |
+| `pnpm notifications:record:test` | `mom24_` 専用 loopback DB で実受付・配送し、Discord 境界だけ所有 run directory に記録 |
+| `pnpm notifications inspect/retry/settings ...` | 稼働中 private receiver の操作。[A/B runbook](./operations/result-notifications.md) に従う |
+| `pnpm db:seed` / `pnpm db:reset` | guard 付き local member seed / transient state reset |
 
-重要: `pnpm ci`はpackage scriptではなくpnpmのinstall系commandとして解釈される。品質ゲートには必ず`pnpm run ci`を使う。
+品質 gate は **`pnpm run ci`**。`pnpm ci` は pnpm の install 系 command として解釈されるため使わない。`setup`、DB script、integration は DB 変更を伴う。品質検証のためだけにアプリ起動・DB reset・外部同期を追加しない。local secret / git 管理外設定を読む command には AGENTS の読取条件も適用する。
 
-`package.json` を command の実体とする。`dev`、`start`、`commands:sync`、`commands:sync:production` は外部サービスへ接続し、`setup`、DB script、integration test は DB の変更を伴う。検証のためにアプリ起動や command 同期を追加しない。`.env.local` や git 管理外 YAML を読む script は、`AGENTS.md` の読取条件も満たす必要がある。
+本番 image は sibling を含む親 directory を context として `docker build --file summit/Dockerfile --tag summit-runtime-check .` で作る。[Dockerfile 固有の ignore](../Dockerfile.dockerignore) は必要な manifest / lock / source だけを許可し、local secret・別 project・node_modules を context に入れない。本番依存 stage と build stage を分け、runtime は root 所有の code を非 root で読む。build / ローカル image 検証を push / deploy の許可とは扱わない。
 
-`commands:sync` は従来の `.env.local` / `summit.config.yml` を使い、引数を CLI へ転送する。本番用 script はこれらのファイルを暗黙に読まない。`DISCORD_TOKEN`、`DISCORD_APPLICATION_ID`、`DISCORD_GUILD_ID` のみが必須で、DB / member / schedule 設定は不要。両経路とも Fly 内では拒否する。実行・終了結果の判定は [本番同期の SOP](./operations/README.md#本番discordコマンド同期)、期限・終了コードの実体は `src/commands/sync.protocol.ts` を参照する。
+容量検証は `TEST_DATABASE_URL` を明示し、Docker host へ公開した local PostgreSQL port を使う。負荷 client と fixture は host 側、実処理は本番 image 内で実行する。専用 DB と container は固有名で作成・回収し、入力には tracked example 設定を使う。失敗時は OOM・受付拒否・期限・準備失敗を固定診断で区別し、接続文字列を表示しない。
 
-探索・検証は必要な path に限定する。`verify:docs` と `docs:sync-agent` は現在、作業ディレクトリ内の対象拡張子を走査するため、git 管理外 YAML も読取対象になる。読取が許可されていない設定がある場合は、git 管理対象と今回の追加ファイルだけの一時コピーで検証し、設定の値をコピーしない。コピー先でも固定 runtime を使い、生成 adapter を作業元へ戻して、検証したファイルが作業元と一致することを確認する。
+容量検証の既定値は標準・旧通知の両ケースであり、`--scenario standard|legacy|all`、`--memory-mib`、`--target-mib` で調査条件を明示できる。標準の合格目標超過も失敗にする。旧通知は別 container で単独配送し、同じ目標との比較と OOM の有無を別に報告する。`fly.toml` の稼働設定や deploy を変更するコマンドではない。
 
-一時コピーでは Node / pnpm の実効 version も確認する。外部依存のない文書 script に限り、実行時の `pnpm_config_verify_deps_before_run=false` で pnpm の自動 install を抑止できる。repository / global の設定は変更しない。
+開発用 command 同期は従来の `.env.local` / `summit.config.yml` を使い、引数を CLI に渡す。本番用はこれらを暗黙に読まず、`DISCORD_TOKEN`・`DISCORD_APPLICATION_ID`・`DISCORD_GUILD_ID` だけを必須入力にする。DB / member / schedule 設定は不要で、両経路とも Fly 内では拒否する。成功・結果不明と終了管理は [Discord 規約 §7](./discord-rule.md#7-slash-command-同期)、実操作は [本番同期 SOP](./operations/README.md#本番discordコマンド同期)。
 
-## 3. TypeScript
+### 文書検証の入力
 
-- strict、exact optional property、unchecked indexed access等のcompiler設定を弱めない。
-- `any`を使わない。外部入力は`unknown`で受け、zodまたは型guardでnarrowする。
-- `as`は型情報を構造的に回復できない境界だけに限定する。二重castや`as never`で不一致を隠さない。
-- unionはdiscriminantを持たせ、exhaustive branchは`assertNever`で閉じる。
-- public function、repository、service、handlerのreturn typeを明示する。
-- config/DTOはreadonly、constant mapは`as const satisfies`を優先する。
-- `@ts-ignore`を常用しない。必要な場合は理由、範囲、撤去条件を近傍に残す。
-- independent I/Oだけを並列化し、順序契約のあるI/Oを見かけ上並列にしない。失敗時も実行中I/Oをownerが追跡する必要がある箇所は、`Promise.all`の早期rejectで解放せず、`docs/architecture.md` §5のsettlement境界を使う。
-- naked promiseを残さない。fire-and-forgetは`void`と最外周catchを明示する。
-- Effectは`effect/Effect`等の公開subpathからnamespace importし、Nodeの非bundle実行で不要なbarrel全体の初期化を避ける。
+Git index から対象一覧を得て、作業中の内容を読む。未追跡設定・生成物を自動走査しない。新規 file は `--include <repository 内のパス>` で加え、複数なら option を繰り返す。明示された Markdown link / anchor の参照先と必須の正本・adapter の存在も検査する。`docs:sync-agent` は検査を含むため、後続の文書差分がなければ重ねて実行しない。
 
-## 4. Source layout
+文書 script は外部依存を必要としない。pnpm が依存関係の再 install を要求する場合は、その command の実行時だけ `pnpm_config_verify_deps_before_run=false` を指定できる。固定 runtime を使い、repository / global 設定は変更しない。
 
-- `src/`はproduction runtimeだけを置く。
-- `scripts/dev/`はseed、reset、scenario等のlocal toolを置く。
-- `scripts/verify/`は決定論的CI guardを置く。
-- featureのhandler/render/messages/view modelは`src/features/<feature>/`へcolocateする。
-- cross-feature副作用は`src/orchestration/`、pure aggregate decisionは`src/domain/`へ置く。
-- DB consumer boundaryは`src/db/`、Discord共通infraは`src/discord/`、時刻は`src/time/`へ置く。
-- barrelはpublic surfaceを意図的に制限する場所だけに使い、named re-exportを優先する。
-- 1ファイル1責務。300行超は自動失敗ではないが、責務分割をreviewする。
+## 3. TypeScript の境界
+
+- strict、exact optional property、unchecked indexed access、`erasableSyntaxOnly` を弱めない。外部入力は `unknown` から zod / guard で narrow し、`any` を使わない。
+- `as` は型情報を構造的に回復できない境界に限定する。二重 cast・`as never` で不一致を隠さない。必要な抑制には理由・範囲・撤去条件を残し、`@ts-ignore` を常用しない。
+- union は discriminant と `assertNever` で閉じる。public function / repository / service / handler は return type を明示し、config / DTO は readonly、constant map は `as const satisfies` を優先する。
+- 独立した I/O だけを並列化する。Promise の追跡、fire-and-forget の catch、失敗時の settlement は [Architecture §5](./architecture.md#5-非同期処理とエラー) に従う。
+- Effect は `effect/Effect` 等の公開 subpath から namespace import し、非 bundle 実行で不要な barrel 初期化を避ける。
+
+## 4. File の責務
+
+配置と依存方向は [Architecture §2](./architecture.md#2-module-の所有範囲) に集約する。一 file 一責務を基本とし、300 行超は分割の review 対象であって自動失敗ではない。barrel は意図的に public surface を制限する場合に使い、named re-export を優先する。
 
 ## 5. Naming
 
-関数prefixで副作用の意味を固定する。
+業務語彙は requirements、DB row 型は schema inference に合わせ、意味のない類義語・型 alias を増やさない。type は PascalCase、file は camelCase.ts を基本とし、既存の責務 suffix を維持する。日付文字列は `*Iso`、Date は suffix なし。
 
-| prefix | 意味 |
+| Prefix | 約束する意味 |
 |---|---|
-| `build*` | I/Oのない値構築 |
-| `render*` | I/Oのない表示変換 |
-| `send*` | Discord/HTTP/DB write等の副作用 |
-| `find*` | DB readで0〜N件 |
-| `get*` | 値が必ず返るpure accessor |
-| `try*` | 条件不足でno-op/undefinedになり得る処理 |
-| `handle*` | Interaction等のentry handler |
-| `run*Tick` | schedulerの一回実行単位 |
-| `create*` | entity作成 |
-| `upsert*` | 更新または作成 |
-| `settle*` | deadline/投票後の収束 |
-| `transition*` | 一段のstate transition |
+| `build*` / `render*` / `get*` | pure な値構築 / 表示変換 / 必ず値を返す accessor |
+| `find*` / `send*` | DB read で 0〜N 件 / Discord・HTTP・DB write 等の副作用 |
+| `try*` / `handle*` / `run*Tick` | 条件不足で no-op / entry handler / scheduler の一回実行 |
+| `create*` / `upsert*` | entity 作成 / 更新または作成 |
+| `settle*` / `transition*` | deadline・投票後の収束 / 一段の状態遷移 |
 
-- `build*`にDB/API I/Oを入れない。
-- 意味の曖昧な`refresh*`を使わず、read/update/sendへ分ける。
-- 文字列日付は`*Iso`、`Date` objectにはsuffixを付けない。
-- typeは`PascalCase`、fileは`camelCase.ts`を基本とする。既存の責務suffix fileはmodule規約を維持する。
-- 業務語彙は`requirements/base.md`に合わせ、類義語へ勝手にrenameしない。
-- DB row typeはschema inferenceを起点とし、意味のない独自aliasを増やさない。
+`build*` に I/O を入れず、意味の曖昧な `refresh*` は read / update / send に分ける。
 
 ## 6. Comment
 
-優先順位:
+名前と型で伝わらない理由、不変条件、競合、一時互換を残す。code から読める WHAT / HOW、実行値・schema・業務仕様の複製、古い外部 link だけの説明は増やさない。
 
-1. nameと型で伝える。
-2. codeから分かるWHAT/HOWは書かない。
-3. invariant、race、非自明な理由、一時互換だけを書く。
-4. 実行リテラル、schema、業務仕様を再記述しない。
-5. 古い外部文書へのlinkだけでcommentの意味を成立させない。
+TSDoc は module 境界を越える export または非自明な contract に使い、本文は簡潔な英語、業務説明の `@remarks` は日本語でもよい。自明な `@param` 列挙は不要。通常 comment は日本語と検索可能な prefix を使う。
 
-TSDocはmodule境界を越えるexportか、非自明なcontractを持つfunctionに限定する。本文は簡潔な英語、`@remarks`の業務説明は日本語でもよい。自明な`@param`列挙は書かない。
-
-通常commentは日本語で、検索可能なprefixを使う。
-
-| prefix | 用途 |
+| 観点 | Prefix |
 |---|---|
-| `why:` | 方針選択理由 |
-| `invariant:` | 維持すべき条件 |
-| `race:` | 競合時の挙動 |
-| `idempotent:` | 冪等化方法 |
-| `jst:` / `iso-week:` | 時刻・週境界 |
-| `state:` | state transition |
-| `source-of-truth:` | 正本の所在 |
-| `ack:` | Discord応答期限 |
-| `unique:` / `tx:` | DB制約・transaction |
-| `single-instance:` | topology依存 |
-| `deploy-window:` | 運用禁止窓 |
-| `redact:` / `secret:` | 秘匿値保護 |
-| `compat:` | 一時互換。撤去条件を設計文書へ持つ |
-| `todo(ai):` | 仕様未確定。PR要確認事項と対応 |
-| `regression:` | 非自明な過去bug回帰 |
+| 判断・不変条件 | `why:`、`invariant:`、`source-of-truth:` |
+| 競合・状態 | `race:`、`idempotent:`、`state:`、`unique:`、`tx:` |
+| 時刻・外部境界 | `jst:`、`iso-week:`、`ack:`、`single-instance:`、`deploy-window:` |
+| 秘匿・互換・回帰 | `redact:`、`secret:`、`compat:`、`regression:` |
+| 未確定仕様 | `todo(ai):`。文書索引の競合解消規則に従い、PR の要確認事項と対応 |
 
-module preambleは、file名だけでは複数module間のorchestration責務が読めない場合に2〜4行だけ置く。装飾区切り、目次、実装と乖離した説明は削除する。
+module preamble は file 名で分からない横断責務がある場合だけ短く置く。装飾区切り・目次・乖離した説明を残さない。互換処理の撤去条件は対応する設計文書に持つ。
 
-## 7. Environment、secret、logging
+## 7. Environment と secret
 
-- local secretは`.env.local`、commit可能なのはplaceholderだけの`.env.example`。
-- user向け非secret設定は`*.config.yml`の既定の追跡方針に従う。
-- runtime codeは`src/env.ts`と`src/userConfig.ts`のparse済み値を使う。`src/envSchema.ts`は副作用のないparse定義、`src/env.ts`は注入された環境の検証だけを行う。用途別 CLI の設定入口は `docs/architecture.md` §7 に従う。local fileはpackage commandの`dotenv`で明示的に読む。
-- 機密値の扱いは `AGENTS.md` に従う。monitor URL も同じ扱いとする。
-- `console.*`を残さずpino loggerを使う。
-- redact pathを狭める変更はsecurity-sensitiveとしてreviewする。
-- Fly secretのunset/上書きはrunbookなしに実行しない。
+local secret は `.env.local`、commit 対象の `.env.example` は placeholder のみとする。非 secret の user 設定は既存の `*.config.yml` 追跡方針に従う。読取・出力の許可は AGENTS、parse 済み設定と log の実装境界は [Architecture §7](./architecture.md#7-設定と観測)。
+
+env 入口は注入された環境の検証に限定し、local file は package command の `dotenv` で明示的に読む。monitor URL も機密値として扱い、Fly secret の unset / 上書きは [rotation runbook](./operations/secrets-rotation.md) と対象操作の権限に従う。
 
 ## 8. Local DB
 
-- local DBはmomo-dbのcompose/migrationを使用する。
-- 週次flowをやり直すときは`pnpm db:reset`を使う。
-- memberを含めて消す必要がある場合だけ`pnpm db:reset --all`を使い、その後seedする。
-- `docker exec`や`psql`で手動TRUNCATEしない。
-- seed/reset/scenarioは`scripts/dev/localDatabase.ts`でlocal PostgreSQLの接続先を検証してからqueryを実行する。host guardを迂回しない。seedは起動時と同じmember reconcileを使い、配列順で過去のidentityを書き換えない。
-- schema変更はmomo-dbで行い、Summit側へmigration toolを再導入しない。
+momo-db の compose / migration を使い、Summit に migration tool を再導入しない。週次 flow のやり直しは `pnpm db:reset`、member も消す必要がある場合だけ `--all` を付けて、その後 seed する。`docker exec` / `psql` の手動 TRUNCATE で代用しない。
 
-## 9. Git とPR
+seed / reset / scenario は [localDatabase](../scripts/dev/localDatabase.ts) の PostgreSQL host guard を通す。seed は起動時と同じ member reconcile を使い、配列順で過去の identity を変えない。
 
-- 開始時と commit 前に branch、worktree、staged diff を確認する。既存のユーザー差分を編集・revert・stage せず、今回の対象だけを明示して stage する。同じファイルに既存差分がある場合は hunk を分けて確認する。
-- commit を依頼されたら必要な gate と staged diff の確認後に実行し、hash と完了状態を報告する。commit の依頼を push・merge・deploy の許可へ拡張しない。履歴の書換や無関係な変更の破棄は、明示された依頼なしに行わない。
-- commit messageは英語のConventional Commits。
-- PR 本文は日本語で、解決する問題と変更後の挙動、理由、検証結果を先に書く。重要な仮定・要確認事項・影響範囲・運用影響・リスク・更新した正本は、該当するものだけを具体的に添える。小さな変更に空の見出しや定型チェックを増やさない。
-- `.github/PULL_REQUEST_TEMPLATE.md` を使い、実行した command と pass / fail / 未実行を区別する。選んだ gate の理由や、必要な検証を実行できなかった理由を示す。予定の検証を完了済みにしない。
-- 業務仕様変更と文書topology移行など、異なるreview判断を必要とする変更はcommitまたはPRを分ける。
-- 設計変更は対応するliving documentを同じPRで更新する。番号付きの判断履歴文書を追加しない。
-- 理由、非採用案、再評価条件はPRと現在の設計文書に残し、完了済み実装計画をdocsへ蓄積しない。
+## 9. Git と PR
 
-Linear チケットの実装と必要な確認が完了し、PR の merge をもって Done にする場合は、PR 本文に `Fixes <issue ID>` を記載する。`Refs <issue ID>` は merge 後も追加作業または受け入れ確認が残る場合だけ使用し、その残作業を示す。この記法はチケット更新・外部へのメッセージ送信・PR merge 自体の実行権限を与えない。
+開始時と commit 前に branch・worktree・staged diff を確認する。既存ユーザー差分を編集・revert・stage せず、今回の対象を明示して stage する。同じ file に既存差分がある場合は hunk を分けて確認する。
+
+commit を依頼されたら、必要な gate と staged diff を確認して実行し、hash と完了状態を報告する。message は英語の Conventional Commits。commit の許可を push・merge・deploy に広げず、明示依頼なしに履歴を書き換えたり無関係な差分を破棄したりしない。
+
+PR 本文は日本語で、問題・変更後の挙動・理由・検証結果を先に書く。[template](../.github/PULL_REQUEST_TEMPLATE.md) を使い、command の pass / fail / 未実行と warning、選んだ gate と実行できない理由を区別する。重要な仮定・要確認事項・運用影響・risk・更新した正本だけを具体的に添え、空の見出しを埋めるための文章は増やさない。
+
+業務仕様変更と文書構成変更など、異なる判断を要する変更は commit / PR を分ける。設計変更は現行の正本を同時に更新し、判断理由・非採用案・再評価条件を残す。完了済み計画や番号付き履歴文書は蓄積しない。
+
+Linear の実装・確認が完了し、merge で Done にする場合は PR に `Fixes <issue ID>`。merge 後も追加作業・受入確認が残る場合だけ `Refs <issue ID>` と残作業を書く。この記法はチケット更新・外部メッセージ・merge 自体の権限を与えない。

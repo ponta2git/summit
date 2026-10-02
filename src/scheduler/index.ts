@@ -58,6 +58,12 @@ const logSchedulerFailure = (failure: SchedulerFailure): void => {
   );
 };
 
+const requireSuccessfulBatch = (batch: SchedulerEffect<SchedulerBatchReport>): SchedulerEffect<SchedulerBatchReport> =>
+  Effect.flatMap(batch, report => {
+    const firstFailure = report.failures[0];
+    return firstFailure ? Effect.fail(firstFailure.error) : Effect.succeed(report);
+  });
+
 interface CronAdapter {
   schedule(
     expression: string,
@@ -198,9 +204,9 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   const controller = createSchedulerController({
     client,
     context,
-    runDeadlineTick: () => runDeadlineTick(client, context),
-    runPostponeDeadlineTick: () => runPostponeDeadlineTick(client, context),
-    runReminderTick: () => runReminderTick(client, context)
+    runDeadlineTick: () => requireSuccessfulBatch(runDeadlineTick(client, context)),
+    runPostponeDeadlineTick: () => requireSuccessfulBatch(runPostponeDeadlineTick(client, context)),
+    runReminderTick: () => requireSuccessfulBatch(runReminderTick(client, context))
   });
 
   // why: 新 feature の tick 追加箇所を registry に集約する。cron 式と JST 前提は src/config.ts の CRON_* に集約。
@@ -228,14 +234,13 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     },
     {
       schedule: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
-      tick: () => {
+      tick: async () => {
         deps.wakeResultNotifications?.("supervisor");
-        return runEffectTickSafely(
-          { name: "scheduler_supervisor", logger },
-          () =>
-            Effect.flatMap(runOutboxMetricsTick(context), () =>
-              runSchedulerSupervisorTick(context, controller))
-        );
+        // invariant: 観測や claim 回復の障害で、期限処理・他 family の回復を止めない。
+        await Promise.allSettled([
+          runEffectTickSafely({ name: "outbox_metrics", logger }, () => runOutboxMetricsTick(context)),
+          runEffectTickSafely({ name: "scheduler_supervisor", logger }, () => runSchedulerSupervisorTick(context, controller))
+        ]);
       }
     }
   ];
@@ -247,23 +252,34 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     running.add(pending);
     return pending;
   };
-  const tasks = taskDefs.map((def) => cronModule.schedule(def.schedule,
-    () => stopped ? Promise.resolve() : track(def.tick), { timezone: "Asia/Tokyo", noOverlap: true }));
+  const tasks: Array<Pick<ScheduledTask, "stop">> = [];
+  const stop = (): void => {
+    if (stopped) { return; }
+    stopped = true;
+    controller.stop();
+    for (const task of tasks) {
+      void track(async () => {
+        try { await task.stop(); }
+        catch (error: unknown) { logger.error({ error }, "Failed to stop cron task."); }
+      });
+    }
+  };
+  try {
+    for (const def of taskDefs) {
+      tasks.push(cronModule.schedule(def.schedule,
+        () => stopped ? Promise.resolve() : track(def.tick), { timezone: "Asia/Tokyo", noOverlap: true }));
+    }
+  } catch (error: unknown) {
+    // invariant: schedule は即座に稼働する。途中の登録失敗でも、それまでのproducerを残さない。
+    stop();
+    throw error;
+  }
 
   controller.wake("scheduler_created");
 
   return {
     controller,
-    stop: () => {
-      stopped = true;
-      controller.stop();
-      for (const task of tasks) {
-        void track(async () => {
-          try { await task.stop(); }
-          catch (error: unknown) { logger.error({ error }, "Failed to stop cron task."); }
-        });
-      }
-    },
+    stop,
     drain: async () => { await Promise.allSettled([controller.drain(), ...running]); },
     wake: (reason) => controller.wake(reason)
   };

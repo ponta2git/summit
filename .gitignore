@@ -8,6 +8,7 @@ node_modules/
 dist/
 .pnpm-store/
 coverage/
+artifacts/notification-performance/
 .DS_Store
 
 # Serena MCP workspace

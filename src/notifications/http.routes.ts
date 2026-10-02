@@ -7,6 +7,7 @@ import type { ResultNotificationsPort } from "../db/ports.resultNotifications.ts
 import type { Clock } from "../time/index.ts";
 import { readNotificationBody, NotificationHttpError } from "./http.body.ts";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES } from "../config.ts";
+import { parseNotificationJson } from "../domain/resultNotificationPayload.ts";
 
 export interface NotificationHttpResult { readonly status: number; readonly body: unknown; }
 export interface NotificationHttpDeps {
@@ -27,10 +28,14 @@ const authenticated = (header: string | undefined, secret: string): boolean => {
 
 export const authorizeNotificationRequest = (request: IncomingMessage, deps: NotificationHttpDeps): string => {
   let path: string;
+  if (!request.url?.startsWith("/") || request.url.startsWith("//")) {
+    throw new NotificationHttpError(400, "invalid_input");
+  }
   try { path = new URL(request.url ?? "", "http://localhost").pathname; }
   catch { throw new NotificationHttpError(400, "invalid_input"); }
   const receipt = path === "/internal/discord-notifications" && request.method === "POST";
-  if (!authenticated(request.headers.authorization, receipt ? deps.token : deps.operationsToken)) {
+  if (request.headersDistinct["authorization"]?.length !== 1
+    || !authenticated(request.headers.authorization, receipt ? deps.token : deps.operationsToken)) {
     throw new NotificationHttpError(401, "unauthorized");
   }
   return path;
@@ -67,9 +72,7 @@ export const routeNotificationRequest = async (
     const kind = setting[1] === "ocr_completed" ? "ocr_completed" : "analysis_completed";
     if (request.method === "GET") { return { status: 200, body: await deps.port.getSetting(kind) }; }
     if (request.method === "PATCH") {
-      let value: unknown;
-      try { value = JSON.parse(await jsonBody(request)); }
-      catch (error) { if (error instanceof NotificationHttpError) { throw error; } throw new NotificationHttpError(400, "invalid_input"); }
+      const value = parseNotificationJson(await jsonBody(request));
       const parsed = z.object({ enabled: z.boolean() }).strict().safeParse(value);
       if (!parsed.success) { throw new NotificationHttpError(400, "invalid_input"); }
       const changed = await deps.port.setSetting(kind, parsed.data.enabled, deps.clock.now());

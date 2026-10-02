@@ -1,4 +1,5 @@
 import type { SyncOptions } from "./sync.protocol.ts";
+import { parseUserConfigYaml } from "../userConfig.yaml.ts";
 
 export interface SyncSettings extends SyncOptions {
   readonly token: string;
@@ -21,8 +22,7 @@ export const readSyncSettings = async (
     applicationId ??= Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf8");
     if (guildId === undefined) {
       try {
-        const { parse } = await import("yaml");
-        const config: unknown = parse(environment["SUMMIT_CONFIG_YAML"] ?? "");
+        const config = parseUserConfigYaml(environment["SUMMIT_CONFIG_YAML"] ?? "");
         if (typeof config === "object" && config !== null && "discord" in config) {
           const discord = config.discord;
           if (typeof discord === "object" && discord !== null && "guildId" in discord && validId(discord.guildId)) { guildId = discord.guildId; }

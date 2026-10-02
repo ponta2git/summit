@@ -128,13 +128,12 @@ export const getSchedulerSessionHints = async (
   db: DbLike,
   _now: Date
 ): Promise<SchedulerSessionHints> => {
-  const [row] = await db
-    .select({
-      nextAsking: sql<unknown>`min(case when ${sessions.status} = 'ASKING' then ${sessions.deadlineAt} end)`,
-      nextPostpone: sql<unknown>`min(case when ${sessions.status} = 'POSTPONE_VOTING' then ${sessions.deadlineAt} end)`,
-      nextReminder: sql<unknown>`min(case when ${sessions.status} = 'DECIDED' then ${sessions.reminderAt} end)`
-    })
-    .from(sessions);
+  // why: 各 status/時刻 index の先頭だけを読み、毎回の wake で終端履歴を走査しない。
+  const [row] = await db.execute<{ nextAsking: unknown; nextPostpone: unknown; nextReminder: unknown }>(sql`SELECT
+    (SELECT min(${sessions.deadlineAt}) FROM ${sessions} WHERE ${sessions.status} = 'ASKING') AS "nextAsking",
+    (SELECT min(${sessions.deadlineAt}) FROM ${sessions} WHERE ${sessions.status} = 'POSTPONE_VOTING') AS "nextPostpone",
+    (SELECT min(${sessions.reminderAt}) FROM ${sessions} WHERE ${sessions.status} = 'DECIDED') AS "nextReminder"
+  `);
 
   return {
     nextAskingDeadlineAt: parseDbTimestamp(

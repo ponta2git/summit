@@ -2,8 +2,7 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { discordNotificationAttendance, discordNotifications, OUTBOX_STATUSES } from "../schema.ts";
 import { assertEnum, parseDbTimestamp, type DbLike } from "../rows.ts";
 import type { OutboxDiagnostic } from "./outbox.types.ts";
-import { notificationTransaction } from "./notifications.storage.ts";
-import { purgeNotifications } from "./notifications.retention.ts";
+import { pruneNotificationBatches } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { systemClock } from "../../time/index.ts";
 
@@ -34,8 +33,7 @@ export interface PruneOutboxResult {
 export const pruneOutbox = async (
   db: DbLike,
   options: { readonly deliveredOlderThan: Date; readonly failedOlderThan: Date }
-): Promise<PruneOutboxResult> => notificationTransaction(db, "attendance", tx =>
-  purgeNotifications(tx, "attendance", systemClock.now(), options));
+): Promise<PruneOutboxResult> => pruneNotificationBatches(db, "attendance", systemClock.now(), options);
 
 export interface OutboxMetricsResult {
   readonly pending: number;
@@ -52,7 +50,8 @@ export const getOutboxMetrics = async (db: DbLike, now: Date): Promise<OutboxMet
     failed: sql<number>`count(*) filter (where ${discordNotifications.status} = 'FAILED')::int`,
     oldestPending: sql<unknown>`min(${discordNotifications.createdAt}) filter (where ${discordNotifications.status} = 'PENDING')`,
     oldestFailed: sql<unknown>`min(${discordNotifications.updatedAt}) filter (where ${discordNotifications.status} = 'FAILED')`
-  }).from(discordNotifications).where(retainedAttendance);
+  }).from(discordNotifications).where(and(retainedAttendance,
+    inArray(discordNotifications.status, ["PENDING", "IN_FLIGHT", "FAILED"])));
   const age = (value: unknown, label: string): number | null => {
     const date = parseDbTimestamp(value, label);
     return date === null ? null : Math.max(0, now.getTime() - date.getTime());

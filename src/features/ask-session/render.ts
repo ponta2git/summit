@@ -19,6 +19,7 @@ import {
   type AskCustomIdChoice
 } from "../../discord/shared/customId.ts";
 import type { AskMessageViewModel } from "./viewModel.ts";
+import { memberMentions } from "../../discord/shared/mentions.ts";
 
 // invariant: custom_id 末尾は `AskCustomIdChoice` の小文字値と一致させる。codec / choiceMap と同時更新。
 const ASK_CHOICES = ["t2200", "t2230", "t2300", "t2330", "absent"] as const satisfies readonly AskCustomIdChoice[];
@@ -82,5 +83,6 @@ export const renderAskBody = (
   vm: AskMessageViewModel
 ): MessageCreateOptions & MessageEditOptions => ({
   content: buildAskContent(vm),
+  allowedMentions: memberMentions(vm.memberUserIds, vm.suppressMentions),
   components: [buildAskRow(vm.sessionId, { disabled: vm.disabled })]
 });

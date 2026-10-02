@@ -97,19 +97,21 @@ export const resultNotificationContract = (
     });
 
     it("fences expired owners and resumes the stable plan after the last delivered part", async () => {
-      const id = await receive(); const old = await claim(); await plan(id, old.claimToken);
+      const id = await receive(); const old = await claim(); await plan(id, old.claimToken, 3);
       await port.begin(id, 0, old.claimToken, notificationNow); await port.complete(id, 0, old.claimToken, "sent-0", at(1));
-      await port.begin(id, 1, old.claimToken, at(2));
+      await port.begin(id, 1, old.claimToken, at(2)); await port.complete(id, 1, old.claimToken, "sent-1", at(3));
+      await port.begin(id, 2, old.claimToken, at(4));
       const current = await claim(1_001);
       expect(current.claimToken).not.toBe(old.claimToken);
       expect(current.deliveryContext).toEqual(context);
-      expect(current.parts).toMatchObject([{ status: "DELIVERED" }, { status: "PENDING" }]);
-      expect(await port.complete(id, 1, old.claimToken, "stale", at(1_002))).toBe(false);
+      expect(current.deliveredPartNos).toEqual([0, 1]);
+      expect(await port.inspect(id)).toMatchObject({ parts: [{ status: "DELIVERED" }, { status: "DELIVERED" }, { status: "PENDING" }] });
+      expect(await port.complete(id, 2, old.claimToken, "stale", at(1_002))).toBe(false);
       expect(await port.fail(id, old.claimToken, "delivery_uncertain", at(2_000), at(1_002))).toBe(false);
       expect(await port.renew(id, old.claimToken, at(1_002), 1_000)).toBe(false);
       expect(await port.begin(id, 0, current.claimToken, at(1_002))).toBe(false);
-      expect(await port.begin(id, 1, current.claimToken, at(1_002))).toBe(true);
-      expect(await port.complete(id, 1, current.claimToken, "sent-1", at(1_003))).toBe(true);
+      expect(await port.begin(id, 2, current.claimToken, at(1_002))).toBe(true);
+      expect(await port.complete(id, 2, current.claimToken, "sent-2", at(1_003))).toBe(true);
       expect(await port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 2 });
     });
 
@@ -121,7 +123,7 @@ export const resultNotificationContract = (
       expect((await claim(1_902)).attemptCount).toBe(2);
     });
 
-    it("keeps each snapshot and its ordered parts distinct when reclaiming a mixed batch", async () => {
+    it("keeps each snapshot and only its delivered part numbers distinct when reclaiming a mixed batch", async () => {
       const ocr = ocrReceiptPayload(); const analysis = analysisNotification();
       await port.receive(JSON.stringify(ocr), notificationNow);
       await port.receive(JSON.stringify(analysis), at(1));
@@ -139,11 +141,29 @@ export const resultNotificationContract = (
       expect(batch).toHaveLength(3);
       expect(new Set(batch.map(entry => entry.claimToken)).size).toBe(3);
       const byId = new Map(batch.map(entry => [entry.id, entry]));
-      expect(byId.get(ocr.notificationId)).toMatchObject({ payload: ocr, attemptCount: 2, partCount: 2, deliveryContext: context,
-        parts: [{ partNo: 0, status: "DELIVERED", deliveredMessageId: "ocr-sent" }, { partNo: 1, status: "PENDING", deliveredMessageId: null }] });
-      expect(byId.get(analysis.notificationId)).toMatchObject({ payload: analysis, attemptCount: 2, partCount: 1,
-        parts: [{ partNo: 0, status: "PENDING", deliveredMessageId: null }] });
-      expect(byId.get(newPayload.notificationId)).toMatchObject({ payload: newPayload, attemptCount: 1, partCount: 0, parts: [] });
+      expect(byId.get(ocr.notificationId)).toMatchObject({ payload: ocr, attemptCount: 2, partCount: 2, deliveryContext: context, deliveredPartNos: [0] });
+      expect(byId.get(analysis.notificationId)).toMatchObject({ payload: analysis, attemptCount: 2, partCount: 1, deliveredPartNos: [] });
+      expect(byId.get(newPayload.notificationId)).toMatchObject({ payload: newPayload, attemptCount: 1, partCount: 0, deliveredPartNos: [] });
+      for (const entry of batch) { expect(entry).not.toHaveProperty("parts"); }
+      expect(await port.inspect(ocr.notificationId)).toMatchObject({ parts: [
+        { partNo: 0, status: "DELIVERED", deliveredMessageId: "ocr-sent" },
+        { partNo: 1, status: "PENDING", deliveredMessageId: null }
+      ] });
+    });
+
+    it("reserves a whole payload before claiming and leaves an over-budget item untouched", async () => {
+      const id = await receive();
+      const first = await claim();
+      expect(first.payloadBytes).toBeGreaterThan(Buffer.byteLength(JSON.stringify(ocrReceiptPayload())));
+      await port.fail(id, first.claimToken, "discord_unavailable", notificationNow, notificationNow);
+      const options = { limit: 2, now: notificationNow, claimDurationMs: 1_000, allowOversizedPayload: false };
+      expect(await port.claim({ ...options, payloadBudgetBytes: first.payloadBytes - 1 })).toEqual([]);
+      expect(await port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 1, claimExpiresAt: null });
+      const second = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
+      await port.receive(JSON.stringify(second), notificationNow);
+      const exact = await port.claim({ ...options, payloadBudgetBytes: first.payloadBytes });
+      expect(exact.map(entry => ({ id: entry.id, bytes: entry.payloadBytes }))).toEqual([{ id, bytes: first.payloadBytes }]);
+      expect(await port.inspect(second.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0, claimExpiresAt: null });
     });
 
     it("discovers the earlier retry or cancelled send expiry and excludes active IDs", async () => {
@@ -173,7 +193,8 @@ export const resultNotificationContract = (
       expect(await port.getNextDispatchAt()).toEqual(at(5_000));
       expect(await port.claim({ limit: 3, now: at(4_999), claimDurationMs: 1_000 })).toEqual([]);
       const retried = await claim(5_000);
-      expect(retried.parts[0]).toMatchObject({ status: "DELIVERED", deliveredMessageId: "sent" });
+      expect(retried.deliveredPartNos).toEqual([0]);
+      expect((await port.inspect(id))?.parts[0]).toMatchObject({ status: "DELIVERED", deliveredMessageId: "sent" });
       await expect(port.plan(id, retried.claimToken, { count: 2, rendererVersion: 1, context: { ...context, channelId: "changed" }, now: at(5_001) }))
         .rejects.toThrow(/Plan conflict|Notification database operation failed/);
       expect(await plan(id, retried.claimToken, 2, 5_002)).toBe(true);

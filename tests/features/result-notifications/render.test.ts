@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { MessageFlags } from "discord.js";
 import { describe, expect, it } from "vitest";
 
-import { renderResultNotification } from "../../../src/features/result-notifications/render.ts";
+import { assertNewNotificationPartLimit, planResultNotification, renderResultNotification } from "../../../src/features/result-notifications/render.ts";
 import { renderNotificationRanks } from "../../../src/features/result-notifications/ranks.ts";
+import { buildNotificationLinks } from "../../../src/features/result-notifications/links.ts";
+import { NotificationInputError, validateNewNotification } from "../../../src/domain/resultNotificationPayload.ts";
 import { analysisNotification, ocrNotification, rankComparisons } from "./fixtures.ts";
 
 const origin = "https://results.example.com";
@@ -165,5 +168,89 @@ describe("fixed result notification rendering", () => {
       expect(() => renderResultNotification(input, invalid)).toThrow("application origin");
     }
     expect(() => renderResultNotification(input, origin, 99)).toThrow("Unsupported notification renderer");
+  });
+
+  it.each(["gameTitleId", "matchId"] as const)("classifies an oversized encoded %s link as a payload limit", field => {
+    const input = analysisNotification();
+    const id = "界".repeat(200);
+    const data = field === "gameTitleId" ? { ...input.data, gameTitleId: id }
+      : { ...input.data, matches: input.data.matches.map(match => ({ ...match, matchId: id })) };
+    const payload = validateNewNotification({ ...input, data });
+    expect(() => assertNewNotificationPartLimit(payload, origin)).toThrow(new NotificationInputError("payload_too_large"));
+  });
+
+  it("keeps invalid configuration distinguishable from payload admission limits", () => {
+    expect(() => assertNewNotificationPartLimit(ocrNotification(), "https://results.example.com/path"))
+      .toThrow("application origin");
+    expect(() => assertNewNotificationPartLimit(ocrNotification(), "https://results.example.com/path"))
+      .not.toThrow(NotificationInputError);
+  });
+
+  it.each(["draft", "match", "analysis"] as const)("rejects malformed Unicode in the %s link before encoding", route => {
+    const links = buildNotificationLinks(origin);
+    for (const id of ["\ud800", "\udfff", "a\ud800z", "a\udfffz"]) {
+      expect(() => links[route](id)).toThrow(new NotificationInputError("invalid_input"));
+    }
+    expect(links[route]("😀")).toContain("%F0%9F%98%80");
+  });
+
+  it("keeps the original renderer's exact content, splits, numbering and message options", () => {
+    const original = analysisNotification();
+    const mixed = { ...original, data: { ...original.data,
+      gameTitleName: "界" + "a".repeat(1_897) + "😀*",
+      seasons: original.data.seasons.map(season => ({ ...season, seasonName: "季節😀*".repeat(500) })),
+      overall: [
+        { ...original.data.overall[0], displayName: "名\\😀".repeat(800) },
+        original.data.overall[1], original.data.overall[2], original.data.overall[3]
+      ] as const,
+      matches: original.data.matches.map(match => ({ ...match,
+        ownerName: "a".repeat(1_890) + "\nowner",
+        players: [match.players[0], match.players[1], { ...match.players[2], displayName: "凪*".repeat(1_000) }, match.players[3]] as const,
+        note: "[x] `raw` *text* 😀 @everyone <@123>\\\n".repeat(300)
+      }))
+    } };
+    // regression: 逐次化前のrenderer v1で採取した固定値。分割の差は保存済みpartの再開位置を壊す。
+    for (const [payload, count, digest] of [
+      [original, 1, "534248dec2438d7121ff0603d9f7965e8b366bee00470f00f3f7c8ebf82a0662"],
+      [mixed, 20, "743b03335442893a57e816e585accfd029765b2659192a13282576862a69375b"]
+    ] as const) {
+      const plan = planResultNotification(payload, origin);
+      const rendered = { rendererVersion: plan.rendererVersion, parts: [...plan.parts()] };
+      expect(plan.partCount).toBe(count);
+      expect(rendered.parts).toHaveLength(count);
+      expect(createHash("sha256").update(JSON.stringify(rendered)).digest("hex")).toBe(digest);
+    }
+  });
+
+  it("checks the exact new part budget while retaining the older rendering range", () => {
+    const original = analysisNotification();
+    // why: field制限と独立に、escaped本文のpart境界を検証するための旧payloadを用いる。
+    const atLimit = { ...original, data: { ...original.data, gameTitleName: "a".repeat(1_900 * 126) } };
+    const oversized = { ...original, data: { ...original.data, gameTitleName: "a".repeat(1_900 * 127) } };
+    expect(planResultNotification(atLimit, origin).partCount).toBe(128);
+    expect(() => assertNewNotificationPartLimit(atLimit, origin)).not.toThrow();
+    expect(() => assertNewNotificationPartLimit(oversized, origin)).toThrow("payload_too_large");
+    expect(planResultNotification(oversized, origin).partCount).toBe(129);
+    expect(() => assertNewNotificationPartLimit(ocrNotification(), origin)).not.toThrow();
+  });
+
+  it("streams the prior 8 MiB Markdown case with intact Unicode and bounded messages", () => {
+    const original = analysisNotification();
+    const title = "界" + "*".repeat(8 * 1024 * 1024 - 8_192);
+    const plan = planResultNotification({ ...original, data: { ...original.data, gameTitleName: title, matches: [] } }, origin);
+    let received = 0;
+    let escapedStars = 0;
+    let unicodeTitles = 0;
+    for (const part of plan.parts()) {
+      received += 1;
+      expect(part.content.length).toBeLessThanOrEqual(2_000);
+      expect(part.content).not.toContain("\ufffd");
+      escapedStars += part.content.split("\\*").length - 1;
+      unicodeTitles += part.content.split("界").length - 1;
+    }
+    expect(received).toBe(plan.partCount);
+    expect(plan.partCount).toBeGreaterThan(8_000);
+    expect(escapedStars).toBe(8 * 1024 * 1024 - 8_192);
+    expect(unicodeTitles).toBe(1);
   });
 });

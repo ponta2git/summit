@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 import type { DbLike } from "../rows.ts";
 import { enqueueOutboxInTransaction, type EnqueueOutboxInput } from "./outbox.ts";
 import { lockSession } from "./sessionCommands.shared.ts";
@@ -7,7 +8,7 @@ import { buildMissingMessageIntents } from "./sessionOutboxIntents.ts";
 export const recoverMissingMessageIntents = (
   db: DbLike,
   sessionId: string
-): Promise<readonly EnqueueOutboxInput[]> => db.transaction(async tx => {
+): Promise<readonly EnqueueOutboxInput[]> => runTransaction(db, async tx => {
   const current = await lockSession(tx, sessionId);
   if (!current) { return []; }
 

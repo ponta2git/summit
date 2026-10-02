@@ -1,28 +1,29 @@
 import { and, eq, or, sql } from "drizzle-orm";
-import { RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../config.ts";
+import { RESULT_NOTIFICATION_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES } from "../../notifications/config.ts";
 import type { DiscordNotificationReceipt } from "@momo/db/notifications";
-import { NotificationInputError, assertSupportedNotificationVersion, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
+import { NotificationInputError, assertSupportedNotificationVersion, parseNotificationJson, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
 import { parseTimestamp } from "../../time/index.ts";
 import { discordNotifications as notifications, discordNotificationResults as results, discordNotificationTargets as targets } from "../schema.ts";
 import { cancelNotification, loadResultCancellationReason, type NotificationDb } from "./notifications.storage.ts";
 import { normalizeNotificationJson } from "./notifications.hash.ts";
 import { assertEnum } from "../rows.ts";
+import type { ResultNotificationAdmissionCheck } from "../ports.resultNotifications.ts";
 
 export const receiveResultNotification = async (
-  tx: NotificationDb, rawJson: string, now: Date
+  tx: NotificationDb, rawJson: string, now: Date, admissionCheck: ResultNotificationAdmissionCheck
 ): Promise<DiscordNotificationReceipt> => {
-  let value: unknown;
-  try { value = JSON.parse(rawJson); } catch { throw new NotificationInputError("invalid_input"); }
+  const value = parseNotificationJson(rawJson);
   const identity = readNotificationIdentity(value);
   assertSupportedNotificationVersion(value);
-  const normalized = await normalizeNotificationJson(tx, rawJson);
-  if (normalized.bytes > RESULT_NOTIFICATION_MAX_JSONB_BYTES) { throw new NotificationInputError("payload_too_large"); }
   const [existing] = await tx.select({
     id: notifications.id, family: notifications.family, hash: notifications.payloadHash, status: notifications.status
   }).from(notifications).leftJoin(results, eq(results.notificationId, notifications.id))
     .where(or(eq(notifications.id, identity.notificationId),
       and(eq(results.kind, identity.kind), eq(results.sourceJobId, identity.sourceJobId)))).limit(1);
   if (existing) {
+    // A new admission policy cannot rewrite a retained identity, including one
+    // whose payload was purged. Keep the historical lossless hash for duplicates.
+    const normalized = await normalizeNotificationJson(tx, rawJson);
     if (existing.id !== identity.notificationId || existing.family !== "result" || existing.hash !== normalized.hash) {
       throw new NotificationInputError("identity_conflict");
     }
@@ -30,6 +31,9 @@ export const receiveResultNotification = async (
       status: assertEnum(["PENDING", "IN_FLIGHT", "DELIVERED", "FAILED", "CANCELLED"] as const, existing.status, "notification status") };
   }
   const payload = validateNewNotification(value);
+  admissionCheck(payload);
+  const maximumBytes = payload.kind === "ocr_completed" ? RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES : RESULT_NOTIFICATION_MAX_JSONB_BYTES;
+  const normalized = await normalizeNotificationJson(tx, rawJson, maximumBytes);
   const occurredAt = parseTimestamp(payload.occurredAt);
   if (!occurredAt) { throw new NotificationInputError("invalid_input"); }
   await tx.insert(notifications).values({

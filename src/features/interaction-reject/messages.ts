@@ -13,6 +13,7 @@ export const rejectMessages = {
   },
 
   unknownCommand: "このコマンドには対応していません",
+  busy: "ただいま処理が混み合っています。少し待ってもう一度お試しください。",
   staleButton: "このボタンは現在使えません。最新のメッセージから操作してください。",
   internalError: "うまく処理できませんでした。少し待ってもう一度お試しください。"
 } as const;

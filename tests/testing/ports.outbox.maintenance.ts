@@ -1,6 +1,7 @@
 import type { OutboxEntry, OutboxPort } from "../../src/db/ports.js";
 import { recordCall, type AnyCall } from "./ports.shared.js";
-import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.js";
+import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES } from "../../src/notifications/config.ts";
+import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims } from "./ports.outbox.claims.ts";
 
 type OutboxMaintenancePort = Pick<
   OutboxPort,
@@ -71,25 +72,8 @@ export const createFakeOutboxMaintenance = (
   },
   releaseExpiredClaims: async (now) => {
     recordCall(calls, "releaseExpiredClaims", { now });
-    let released = 0;
-    for (const entry of byId.values()) {
-      if (
-        (entry.status === "IN_FLIGHT" || entry.status === "CANCELLED") &&
-        entry.claimExpiresAt !== null &&
-        entry.claimExpiresAt <= now
-      ) {
-        byId.set(entry.id, {
-          ...entry,
-          status: entry.status === "CANCELLED" ? "CANCELLED" : entry.attemptCount >= OUTBOX_MAX_ATTEMPTS ? "FAILED" : "PENDING",
-          claimExpiresAt: null,
-          claimToken: null,
-          nextAttemptAt: now,
-          updatedAt: now
-        });
-        sendingTokens.delete(entry.id);
-        released += 1;
-      }
-    }
+    const released = releaseExpiredFakeOutboxClaims(byId, sendingTokens, now);
+    cancelFailedFakeOutboxSuccessors(byId, cancellationReasons, sendingTokens, now);
     return released;
   },
   findStranded: async (threshold) => {
@@ -111,6 +95,7 @@ export const createFakeOutboxMaintenance = (
     let failedPruned = 0;
     let cancelledPruned = 0;
     for (const entry of Array.from(byId.values())) {
+      if (deliveredPruned + failedPruned + cancelledPruned >= NOTIFICATION_MAINTENANCE_BATCH_SIZE * NOTIFICATION_RETENTION_MAX_BATCHES) { break; }
       if (entry.claimToken !== null) {continue;}
       if (
         entry.status === "DELIVERED" &&

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
 import * as Effect from "effect/Effect";
@@ -6,14 +5,14 @@ import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificati
 import { OUTBOX_BACKOFF_MS_SEQUENCE, OUTBOX_CLAIM_DURATION_MS, RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../config.ts";
 import { DatabaseError } from "../errors/index.ts";
 import { getTextChannel } from "../discord/shared/channels.ts";
-import { validateNewNotification } from "../domain/resultNotificationPayload.ts";
+import { sendResultMessage } from "../discord/shared/sendResultMessage.ts";
+import { validateStoredNotification } from "../domain/resultNotificationPayload.ts";
 import type { ResultDeliveryError } from "../domain/notification.ts";
-import { renderResultNotification } from "../features/result-notifications/render.ts";
+import { planResultNotification, type PlannedResultNotification } from "../features/result-notifications/render.ts";
 import { promiseCall, runPromiseBoundary, settledCall } from "../runtime/effect.ts";
 import { addMs, type Clock } from "../time/index.ts";
-
-export const resultNotificationNonce = (id: string, partNo: number): string =>
-  createHash("sha256").update(JSON.stringify([id, partNo])).digest("base64url").slice(0, 25);
+import { withClaimHeartbeat } from "./claimHeartbeat.ts";
+import { notificationNonce } from "./deliveryNonce.ts";
 
 class DeliveryTimeout extends Error {}
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
@@ -47,26 +46,31 @@ export interface ResultDeliveryDeps {
   readonly isStopping: () => boolean;
 }
 
-/** A notification owns ordered parts; no database transaction spans Discord I/O. */
-export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry: ClaimedResultNotification): Promise<void> => {
+type ResultDeliveryMetadata = Pick<ClaimedResultNotification, "id" | "kind" | "claimToken" | "attemptCount" | "maxAttempts">;
+type PreparedResultDelivery = {
+  readonly notification: PlannedResultNotification;
+  readonly context: ResultDeliveryContext;
+  readonly deliveredPartNos: readonly number[];
+} | { readonly error: "unsupported_renderer" | "invalid_payload" };
+
+const prepareResultDelivery = (entry: ClaimedResultNotification, currentContext: ResultDeliveryContext): PreparedResultDelivery => {
+  const context = entry.partCount === 0 ? currentContext : entry.deliveryContext;
+  const rendererVersion = entry.kind === "ocr_completed" ? 2 : 1;
+  if (!context || (entry.rendererVersion !== null && entry.rendererVersion !== rendererVersion)) {
+    return { error: "unsupported_renderer" };
+  }
+  let notification: PlannedResultNotification;
+  try {
+    notification = planResultNotification(validateStoredNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? rendererVersion);
+  } catch { return { error: "invalid_payload" }; }
+  if (entry.partCount > 0 && notification.partCount !== entry.partCount) { return { error: "unsupported_renderer" }; }
+  return { notification, context, deliveredPartNos: entry.deliveredPartNos };
+};
+
+const deliverPreparedResultNotification = async (
+  deps: ResultDeliveryDeps, entry: ResultDeliveryMetadata, prepared: PreparedResultDelivery
+): Promise<void> => {
   const { port, clock, logger } = deps;
-  let lostClaim = false;
-  const heartbeat = Effect.gen(function* () {
-    while (!lostClaim) {
-      yield* Effect.sleep(RESULT_NOTIFICATION_HEARTBEAT_MS);
-      // invariant: PostgreSQL Promise は中断できないため、scope は実際の更新完了まで所有する。
-      const renewed = yield* settledCall(() => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS))
-        .pipe(Effect.match({
-          onFailure: () => {
-            lostClaim = true;
-            logger.warn({ event: "result_notification.lease_uncertain", notificationId: entry.id });
-            return false;
-          },
-          onSuccess: ok => ok
-        }));
-      lostClaim ||= !renewed;
-    }
-  });
   const fail = async (code: ResultDeliveryError, retry: boolean): Promise<void> => {
     const now = clock.now();
     const delay = OUTBOX_BACKOFF_MS_SEQUENCE[Math.min(Math.max(0, entry.attemptCount - 1), OUTBOX_BACKOFF_MS_SEQUENCE.length - 1)] ?? 60_000;
@@ -77,39 +81,37 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
   };
   let sending = false;
   try {
-    let rendered;
-    const context = entry.partCount === 0 ? deps.context : entry.deliveryContext;
-    if (!context || (entry.rendererVersion !== null && entry.rendererVersion !== (entry.kind === "ocr_completed" ? 2 : 1))) {
-      await fail("unsupported_renderer", false); return;
-    }
-    try {
-      rendered = renderResultNotification(validateNewNotification(entry.payload), context.webOrigin, entry.rendererVersion ?? (entry.kind === "ocr_completed" ? 2 : 1));
-    } catch { await fail("invalid_payload", false); return; }
-    if (entry.partCount > 0 && rendered.parts.length !== entry.partCount) {
-      await fail("unsupported_renderer", false); return;
-    }
+    if ("error" in prepared) { await fail(prepared.error, false); return; }
     if (deps.isStopping()) { return; }
-    const notification = rendered;
-    await runPromiseBoundary(Effect.scoped(Effect.gen(function* () {
-      yield* Effect.forkScoped(heartbeat);
+    const { notification, context, deliveredPartNos } = prepared;
+    await runPromiseBoundary(withClaimHeartbeat({
+      intervalMs: RESULT_NOTIFICATION_HEARTBEAT_MS,
+      renew: () => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS),
+      onLost: reason => { logger.warn({
+        event: reason === "uncertain" ? "result_notification.lease_uncertain" : "result_notification.claim_lost",
+        notificationId: entry.id
+      }); }
+    }, isClaimLost => Effect.gen(function* () {
       if (!(yield* databaseCall(() => port.plan(entry.id, entry.claimToken, {
-        count: notification.parts.length, rendererVersion: notification.rendererVersion, context, now: clock.now()
+        count: notification.partCount, rendererVersion: notification.rendererVersion, context, now: clock.now()
       })))) { return; }
-      if (lostClaim || deps.isStopping()) { return; }
+      if (isClaimLost() || deps.isStopping()) { return; }
       const channel = yield* boundedSend(() => getTextChannel(deps.client, context.channelId));
-      const delivered = new Set(entry.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo));
-      for (const [partNo, body] of notification.parts.entries()) {
-        if (delivered.has(partNo)) { continue; }
-        if (lostClaim || deps.isStopping()) { return; }
+      let nextPartNo = 0;
+      let deliveredIndex = 0;
+      for (const body of notification.parts()) {
+        const partNo = nextPartNo++;
+        if (deliveredPartNos[deliveredIndex] === partNo) { deliveredIndex += 1; continue; }
+        if (isClaimLost() || deps.isStopping()) { return; }
         if (!(yield* databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())))) { return; }
-        if (lostClaim || deps.isStopping()) { return; }
+        if (isClaimLost() || deps.isStopping()) { return; }
         sending = true;
-        const message = yield* boundedSend(() => channel.send({ ...body, nonce: resultNotificationNonce(entry.id, partNo), enforceNonce: true }));
+        const messageId = yield* boundedSend(() => sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true }));
         // Cancellation may preserve this already-started part. Always try to record
         // its message ID; the port fences ownership again even if the heartbeat failed.
-        const changed = yield* databaseCall(() => port.complete(entry.id, partNo, entry.claimToken, message.id, clock.now()));
+        const changed = yield* databaseCall(() => port.complete(entry.id, partNo, entry.claimToken, messageId, clock.now()));
         logger.info({ event: changed ? "result_notification.part_delivered" : "result_notification.claim_lost_after_send",
-          notificationId: entry.id, kind: entry.kind, partNo, messageId: message.id, attempt: entry.attemptCount });
+          notificationId: entry.id, kind: entry.kind, partNo, messageId, attempt: entry.attemptCount });
         if (!changed) { return; }
         sending = false;
       }
@@ -118,5 +120,18 @@ export const deliverResultNotification = async (deps: ResultDeliveryDeps, entry:
     const failure = classifyFailure(error, sending);
     try { await fail(failure.code, failure.retry); }
     catch { logger.error({ event: "result_notification.finalization_uncertain", notificationId: entry.id }); }
+  }
+};
+
+/** Prepare synchronously so the asynchronous delivery retains only its validated render plan and metadata. */
+export const deliverResultNotification = (deps: ResultDeliveryDeps, entry: ClaimedResultNotification): Promise<void> => {
+  try {
+    const metadata: ResultDeliveryMetadata = {
+      id: entry.id, kind: entry.kind, claimToken: entry.claimToken, attemptCount: entry.attemptCount, maxAttempts: entry.maxAttempts
+    };
+    return deliverPreparedResultNotification(deps, metadata, prepareResultDelivery(entry, deps.context));
+  } catch (error: unknown) {
+    // invariant: 同期 prepare の失敗も個別配送の settlement を通し、予約した byte budget を解放する。
+    return Promise.reject(error);
   }
 };

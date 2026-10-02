@@ -1,156 +1,164 @@
 # Test Rule
 
-Summit のテスト選択、fake/real boundary、assertion、race/time検証、品質ゲートを定める。テストはproduction内部の実装順ではなく、業務仕様、永続化契約、外部副作用境界を固定する。
+変更が壊し得る契約を、観測できる失敗として検証する。業務仕様・永続化・外部副作用を期待値の根拠にし、実装を写した test を増やさない。対象契約は §6、実行する gate は §8、agent 規約の review は §10 で選ぶ。
 
-## 1. テスト層
+## 1. 検証する層を選ぶ
 
-| 層 | 主な対象 | 使用する境界 |
+| 層 | 固定する契約 | 境界 |
 |---|---|---|
-| pure unit | domain decision、time、codec、view model、render | 具体入力と厳密な期待値 |
-| application unit | handler、orchestration、scheduler | `createTestAppContext`、fake ports、Discord fake |
-| repository contract | lock、CAS、unique、transaction、outbox | `tests/integration/**`とreal PostgreSQL |
-| configuration | env/user config parse、registry build | isolated inputとfail-fast期待 |
-| deterministic verification | 禁止pattern、文書topology、生成adapter | `scripts/verify/` |
+| pure unit | domain decision、time、codec、view model / render | 具体入力と期待値 |
+| application | handler、orchestration、scheduler、Discord payload | `createTestAppContext`、fake ports、Discord fake |
+| repository | lock、CAS、unique、transaction、outbox | real PostgreSQL の integration |
+| configuration | env / user config、registry | isolated input と fail-fast |
+| deterministic verification | 禁止 pattern、文書構成、adapter | `scripts/verify/` |
+| production image | 非 root、書込不能 code、本番依存、共有 package の解決 | `verify:runtime-image`、network なしの使い捨て container |
 
-対象の重要度は、誤動作の影響、復旧の難しさ、境界・競合の多さから判断して厚さを変える。回答・状態・翌土曜・開催履歴・通知intentを同時確定する集約は、pureの判断網羅に加えreal DBの代表成功・拒否・rollbackを持つ。表示や薄い委譲の組合せを全て実DBへ複製しない。行数・coverage率・test件数だけで手厚さを決めない。
+厚さは誤動作の影響・復旧の難しさ・競合から決める。回答・状態・順延先・開催履歴・intent を一括確定する集約には、pure な判断網羅に加え real DB の代表成功・拒否・rollback を持つ。表示や薄い委譲の組合せを全て real DB に複製しない。
 
-テスト層とサイズは別に選ぶ。本projectでは、process内で外部I/Oを使わないものをsmall、使い捨てDB・loopback HTTP・子process等のローカルresourceを使うものをmedium、実外部serviceとの接続を含むものをlargeとして扱う。`pnpm test`にもmediumは含まれ、unitという名前だけではsmallを意味しない。重要なロジックも組合せはsmallで厚くし、実境界でしか検出できない契約を必要なサイズで補う。largeを追加する場合は接続先・実行条件・cleanupを明示する。
+サイズは層と分ける。外部 I/O のない process 内検証を small、使い捨て DB・loopback HTTP・子 process を使う検証を medium、実外部サービスへの接続を large とする。`pnpm test` にも medium は含まれる。large を追加するときは接続先・実行条件・cleanup を明示する。
 
-同じ意味を複数層で無目的に重複検証しない。pure decisionはunit、DB固有semanticsはintegration、Discord payloadはapplication unitを基本とする。
+既存 test で十分な可逆的小変更や文言の整理には、新しい test を追加しない。coverage 率・行数・件数だけを根拠にせず、変更に対してどの失敗を検出するかを説明できるものを選ぶ。
 
-追加する test は、変更で壊れ得る契約と観測できる失敗を固定する。既存 test で十分に検証できる可逆な小変更や、文書の文言を写すだけの変更には新しい test を追加しない。期待値は requirements・外部仕様・確認済みの不変条件から決め、実装の出力をそのまま期待値へ写さない。
+## 2. Fake と実境界
 
-## 2. Fake とmockの境界
+固定入力・障害注入は stub、副作用の観測は spy、操作をまたぐ状態は fake を使う。DB repository / client を新規に `vi.mock` せず、fake ports または real DB を選ぶ。`vi.mock` は Discord API helper、cron、logger、HTTP / fetch 等の外部境界と orchestration entry の隔離に限定する。
 
-- 固定入力や障害を与えるだけならstub、外部副作用の有無を観測するならspy、複数操作をまたぐ状態契約にはfakeを選ぶ。状態を観測できる箇所へ呼出し期待を重ねず、ダブルで証明できない外部semanticsはreal boundaryで検証する。
-- DB repository moduleやDB clientを新規に`vi.mock`しない。
-- DB依存は`createTestAppContext`のfake ports、またはreal DB integrationで検証する。
-- fake portsはproduction contractの写像であり、testを簡単にするためCAS、unique、dedupe、claim ownership、state transitionを緩めない。
-- port interface変更時はreal/fake両方をTypeScriptで満たし、compile時にdriftを検出する。
-- fake portの時刻は`AppContext.clock`から得る。既定時刻も固定し、seed・戻り値・観測snapshotのDateとnested payloadは参照を共有しない。
-- attendanceとresult notificationsの逐次契約は`tests/contracts/`をreal/fake両方で動かす。fakeの集約writeは失敗をawaitし、関連storeとclaim所有権を一括rollbackする。SQL lock/MVCCは模倣せず、未commitの可視性や競合の証明にはreal DBを使う。
-- Discord client/channel/messageのfakeは既存のtest helperへ集約し、個別testにSDK全体の二重castを散らさない。
-- `vi.mock`はDiscord API helper、cron adapter、logger、HTTP/fetch等の外部boundary、またはorchestration entryの隔離に限定する。
-- mockを使う場合は、何を差し替え、どのcontractを観測するかをtest名か短いcommentで明示する。
+fake は production contract の写像であり、CAS・unique・dedupe・claim ownership・状態遷移を緩めない。interface 変更時は real / fake を同じ型で検査する。時刻は `AppContext.clock` に固定し、seed・戻り値・観測 snapshot の Date / nested payload を参照共有しない。
 
-## 3. Assertion
+出欠と A/B の逐次契約は [共通 contract suite](../tests/contracts/) を real / fake 両方で動かす。fake の集約 write は失敗を await してから関連 store と claim 所有権を一括 rollback する。SQL lock / MVCC は模倣せず、未 commit の可視性と競合は real DB で証明する。
 
-- オラクルは壊れてほしくない契約を識別できる強さにする。広いsmoke testの「例外がない」「件数が合う」を、状態遷移・宛先・選択肢・原子性の証明に使わない。部分一致で緩めた項目が何の変更を許すのか説明できるようにする。
-- pure function、view model、message builder、codecは`toStrictEqual`や具体payloadを優先する。
-- handler、scheduler、orchestrationは最終persisted state、user-facing response、outbox/Discord boundaryを検証する。
-- raw call orderは、順序自体が業務仕様またはrace invariantの場合だけ固定する。Interactionは未解決ackの間にDB/API処理が始まらないこと、ack失敗時に副作用がないことを確認する。呼出し順だけでawaitの欠落を検出した扱いにしない。
-- 確認dialogはcustom ID・選択肢・label・disabled・ephemeralを固定し、代表flowは生成したIDをdispatcherへ戻して最終状態を観測する。SDKの非本質項目まで全箇所でsnapshot固定しない。
-- `expect.any`、`objectContaining`、`arrayContaining`はSDKの非本質項目や生成ID/時刻を意図的に緩める場合だけ使う。
-- skipped/no-op/race-lostは「呼ばれなかった」だけでなく、DB stateと外部副作用が変わらないことを確認する。
-- Either / Effectを返すoperationは成功値だけでなく、error code、item-level continuation、phase-level failureの境界を確認する。非同期Effectの成功値は共通の`runEffect` test helperで実行し、typed failureは`Effect.either`、defect/interruptionは`Exit` / `Cause`で区別する。
-- Effectを含む境界は元のAppError/statusの保持、同期throwと非同期reject、expected failureとdefectの扱いを確認する。内部operatorの呼出し回数ではなく、最終状態と後続処理の継続・停止をオラクルにする。
-- 非同期operationは生成だけでは副作用がなく、実行時のclock/stateを使うことを代表契約で確認する。Effectを直接`await`して検証を省略したり、互換ラッパーで旧ライブラリのAPIを再現したりしない。
-- 重要な契約のオラクルに疑義がある場合は、条件反転・await欠落・rollback漏れ等の代表的な誤実装でtestが失敗することを確認する。対象・検出結果を残し、mutationは復元する。全変更へのmutation実行やsnapshot更新の機械的承認は要求しない。
+Discord の client / channel / message fake は既存 helper に集約し、各 test に SDK 全体の二重 cast を散らさない。差替える境界と観測する契約は test 名か短い comment で分かるようにする。
 
-## 4. Fixture とscenario
+## 3. Assertion の根拠
 
-- bare `Partial<Row>`を各testへ拡散せず、`tests/testing/sessionScenario.ts`の業務状態が分かるbuilder/scenarioを使う。候補日と状態に対応する締切をまとめて導出し、低水準row組立は`tests/testing/fixtures.ts`へ集約する。
-- scenario名は、全員回答、欠席、順延OK/NG、金曜/土曜cancelled、decided/reminder、dead-letter等の業務語彙で付ける。
-- stateを作るためだけの不正rowは、検証目的と破っているinvariantを明記する。
-- 入力builderから期待値まで同じ導出処理で組み立てない。境界日・曜日・関連ID等の前提はscenario上で読み取れるようにし、fixtureの不整合を通過条件にしない。mutableなstore・配列・Dateはtestごとに所有し、後続testへ状態を持ち越さない。
-- 実行リテラルや業務仕様をfixture commentへ再記述しない。requirements、config、time、schemaを参照する。
-- 仕様は`describe`/`it`名で語り、回帰理由が自明でない場合だけ`// regression:`を残す。
+| 対象 | 観測する結果 |
+|---|---|
+| pure / render / codec | `toStrictEqual` や具体 payload。入力と同じ実装 helper から期待値を生成しない |
+| application | 最終 persisted state、user-facing response、outbox / Discord 境界 |
+| skipped / no-op / race-lost | typed result と、DB / 外部副作用が変わらないこと |
+| Interaction ack | 未解決 ack の間に DB / API が始まらず、ack 失敗時も副作用がないこと |
+| confirmation | custom ID・choice・label・disabled・ephemeral。代表 flow は生成 ID を dispatcher に戻して最終状態を確認 |
+| Either / Effect | 成功値、error code / identity、item continuation と phase failure、defect / interruption の違い |
 
-## 5. Race とtime
+「例外がない」「件数が合う」だけで状態遷移・宛先・原子性を証明した扱いにしない。call order は順序自体が契約のときだけ固定する。部分一致や `expect.any` は、生成 ID / 時刻・SDK の非本質項目など、変わってよい範囲を意図して使う。
 
-- arbitrary sleepやwall-clock待ちでraceを作らない。
-- deferred promise、barrier、fake timer等の明示同期点を使う。
-- 時刻は`createTestAppContext({ now })`または共通time helperで固定する。
-- concurrent testはwinnerだけでなくloserのtyped result/no-opも確認する。
-- Interaction snowflake fencingは古いeventが新しいResponseとaggregate revisionを変えないことを確認する。
-- outbox claim expiryは旧ownerのfinalizeが失敗し、新ownerだけがDBを確定できることを確認する。
-- Discord受理は二重になり得るため、exactly-once assertionを誤って置かない。
-- fiber interruptionやtimeoutを使う場合は、実I/Oの完了と待機終了を別の同期点で観測する。片方の並列I/Oが失敗しても未完了の兄弟をdrainし、finalizerが実書込みより先に所有権を解放しないことを確認する。timer/fiberをtestごとに回収し、Effectへ移した待機もfake timerまたはTestClockで制御する。
+非同期 Effect は共通 `runEffect` helper で実行し、typed failure は `Effect.either`、defect / interruption は `Exit` / `Cause` で区別する。直接 await して実行した扱いにしない。代表境界で同期 throw / 非同期 reject、元の AppError / status、生成時は副作用がなく実行時の clock / state を使うことを確認する。operator の呼出し回数で代用しない。
+
+重要な assertion の検出力に疑義がある場合だけ、条件反転・await 欠落・rollback 漏れ等の誤実装を試して失敗を確認し、mutation を戻す。全変更に mutation を課さず、snapshot 更新を機械的に正当化しない。
+
+## 4. Fixture と scenario
+
+[sessionScenario](../tests/testing/sessionScenario.ts) で業務状態が読める入力を作り、低水準 row 組立は [fixtures](../tests/testing/fixtures.ts) に集約する。`Partial<Row>` を各 test に散らさない。全員回答・欠席・順延 OK / NG・金曜 / 土曜中止・decided / reminder・dead-letter 等の語彙を使う。
+
+候補日と締切を整合させ、境界日・曜日・関連 ID の前提を scenario から読めるようにする。不正 row が必要なら、破る invariant と検証目的を明示する。入力 builder と期待値に同じ導出を使わず、fixture の不整合を通過条件にしない。
+
+mutable store・配列・Date は test ごとに所有する。仕様は describe / it 名、非自明な回帰理由だけ `regression:` comment に書く。実行値や業務仕様は comment に複製せず、requirements / config / time / schema を参照する。
+
+## 5. Race と time
+
+arbitrary sleep や wall-clock 待ちを使わず、deferred promise・barrier・fake timer で競合点を制御する。clock は `createTestAppContext({ now })` または共通 helper で固定する。winner と loser の typed result / no-op、残った状態を両方確認する。
+
+| 競合 | 検出する失敗 |
+|---|---|
+| Interaction snowflake | 古い event が最新 Response / revision を上書きする |
+| claim expiry | 旧 owner が finalize できる、新 owner の確定が失われる |
+| Discord 受理と DB 確定 | 重複し得る外部送信に exactly-once assertion を置き、実際の契約を隠す |
+| timeout / interruption | 待機終了を実 I/O 完了と混同し、write 前に lock / resource を解放する |
+| 並列 I/O の一方が失敗 | 未完了の兄弟を drain せず、finalizer が先に所有権を解放する |
+
+実 I/O の完了と timeout は別の同期点で観測する。timer / fiber は test ごとに回収し、Effect 内の待機も fake timer / TestClock で制御する。
 
 ## 6. 変更種別ごとの必須テスト
 
-変更が影響する契約に対応する行を選ぶ。各設計文書の検証項目は観点の一覧であり、無関係な scenario の追加や再実行を全変更へ要求するものではない。共通 port・設定・復旧経路へ影響する場合は、その利用先にも範囲を広げる。
+影響する行から、今回壊し得る契約を選ぶ。既存 test を再利用し、共通 port・設定・復旧経路を変える場合だけ利用先まで広げる。設計文書は契約の正本、本表は検証の入口とし、無関係な scenario の追加・再実行を一律に要求しない。
 
-| 変更 | 最低限の検証 |
+| 変更対象 | 検証する境界 |
 |---|---|
-| requirements / pure decision | decision unit、代表状態、deadline境界 |
-| Interaction / command | ack順、guard失敗、success response、stale/race |
-| custom ID / registry | encode/decode、malformed、duplicate/prefix conflict、stale format |
-| Session aggregate | real/fake contract、lock/CAS、rollback、concurrent winner |
-| outbox | dedupe、順序、claim fencing、retry/dead-letter、backfill、recovery、不正payloadのitem隔離 |
-| scheduler | fake clock、one-shot再構築、wake debounce、同種workの非重複、due-kind一回、supervisor fallback |
-| startup/reconnect/shutdown | readiness、scope別recovery、in-flight lock、接続世代とdebounce、受付停止後の新規副作用なし・処理中workのdrain |
-| Effect / 非同期resource境界 | 遅延実行、error identity、並列失敗時のsettlement、中断不能I/Oとfinalizerの順序、timeout後の安全な回復、cleanup失敗時の後続解放 |
-| time | JST、ISO week year、24:00、deadline、candidate、reminder |
-| env/user config | valid parse、invalid fail-fast、secret非出力 |
-| migration/schema consumer | momo-db check、Summit real DB integration、compatibility順序 |
-| 文書 / agent 規約・adapter / PR template | `verify:docs`、正本との整合。agent 規約は本書 §10 の確認も行う |
-| 検証 script / CI / agent harness の実行コード | guard の成功・違反検出・失敗時の挙動、適用する品質 gate |
+| requirements / pure decision | 代表状態、成功 / 拒否、deadline 直前・同時・直後 |
+| Interaction / command | ack 待機、guard 拒否、成功応答、stale / race、confirmation の confirm / abort / replay |
+| custom ID / registry / definition | round-trip、malformed / 旧 format、duplicate / prefix 包含、runtime と CLI の一覧一致・import 分離 |
+| message editor / 通知 payload | commit 後の edit failure、同一 message の直列化、UnknownMessage 回復 / ID 保存、具体的な文言・mention |
+| Session 集約 | real / fake 共通契約、lock / CAS / unique、拒否・rollback・並行 winner / loser、金曜 lock 待機中の土曜生成 |
+| 出欠 outbox | 全 status dedupe、revision / ordinal、claim fencing、retry / dead-letter、backfill / startup recovery、不正 item 隔離、reminder と履歴の原子性 |
+| A/B 受付・設定 | version 拒否順、JSONB hash / decimal / Unicode、receipt / OFF / generation の原子性、lock 後の可視性、commit 前の HTTP 成功なし |
+| A/B 配送・互換・retention | 固定 plan / part 順、開始済み part と取消、claim loss / renew、退役 version、明示 retry、bounded batch・詳細削除後の identity 保持 |
+| scheduler | fixed clock、one-shot 再構築、wake 保持、同種 work 非重複、due kind 一回、supervisor fallback、A/B と出欠の独立性 |
+| startup / reconnect / shutdown | readiness、scope 別回復、期限超過、接続世代 / debounce、停止後の新規副作用なし、処理中 work と listen の drain |
+| Effect / 非同期 resource | lazy 実行、error identity、settlement、timeout 後の回復、中断不能 I/O と finalizer 順、cleanup failure 後の解放 |
+| command sync CLI / REST | check の read-only、一度の PUT と readback、結果不明、rate limit / body deadline / byte 上限、IPC 検証、abort / 子回収、credential 非出力 |
+| time | JST、ISO week year・金曜 / 土曜の共有週、24:00 / 不正値、非金曜 candidate、deadline、reminder の送信 / skip |
+| env / user config | valid parse、invalid fail-fast、secret 非出力 |
+| schema / migration consumer | momo-db check、Summit real DB integration、新旧 compatibility と適用順 |
+| 文書 / agent 規約 / adapter / template | 正本・参照先との整合、`verify:docs`。agent 判断に影響する場合は §10 |
+| 検証 script / CI / agent harness code | 正常入力、違反検出、検査自体の失敗、適用する品質 gate |
+| production Dockerfile / package closure | 実 image build、非 root、code 権限、runtime import、dev tool 除外 |
 
-## 7. Integration test
+## 7. Integration test の環境
 
-- `INTEGRATION_DB=1` gateとlocalhost guardを維持する。接続先は明示的な`TEST_DATABASE_URL`だけを使い、local secret file・通常の`DATABASE_URL`を管理接続に流用しない。
-- test roleには一時DBの作成権限が必要。global setupがmomo-dbのmigrationを一度だけ適用し、setupFilesがファイルごとにtemplateを複製する。run UUIDとfile UUIDで同時実行・worktree間を隔離する。
-- `TRUNCATE`はそのファイル所有DBだけに限定する。poolはファイル終了時に閉じ、DBは所有prefixを確認して削除する。setup失敗・worker異常終了時はglobal teardownも所有DBを回収する。
-- DB内のtestは逐次、ファイルは並列に実行する。外側rollbackでtestを包まない。commit可視性・競合・rollbackそのものが検証対象のためである。
-- 接続数は通常1、競合testは競合当事者とlock観測用に必要な数を明示する。DB lockの観測で競合点への到達を確認し、敗者の結果と残存状態を検証する。
-- setup/cleanupは`tests/integration/_support.ts`の共通helperを使う。
-- repository、constraint、transaction、migration consumer contractに絞る。
-- Discord flowでunit fakeが十分なものをreal DBへ重複させない。
-- test databaseでも手動SQLで都合のよい途中状態を残さず、fixture/helperで再現可能にする。
-- sibling momo-dbのmigrationを適用した状態で実行する。CIは`.github/workflows/ci.yml`の単一`MOMO_DB_REF`で両jobのcheckoutを固定する。schema更新時はこのrefとconsumer contractを同時に検証する。
+`INTEGRATION_DB=1` と localhost guard を維持し、明示された `TEST_DATABASE_URL` だけを使う。local secret file や通常の `DATABASE_URL` を管理接続へ流用しない。test role には一時 DB の作成権限が必要。
+
+global setup が momo-db migration を一度適用し、setupFiles が file ごとに template DB を複製する。run UUID + file UUID で同時実行・worktree を分離する。DB 内の test は逐次、file は並列とし、commit 可視性そのものを検証するため外側 rollback で包まない。
+
+通常は接続数 1、競合 test は当事者と lock 観測に必要な数を明示する。DB lock を観測して競合点への到達を確認する。fixture / setup / cleanup は [_support](../tests/integration/_support.ts) と共通 helper に集約し、手動 SQL の途中状態を残さない。
+
+TRUNCATE はその file 所有 DB だけに限定する。終了時に pool を閉じ、所有 prefix を確認して DB を削除する。setup 失敗・worker 異常終了時も global teardown が所有 DB を回収する。
+
+real DB は repository・constraint・transaction・migration consumer 契約を扱い、fake で十分な Discord flow を複製しない。CI は [workflow](../.github/workflows/ci.yml) の単一 `MOMO_DB_REF` で両 job の schema を固定し、更新時は ref と consumer を同時に検証する。
 
 ## 8. Quality gate
 
-ローカルでは実際の差分から次の gate を選ぶ。複数の行に該当する場合は必要な検証を合わせる。文書ファイルだけでも、業務挙動や runtime の設計契約を変えるなら文書のみの gate で完了扱いにしない。
+実際の差分から gate を選び、複数該当する場合は合わせる。文書だけでも業務挙動・runtime 契約を変える場合は、文書 gate だけで完了にしない。
 
 | 変更範囲 | ローカルの必須 gate |
 |---|---|
-| 説明・リンク・agent 規約・生成 adapter・PR template のみ | `git diff --check`、`pnpm verify:docs`、影響する正本・参照先との整合確認 |
-| code・test・依存関係・実行設定・検証 script・CI | `git diff --check`、`pnpm run ci` と §6 の対象契約の検証 |
-| DB 契約 / schema consumer | code の gate に加え `pnpm test:integration`。momo-db の schema / migration に関わる場合は同 repository の必須 check と互換性確認 |
-| 運用手順 | 文書 gate と該当 runbook・実装・設定の照合。code も変わる場合は code の gate を追加 |
+| 説明・link・agent 規約・adapter・PR template のみ | `git diff --check`、`pnpm verify:docs`、影響する正本・参照先との整合確認 |
+| code・test・依存関係・実行設定・検証 script・CI | `git diff --check`、`pnpm run ci`、§6 の対象契約の検証 |
+| DB 契約 / schema consumer | code gate + `pnpm test:integration`。momo-db の schema / migration を変える場合は同 repository の必須 check と互換性確認 |
+| production image / 依存 closure | code gate + Docker build + `pnpm verify:runtime-image <local-image>`。接続を伴う Bot の起動は不要 |
+| payload 上限・並列数・巨大文字列処理・VM memory | code gate + 最新 image build + `pnpm verify:notification-capacity <local-image>`。§7 と同じ local DB guard を使用 |
+| 運用手順 | 文書 gate + runbook・実装・設定の照合。code 変更があれば code gate も適用 |
 
-`AGENTS.md` の変更時は `pnpm docs:sync-agent` で adapter を更新する。command と設定読取の条件は `docs/dev-rule.md` §2 に従う。
+AGENTS 変更時は `pnpm docs:sync-agent` で adapter を更新する。同 command は文書検査を含むため、後続の文書差分がなければ `verify:docs` を重ねない。未追跡の新規 file は `--include <path>` で指定する。command の入力範囲は [開発規約 §2](./dev-rule.md#2-主要command)。
 
-`pnpm run ci` の構成は `package.json` が正本で、typecheck、lint、未使用コード検査、unit test、build、文書検査、禁止 pattern、file-size advisory を含む。unit test は `vitest.config.ts` の dummy env と `summit.config.example.yml` を使い、通常は local secret や real DB を必要としない。
+`pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
 
-上記の読取条件を満たすローカルの static / unit / 文書検証は、修正依頼の範囲で実行し、今回の変更が原因の失敗を直して影響範囲を再検証する。各段階での再承認は不要。この扱いを integration test、DB reset、アプリ起動、外部同期へ広げず、それぞれの接続先・読取・実行権限を確認する。
+runtime-image は実行権限・依存解決に加え、local PostgreSQL と容量検証用の256 MiB制限・swapなしで最大近傍の受付・配送を検証する。新規標準ケースは192 MiB以下の cgroup peak を必須とし、旧巨大通知の単独配送は別 container で計測する。容量 test の成功は代表ケースの再現性であり、全入力・外部 Discord・長期運用の SLA を証明しない。測定条件と稼働設定は [品質モデル](./quality-assurance.md#実行メモリの容量契約) を参照する。
 
-CI の実際の実行範囲は `.github/workflows/ci.yml` が正本であり、現在は文書変更でも static-baseline と integration-db が動く。ローカルの検証選択を理由に CI job や assertion を削除・skip しない。
+修正依頼には必要なローカル検証と、変更が原因の失敗修正・再検証を含む。各段階で再承認を求めない。integration は §7 の接続先・作成削除条件で実行し、品質 gate のためだけに DB reset・アプリ起動・外部同期を追加しない。
 
-編集中は対象 test で feedback を得て、完了前に該当 gate を通す。合格後に差分・失敗・未解決の懸念が増えなければ検証を終える。再実行時は、変更した契約と前回結果が無効になる範囲を判断し、同じ検証を理由なく反復しない。
+編集中は対象 test で確認し、完了前に該当 gate を通す。**合格後、新しい差分・失敗・未解決の懸念がなければ検証を終える。** 再実行は前回結果を無効にする範囲から選ぶ。
 
-失敗時は assertion failure、tool / 依存関係の不足、接続・権限エラーを区別する。baseline failure とするには、同じ条件で変更前にも再現する証拠が必要。証拠が取れなければ「原因未確定」と報告する。command、対象、結果、再現条件、通した検証を PR または完了報告へ残す。skip・実行不能・advisory warning を pass と混同せず、必要な検証の失敗を黙って除外しない。
+失敗は assertion、tool / 依存不足、接続 / 権限を区別する。baseline failure と呼ぶには同じ条件の変更前での再現が必要で、証拠がなければ原因未確定とする。command・対象・結果・再現条件を報告し、skip / 実行不能 / advisory を pass と混同しない。必須検証の失敗を黙って除外しない。
 
-## 9. テスト設計の再評価
+## 9. テスト設計を見直す条件
 
-- fakeとreal portの差分がbugを生む場合、既存shared contract suiteへ契約を追加する。新しいportには共通化の利益とfakeの保守費を見て導入を判断する。
-- runtimeが日常feedbackを妨げる場合、同じruntime・対象・並列条件でimport、setup、test本体、cleanupの時間を切り分ける。支配的な待ち・重複初期化から直し、test件数の削減だけを高速化の証拠にしない。
-- 並列化ではDB・port・env・timer・mockの所有者とcleanupを先に確認する。独立fileを並列にし、shared stateを持つfile内を無条件にconcurrent化しない。CPU・接続数の上限と複数run同時実行も考慮する。
-- test fixtureがproduction modelより複雑になった場合、scenario ownershipとbuilder層を整理する。
-- call-order assertionがrefactorを頻繁に阻害する場合、state/output oracleへ置き換える。
+- fake / real の drift が bug を生む場合は shared contract suite を補う。新 port の共通化は利益と fake の保守費で判断する。
+- 日常の feedback が遅い場合は同じ runtime・対象・並列条件で import / setup / test / cleanup を測り、支配的な待ちから直す。件数を減らしただけで高速化を主張しない。
+- 並列化は DB・port・env・timer・mock の所有と cleanup、CPU / 接続上限、複数 run を確認する。独立 file を並列にし、共有状態のある file 内を無条件に concurrent 化しない。
+- fixture が production model より複雑なら scenario の所有を整理する。call order が refactor を妨げるなら、実際の契約を保つ state / output assertion へ置き換える。
 
 ## 10. Agent 規約の確認
 
-`verify:docs` は文書構造、agent adapter 一致、サイズ、旧参照の不在、local link / anchor を検査する。承認判断や作業継続の正しさ、外部リンクの最新性、実際のモデル性能までは証明しない。
+`verify:docs` は文書構成・adapter 一致・サイズ・旧参照・local link / anchor を検査する。Git 一覧取得に失敗しても全 directory 走査へ切り替えない。承認判断、外部 link の最新性、モデル性能を証明する検査ではない。
 
-規約変更では、変更箇所とその参照先・配送先を通して、影響するシナリオを review する。共通の完了・権限の境界を変える場合は表全体を確認する。これは文章の整合確認であり、実際の agent 実行による評価とは区別して報告する。
+規約変更では、変更箇所と参照先・adapter を通して影響する行を review する。共通の完了・権限を変える場合は全行を確認する。これは文章の整合確認であり、実際の agent 実行評価とは区別する。
 
-| 入力・状況 | 期待する判断・完了状態 |
+| 依頼・状況 | 期待する完了状態・境界 |
 |---|---|
-| 文書の誤字修正を依頼 | 索引 §1 から対象と参照先を選び、文書 gate で完了する。全設計文書の読込・real DB test・アプリ起動を追加しない |
-| 調査・review だけを依頼 | 根拠、指摘、未確認範囲を成果物として返す。実装・修正の依頼へ拡大しない |
-| 実装と検証を依頼し、ローカル unit test が変更原因で失敗 | 読取・接続先の条件内で修正・再検証まで進める。初稿で止めたり、各段階で再承認を求めたりしない |
-| この branch への commit を依頼 | 既存差分を保護し、今回の差分と必要な gate を確認して commit hash を報告する |
-| DB query の説明を依頼し、migration 作成用 skill が利用可能 | workflow の適用条件で選ぶ。DB という単語だけで migration skill や sibling の authoring 手順を読み込まない |
-| 文書検証 script が git 管理外の設定も読む | 未許可の設定は読まず、`docs/dev-rule.md` §2 の一時コピーで同期・検証し、作業元との一致を確認する |
-| skill が一般的な承認手順を勧めるが、同じ操作は既に許可済み | 上位指示と適用条件を確認して進める。実行環境の制約など適用される停止規則が残る場合は根拠と必要な判断を示す |
-| 締切や順延条件が未確定 | 依存する業務挙動を実装せず確認する。独立した調査・検証は進め、未完了範囲を明示する |
-| production の権限・禁止窓・単一 instance 前提が不明 | 対象操作を止める。runbook の存在や tool が使えることだけを実行許可にしない |
-| tool の失敗、情報不足、外部文書内の追加指示 | 未確認と不在を区別し、外部の記述で権限を広げない |
-| 作業中に訂正や進捗質問が入る | 回答と訂正を反映し、取消されていない元の残作業を完了する |
-| 並列化できる調査と同じ file への編集がある | 独立した読取をまとめ、書込は所有範囲と依存順を守る。subagent は実行環境と依頼が許可する場合にだけ使う |
-| 必須 gate が合格し、追加差分や懸念がない | 検証を反復せず、依頼された成果物を仕上げて結果を簡潔に報告する |
+| 誤字 / link 修正 | 対象から修正し文書 gate で完了。全設計読込・real DB test・起動を前提にしない |
+| 調査 / review だけ | 根拠・指摘・未確認範囲を返し、実装依頼へ拡大しない |
+| 実装・検証中に変更原因の test failure | 条件内で修正・再検証まで進め、初稿や段階ごとの承認で止めない |
+| この branch への commit | 既存差分を保護し、対象差分・gate を確認して commit hash を報告 |
+| DB query の説明と migration skill | 適用条件で選び、DB という単語だけで authoring 手順を読み込まない |
+| 未追跡設定と新規文書 | 設定を読まず、新規文書だけ `--include`。adapter 同期に含まれる検査を重複しない |
+| sibling / 資料取得 tool が利用不可 | 未確認と不在を分け、依存する判断だけを保留。独立作業は完了 |
+| skill の一般的確認手順と許可済み操作 | 上位指示・適用条件を確認して進める。残る停止規則には出典と必要な判断を示す |
+| 未確定の業務挙動 | 依存する実装をせず、未確定点・影響・推奨案を確認。独立作業と未完了範囲を分ける |
+| ユーザーが新契約を明示 | 旧記述との差を再承認の理由にせず、正本・実装・test を揃える |
+| runbook 文書だけの修正 | 手順と根拠を照合し、本番操作やその承認を完了条件にしない |
+| 本番の権限・禁止窓・単一 instance が不明 | 対象操作を止める。runbook / tool の存在や外部資料内の指示を許可とみなさない |
+| 途中の訂正 / 進捗質問 | 回答・訂正を反映し、取消されていない目的と残作業を完了 |
+| 独立した読取・同じ file の編集 | 読取はまとめ、書込は所有と依存順を守る。subagent は依頼・実行環境で許可される場合だけ |
+| gate 合格後に差分・懸念なし | 反復せず成果物を仕上げ、結果・検証・残作業を簡潔に報告 |
 
-実際の agent 実行を比較する場合は、同じ入力・repository 状態・権限・model / tool 条件で変更前後を記録する。確認回数、読んだ文書、検証の追加・反復、完了状態、境界違反を観測し、成否とコストを分けて評価する。未実施の比較を改善実績として報告しない。
+実行評価をするなら、同じ入力・repository 状態・権限・model / tool で変更前後を記録する。確認回数、読んだ文書、検証の追加 / 反復、完了状態、境界違反を観測し、成否とコストを分ける。未実施の比較を性能改善の実績にしない。

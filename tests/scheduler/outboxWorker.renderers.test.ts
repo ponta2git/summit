@@ -49,6 +49,10 @@ describe("outbox worker renderers", () => {
     expect(sentMessages).toStrictEqual([{
       id: "posted-1",
       payload: {
+        nonce: expect.stringMatching(/^[\w-]{25}$/),
+        enforceNonce: true,
+        allowedMentions: { parse: [], users: appConfig.dev.suppressMentions ? [] : appConfig.memberUserIds,
+          roles: [], repliedUser: false },
         content: [
           ...mentionLines,
           "🎉 今週の桃鉄1年勝負、開催です！",
@@ -97,7 +101,8 @@ describe("outbox worker renderers", () => {
 
     expect(sentMessages).toStrictEqual([{
       id: "posted-1",
-      payload: { content: "🛑 今週の出欠確認はお休みです（実行: user-1）" }
+      payload: { content: "🛑 今週の出欠確認はお休みです（実行: user-1）",
+        nonce: expect.stringMatching(/^[\w-]{25}$/), enforceNonce: true }
     }]);
     expect(ctx.ports.outbox.listEntries()[0]?.status).toBe("DELIVERED");
   });

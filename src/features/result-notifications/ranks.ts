@@ -1,5 +1,5 @@
 import type { RankComparison, RankSample } from "@momo/db/notifications";
-import { escapeNotificationText } from "./text.ts";
+import { escapeNotificationTextParts } from "./text.ts";
 import { assertNever } from "../../util/assertNever.ts";
 
 const sample = (value: RankSample | null): string => {
@@ -26,5 +26,14 @@ const comparison = (rank: RankComparison): string => {
   }
 };
 
+/** Keep large retained display names out of an intermediate full ranking string. */
+export function* renderNotificationRankParts(ranks: readonly RankComparison[]): Generator<string, void, unknown> {
+  for (const [index, rank] of ranks.entries()) {
+    if (index > 0) { yield "\n"; }
+    yield* escapeNotificationTextParts(rank.displayName);
+    yield `: ${sample(rank.before)} → ${sample(rank.after)} / ${comparison(rank)}`;
+  }
+}
+
 export const renderNotificationRanks = (ranks: readonly RankComparison[]): string =>
-  ranks.map((rank) => `${escapeNotificationText(rank.displayName)}: ${sample(rank.before)} → ${sample(rank.after)} / ${comparison(rank)}`).join("\n");
+  [...renderNotificationRankParts(ranks)].join("");

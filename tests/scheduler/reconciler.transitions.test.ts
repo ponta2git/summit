@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { setImmediate } from "node:timers/promises";
 
 import type { SessionRow } from "../../src/db/rows.js";
 import {
@@ -16,11 +17,13 @@ import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";
+import { deferred } from "../helpers/deferred.ts";
+import { asDiscordMessage } from "../helpers/discord.ts";
 
 beforeEach(resetReconcilerHarness);
 
 describe("reconcileStrandedCancelled", () => {
-  it("promotes a Friday CANCELLED before the postpone deadline", async () => {
+  it("reports a committed Friday promotion as successful even when its old message cannot be fetched", async () => {
     const session: SessionRow = buildSessionRow({
       id: "c-friday",
       weekKey: "2026-W17",
@@ -35,8 +38,7 @@ describe("reconcileStrandedCancelled", () => {
     const ctx = createTestAppContext({ now, seed: { sessions: [session] } });
 
     const report = await runEffect(reconcileStrandedCancelled(client, ctx));
-    expect(report.succeeded).toBe(0);
-    expect(report.failures).toHaveLength(1);
+    expect(report).toStrictEqual({ processed: 1, succeeded: 1, failures: [] });
     await runEffect(runOutboxWorkerTick(client, ctx));
     await runEffect(runOutboxWorkerTick(client, ctx));
     const after = await ctx.ports.sessions.findSessionById("c-friday");
@@ -92,6 +94,26 @@ describe("reconcileStrandedCancelled", () => {
 });
 
 describe("stranded CANCELLED Discord cleanup", () => {
+  it("retains ownership of a failing edit without treating the committed transition as a batch failure", async () => {
+    const session = buildSessionRow({ id: "committed-recovery", status: "CANCELLED", askMessageId: "ask-recovery",
+      cancelReason: "deadline_unanswered" });
+    const ctx = createTestAppContext({ now: new Date("2026-04-24T12:45:00.000Z"), seed: { sessions: [session] } });
+    const editing = deferred<void>(); const edit = deferred<never>();
+    setFetchImpl(async id => asDiscordMessage({ id, edit: async () => { editing.resolve(); return edit.promise; } }));
+    let finished = false;
+    const recovery = Promise.resolve(runEffect(reconcileStrandedCancelled(client, ctx)))
+      .then(report => { finished = true; return report; });
+    try {
+      await editing.promise;
+      expect((await ctx.ports.sessions.findSessionById(session.id))?.status).toBe("POSTPONE_VOTING");
+      expect(ctx.ports.outbox.listEntries().map(entry => entry.payload.renderer)).toStrictEqual(["settle_notice", "postpone_vote"]);
+      await setImmediate();
+      expect(finished).toBe(false);
+    } finally { edit.reject(new Error("Discord edit unavailable")); await recovery; }
+    expect(await recovery).toStrictEqual({ processed: 1, succeeded: 1, failures: [] });
+    expect((await runEffect(reconcileStrandedCancelled(client, ctx))).succeeded).toBe(0);
+  });
+
   it("disables Friday ASK buttons, then sends settle and postpone messages", async () => {
     const session = buildSessionRow({
       id: "c-fri-ui",

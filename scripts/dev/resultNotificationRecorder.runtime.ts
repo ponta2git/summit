@@ -1,8 +1,9 @@
-import { ChannelType, type Client, type MessageCreateOptions } from "discord.js";
+import { ChannelType, LimitedCollection, type Client, type MessageCreateOptions } from "discord.js";
 import type { DbLike } from "../../src/db/rows.ts";
 import { makeRealPorts } from "../../src/db/ports.real.ts";
 import { createResultNotificationRuntime } from "../../src/notifications/runtime.ts";
 import { systemClock } from "../../src/time/index.ts";
+import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 
 export interface RecordedNotification {
   readonly messageId: string;
@@ -20,17 +21,21 @@ export const createResultNotificationRecorder = (options: {
   readonly port?: number;
 }): ReturnType<typeof createResultNotificationRuntime> => {
   let ordinal = 0;
+  const messages = { cache: new LimitedCollection<string, { readonly id: string }>({ maxSize: 200 }) };
   // why: Discord SDK の network boundary だけを置換する。DB と dispatcher は実装を使う。
   const boundary: unknown = { channels: { fetch: async (channelId: string) => ({
-    type: ChannelType.GuildText, isSendable: () => true,
+    type: ChannelType.GuildText, isSendable: () => true, messages,
     send: async (body: MessageCreateOptions) => {
       const messageId = `recorded-${++ordinal}`;
       await options.record({ messageId, channelId, body });
-      return { id: messageId };
+      const message = { id: messageId };
+      messages.cache.set(messageId, message);
+      return message;
     }
   }) } };
   return createResultNotificationRuntime({
-    client: boundary as Client, context: { ports: makeRealPorts(options.db), clock: systemClock },
+    client: boundary as Client, context: { ports: makeRealPorts(options.db,
+      payload => assertNewNotificationPartLimit(payload, options.webOrigin)), clock: systemClock },
     host: "127.0.0.1", port: options.port ?? 0, token: options.token, operationsToken: options.operationsToken,
     webOrigin: options.webOrigin, channelId: "recorded-channel", canAccept: () => true
   });

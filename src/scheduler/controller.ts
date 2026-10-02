@@ -6,6 +6,7 @@ import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_WORKER_ACTIVE_INTERVAL_MS,
   SCHEDULER_MIN_TIMER_DELAY_MS,
+  SCHEDULER_RECOVERY_BACKOFF_MS,
   SCHEDULER_WAKE_DEBOUNCE_MS
 } from "../config.ts";
 import { AppError, InvariantViolationError } from "../errors/index.ts";
@@ -60,22 +61,37 @@ export const createSchedulerController = (
   let wakeTimer: TimeoutHandle | undefined;
   let recomputeInFlight: Promise<void> | undefined;
   let recomputeQueued = false;
+  let recoveryTimer: TimeoutHandle | undefined;
+  let recomputeRecoveryAttempt = 0;
   let stopped = false;
   let outboxTimer: TimeoutHandle | undefined;
   let outboxActive = false;
-  const running = new Map<TimerKind | "outbox_worker", Promise<void>>();
+  const running = new Map<TimerKind | "outbox_worker", Promise<boolean>>();
   let outboxWakeQueued = false;
+  let outboxRecoveryAttempt = 0;
 
   const runOwnedTick = (
     kind: TimerKind | "outbox_worker",
     run: () => SchedulerEffect<unknown>,
     onSuccess?: () => Promise<void>
-  ): Promise<void> => {
-    if (stopped) { return Promise.resolve(); }
+  ): Promise<boolean> => {
+    if (stopped) { return Promise.resolve(false); }
     const current = running.get(kind);
     if (current) { return current; }
-    const pending = runEffectTickSafely({ name: kind, logger }, run, onSuccess).finally(() => {
+    let succeeded = false;
+    const pending = runEffectTickSafely({ name: kind, logger }, run, async () => {
+      await onSuccess?.();
+      succeeded = true;
+    }).then(() => succeeded).finally(() => {
       running.delete(kind);
+      if (kind === "outbox_worker") {
+        if (succeeded) { outboxRecoveryAttempt = 0; }
+        else {
+          const delay = SCHEDULER_RECOVERY_BACKOFF_MS[outboxRecoveryAttempt];
+          outboxRecoveryAttempt = Math.min(outboxRecoveryAttempt + 1, SCHEDULER_RECOVERY_BACKOFF_MS.length);
+          if (delay !== undefined) { scheduleOutboxLoop(delay); }
+        }
+      }
       if (kind === "outbox_worker" && outboxWakeQueued && !stopped) {
         outboxWakeQueued = false;
         controller.wake("outbox_work_queued");
@@ -200,16 +216,17 @@ export const createSchedulerController = (
     });
   };
 
-  const runDueSessionWork = async (): Promise<boolean> => {
+  const runDueSessionWork = async (): Promise<{ readonly didRun: boolean; readonly failed: boolean }> => {
     // A due reminder remains due until the outbox worker successfully delivers it and
     // completes the Session. Do not wake the controller after every attempted tick, or
     // the same due row can cause an unbounded recompute loop. A different due kind created
     // by a transition is still drained in this recompute, but each kind is attempted once.
     const attemptedDueKinds = new Set<TimerKind>();
     let didRun = false;
+    let failed = false;
 
     while (true) {
-      if (stopped) { return didRun; }
+      if (stopped) { return { didRun, failed }; }
       const now = context.clock.now();
       const [sessionHints, nextOutboxDispatchAt] = await runPromiseBoundary(Effect.all([
         fromDatabaseCall(
@@ -221,7 +238,7 @@ export const createSchedulerController = (
           "Failed to read next outbox dispatch time."
         )
       ], { concurrency: 2 }));
-      if (stopped) { return didRun; }
+      if (stopped) { return { didRun, failed }; }
       let ranThisPass = false;
 
       const runIfDue = async (
@@ -242,7 +259,7 @@ export const createSchedulerController = (
           return;
         }
         attemptedDueKinds.add(kind);
-        await runOwnedTick(kind, run);
+        if (!await runOwnedTick(kind, run)) { failed = true; }
         ranThisPass = true;
       };
 
@@ -263,10 +280,21 @@ export const createSchedulerController = (
         } else {
           scheduleOutbox(nextOutboxDispatchAt, now);
         }
-        return didRun;
+        return { didRun, failed };
       }
       didRun = true;
     }
+  };
+
+  const retryRecompute = (): void => {
+    if (stopped || recoveryTimer !== undefined) { return; }
+    const delay = SCHEDULER_RECOVERY_BACKOFF_MS[recomputeRecoveryAttempt];
+    recomputeRecoveryAttempt = Math.min(recomputeRecoveryAttempt + 1, SCHEDULER_RECOVERY_BACKOFF_MS.length);
+    if (delay === undefined) { return; }
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined;
+      void recompute("recovery_retry");
+    }, delay);
   };
 
   const recompute = async (reason: string): Promise<void> => {
@@ -280,7 +308,13 @@ export const createSchedulerController = (
       const startedAt = performance.now();
       logger.info({ event: "scheduler.recompute_started", reason });
       try {
-        const didRun = await runDueSessionWork();
+        const { didRun, failed } = await runDueSessionWork();
+        if (failed) { retryRecompute(); }
+        else {
+          recomputeRecoveryAttempt = 0;
+          clearTimeout(recoveryTimer);
+          recoveryTimer = undefined;
+        }
         logger.info({
           event: "scheduler.recompute_finished",
           reason,
@@ -295,6 +329,7 @@ export const createSchedulerController = (
           error,
           ...(error instanceof AppError ? { errorCode: error.code } : {})
         });
+        retryRecompute();
       }
     })()
       .finally(() => {
@@ -320,6 +355,8 @@ export const createSchedulerController = (
     },
     stop: () => {
       stopped = true;
+      clearTimeout(recoveryTimer);
+      recoveryTimer = undefined;
       if (wakeTimer) {
         clearTimeout(wakeTimer);
         wakeTimer = undefined;
@@ -338,10 +375,12 @@ export const runSchedulerSupervisorTick = (
   ctx: AppContext,
   controller: SchedulerController
 ): SchedulerEffect<{ readonly outboxClaimReleased: number }> =>
-  Effect.flatMap(reconcileOutboxClaims(ctx), (outboxClaimReleased) =>
-    Effect.map(fromAppCall(
+  Effect.map(Effect.all([
+    reconcileOutboxClaims(ctx),
+    fromAppCall(
       () => controller.recompute("supervisor"),
       (cause) => cause instanceof AppError
         ? cause
         : new InvariantViolationError("Failed to recompute scheduler state.", { cause })
-    ), () => ({ outboxClaimReleased })));
+    )
+  ], { concurrency: 2 }), ([outboxClaimReleased]) => ({ outboxClaimReleased }));

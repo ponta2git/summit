@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import type { AppContext } from "../../appContext.ts";
 import type { AppError } from "../../errors/index.ts";
+import { logger } from "../../logger.ts";
 
 interface MessageLock {
   readonly semaphore: Effect.Semaphore;
@@ -8,6 +9,16 @@ interface MessageLock {
 }
 
 const queues = new WeakMap<AppContext, Map<string, MessageLock>>();
+
+/** A repaint cannot undo a committed command or suppress its durable follow-up work. */
+export const bestEffortMessageUpdate = (
+  update: Effect.Effect<void, AppError>,
+  sessionId: string,
+  messageKind: "ask" | "postpone"
+): Effect.Effect<void> => update.pipe(Effect.catchAll(error => Effect.sync(() => {
+  logger.warn({ event: "message.repaint_failed", sessionId, messageKind, error },
+    "State is committed; the public message could not be synchronized.");
+})));
 
 /** 同じmessageの再読込とeditを直列化し、別Sessionの更新は待たせない。 */
 export const serializeMessageUpdate = <T>(

@@ -87,6 +87,14 @@ describe("buildAskMessageViewModel", () => {
         decidedStartAt: new Date("2026-04-24T14:00:00.000Z")
       },
       footer: "✅ みんなの回答がそろいました。23:00 開始で確定です（開催決定を投稿します）"
+    },
+    {
+      label: "COMPLETED with a held event",
+      input: {
+        status: "COMPLETED" as const,
+        decidedStartAt: new Date("2026-04-24T14:00:00.000Z")
+      },
+      footer: "✅ みんなの回答がそろいました。23:00 開始で確定です（開催決定を投稿します）"
     }
   ])("builds the complete $label terminal view model", ({ input, footer }) => {
     expect(buildAskMessageViewModel({ ...session, ...input }, [], [])).toStrictEqual(

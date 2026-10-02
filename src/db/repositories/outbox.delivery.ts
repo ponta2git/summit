@@ -1,11 +1,17 @@
 import type { DbLike } from "../rows.ts";
 import { notificationTransaction } from "./notifications.storage.ts";
-import { beginNotificationPart, completeNotificationPart, failNotification } from "./notifications.delivery.ts";
+import { beginNotificationPart, completeNotificationPart, failNotification, renewNotificationClaim } from "./notifications.delivery.ts";
 
 export const beginOutboxDelivery = (
   db: DbLike, id: string, options: { readonly claimToken: string; readonly now: Date }
 ): Promise<boolean> => notificationTransaction(db, "attendance", tx =>
   beginNotificationPart(tx, id, 0, options.claimToken, options.now));
+
+export const renewOutboxClaim = (
+  db: DbLike, id: string,
+  options: { readonly claimToken: string; readonly now: Date; readonly claimDurationMs: number }
+): Promise<boolean> => notificationTransaction(db, "attendance", tx =>
+  renewNotificationClaim(tx, id, options.claimToken, options.now, options.claimDurationMs));
 
 export const markOutboxDelivered = (
   db: DbLike, id: string,

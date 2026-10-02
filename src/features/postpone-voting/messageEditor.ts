@@ -65,7 +65,11 @@ const synchronizePostponeMessage = (
       return true;
     }).pipe(Effect.uninterruptible);
     if (mode === "probe") { return yield* recreate(); }
-    const editPayload = { content: rendered.content ?? "", ...(rendered.components ? { components: rendered.components } : {}) };
+    const editPayload = {
+      content: rendered.content ?? "",
+      ...(rendered.allowedMentions ? { allowedMentions: rendered.allowedMentions } : {}),
+      ...(rendered.components ? { components: rendered.components } : {})
+    };
     return yield* fromDiscordCall(async () => {
       if (knownMessage?.id === messageId) { return knownMessage.edit(editPayload); }
       const channel = await getTextChannel(client, fresh.channelId);

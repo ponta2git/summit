@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageFlags } from "discord.js";
-import { deliverResultNotification, resultNotificationNonce } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { deliverResultNotification } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { notificationNonce } from "../../src/scheduler/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
@@ -17,7 +18,7 @@ describe("result notification delivery", () => {
     expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", lastError: "delivery_uncertain" });
     const firstPayload = h.channel.send.mock.calls[0]?.[0];
     const uncertainPayload = h.channel.send.mock.calls[1]?.[0];
-    expect(firstPayload).toMatchObject({ nonce: resultNotificationNonce(id, 0), enforceNonce: true,
+    expect(firstPayload).toMatchObject({ nonce: notificationNonce(id, 0), enforceNonce: true,
       allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }, flags: MessageFlags.SuppressEmbeds });
     await vi.advanceTimersByTimeAsync(1_000);
     const retry = await h.claim();
@@ -27,7 +28,22 @@ describe("result notification delivery", () => {
     expect(h.client.channels.fetch).toHaveBeenLastCalledWith("channel-1");
     expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" });
     expect(String(firstPayload?.nonce).length).toBeLessThanOrEqual(25);
-    expect(resultNotificationNonce(id, 0)).not.toBe(resultNotificationNonce(id, 1));
+    expect(notificationNonce(id, 0)).not.toBe(notificationNonce(id, 1));
+  });
+
+  it("resumes undelivered parts when persisted delivered numbers have gaps", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue("noncontiguous", "x".repeat(6_000)); const entry = await h.claim();
+    // regression: 配送境界は過去の非連続な完了番号を許容し、連続 prefix とみなさない。
+    const begin = vi.fn(h.port.begin).mockResolvedValue(true);
+    const complete = vi.fn(h.port.complete).mockResolvedValue(true);
+    h.port.begin = begin; h.port.complete = complete;
+    await h.deliver({ ...entry, deliveredPartNos: [0, 2] });
+    expect((await h.port.inspect(id))?.partCount).toBe(5);
+    expect(begin.mock.calls.map(([, partNo]) => partNo)).toEqual([1, 3, 4]);
+    expect(complete.mock.calls.map(([, partNo, , messageId]) => ({ partNo, messageId }))).toEqual([
+      { partNo: 1, messageId: "message-1" }, { partNo: 3, messageId: "message-2" }, { partNo: 4, messageId: "message-3" }
+    ]);
+    expect(h.channel.send.mock.calls.map(([body]) => body.nonce)).toEqual([notificationNonce(id, 1), notificationNonce(id, 3), notificationNonce(id, 4)]);
   });
 
   it("records an already-started send after OFF and stops all later parts", async () => {

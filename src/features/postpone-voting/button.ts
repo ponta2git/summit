@@ -137,6 +137,7 @@ const recordResponseStep = (
       "Failed to record postpone response atomically."
     );
     const current = yield* resolvePostponeCommandResult(context, result, now);
+    context.deps.wakeScheduler?.("postpone_button_recorded");
     logger.info({ interactionId: current.interaction.id, customId: current.interaction.customId,
       sessionId: current.sessionId, weekKey: current.session.weekKey, userId: current.interaction.user.id,
       memberId: current.memberId, choice: current.responseChoice }, "Postpone response recorded.");
@@ -214,7 +215,6 @@ export const handlePostponeButton = async (
 
   await Either.match(result, {
     onRight: async (context) => {
-      deps.wakeScheduler?.("postpone_button_recorded");
       logger.info(
         {
           interactionId: interaction.id,

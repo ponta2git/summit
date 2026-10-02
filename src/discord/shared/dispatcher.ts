@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 
 import type { AppContext } from "../../appContext.ts";
+import { INTERACTION_CONCURRENCY, INTERACTION_REJECTION_CONCURRENCY } from "../../config.ts";
 import { logger } from "../../logger.ts";
 import { rejectMessages } from "../../features/interaction-reject/messages.ts";
 import { sendAskMessage } from "../../features/ask-session/send.ts";
@@ -155,10 +156,40 @@ export const registerInteractionHandlers = (
   } = {}
 ): { stop(): void; drain(): Promise<void> } => {
   const active = new Set<Promise<void>>();
+  const rejecting = new Set<Promise<void>>();
+  let stopped = false;
   const registry = options.registry ?? defaultRegistry;
+  const track = (work: Promise<void>, owner: Set<Promise<void>>): void => {
+    owner.add(work);
+    const release = (): void => { owner.delete(work); };
+    // invariant: 成否にかかわらず settlement まで slot と drain の所有を維持する。
+    void work.then(release, release);
+  };
+  const rejectBusy = async (interaction: Interaction): Promise<void> => {
+    try {
+      const payload = buildEphemeralReject(rejectMessages.busy);
+      if (interaction.isButton()) {
+        await interaction.deferUpdate();
+        await interaction.followUp(payload);
+      } else if (interaction.isChatInputCommand()) {
+        await interaction.reply(payload);
+      }
+    } catch (error: unknown) {
+      logger.warn({ event: "interaction.busy_reply_failed", error, interactionId: interaction.id },
+        "Could not send the bounded busy response.");
+    }
+  };
   const onInteraction = (interaction: Interaction): void => {
+    if (stopped) { return; }
+    if (active.size >= INTERACTION_CONCURRENCY) {
+      // why: 拒否通知自身の API 待機も上限を持ち、飽和時には追加の I/O を開始しない。
+      if (rejecting.size < INTERACTION_REJECTION_CONCURRENCY) {
+        track(Promise.resolve().then(() => rejectBusy(interaction)), rejecting);
+      }
+      return;
+    }
     // ack: 3 秒制約に備え入口で try/catch を集約する。
-    const handling = (async () => {
+    const handling = Promise.resolve().then(async () => {
       try {
         const readyDeps =
           options.getReadyState === undefined
@@ -201,15 +232,13 @@ export const registerInteractionHandlers = (
           // race: エラー通知自体の失敗は握りつぶし、二重障害で unhandled rejection を作らない。
         }
       }
-    })();
-    active.add(handling);
-    const release = (): void => { active.delete(handling); };
-    // invariant: error通知の二重障害でも、追跡を解除してunhandled rejectionを残さない。
-    void handling.then(release, release);
+      return undefined;
+    });
+    track(handling, active);
   };
   client.on("interactionCreate", onInteraction);
   return {
-    stop: () => { client.off("interactionCreate", onInteraction); },
-    drain: async () => { await Promise.allSettled([...active]); }
+    stop: () => { stopped = true; client.off("interactionCreate", onInteraction); },
+    drain: async () => { await Promise.allSettled([...active, ...rejecting]); }
   };
 };

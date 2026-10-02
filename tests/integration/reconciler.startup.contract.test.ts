@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../../src/db/schema.ts";
 import { makeRealPorts } from "../../src/db/ports.real.js";
+import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { runReconciler } from "../../src/scheduler/reconciler.js";
 import type { Clock } from "../../src/time/index.js";
 import { runEffect } from "../helpers/assertions.js";
@@ -47,7 +48,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
   it("two consecutive runReconciler({scope:'startup'}) calls converge on first and no-op on second", async () => {
     const ctx = {
-      ports: makeRealPorts(integrationDb.db),
+      ports: makeRealPorts(integrationDb.db, payload => assertNewNotificationPartLimit(payload, "https://example.test")),
       clock: fixedClock
     };
 

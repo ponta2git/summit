@@ -14,6 +14,7 @@ import type { AppError } from "../errors/index.ts";
 import { fromDatabaseCall } from "../errors/effect.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
+import { bestEffortMessageUpdate } from "../discord/shared/messageUpdates.ts";
 import {
   deadlineFor,
   formatCandidateDateIso,
@@ -51,7 +52,7 @@ export const applyPostponeTransition = (
   result: PersistedPostponeTransition
 ): Effect.Effect<void, AppError> =>
   Effect.gen(function* () {
-    yield* updatePostponeMessage(client, ctx, result.session);
+    yield* bestEffortMessageUpdate(updatePostponeMessage(client, ctx, result.session), result.session.id, "postpone");
 
     if (result.outcome === "cancelled") {
       logger.info(

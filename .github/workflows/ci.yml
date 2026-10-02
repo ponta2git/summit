@@ -83,6 +83,59 @@ jobs:
         run: pnpm verify:file-size
         working-directory: summit
 
+  runtime-image:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: summit
+          POSTGRES_PASSWORD: summit
+          POSTGRES_DB: summit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U summit"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://summit:summit@localhost:5432/summit
+    steps:
+      - name: Checkout summit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: summit
+      - name: Checkout momo-db
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ponta2git/momo-db
+          ref: ${{ env.MOMO_DB_REF }}
+          path: momo-db
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
+        with:
+          package_json_file: summit/package.json
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 24.x
+          cache: pnpm
+          cache-dependency-path: summit/pnpm-lock.yaml
+      - name: Install verification schema dependencies
+        run: pnpm install --frozen-lockfile && pnpm build
+        working-directory: momo-db
+      - name: Install verification dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: summit
+      - name: Build production image
+        run: docker build --file summit/Dockerfile --tag summit-runtime-check .
+      - name: Verify isolated runtime
+        run: node summit/scripts/verify/runtimeImage.ts summit-runtime-check
+      - name: Verify notification capacity at 256 MiB with 192 MiB target
+        run: pnpm verify:notification-capacity summit-runtime-check
+        working-directory: summit
+
   integration-db:
     runs-on: ubuntu-latest
     services:

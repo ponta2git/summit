@@ -1,9 +1,8 @@
 import type { AddressInfo } from "node:net";
 import type { Client } from "discord.js";
-import * as Effect from "effect/Effect";
 import type { AppContext } from "../appContext.ts";
 import { logger } from "../logger.ts";
-import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
+import { drainResources, stopResources } from "../runtime/lifecycle.ts";
 import { createResultNotificationDispatcher } from "../scheduler/resultNotifications.ts";
 import { createNotificationReceiver } from "./http.ts";
 
@@ -35,11 +34,7 @@ export const createResultNotificationRuntime = (deps: {
     start: () => receiver.start(deps.host, deps.port),
     address: () => { const address = receiver.server.address(); return typeof address === "object" ? address : null; },
     wake: (reason: string) => dispatcher.wake(reason),
-    stop: () => { try { receiver.stop(); } finally { dispatcher.stop(); } },
-    drain: async () => {
-      await runPromiseBoundary(Effect.all([
-        settledCall(() => receiver.drain()), settledCall(() => dispatcher.drain())
-      ], { concurrency: 2 }));
-    }
+    stop: () => stopResources([() => receiver.stop(), () => dispatcher.stop()]),
+    drain: () => drainResources([() => receiver.drain(), () => dispatcher.drain()])
   };
 };

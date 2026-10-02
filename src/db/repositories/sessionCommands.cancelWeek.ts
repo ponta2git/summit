@@ -1,3 +1,4 @@
+import { runTransaction } from "../transaction.ts";
 import {
   asc,
   eq,
@@ -39,7 +40,7 @@ export const cancelWeekAtomically = async (
   db: DbLike,
   input: CancelWeekInput
 ): Promise<CancelWeekResult> =>
-  db.transaction(async (tx) => {
+  runTransaction(db, async (tx) => {
     const lockedRows = await tx
       .select()
       .from(sessions)

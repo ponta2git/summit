@@ -11,8 +11,13 @@ export const resultWorkerHarness = () => {
   const port = createFakeResultNotificationsPort(clock);
   port.setTargetAvailable("match", "match-1", true);
   let messageCount = 0;
-  const channel = { type: ChannelType.GuildText, isSendable: () => true,
-    send: vi.fn(async (_body: MessageCreateOptions): Promise<{ id: string }> => ({ id: `message-${++messageCount}` })) };
+  const messages = { cache: new Map<string, { id: string }>() };
+  const channel = { type: ChannelType.GuildText, isSendable: () => true, messages,
+    send: vi.fn(async (_body: MessageCreateOptions): Promise<{ id: string }> => {
+      const message = { id: `message-${++messageCount}` };
+      messages.cache.set(message.id, message);
+      return message;
+    }) };
   const client = stubClient(channel);
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   let stopping = false;
@@ -22,7 +27,8 @@ export const resultWorkerHarness = () => {
     enqueue: async (jobId = "job-1", summary = "長いメモ。".repeat(800)) => {
       const original = analysisNotification();
       const payload = { ...original, notificationId: `result:analysis_completed:${jobId}`, sourceJobId: jobId, data: { ...original.data, matches: original.data.matches.map(match => ({ ...match, note: summary })) } };
-      await port.receive(JSON.stringify(payload), clock.now()); return payload.notificationId;
+      // Delivery must retain historical long notes even after admission limits tighten.
+      port.seedStoredNotification(payload); return payload.notificationId;
     },
     claim: async () => {
       const [entry] = await port.claim({ limit: 1, now: clock.now(), claimDurationMs: 30_000 });

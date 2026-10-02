@@ -209,6 +209,12 @@ export interface OutboxPort {
     readonly claimDurationMs: number;
   }): Promise<readonly OutboxEntry[]>;
   beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }): Promise<boolean>;
+  /** Extend only a live claim; expired or replaced owners cannot regain delivery rights. */
+  renewClaim(id: string, options: {
+    readonly claimToken: string;
+    readonly now: Date;
+    readonly claimDurationMs: number;
+  }): Promise<boolean>;
   markDelivered(
     id: string,
     options: {

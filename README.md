@@ -108,15 +108,9 @@ Discord token、DB URL の実値は commit しないでください。
 
 ## Development workflow（開発）
 
-ローカルの検証は差分に応じて [`docs/test-rule.md`](./docs/test-rule.md#8-quality-gate) で選びます。code・test・実行設定などを変えた場合は、PR 前に統合品質ゲートを実行します。
+対象の仕様・コード・test から作業を始め、参照先が不明なら [`docs/README.md`](./docs/README.md#1-タスクから文書を選ぶ) で必要な文書を選びます。agent の共通契約は [`AGENTS.md`](./AGENTS.md) です。
 
-```bash
-pnpm run ci
-```
-
-説明・リンク・agent 規約だけの変更では、`git diff --check` と `pnpm verify:docs`、正本との整合確認がローカルの gate です。`AGENTS.md` を変えたら `pnpm docs:sync-agent` で adapter を同期します。CI は文書変更でも全 job を実行します。
-
-DB 契約に触れた場合は local PostgreSQL を使う integration test を追加し、schema / migration に関わる場合は momo-db の必須 check と互換性確認も行います。command の詳細と外部資料の確認方法は [`docs/dev-rule.md`](./docs/dev-rule.md) を参照してください。
+ローカルの品質 gate は [`docs/test-rule.md` §8](./docs/test-rule.md#8-quality-gate) が正本です。command、文書 adapter の同期、新規文書の検証方法は [`docs/dev-rule.md` §2](./docs/dev-rule.md#2-主要command) を参照してください。CI の実行範囲は [workflow](./.github/workflows/ci.yml) で管理します。
 
 ローカルで週次フローをやり直す場合は、専用コマンドで transient state をリセットします。
 

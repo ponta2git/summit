@@ -1,9 +1,13 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { lstat, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WRITE_ADAPTERS_ARG = "--write-adapters";
+const INCLUDE_ARG = "--include";
+const execFileAsync = promisify(execFile);
 const AGENTS_MAX_BYTES = 4 * 1_024;
 const GENERATED_HEADER =
   "<!-- Generated from AGENTS.md by `pnpm docs:sync-agent`. Do not edit directly. -->\n\n";
@@ -37,14 +41,6 @@ const RETIRED_PATHS = [
   [".github", "instructions"].join("/"),
   ["requirements", "base.md.original.bak"].join("/")
 ] as const;
-
-const SKIPPED_DIRECTORIES = new Set([
-  ".git",
-  ".serena",
-  "coverage",
-  "dist",
-  "node_modules"
-]);
 
 const TEXT_EXTENSIONS = new Set([
   ".cjs",
@@ -117,19 +113,33 @@ const pathExists = async (absolutePath: string): Promise<boolean> => {
   }
 };
 
-const listFiles = async (absoluteDirectory: string): Promise<readonly string[]> => {
-  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+const listFiles = async (includedPaths: readonly string[]): Promise<readonly string[]> => {
+  // secret: 未追跡の設定を読む前に Git の一覧で対象を限定する。読取後の除外では遅い。
+  const { stdout } = await execFileAsync("git", ["ls-files", "--cached", "-z"], {
+    cwd: ROOT,
+    maxBuffer: 4 * 1_024 * 1_024
+  });
+  const trackedPaths = stdout.split("\0").filter(Boolean).map((path) => resolve(ROOT, path));
+  const explicitPaths = new Set(includedPaths.map((path) => resolve(ROOT, path)));
   const files: string[] = [];
 
-  for (const entry of entries) {
-    if (entry.isDirectory() && SKIPPED_DIRECTORIES.has(entry.name)) {
+  for (const absolutePath of new Set([...trackedPaths, ...explicitPaths])) {
+    const projectPath = relative(ROOT, absolutePath);
+    if (projectPath === ".." || projectPath.startsWith(`..${sep}`)) {
+      recordFailure(`included path must be inside the repository: ${projectPath}`);
       continue;
     }
-    const absolutePath = resolve(absoluteDirectory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await listFiles(absolutePath));
-    } else if (entry.isFile()) {
+    if (!await pathExists(absolutePath)) {
+      if (explicitPaths.has(absolutePath)) {
+        recordFailure(`included path is missing: ${projectPath}`);
+      }
+      continue;
+    }
+    const entry = await lstat(absolutePath);
+    if (entry.isFile()) {
       files.push(absolutePath);
+    } else {
+      recordFailure(`verification requires a regular file: ${projectPath}`);
     }
   }
 
@@ -368,9 +378,36 @@ const reportResult = (): void => {
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
-  const writeRequested = args.length === 1 && args[0] === WRITE_ADAPTERS_ARG;
-  if (args.length > 0 && !writeRequested) {
-    recordFailure(`unknown arguments: ${args.join(" ")}`);
+  let writeRequested = false;
+  const includedPaths: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    const nextArg = args[index + 1];
+    if (arg === WRITE_ADAPTERS_ARG && !writeRequested) {
+      writeRequested = true;
+    } else if (arg === INCLUDE_ARG && nextArg && !nextArg.startsWith("--")) {
+      includedPaths.push(nextArg);
+      index += 1;
+    } else {
+      recordFailure(`unknown or incomplete argument: ${arg}`);
+    }
+  }
+  if (failures.length > 0) {
+    reportResult();
+    return;
+  }
+
+  let allFiles: readonly string[];
+  try {
+    allFiles = await listFiles(includedPaths);
+  } catch {
+    recordFailure("could not collect verification files; use a Git checkout with readable files and Git installed");
+    reportResult();
+    return;
+  }
+  if (failures.length > 0) {
+    reportResult();
+    return;
   }
 
   const agentsPath = resolve(ROOT, "AGENTS.md");
@@ -390,7 +427,6 @@ const main = async (): Promise<void> => {
   await verifyAdapters(agentsContent);
   await verifyTaxonomyRows();
 
-  const allFiles = await listFiles(ROOT);
   await verifyNoBackupArtifacts(allFiles);
   await verifyNoLegacyMarkers(allFiles);
   await verifyMarkdownLinks(allFiles);

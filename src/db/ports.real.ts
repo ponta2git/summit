@@ -3,6 +3,7 @@
 
 import type { DbLike } from "./rows.ts";
 import { makeResultNotificationsPort } from "./repositories/resultNotifications.ts";
+import type { ResultNotificationAdmissionCheck } from "./ports.resultNotifications.ts";
 import {
   createAskSession,
   findDueAskingSessions,
@@ -49,7 +50,8 @@ import {
   markOutboxFailed,
   pruneOutbox,
   requeueFailedOutboxChains,
-  releaseExpiredOutboxClaims
+  releaseExpiredOutboxClaims,
+  renewOutboxClaim
 } from "./repositories/outbox.ts";
 import type {
   AppPorts,
@@ -112,6 +114,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   enqueue: (input) => enqueueOutbox(db, input),
   claimNextBatch: (options) => claimNextOutboxBatch(db, options),
   beginDelivery: (id, options) => beginOutboxDelivery(db, id, options),
+  renewClaim: (id, options) => renewOutboxClaim(db, id, options),
   markDelivered: (id, options) => markOutboxDelivered(db, id, options),
   markFailed: (id, options) => markOutboxFailed(db, id, options),
   requeueFailedChains: (now) => requeueFailedOutboxChains(db, now),
@@ -122,7 +125,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   getNextDispatchAt: (now) => getNextOutboxDispatchAt(db, now)
 });
 
-export const makeRealPorts = (db: DbLike): AppPorts => ({
+export const makeRealPorts = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck): AppPorts => ({
   sessions: makeSessionsPort(db),
   sessionCommands: makeSessionCommandsPort(db),
   responses: makeResponsesPort(db),
@@ -130,5 +133,5 @@ export const makeRealPorts = (db: DbLike): AppPorts => ({
   heldEvents: makeHeldEventsPort(db),
   status: makeStatusPort(db),
   outbox: makeOutboxPort(db),
-  resultNotifications: makeResultNotificationsPort(db)
+  resultNotifications: makeResultNotificationsPort(db, admissionCheck)
 });

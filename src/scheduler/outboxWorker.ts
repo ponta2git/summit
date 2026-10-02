@@ -5,6 +5,7 @@ import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_BACKOFF_MS_SEQUENCE,
   OUTBOX_CLAIM_DURATION_MS,
+  OUTBOX_HEARTBEAT_MS,
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_WORKER_BATCH_LIMIT
 } from "../config.ts";
@@ -17,6 +18,9 @@ import {
   completeReminderDelivery
 } from "../features/reminder/send.ts";
 import { addMs } from "../time/index.ts";
+import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
+import { withClaimHeartbeat } from "./claimHeartbeat.ts";
+import { notificationNonce } from "./deliveryNonce.ts";
 import { renderOutboxPayload } from "./outboxRenderers.ts";
 import type { SchedulerEffect } from "./scheduler.types.ts";
 
@@ -39,36 +43,24 @@ export const computeOutboxBackoff = (
   return addMs(now, delayMs);
 };
 
-const deliverOne = async (
+const deliverClaimedEntry = async (
   client: Client,
   ctx: AppContext,
   entry: OutboxEntry,
+  claimToken: string,
   isStopping: () => boolean
 ): Promise<void> => {
-  const now = ctx.clock.now();
   const payload = entry.payload;
-  const claimToken = entry.claimToken;
-  if (!claimToken) {
-    logger.error(
-      {
-        event: "outbox.missing_claim_token",
-        outboxId: entry.id,
-        sessionId: entry.sessionId
-      },
-      "Outbox worker received an unfenced claim."
-    );
-    return;
-  }
-
   try {
     if (isStopping()) { return; }
     const body = await renderOutboxPayload(ctx, entry);
+    if (isStopping()) { return; }
     if (body === undefined) {
       // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
       const marked = await ctx.ports.outbox.markFailed(entry.id, {
         error: "Unsupported outbox payload.",
         claimToken,
-        now,
+        now: ctx.clock.now(),
         nextAttemptAt: null
       });
       if (!marked) {
@@ -101,7 +93,7 @@ const deliverOne = async (
       return;
     }
     if (isStopping()) { return; }
-    const sent = await channel.send(body);
+    const sent = await channel.send({ ...body, nonce: notificationNonce(entry.id, 0), enforceNonce: true });
     if (payload.renderer === "reminder") {
       const completed = await completeReminderDelivery(
         ctx,
@@ -202,6 +194,31 @@ const deliverOne = async (
       "Outbox worker: send failed."
     );
   }
+};
+
+const deliverOne = async (
+  client: Client,
+  ctx: AppContext,
+  entry: OutboxEntry,
+  isStopping: () => boolean
+): Promise<void> => {
+  const claimToken = entry.claimToken;
+  if (!claimToken) {
+    logger.error({ event: "outbox.missing_claim_token", outboxId: entry.id, sessionId: entry.sessionId },
+      "Outbox worker received an unfenced claim.");
+    return;
+  }
+  await runPromiseBoundary(withClaimHeartbeat({
+    intervalMs: OUTBOX_HEARTBEAT_MS,
+    renew: () => ctx.ports.outbox.renewClaim(entry.id, {
+      claimToken, now: ctx.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS
+    }),
+    onLost: reason => {
+      logger.warn({ event: reason === "uncertain" ? "outbox.lease_uncertain" : "outbox.claim_lost",
+        outboxId: entry.id, sessionId: entry.sessionId });
+    }
+  }, isClaimLost => settledCall(() =>
+    deliverClaimedEntry(client, ctx, entry, claimToken, () => isStopping() || isClaimLost()))));
 };
 
 /**

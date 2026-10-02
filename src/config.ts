@@ -34,7 +34,7 @@ export const POSTPONE_DEADLINE_HHMM = parseHhmm(appConfig.schedule.postponeDeadl
 
 // why: cron 送信スケジュールは user config の askTime から派生させる。
 export const CRON_ASK_SCHEDULE = buildWeeklyCron(ASK_START_HHMM, 5);
-export const REMINDER_LEAD_MINUTES = -appConfig.schedule.reminderLeadMinutes;
+export const REMINDER_LEAD_MINUTES = appConfig.schedule.reminderLeadMinutes;
 // why: 開催確定からリマインド予定まで余裕がない場合は送信をスキップする（requirements/base.md §5.2）
 export const REMINDER_SKIP_THRESHOLD_MINUTES = 10 as const;
 // why: 1 分 tick 周期を超える tick を warn で早期検知し noOverlap の健全性を観測する。
@@ -46,11 +46,14 @@ export { MEMBER_COUNT_EXPECTED } from "./env.ts";
 export const CRON_SCHEDULER_SUPERVISOR_SCHEDULE = "*/30 * * * *" as const;
 export const SCHEDULER_WAKE_DEBOUNCE_MS = 250 as const;
 export const SCHEDULER_MIN_TIMER_DELAY_MS = 1_000 as const;
+export const SCHEDULER_RECOVERY_BACKOFF_MS = [1_000, 5_000, 15_000, 60_000] as const;
 export const OUTBOX_WORKER_ACTIVE_INTERVAL_MS = 10_000 as const;
 // single-instance: rate limit を踏みにくい 1 tick 処理上限。
 export const OUTBOX_WORKER_BATCH_LIMIT = 10 as const;
 // race: worker crash 時に claimExpiresAt 経過で reclaim される最大保持時間（tick 周期の数倍）。
 export const OUTBOX_CLAIM_DURATION_MS = 30_000 as const;
+// race: Discord の rate-limit 待機中も配送 owner の lease を保持する。
+export const OUTBOX_HEARTBEAT_MS = 10_000 as const;
 // why: 失敗時の指数バックオフ列。attempt_count-1 を index に使い、超過分は末尾値で頭打ち。
 export const OUTBOX_BACKOFF_MS_SEQUENCE = [
   1_000,
@@ -80,7 +83,7 @@ export const OUTBOX_METRICS_PENDING_AGE_WARN_MS = 5 * 60 * 1_000;
 export const RECONNECT_REPLAY_DEBOUNCE_MS = 30_000;
 
 export {
-  RESULT_NOTIFICATION_MAX_BODY_BYTES, RESULT_NOTIFICATION_MAX_JSONB_BYTES,
+  RESULT_NOTIFICATION_MAX_BODY_BYTES, RESULT_NOTIFICATION_MAX_JSONB_BYTES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
   RESULT_NOTIFICATION_MAX_RECEIPTS, RESULT_NOTIFICATION_MAX_CONNECTIONS,
   RESULT_NOTIFICATION_BODY_TIMEOUT_MS, RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS,
   RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, RESULT_NOTIFICATION_SQL_TIMEOUT_MS,
@@ -88,3 +91,6 @@ export {
   RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS
 } from "./notifications/config.ts";
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 20_000;
+// why: DB/Discord 障害中の連打でも業務処理と拒否応答の owned work を有限に保つ。
+export const INTERACTION_CONCURRENCY = 32;
+export const INTERACTION_REJECTION_CONCURRENCY = 4;

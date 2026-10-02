@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
+import type { AnalysisCompletedNotification } from "@momo/db/notifications";
 import { describe, expect, it } from "vitest";
-import { validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
+import { validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 
 describe("result notification payload OCR v2 and analysis v1", () => {
@@ -81,5 +82,64 @@ describe("result notification payload OCR v2 and analysis v1", () => {
       : { ...rank, comparison: "reused", before: rank.after, delta: 0 });
     const payload = { ...original, data: { ...original.data, overall: ranks } };
     expect(validateNewNotification(payload).data).toMatchObject({ overall: ranks });
+  });
+});
+
+const fields: readonly {
+  readonly name: string;
+  readonly limit: number;
+  readonly update: (input: AnalysisCompletedNotification, value: string) => unknown;
+}[] = [
+  { name: "game title", limit: 256, update: (input, value) => ({ ...input, data: { ...input.data, gameTitleName: value } }) },
+  { name: "map", limit: 256, update: (input, value) => ({ ...input, data: { ...input.data, matches: input.data.matches.map(match => ({ ...match, mapName: value })) } }) },
+  { name: "match season", limit: 256, update: (input, value) => ({ ...input, data: { ...input.data, matches: input.data.matches.map(match => ({ ...match, seasonName: value })) } }) },
+  { name: "aggregate season", limit: 256, update: (input, value) => ({ ...input, data: { ...input.data, seasons: input.data.seasons.map(season => ({ ...season, seasonName: value })) } }) },
+  { name: "owner", limit: 32, update: (input, value) => ({ ...input, data: { ...input.data, matches: input.data.matches.map(match => ({ ...match, ownerName: value })) } }) },
+  { name: "match member", limit: 32, update: (input, value) => ({ ...input, data: { ...input.data, matches: input.data.matches.map(match => ({ ...match, players: match.players.map(player => ({ ...player, displayName: value })) })) } }) },
+  { name: "overall member", limit: 32, update: (input, value) => ({ ...input, data: { ...input.data, overall: input.data.overall.map(rank => ({ ...rank, displayName: value })) } }) },
+  { name: "season member", limit: 32, update: (input, value) => ({ ...input, data: { ...input.data, seasons: input.data.seasons.map(season => ({ ...season, ranks: season.ranks.map(rank => ({ ...rank, displayName: value })) })) } }) },
+  { name: "memo", limit: 150, update: (input, value) => ({ ...input, data: { ...input.data, matches: input.data.matches.map(match => ({ ...match, note: value })) } }) }
+];
+
+describe("new admission and retained payload limits", () => {
+  it.each(fields)("limits $name by Unicode code points while preserving retained data", ({ limit, update }) => {
+    const input = analysisNotification();
+    const accepted = update(input, "😀".repeat(limit));
+    const oversized = update(input, "😀".repeat(limit + 1));
+    expect(validateNewNotification(accepted)).toStrictEqual(accepted);
+    expect(() => validateNewNotification(oversized)).toThrow("payload_too_large");
+    expect(validateStoredNotification(oversized)).toStrictEqual(oversized);
+  });
+
+  it("accepts 50 changed matches and 16 affected seasons, rejects the next, and retains older counts", () => {
+    const input = analysisNotification();
+    const match = input.data.matches[0];
+    const season = input.data.seasons[0];
+    if (!match || !season) { throw new Error("Fixture requires one match and season."); }
+    const atLimit = { ...input, data: { ...input.data,
+      matches: Array.from({ length: 50 }, (_, index) => ({ ...match, matchId: `match-${index}` })),
+      seasons: Array.from({ length: 16 }, (_, index) => ({ ...season, seasonId: `season-${index}` }))
+    } };
+    expect(validateNewNotification(atLimit)).toStrictEqual(atLimit);
+    for (const oversized of [
+      { ...atLimit, data: { ...atLimit.data, matches: [...atLimit.data.matches, { ...match, matchId: "match-51" }] } },
+      { ...atLimit, data: { ...atLimit.data, seasons: [...atLimit.data.seasons, { ...season, seasonId: "season-17" }] } }
+    ]) {
+      expect(() => validateNewNotification(oversized)).toThrow("payload_too_large");
+      expect(validateStoredNotification(oversized)).toStrictEqual(oversized);
+    }
+  });
+
+  it("rejects oversized collections before validating each malformed member", () => {
+    const input = analysisNotification();
+    expect(() => validateNewNotification({ ...input, data: { ...input.data, matches: Array(51).fill(null) } }))
+      .toThrow("payload_too_large");
+    expect(() => validateNewNotification({ ...input, data: { ...input.data, matches: [null] } })).toThrow("invalid_input");
+  });
+
+  it("keeps structural errors distinct from capacity rejection", () => {
+    const input = analysisNotification();
+    expect(() => validateNewNotification({ ...input, data: { ...input.data, gameTitleName: 257 } })).toThrow("invalid_input");
+    expect(() => validateStoredNotification({ ...input, schemaVersion: 2 })).toThrow("unsupported_version");
   });
 });

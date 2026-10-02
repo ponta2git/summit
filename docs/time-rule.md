@@ -1,90 +1,52 @@
 # Time Rule
 
-Summit のJST解釈、ISO week、candidate/deadline、clock injection、schedulerとclock skewの契約を定める。ユーザーに見える時刻・締切は`requirements/base.md`、実行される値はuser configと`src/config.ts`、計算実装は`src/time/`が正本である。
+JST、clock、ISO week、candidate / deadline の計算契約を定める。業務上の意味は [requirements](../requirements/base.md)、実行値は user config と [config](../src/config.ts)、計算は [src/time](../src/time/) が正本。
 
-## 1. 基準時刻
+## 1. Clock と timezone
 
-- 仕様判定、表示、logはすべて`Asia/Tokyo`として解釈する。
-- `Date`内部表現がUTCであることは許容するが、local timezone依存の暗黙変換を業務判定へ持ち込まない。
-- 日本国内の固定運用でありDSTは考慮しない。
-- `src/env.ts`がbootstrap早期にtimezoneを固定する。別timezoneを許可するenv拡張を単独で行わない。
-- 現在時刻は`AppContext.clock`から得る。handler、scheduler、repository fakeがglobal system clockへ直接依存しない。
+業務判定と表示は `Asia/Tokyo` に固定する。`Date` の内部表現や構造化 log の timestamp が UTC でも、業務時刻は JST として解釈する。実行 host の暗黙の local timezone を判断に混ぜない。日本国内の固定運用で DST は対象外とする。
 
-## 2. 計算の所有権
+[env](../src/env.ts) が bootstrap の早期に TZ を既定化し、[envSchema](../src/envSchema.ts) が `Asia/Tokyo` だけを許可する。他 timezone の許可だけを単独で追加しない。
 
-次の処理は`src/time/`に集約する。
+現在時刻は `AppContext.clock` から得る。handler / scheduler / repository fake が global system clock を直接読まない。集約は渡された同一の clock snapshot で lock 後の期限・状態を判定し、read と write の間に別の global now を挟まない。
 
-- 現在時刻の取得とfake clock contract
-- ISO week key
-- 募集候補日
-- 金曜から土曜候補への変換
-- 回答deadlineと順延deadline
-- slotから開催決定時刻への変換
-- reminder予定
-- 表示用JST format
-- `24:00`境界のparse
-- duration加減算
+`/ask` の重複抑止キーと Session 作成、開催確定と reminder skip はそれぞれ一つの snapshot を共有する。Discord 編集の待機時間を開催確定時刻として扱わない。process 内の募集抑止は AppContext ごとに所有する。
 
-`src/time/`以外のproduction codeで、次を使って業務時刻を構築しない。
+## 2. 計算の所有者
 
-- `new Date()`による現在時刻取得
-- `Date.parse()`
-- 日付文字列の手組み
-- `getFullYear()`等を組み合わせた独自week key
-- deadlineのminute/millisecond直書き
+`src/time/` が現在時刻、ISO week、候補日、金曜から土曜への変換、deadline、slot からの開始時刻、reminder、JST format、HH:MM 境界、duration 加減算を所有する。
 
-DBから復元済みの`Date`比較やDiscord snowflakeの順序比較は、それ自体が時刻生成でなければ許容する。
+その外の production code で、`new Date()` による現在時刻取得、`Date.parse`、日付文字列の手組み、独自 week key、deadline の minute / millisecond 直書きを追加しない。DB から復元済みの Date 比較や snowflake の順序比較は、時刻生成でなければ許容する。
 
-## 3. ISO week
+slot の業務意味は [slot](../src/slot.ts)、candidate との合成は time が担当する。日付文字列には `*Iso` suffix を使い、Date と区別する。config の文字列は起動時に検証し、利用側で繰り返し split / parse しない。
 
-- week keyはISO week yearとISO week numberの組で算出する。calendar yearだけを使わない。
-- 実装はdate-fnsのISO week関数を併用し、自作しない。
-- 金曜Sessionとそこから作る土曜Sessionは同じweek keyを共有する。
-- 年末金曜から年始土曜へ跨ぐ場合も、土曜側でweek keyを再計算して分裂させない。
-- `/ask`は実行時点のISO weekに対して初回募集を一件だけ作る。非金曜候補日の業務仕様は`requirements/base.md`に従う。
+## 3. 境界の意味
 
-## 4. Candidate、deadline、slot
+| 境界 | 守る判断 |
+|---|---|
+| ISO week | ISO week year + ISO week number を date-fns の関数で求める。calendar year と週番号を組み合わせない |
+| 金曜から土曜 | 元 Session の week key を引き継ぐ。年跨ぎでも土曜側で再計算して分裂させない |
+| `/ask` | 実行時点の ISO week に初回募集を一件だけ作る。非金曜の候補日は requirements の意味に従う |
+| `24:00` | 候補日の翌日 00:00 だけを表す特別な境界。それ以外の 24 時超表記は parse で拒否 |
+| candidate ISO date | 実在日付だけを許可し、翌月への繰上がりや 0〜99 年への 1900 加算を許さない |
+| deadline / reminder | 同じ clock snapshot と正本の設定値で判定する。直前・同時・直後、送信 / skip を区別 |
 
-- user configの文字列は起動時にzodで検証し、利用側で繰り返しsplit/parseしない。
-- `24:00`は候補日の翌日00:00だけを表す特別な境界表記とする。それ以外の24時超表記はparse時に拒否する。
-- candidate日付の文字列には`*Iso` suffixを使い、`Date`と区別する。
-- slotの業務意味は`src/slot.ts`、candidateとの合成は`src/time/`が所有する。
-- deadline判定はaggregate lock後の同じclock snapshotで行い、readとwriteの間に別のglobal `now`を取得しない。
-- 実際のHH:MM、lead time、skip thresholdはrequirements、user config、`src/config.ts`を参照し、設計文書やコメントへ複製しない。
+HH:MM、lead time、skip threshold は user config / `src/config.ts` を参照し、文書・comment に実行値を複製しない。値を変える前に、それが表す業務条件を requirements で確認する。
 
-## 5. Schedulerとの関係
+reminder lead duration は正の分数として表示にも使い、予定時刻の計算だけで減算する。文面の期待値を符号付き計算用定数から生成しない。
 
-- cronはJST timezoneを明示する。
-- due判定はDB hintと`ctx.clock.now()`で行う。
-- timerは正本ではない。wake、startup、reconnect、supervisorのたびにDBから再構築できること。
-- process停止中にdeadlineを超えたSessionはstartup recoveryでsettleする。
-- 同じdue kindが外部配送待ちでdueのまま残る場合、一回のrecomputeで無制限に再実行しない。
-- fake timer testでは`createTestAppContext({ now })`と明示的なtimer advanceを組み合わせる。
+## 4. Scheduler との接続
 
-## 6. Clock skew
+cron に JST timezone を明示し、due は DB hint と `ctx.clock.now()` で判定する。timer は派生状態であり、wake・startup・reconnect・supervisor から再構築できるようにする。停止中に deadline を超えた Session は startup recovery で収束させる。
 
-hostのNTP同期を信頼し、applicationから独自NTP queryや自動clock補正は行わない。
+one-shot、同種 due の再実行抑止、wake の保持、shutdown drain は [Architecture §6](./architecture.md#6-scheduler-と-lifecycle) が所有する。時刻変更でこれらも変わる場合だけ同章を確認する。
 
-- 軽微なskewはdeadline処理の遅延として扱い、その後のDB-driven recoveryで収束する。
-- 大きなskewでは誤ったweek keyや順延窓判定が起こり得る。`/status`のJST表示と構造化logで検知し、`docs/operations/time-skew.md`に従う。
-- uniqueとaggregate commandはDB内部の重複・部分更新を抑えるが、誤ったweek keyで作られたSessionの意味までは修復しない。
-- skew疑いがある状態でproduction DBを手動修正しない。
-- deploy禁止窓内ではclock対応を理由にad-hoc deploy/restart/schema変更を行わず、runbookの安全な手順に従う。
+## 5. Clock skew
 
-自動検知は、実incidentが観測された場合、目視運用が規模に合わなくなった場合、またはscheduler基盤変更で信頼できる代替clockが得られる場合に再評価する。
+host の NTP 同期を信頼し、application 独自の NTP query・自動補正・複数の時刻正本を追加しない。
 
-## 7. テスト必須境界
+軽微なずれは処理遅延として DB-driven recovery で収束する。大きなずれは week key や順延窓そのものを誤らせるため、unique / 集約 command だけでは意味を修復できない。`/status` の JST 表示と構造化 log で調べ、[time-skew runbook](./operations/time-skew.md) に従う。本番 DB の手動修正や、禁止窓内の ad-hoc deploy / restart / schema 変更へ進まない。
 
-時刻契約の変更が影響する境界を次から選び、`docs/test-rule.md` の品質 gate と合わせて検証する。
+実 incident、目視運用の限界、複数 host の drift、provider の同期保証変更、信頼できる代替 clock を持つ scheduler 基盤への変更があれば検知・時刻源を再評価する。
 
-- ISO week yearの年跨ぎ
-- 金曜/土曜Sessionのweek key共有
-- `24:00`の翌日境界と不正な24時超表記
-- deadline直前/同時/直後
-- reminderが送信対象/skip対象になる境界
-- 非金曜`/ask`のcandidate日
-- process停止中にdeadlineを超えたstartup recovery
-- clock固定時にfake portのcreated/updated時刻が再現可能であること
-- due rowが配送待ちで残ってもscheduler recomputeがloopしないこと
-
-race testでwall-clock sleepを使わず、fake clockと明示的な同期点を使う。
+時刻の変更は [テスト規約 §5〜6](./test-rule.md#5-race-と-time) の fixed clock・境界テストと [§8 の gate](./test-rule.md#8-quality-gate) で検証する。根拠の入口は [time tests](../tests/time/)。

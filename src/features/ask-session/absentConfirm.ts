@@ -105,14 +105,18 @@ const recordAbsentAndApplyStep = (
       "Absent response recorded via confirmation.");
     switch (result.kind) {
       case "transitioned":
+        context.deps.wakeScheduler?.("ask_absent_confirmed");
         return yield* reflectAskingCancellation(context.deps.client, context.context, result.session);
       case "stale_interaction":
       case "accepted_pending":
+        context.deps.wakeScheduler?.("ask_absent_confirmed");
         return;
       case "closed":
         if (result.session.status === "CANCELLED") {
-          return yield* settleAskingSession(context.deps.client, context.context, result.session.id,
-            result.session.cancelReason === "saturday_cancelled" ? "saturday_cancelled" : "absent");
+          yield* settleAskingSession(context.deps.client, context.context, result.session.id,
+            result.session.cancelReason === "saturday_cancelled" ? "saturday_cancelled" : "absent",
+            () => context.deps.wakeScheduler?.("ask_absent_confirmed"));
+          return;
         }
         yield* guardSessionAsking(result.session);
         return;
@@ -217,7 +221,6 @@ export const handleAbsentConfirmButton = async (
 
   await Either.match(result, {
     onRight: async () => {
-      deps.wakeScheduler?.("ask_absent_confirmed");
       await interaction.editReply({
         content: askMessages.absentConfirm.confirmed,
         components: []

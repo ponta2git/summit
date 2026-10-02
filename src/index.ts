@@ -12,6 +12,7 @@ import { reconcileMembers } from "./members/reconcile.ts";
 import { runReconciler } from "./scheduler/reconciler.ts";
 import { createAskScheduler, runStartupRecovery, type AppScheduler } from "./scheduler/index.ts";
 import { runPromiseBoundary } from "./runtime/effect.ts";
+import { drainResources, stopResources } from "./runtime/lifecycle.ts";
 import { isShuttingDown, shutdownGracefully } from "./shutdown.ts";
 import { appConfig } from "./userConfig.ts";
 import { createAppReadiness, registerReconnectReplayHandlers } from "./startup/appReadiness.ts";
@@ -47,19 +48,21 @@ let scheduler: AppScheduler | undefined;
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
     signal,
-    stopScheduler: () => {
-      interactions.stop();
-      readiness.markNotReady("shutting_down");
-      reconnect.stop();
-      resultNotifications?.stop();
-      scheduler?.stop();
-    },
-    waitForInFlightSend: async () => {
-      const results = await Promise.allSettled([startupInFlight, interactions.drain(), reconnect.drain(),
-        waitForInFlightSend(), scheduler?.drain(), resultNotifications?.drain()]);
-      const failed = results.find(result => result.status === "rejected");
-      if (failed) { throw failed.reason; }
-    },
+    stopScheduler: () => stopResources([
+      () => readiness.markNotReady("shutting_down"),
+      () => interactions.stop(),
+      () => reconnect.stop(),
+      () => resultNotifications?.stop(),
+      () => scheduler?.stop()
+    ]),
+    waitForInFlightSend: () => drainResources([
+      () => startupInFlight,
+      () => interactions.drain(),
+      () => reconnect.drain(),
+      waitForInFlightSend,
+      () => scheduler?.drain(),
+      () => resultNotifications?.drain()
+    ]),
     closeDb,
     destroyClient: () => client.destroy()
   })

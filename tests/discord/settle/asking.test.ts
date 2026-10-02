@@ -86,7 +86,8 @@ describe("settleAskingSession", () => {
     expect(discord.send).toHaveBeenCalledTimes(2);
     expect(discord.sentPayloads).toHaveLength(2);
     expect(discord.sentPayloads[0]).toStrictEqual({
-      content: "🛑 今回は予定がそろわなかったため、お流れです。"
+      content: "🛑 今回は予定がそろわなかったため、お流れです。",
+      nonce: expect.any(String), enforceNonce: true
     });
     const postponePost = asMessagePayload(discord.sentPayloads[1]);
     expect(postponePost.content).toContain("🔁 今回はお流れです。明日も募集しますか？");
@@ -136,7 +137,8 @@ describe("settleAskingSession", () => {
       ? ""
       : `${appConfig.memberUserIds.map((id) => `<@${id}>`).join(" ")}\n`;
     expect(discord.sentPayloads).toStrictEqual([{
-      content: `${mentionPrefix}🛑 土曜回も予定がそろわなかったため、今週はお流れです。`
+      content: `${mentionPrefix}🛑 土曜回も予定がそろわなかったため、今週はお流れです。`,
+      nonce: expect.any(String), enforceNonce: true
     }]);
     expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([
       "DELIVERED"

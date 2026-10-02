@@ -1,4 +1,4 @@
-import type { DiscordNotificationReceipt } from "@momo/db/notifications";
+import type { DiscordNotificationReceipt, DiscordResultNotification } from "@momo/db/notifications";
 import type { ResultNotificationKind } from "@momo/db";
 import type { NotificationStatus, ResultDeliveryError } from "../domain/notification.ts";
 
@@ -16,13 +16,16 @@ export interface ClaimedResultNotification {
   readonly id: string;
   readonly kind: ResultNotificationKind;
   readonly payload: unknown;
+  /** UTF-8 bytes of PostgreSQL's JSONB text, reserved before payload hydration. */
+  readonly payloadBytes: number;
   readonly claimToken: string;
   readonly attemptCount: number;
   readonly maxAttempts: number;
   readonly partCount: number;
   readonly rendererVersion: number | null;
   readonly deliveryContext: ResultDeliveryContext | null;
-  readonly parts: readonly ResultNotificationPart[];
+  /** Sorted, unique delivered part numbers; gaps are permitted. */
+  readonly deliveredPartNos: readonly number[];
 }
 export interface ResultNotificationState {
   readonly notificationId: string;
@@ -47,11 +50,14 @@ export interface ResultNotificationSetting {
   readonly enabled: boolean;
   readonly generation: string;
 }
+export type ResultNotificationAdmissionCheck = (payload: DiscordResultNotification) => void;
 
 /** Application commands own receipt, cancellation, delivery and retry aggregates. */
 export interface ResultNotificationsPort {
   receive(rawJson: string, now: Date): Promise<DiscordNotificationReceipt>;
-  claim(options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number; readonly excludeIds?: readonly string[] }): Promise<readonly ClaimedResultNotification[]>;
+  /** The caller subtracts active payloads from its budget and permits oversized history only while idle. */
+  claim(options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number; readonly excludeIds?: readonly string[];
+    readonly payloadBudgetBytes?: number; readonly allowOversizedPayload?: boolean }): Promise<readonly ClaimedResultNotification[]>;
   plan(id: string, token: string, options: {
     readonly count: number; readonly rendererVersion: number; readonly context: ResultDeliveryContext; readonly now: Date;
   }): Promise<boolean>;
