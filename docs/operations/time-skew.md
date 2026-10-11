@@ -27,13 +27,13 @@ skew の規模ごとの挙動と対応:
 | < 1 min | なし (cron の schedule 精度内) | 何もしない |
 | 1〜10 min | 金曜朝の募集投稿がわずかに遅れる程度 / DB 整合は保たれる | Fly machine restart で NTP 再同期を促す |
 | 10〜30 min | 締切判定が実時間と乖離、但し取りこぼしは起きない (reconciler B/E が次 tick で収束) | 即 `fly machine restart` |
-| > 30 min | ISO week 跨ぎ等で週キー誤算定のリスクが高まる | `fly machine restart` → 復旧しなければ `fly apps restart summit` → 直らなければ Fly support に報告 |
+| > 30 min | ISO week 跨ぎ等で週キー誤算定のリスクが高まる | `fly machine restart` → 復旧しなければ `fly apps restart "${FLY_APP:?}"` → 直らなければ Fly support に報告 |
 
 ### `fly machine restart` 手順
 
 ```bash
-fly machine list -a summit-momotetsu
-fly machine restart <machine_id> -a summit-momotetsu
+fly machine list -a "${FLY_APP:?}"
+fly machine restart <machine_id> -a "${FLY_APP:?}"
 ```
 
 **禁止窓チェック**: 金 17:30〜土 01:00 JST に該当する場合は restart しない。`/status` と logs で影響を記録し、禁止窓終了後に再確認して実施する。禁止窓中の例外判断が必要なインシデントは、この runbook では権限を拡張せず運用責任者へ escalation する。

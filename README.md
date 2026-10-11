@@ -78,12 +78,12 @@ Summit は secret とユーザー向け設定を分離します。
 | `.env.local` | ローカル secret / runtime env | commit しない |
 | `summit.config.example.yml` | ユーザー設定雛形 | commit する |
 | `summit.config.yml` | ローカルの非 secret 設定 | commit しない |
-| `summit.config.production.yml` | 本番用ユーザー設定ソース | secret を含めず commit する |
+| `summit.config.production.yml` | 実運用 ID を含む本番用ユーザー設定ソース | 非公開・Git 管理外（`.gitignore` 対象） |
 | `SUMMIT_CONFIG_YAML` | アプリが読む YAML 本文 | 本番では Fly secret |
 
 ローカルの package script は `summit.config.yml` を `SUMMIT_CONFIG_YAML` に詰めて起動します。本番では deploy 前に production config の本文を `SUMMIT_CONFIG_YAML` Fly secret として stage します。
 
-Discord token、DB URL の実値は commit しないでください。
+Discord token、DB URL の実値は commit しないでください。非 secret の設定でも、実メンバーの表示名・User ID、guild / channel ID などの運用識別子を公開文書や設定例へ転記しないでください。
 
 ## Common commands（主要コマンド）
 
@@ -125,13 +125,13 @@ pnpm db:reset --all # members も消すため、後で pnpm db:seed が必要
 
 本番は Fly.io の単一 machine / 単一 Bot process を前提にしています。cron と復旧処理は単一 active instance を前提にしているため、水平スケールしません。
 
-deploy 前の基本手順:
+deploy 前に、対象環境の Fly アプリ名を `FLY_APP` に設定し、`fly.toml` の対象と一致することを確認します。基本手順:
 
 1. Fly secrets に `DISCORD_TOKEN` / `DATABASE_URL` を設定する。
 2. ユーザー設定を変えた場合は `summit.config.production.yml` を更新する。
-3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu` を実行する。
+3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a "${FLY_APP:?}"` を実行する。
 4. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
-5. デプロイ禁止窓外で、リポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only` を実行する。
+5. デプロイ禁止窓外で、リポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only -a "${FLY_APP:?}"` を実行する。
 6. slash command 定義を変えた場合だけ、[本番同期手順](./docs/operations/README.md#本番discordコマンド同期) に従い、運用 PC で `pnpm commands:sync:production --check` → 必要な場合のみ適用する。Fly 内や Bot 起動時には実行しない。
 
 本番 migration は deploy とは独立したオペレーションです（`release_command` なし）。スキーマ変更を伴う deploy は必ず migration を先行適用してください。

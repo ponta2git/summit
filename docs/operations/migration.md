@@ -117,7 +117,7 @@ rollback / recovery の DB authoring と data protection は `../momo-db/docs/de
 3. transaction が rollback 済みでも、master または保持対象 DB で共有済みの migration file は編集しない。momo-db の正規手順で forward recovery を作り、復元 copy と CI で再検証する
 4. 部分適用や data loss が疑われる場合は、手動 SQL や `__drizzle_migrations` への手 INSERT を行わず、[backup.md](./backup.md) の PITR で新 branch へ復元する。前進修復が必要なら、momo-db の review 済み追加 migration として作成する
 5. 整合後、momo-db の `pnpm db:check`、Summit integration test、`/status`、構造化ログを確認する
-6. 事後に PR または incident 記録へ原因と再発防止を残す。設計不変条件や SOP が変わる場合は `docs/db-rule.md` と本書を同時に更新する
+6. 実環境の詳細はアクセス制限された incident 記録へ残し、公開 PR には秘匿値・識別子・生ログを除いた原因と再発防止を記載する。設計不変条件や SOP が変わる場合は `docs/db-rule.md` と本書を同時に更新する
 
 **原則**: 本番 migration 失敗は **事故案件**。復旧のためでも production DB の手動 mutation を行わない。
 

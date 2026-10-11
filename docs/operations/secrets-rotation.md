@@ -29,26 +29,28 @@ Fly secrets として管理される秘匿値の rotation 手順と影響範囲�
 - `DISCORD_TOKEN`: Discord Developer Portal → Bot → Reset Token
 - `DATABASE_URL` / `DIRECT_URL`: Neon dashboard → Connection string (pooled / direct)
 - `SUMMIT_CONFIG_YAML`: `summit.config.production.yml` を編集し、Fly secrets の `--stage` で次回 deploy 用に stage
-- `FLY_API_TOKEN`: `fly tokens create deploy --app summit-momotetsu`
+- `FLY_API_TOKEN`: `fly tokens create deploy --app "${FLY_APP:?}"`
 
 ### 2. Fly secrets に反映
 
+以下は placeholder を使った構文例。実値を貼り付けたコマンドを履歴・作業ログ・公開資料に残さず、承認済みの秘匿値取扱い手順で実行する。`--stage` は反映時期の制御であり、秘匿値の保護機能ではない。
+
 ```bash
-fly secrets set DISCORD_TOKEN="<new>" -a summit-momotetsu
+fly secrets set DISCORD_TOKEN="<new>" -a "${FLY_APP:?}"
 ```
 
 複数同時に入れ替える場合は 1 コマンドで:
 
 ```bash
-fly secrets set DATABASE_URL="<new>" -a summit-momotetsu
+fly secrets set DATABASE_URL="<new>" -a "${FLY_APP:?}"
 ```
 
 本番 user config は通常 stage して次回 deploy で反映:
 
 ```bash
-fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a summit-momotetsu
+fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a "${FLY_APP:?}"
 cd ..
-fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only
+fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only -a "${FLY_APP:?}"
 cd summit
 ```
 
@@ -56,7 +58,7 @@ cd summit
 
 ### 3. 反映確認
 
-- `fly logs -a summit-momotetsu` で `phase=ready` 確認
+- `fly logs -a "${FLY_APP:?}"` で `phase=ready` 確認
 - Discord で `/status` 応答確認
 
 ### 4. 旧値の無効化
@@ -75,7 +77,7 @@ PR / ログ / commit に実値が混入してしまった場合:
    - Discord: Bot activity (不正 login / API call)
    - Neon: DB access log、不審クエリ有無
    - Fly: `fly logs` で不審 deploy / SSH の有無
-4. 事後に incident 記録または PR 説明へ経緯と再発防止を残す。設計不変条件や SOP が変わる場合は対応する living document と本書を更新する
+4. 実環境の詳細はアクセス制限された incident 記録へ残す。公開 PR には秘匿値・識別子・生ログを除いた原因と再発防止を記載する。設計不変条件や SOP が変わる場合は対応する living document と本書を更新する
 
 ## 禁止窓
 

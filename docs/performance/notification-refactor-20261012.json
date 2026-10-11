@@ -2330,7 +2330,7 @@
     {
       "variant": "before",
       "scenario": "normal",
-      "directory": "/tmp/summit-refactor-before-normal-20261012",
+      "directory": "summit-refactor-before-normal-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2362,7 +2362,7 @@
     {
       "variant": "after",
       "scenario": "normal",
-      "directory": "/tmp/summit-refactor-after-normal-20261012",
+      "directory": "summit-refactor-after-normal-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2394,7 +2394,7 @@
     {
       "variant": "after",
       "scenario": "parts",
-      "directory": "/tmp/summit-refactor-after-parts-20261012",
+      "directory": "summit-refactor-after-parts-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2426,7 +2426,7 @@
     {
       "variant": "before",
       "scenario": "parts",
-      "directory": "/tmp/summit-refactor-before-parts-20261012",
+      "directory": "summit-refactor-before-parts-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2458,7 +2458,7 @@
     {
       "variant": "before",
       "scenario": "mixed",
-      "directory": "/tmp/summit-refactor-before-mixed-20261012",
+      "directory": "summit-refactor-before-mixed-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2490,7 +2490,7 @@
     {
       "variant": "after",
       "scenario": "mixed",
-      "directory": "/tmp/summit-refactor-after-mixed-20261012",
+      "directory": "summit-refactor-after-mixed-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2522,7 +2522,7 @@
     {
       "variant": "after",
       "scenario": "stream",
-      "directory": "/tmp/summit-refactor-after-stream-20261012",
+      "directory": "summit-refactor-after-stream-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2554,7 +2554,7 @@
     {
       "variant": "before",
       "scenario": "stream",
-      "directory": "/tmp/summit-refactor-before-stream-20261012",
+      "directory": "summit-refactor-before-stream-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2587,7 +2587,7 @@
       "variant": "before",
       "cohort": "streamConfirmation",
       "pair": 1,
-      "directory": "/tmp/summit-refactor-confirm-before-1-20261012",
+      "directory": "summit-refactor-confirm-before-1-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2610,7 +2610,7 @@
       "variant": "before",
       "cohort": "streamConfirmation",
       "pair": 2,
-      "directory": "/tmp/summit-refactor-confirm-before-2-20261012",
+      "directory": "summit-refactor-confirm-before-2-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2633,7 +2633,7 @@
       "variant": "before",
       "cohort": "streamConfirmation",
       "pair": 3,
-      "directory": "/tmp/summit-refactor-confirm-before-3-20261012",
+      "directory": "summit-refactor-confirm-before-3-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2656,7 +2656,7 @@
       "variant": "after",
       "cohort": "streamConfirmation",
       "pair": 1,
-      "directory": "/tmp/summit-refactor-confirm-after-1-20261012",
+      "directory": "summit-refactor-confirm-after-1-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2679,7 +2679,7 @@
       "variant": "after",
       "cohort": "streamConfirmation",
       "pair": 2,
-      "directory": "/tmp/summit-refactor-confirm-after-2-20261012",
+      "directory": "summit-refactor-confirm-after-2-20261012",
       "files": [
         {
           "name": "manifest.json",
@@ -2702,7 +2702,7 @@
       "variant": "after",
       "cohort": "streamConfirmation",
       "pair": 3,
-      "directory": "/tmp/summit-refactor-confirm-after-3-20261012",
+      "directory": "summit-refactor-confirm-after-3-20261012",
       "files": [
         {
           "name": "manifest.json",

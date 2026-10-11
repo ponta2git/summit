@@ -7,12 +7,12 @@ Summit の DB は Neon PostgreSQL 18 を使用する。本ファイルは backup
 ## 方針
 
 - **バックアップは Neon の PITR (Point-in-Time Recovery) に全面依存**。Summit 側でダンプ / スナップショットは取らない
-- Neon の保持期間は plan 依存 (現行は free/pro の default を使用)。保持期間が短くなるほど RPO が長くなる点に注意
+- Neon の保持期間は plan と設定に依存する。対象環境の保持期間を確認し、アクセス制限された運用資料に記録する
 - `fly ssh` 等で `pg_dump` を手動実行することも可能だが、secrets 取扱いが煩雑になるため **通常運用では使わない**
 
 ## 想定 RPO / RTO
 
-個人開発 Bot の業務特性 (固定 4 名、週 1 回の桃鉄出欠) を踏まえ、以下を目標とする:
+固定 4 名、週 1 回の出欠という業務特性を踏まえ、以下を目標とする:
 
 | 指標 | 目標 | 根拠 |
 |---|---|---|
@@ -34,7 +34,7 @@ Summit の DB は Neon PostgreSQL 18 を使用する。本ファイルは backup
 復旧中にアプリが書き込みを続けると PITR 後の状態が壊れるので、一旦止める:
 
 ```bash
-fly scale count 0 -a summit-momotetsu
+fly scale count 0 -a "${FLY_APP:?}"
 ```
 
 ### 3. Neon dashboard で PITR 実行
@@ -46,14 +46,14 @@ fly scale count 0 -a summit-momotetsu
 
 ### 4. 接続文字列の切り替え
 
-- `fly secrets set DATABASE_URL=... -a summit-momotetsu`
+- `fly secrets set DATABASE_URL=... -a "${FLY_APP:?}"`
 - **旧接続文字列は即 rotate** ([secrets-rotation.md](./secrets-rotation.md))
 
 ### 5. Fly app 再起動
 
 ```bash
-fly scale count 1 -a summit-momotetsu
-fly deploy -a summit-momotetsu   # 必要に応じて
+fly scale count 1 -a "${FLY_APP:?}"
+fly deploy -a "${FLY_APP:?}"   # 必要に応じて
 ```
 
 ### 6. 整合性確認
@@ -73,7 +73,7 @@ fly deploy -a summit-momotetsu   # 必要に応じて
 Neon 障害で PITR が使えない場合の last resort。**secrets 露出リスクが高いので必ず一時環境で実施**:
 
 ```bash
-# 個人開発端末で実施 (本番 DB に直接つなぐ)
+# 許可された運用端末で実施 (本番 DB に直接つなぐ)
 export DATABASE_URL="<direct url>"  # shell history に残さないこと
 pg_dump --no-owner --no-acl "$DATABASE_URL" > /tmp/summit-$(date +%Y%m%d-%H%M).sql
 # 使用後は dump ファイルを安全に削除 (shred 等)
@@ -83,7 +83,7 @@ dump ファイルは secrets 相当。PR / commit / 共有ドライブに置か�
 
 ## バックアップ検証
 
-個人開発の規模では定期的な restore リハーサルは実施しない。代わりに:
+検証の実施結果と restore リハーサルの計画は、アクセス制限された運用資料で管理する。確認項目:
 
 - Neon PITR が有効になっていることを四半期ごとに dashboard で確認
 - migration 時に `momo-db` の `pnpm db:check` で生成 migration 履歴の整合性を検査する。DB 実体の drift、SQL の実行成功、data 保持はこの command の保証外とする

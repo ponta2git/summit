@@ -37,6 +37,8 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 
 実操作の前に対象環境、操作範囲、該当 SOP、禁止窓、成功判定、復旧方法を照合する。許可が未取得なら、許可済みの調査・ローカル修正・検証で手順を具体化し、残る操作だけの承認を求める。文書修正のために本番アクセスを必須にしない。不明点・矛盾がある場合は依存する操作を止め、根拠と必要な判断を示す。
 
+本書と各 SOP は公開用の手順であり、実環境の app 名・endpoint・Discord ID・契約情報・連絡先・作業記録はアクセス制限された運用資料で管理する。Fly コマンドの実行前に、許可された対象 app 名を shell 変数 `FLY_APP` に設定し、対象環境と照合する。例中の `"${FLY_APP:?}"` は未設定・空文字なら実行を中止する。実値を公開文書へ書き戻さない。
+
 ## 共通原則
 
 1. **DB が正本** — Discord 表示は DB から再構築する。手動 `UPDATE` / `DELETE` で表示を直そうとしない。
@@ -44,6 +46,7 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 3. **デプロイ禁止窓**: 金 17:30〜土 01:00 JST。本番への deploy / restart / migration / schema 変更を行わない。本書を運用上の正本とする。
 4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない。
 5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可。
+6. **ログ・作業記録は公開前に確認する** — redact の有無だけで公開可と判断しない。必要な event / code / 集計値を抜粋し、secret・識別子・接続先・投稿本文・個人情報を除去する。生ログや実環境の詳細はアクセス制限された運用資料に残す。
 
 ## 本番Discordコマンド同期
 
@@ -100,8 +103,8 @@ CLI 自体が GET → 差分時のみ PUT → GET で検証する。`synced` ま
 ## 連絡先 / 監視
 
 - 運用観測: 構造化ログと `/status`。外部pingはアプリから送信しない
-- ログ: `fly logs -a summit-momotetsu` (構造化 JSON、`event` で grep)
+- ログ: `fly logs -a "${FLY_APP:?}"` (構造化 JSON、`event` で grep)
 - DB console: Neon dashboard
 - Discord guild / channel: `SUMMIT_CONFIG_YAML` (from `summit.config.production.yml`)
 
-> 個人開発 Bot のため on-call ローテーション・PagerDuty 等は不要。異常時は Fly logs と `/status` で確認する。
+異常時は Fly logs と `/status` で確認する。運用担当者・連絡先・通知体制はアクセス制限された運用資料で管理する。

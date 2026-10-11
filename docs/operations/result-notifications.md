@@ -97,7 +97,7 @@ OCRはメンテナンスで旧画像job・受付・配送を収束して停止�
 
 ## 実環境での受入
 
-MOM-19では実producer・private network・Discordを通して、A/B正常系、長文、OFF・対象削除、起動回復、応答喪失と重複、業務成功から投稿までの目標時間を確認する。ローカルのfake Discord / 実DB testだけで実環境の到達性や時間目標を達成したと報告しない。
+実環境での受入では実producer・private network・Discordを通して、A/B正常系、長文、OFF・対象削除、起動回復、応答喪失と重複、業務成功から投稿までの目標時間を確認する。対象環境・実測値・作業記録はアクセス制限された運用資料へ残す。ローカルのfake Discord / 実DB testだけで実環境の到達性や時間目標を達成したと報告しない。
 
 
 ローカルの組合せ検証には`pnpm notifications:record:test`を使える。`TEST_DATABASE_URL`はloopbackの

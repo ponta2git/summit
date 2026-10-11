@@ -5,7 +5,7 @@
 ## 共通: 何を見るか
 
 ```
-fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
+fly logs -a "${FLY_APP:?}" | jq -c 'select(.event != null)'
 ```
 
 主な `event`:
@@ -16,7 +16,7 @@ fly logs -a summit-momotetsu | jq -c 'select(.event != null)'
 - `reconciler.*` — invariant 収束ログ
 - `interaction.*` — interaction 入口 / reject 理由
 
-`level=warn` 以上を最初に確認。pino redact が token / 接続文字列 / `Authorization` を除去するので、ログをそのままコピペしてよい。
+`level=warn` 以上を最初に確認。pino redact による token / 接続文字列 / `Authorization` の除去は、ログ全体の公開可否を保証しない。公開時は必要な event / code / 集計値に絞り、識別子・接続先・投稿本文・個人情報・secret が残っていないか確認する。生ログはアクセス制限された運用資料で扱う。
 
 ## case 1: bot 再起動直後
 
@@ -108,8 +108,8 @@ zod parse 失敗で `process.exit(1)` → Fly logs の `Failed to start Discord 
 
 **SOP**:
 
-1. `fly logs -a summit-momotetsu` 末尾の zod error を確認 (どの env が不足/不正か特定)
-2. `fly secrets set KEY=...` で修正 (実値は手元のみ、コマンドライン履歴に残さないなら `--stage` で確認後 `--detach` 等を活用)
+1. `fly logs -a "${FLY_APP:?}"` 末尾の zod error を確認 (どの env が不足/不正か特定)
+2. [secrets rotation](./secrets-rotation.md) に従って設定を修正する。実値をコマンド履歴・作業ログに残さない。`--stage` / `--detach` は秘匿値を保護する仕組みではない
 3. Fly が自動 redeploy → `phase=ready` を確認
 
 ### D. migration 失敗
