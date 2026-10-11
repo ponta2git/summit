@@ -2,6 +2,28 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
+## 2026-10-11 Effect v4 移行後の検証
+
+**Effect 4.0.2 への移行後、容量 gate と7ケース各3回の性能測定を完了した。** 対象は runtime `b1ad65d`、image ID `96f5f34da7a3`、momo-db `fdae7a5`。測定開始時の working tree は clean で、Node base digest は `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20`。Node 24.21.0 / Linux arm64、専用の local PostgreSQL 18.6、256 MiB・swapなし・1 CPU、既存 fixture と Discord 代替送信で測定した。DB と負荷 client はアプリの resource 制限外にある。
+
+容量 gate の標準17通知・932 parts は cgroup peak **138.79 MiB**で、必須目標192 MiBを達成した。別 container の旧8 MiB近傍通知は8,823 partsの計画と先頭1 partの確定に加え、8 MiB近傍へ展開する異内容4受付との重複を検証し、peak **172.25 MiB**だった。下表の `legacy` は旧通知の全件配送であり、この容量ケースとは負荷が異なる。
+
+| ケース | 通知 / parts（1実行） | 全完了の秒数：中央値［範囲］ | cgroup peak MiB：最大 |
+|---|---:|---:|---:|
+| normal | 20 / 20 | 3.101［3.061–3.160］ | 77.42 |
+| unicode | 20 / 1,140 | 12.352［12.185–12.410］ | 91.77 |
+| markdown | 20 / 1,440 | 14.788［14.698–14.805］ | 96.12 |
+| parts | 20 / 2,240 | 21.164［21.119–22.036］ | 97.73 |
+| overlap | 4 / 228 | 3.092［3.062–3.154］ | 144.12 |
+| legacy | 1 / 8,823 | 103.919［102.554–105.555］ | 130.01 |
+| soak | 100 / 6,450 | 60.768［60.132–62.730］ | 101.70 |
+
+warmup を除く21実行で555通知・61,023 partsをDB確定まで処理し、OOM・投稿契約違反・計測欠落・予期しないアプリエラーはなかった。全実行の通知単位 sample をまとめた受付→完了p95は normal **314.68 ms**、soak **5.854秒**。overlap の時間は意図的な送信保留を含む。
+
+同条件のv3との比較とCPU / heap sampling profile採取は実施していない。過去の表とはDBなどの条件が異なるため、Effect単体の速度・memoryの改善率には換算しない。速度の合意済みSLOはなく、実Discord・Neon・Gatewayを含む本番性能は測定していない。再測定は専用local DBを指定し、`pnpm profile:notifications <image> --output <new-directory>` の既定7ケース・3回で行える。
+
+移行の品質 gate は `pnpm run ci` の116 files / 902 tests、実DB integration の26 files / 131 tests、Docker build・非root / read-only / runtime依存検証が成功した。file-size は既存4件のadvisoryのみ。API・エラー分類・resource所有権の契約は [Architecture §5](./architecture.md#5-非同期処理とエラー) を参照する。
+
 ## 2026-10-02 の最適化結果
 
 **配送SQLの削減、待機中の不要なpayload参照の解放、結果投稿のSDK cache解放を実装した。** 1投稿の正常経路は20→17 SQL、2 transactionsを維持する。family gate後の取消確認、claim fencing、part順序、開始済み送信の結果保存も維持した。[DB回帰テスト](../tests/integration/notifications.delivery.test.ts)では112 / 8,823 partsの未完了検索が1回のscanであることを確認している。
