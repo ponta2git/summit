@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 
 import { AppError, InvariantViolationError } from "../errors/index.ts";
+import { errorFromCause } from "../runtime/cause.ts";
 
 export interface SchedulerFailure {
   readonly phase: string;
@@ -45,8 +46,8 @@ export const runSchedulerBatchEffect = <TItem, TValue>(
         continue;
       }
       // invariant: 停止要求を回復可能な item failure に変えて後続 work を開始しない。
-      if (Cause.isInterrupted(exit.cause)) { return yield* Effect.failCause(exit.cause); }
-      const cause = Cause.squash(exit.cause);
+      if (Cause.hasInterrupts(exit.cause)) { return yield* Effect.failCause(exit.cause); }
+      const cause = errorFromCause(exit.cause);
       const error = cause instanceof AppError ? cause :
         new InvariantViolationError(`Scheduler operation failed in phase '${phase}'.`, { cause });
       const failure: SchedulerFailure = { phase, error, ...identity };
@@ -54,10 +55,10 @@ export const runSchedulerBatchEffect = <TItem, TValue>(
       onFailure(failure);
     }
     return { processed: items.length, succeeded, failures };
-  }).pipe(Effect.catchAllCause(cause => {
-    if (Cause.isInterrupted(cause)) { return Effect.failCause(cause); }
+  }).pipe(Effect.catchCause(cause => {
+    if (Cause.hasInterrupts(cause)) { return Effect.failCause(cause); }
     // invariant: 集計・識別・失敗記録の defect は report 全体を無効にする。
-    const error = Cause.squash(cause);
+    const error = errorFromCause(cause);
     return Effect.fail(error instanceof AppError ? error :
       new InvariantViolationError(`Scheduler batch failed in phase '${phase}'.`, { cause: error }));
   }));

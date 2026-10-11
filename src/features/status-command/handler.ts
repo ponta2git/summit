@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 import * as Effect from "effect/Effect";
 
@@ -10,7 +10,7 @@ import type {
 } from "../../db/ports.ts";
 import type { AppError } from "../../errors/index.ts";
 import { fromDatabaseCall } from "../../errors/effect.ts";
-import { runPromiseBoundary } from "../../runtime/effect.ts";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -39,38 +39,37 @@ interface StatusSnapshot {
 
 const validateStatusCommand = (
   context: StatusPipelineStart
-): Either.Either<StatusPipelineStart, AppError> =>
-  Either.gen(function* () {
+): Result.Result<StatusPipelineStart, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(context.interaction.guildId);
     yield* guardChannelId(context.interaction.channelId);
     yield* guardMemberUserId(context.interaction.user.id);
     return context;
   });
 
-const loadStatusSnapshot = (
+const loadStatusSnapshot = Effect.fnUntraced(function* (
   context: StatusPipelineStart
-): Effect.Effect<StatusSnapshot, AppError> =>
-  Effect.gen(function* () {
-    const now = context.deps.context.clock.now();
-    const weekKey = isoWeekKey(now);
-    const [statusSnapshot, strandedOutbox] = yield* Effect.all([
-      fromDatabaseCall(
-        () => context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
-        "Failed to load /status snapshot."
-      ),
-      fromDatabaseCall(
-        () => context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD),
-        "Failed to load /status outbox diagnostics."
-      )
-    ], { concurrency: 2 });
-    return {
-      now,
-      sessions: statusSnapshot.sessions.map(({ session }) => session),
-      strandedCancelled: statusSnapshot.strandedCancelled,
-      strandedOutbox,
-      sessionDetails: statusSnapshot.sessions
-    };
-  });
+): Effect.fn.Return<StatusSnapshot, AppError> {
+  const now = context.deps.context.clock.now();
+  const weekKey = isoWeekKey(now);
+  const [statusSnapshot, strandedOutbox] = yield* Effect.all([
+    fromDatabaseCall(
+      () => context.deps.context.ports.status.loadCurrentWeekSnapshot(weekKey),
+      "Failed to load /status snapshot."
+    ),
+    fromDatabaseCall(
+      () => context.deps.context.ports.outbox.findStranded(OUTBOX_STRANDED_ATTEMPTS_THRESHOLD),
+      "Failed to load /status outbox diagnostics."
+    )
+  ], { concurrency: 2 });
+  return {
+    now,
+    sessions: statusSnapshot.sessions.map(({ session }) => session),
+    strandedCancelled: statusSnapshot.strandedCancelled,
+    strandedOutbox,
+    sessionDetails: statusSnapshot.sessions
+  };
+});
 
 const replyStatusError = async (
   interaction: ChatInputCommandInteraction,
@@ -108,13 +107,13 @@ export const handleStatusCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const pipelineStart: StatusPipelineStart = { interaction, deps };
-  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
-    const validated = yield* validateStatusCommand(pipelineStart);
+  const result = await runPromiseResultBoundary(Effect.gen(function* () {
+    const validated = yield* Effect.fromResult(validateStatusCommand(pipelineStart));
     return yield* loadStatusSnapshot(validated);
-  })));
+  }));
 
-  await Either.match(result, {
-    onRight: async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
+  await Result.match(result, {
+    onSuccess: async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
       const responsesBySessionId = new Map(
         sessionDetails.map(({ session, responses }) => [session.id, responses])
       );
@@ -150,6 +149,6 @@ export const handleStatusCommand = async (
         "/status command served."
       );
     },
-    onLeft: (error) => replyStatusError(interaction, error)
+    onFailure: (error) => replyStatusError(interaction, error)
   });
 };

@@ -38,11 +38,11 @@ Discord の client / channel / message fake は既存 helper に集約し、各 
 | skipped / no-op / race-lost | typed result と、DB / 外部副作用が変わらないこと |
 | Interaction ack | 未解決 ack の間に DB / API が始まらず、ack 失敗時も副作用がないこと |
 | confirmation | custom ID・choice・label・disabled・ephemeral。代表 flow は生成 ID を dispatcher に戻して最終状態を確認 |
-| Either / Effect | 成功値、error code / identity、item continuation と phase failure、defect / interruption の違い |
+| Result / Effect | 成功値、error code / identity、item continuation と phase failure、defect / interruption の違い |
 
 「例外がない」「件数が合う」だけで状態遷移・宛先・原子性を証明した扱いにしない。call order は順序自体が契約のときだけ固定する。部分一致や `expect.any` は、生成 ID / 時刻・SDK の非本質項目など、変わってよい範囲を意図して使う。
 
-非同期 Effect は共通 `runEffect` helper で実行し、typed failure は `Effect.either`、defect / interruption は `Exit` / `Cause` で区別する。直接 await して実行した扱いにしない。代表境界で同期 throw / 非同期 reject、元の AppError / status、生成時は副作用がなく実行時の clock / state を使うことを確認する。operator の呼出し回数で代用しない。
+非同期 Effect は共通 `runEffect` helper で実行し、typed failure は `Effect.result`、defect / interruption は `Exit` / `Cause` で区別する。複合 Cause の検証では `Effect.result` で先に包まず、adapter の分類と伝播を直接確認する。直接 await して実行した扱いにしない。代表境界で同期 throw / 非同期 reject、元の AppError / status、生成時は副作用がなく実行時の clock / state を使うことを確認する。operator の呼出し回数で代用しない。
 
 重要な assertion の検出力に疑義がある場合だけ、条件反転・await 欠落・rollback 漏れ等の誤実装を試して失敗を確認し、mutation を戻す。全変更に mutation を課さず、snapshot 更新を機械的に正当化しない。
 

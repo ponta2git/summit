@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 import * as Effect from "effect/Effect";
@@ -9,7 +9,7 @@ import type { SubmitPostponeVoteResult } from "../../db/ports.ts";
 import type { ResponseChoice, SessionRow } from "../../db/rows.ts";
 import type { AppError } from "../../errors/index.ts";
 import { fromDatabaseCall } from "../../errors/effect.ts";
-import { runPromiseBoundary } from "../../runtime/effect.ts";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import { postponeMessages } from "./messages.ts";
 import {
@@ -67,8 +67,8 @@ const unreachableGuardSuccess = (): never => {
   throw new Error("Expected aggregate rejection guard to fail");
 };
 
-const validatePostponePipeline = (context: PostponePipelineStart): Either.Either<PostponePipelineParsed, AppError> =>
-  Either.gen(function* () {
+const validatePostponePipeline = (context: PostponePipelineStart): Result.Result<PostponePipelineParsed, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(context.interaction.guildId);
     yield* guardChannelId(context.interaction.channelId);
     yield* guardMemberUserId(context.interaction.user.id);
@@ -77,32 +77,31 @@ const validatePostponePipeline = (context: PostponePipelineStart): Either.Either
       responseChoice: POSTPONE_CUSTOM_ID_TO_DB_CHOICE[parsed.choice] };
   });
 
-const loadSessionAndMemberStep = (context: PostponePipelineParsed): Effect.Effect<PostponePipelineReady, AppError> =>
-  Effect.gen(function* () {
-    const [session, memberId] = yield* Effect.all([
-      fromDatabaseCall(
-        () => context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to load interaction session."
-      ),
-      fromDatabaseCall(
-        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
-        "Failed to load interaction member."
-      )
-    ], { concurrency: 2 });
-    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
-    const existingSession = yield* guardSessionExists(session);
-    yield* guardSessionPostponeVoting(existingSession);
-    yield* guardSessionPostponeDeadlineOpen(existingSession, context.context.clock.now());
-    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
-    return { ...context, session: existingSession, memberId: registeredMemberId };
-  });
+const loadSessionAndMemberStep = Effect.fnUntraced(function* (context: PostponePipelineParsed): Effect.fn.Return<PostponePipelineReady, AppError> {
+  const [session, memberId] = yield* Effect.all([
+    fromDatabaseCall(
+      () => context.context.ports.sessions.findSessionById(context.sessionId),
+      "Failed to load interaction session."
+    ),
+    fromDatabaseCall(
+      () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+      "Failed to load interaction member."
+    )
+  ], { concurrency: 2 });
+  // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+  const existingSession = yield* Effect.fromResult(guardSessionExists(session));
+  yield* Effect.fromResult(guardSessionPostponeVoting(existingSession));
+  yield* Effect.fromResult(guardSessionPostponeDeadlineOpen(existingSession, context.context.clock.now()));
+  const registeredMemberId = yield* Effect.fromResult(guardRegisteredMemberId(memberId));
+  return { ...context, session: existingSession, memberId: registeredMemberId };
+});
 
 const resolvePostponeCommandResult = (
   context: PostponePipelineReady,
   result: SubmitPostponeVoteResult,
   now: Date
-): Effect.Effect<PostponePipelineRecorded, AppError> =>
-  Effect.gen(function* () {
+): Result.Result<PostponePipelineRecorded, AppError> =>
+  Result.gen(function* () {
     switch (result.kind) {
       case "accepted_pending":
       case "stale_interaction":
@@ -123,26 +122,25 @@ const resolvePostponeCommandResult = (
     }
   });
 
-const recordResponseStep = (
+const recordResponseStep = Effect.fnUntraced(function* (
   context: PostponePipelineReady
-): Effect.Effect<PostponePipelineRecorded, AppError> =>
-  Effect.gen(function* () {
-    const now = context.context.clock.now();
-    const result = yield* fromDatabaseCall(
-      () => context.context.ports.sessionCommands.submitPostponeVote({
-        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
-        choice: context.responseChoice, sourceInteractionId: context.interaction.id, now,
-        memberCountExpected: MEMBER_COUNT_EXPECTED, saturday: buildSaturdaySessionInput(context.session)
-      }),
-      "Failed to record postpone response atomically."
-    );
-    const current = yield* resolvePostponeCommandResult(context, result, now);
-    context.deps.wakeScheduler?.("postpone_button_recorded");
-    logger.info({ interactionId: current.interaction.id, customId: current.interaction.customId,
-      sessionId: current.sessionId, weekKey: current.session.weekKey, userId: current.interaction.user.id,
-      memberId: current.memberId, choice: current.responseChoice }, "Postpone response recorded.");
-    return current;
-  });
+): Effect.fn.Return<PostponePipelineRecorded, AppError> {
+  const now = context.context.clock.now();
+  const result = yield* fromDatabaseCall(
+    () => context.context.ports.sessionCommands.submitPostponeVote({
+      responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+      choice: context.responseChoice, sourceInteractionId: context.interaction.id, now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED, saturday: buildSaturdaySessionInput(context.session)
+    }),
+    "Failed to record postpone response atomically."
+  );
+  const current = yield* Effect.fromResult(resolvePostponeCommandResult(context, result, now));
+  context.deps.wakeScheduler?.("postpone_button_recorded");
+  logger.info({ interactionId: current.interaction.id, customId: current.interaction.customId,
+    sessionId: current.sessionId, weekKey: current.session.weekKey, userId: current.interaction.user.id,
+    memberId: current.memberId, choice: current.responseChoice }, "Postpone response recorded.");
+  return current;
+});
 
 /**
  * Handle postpone button interactions.
@@ -170,17 +168,17 @@ export const handlePostponeButton = async (
   };
 
   const validation = validatePostponePipeline(pipelineStart);
-  if (Either.isLeft(validation)) {
-    await handlePostponePipelineError(interaction, validation.left);
+  if (Result.isFailure(validation)) {
+    await handlePostponePipelineError(interaction, validation.failure);
     return;
   }
 
-  const parsed = validation.right;
+  const parsed = validation.success;
 
   if (parsed.choice === "ng") {
-    const result = await runPromiseBoundary(Effect.either(loadSessionAndMemberStep(parsed)));
-    await Either.match(result, {
-      onRight: async (ctx) => {
+    const result = await runPromiseResultBoundary(loadSessionAndMemberStep(parsed));
+    await Result.match(result, {
+      onSuccess: async (ctx) => {
         await interaction.followUp({
           content: postponeMessages.ngConfirm.prompt,
           components: [buildPostponeNgConfirmRow(ctx.sessionId)],
@@ -197,12 +195,12 @@ export const handlePostponeButton = async (
           "Postpone NG confirmation dialog shown."
         );
       },
-      onLeft: (error) => handlePostponePipelineError(interaction, error)
+      onFailure: (error) => handlePostponePipelineError(interaction, error)
     });
     return;
   }
 
-  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+  const result = await runPromiseResultBoundary(Effect.gen(function* () {
     const ready = yield* loadSessionAndMemberStep(parsed);
     const context = yield* recordResponseStep(ready);
     if (context.commandResult.kind === "transitioned") {
@@ -211,10 +209,10 @@ export const handlePostponeButton = async (
       yield* refreshPostponeMessage(context.deps.client, context.context, context.interaction, context.sessionId);
     }
     return context;
-  })));
+  }));
 
-  await Either.match(result, {
-    onRight: async (context) => {
+  await Result.match(result, {
+    onSuccess: async (context) => {
       logger.info(
         {
           interactionId: interaction.id,
@@ -227,6 +225,6 @@ export const handlePostponeButton = async (
         "Postpone response reflected in public message."
       );
     },
-    onLeft: (error) => handlePostponePipelineError(interaction, error)
+    onFailure: (error) => handlePostponePipelineError(interaction, error)
   });
 };

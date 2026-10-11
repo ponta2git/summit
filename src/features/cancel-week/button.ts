@@ -1,6 +1,5 @@
-import { runPromiseBoundary } from "../../runtime/effect.ts";
-import * as Either from "effect/Either";
-import * as Effect from "effect/Effect";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
+import * as Result from "effect/Result";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 
 import { logger } from "../../logger.ts";
@@ -29,8 +28,8 @@ interface CancelWeekButtonParsed extends CancelWeekButtonStart {
 
 const validateCancelWeekButton = (
   context: CancelWeekButtonStart
-): Either.Either<CancelWeekButtonParsed, AppError> =>
-  Either.gen(function* () {
+): Result.Result<CancelWeekButtonParsed, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(context.interaction.guildId);
     yield* guardChannelId(context.interaction.channelId);
     yield* guardMemberUserId(context.interaction.user.id);
@@ -98,12 +97,12 @@ export const handleCancelWeekButton = async (
   }
 
   const validation = validateCancelWeekButton({ interaction, deps });
-  if (Either.isLeft(validation)) {
-    await replyCancelWeekButtonError(interaction, validation.left);
+  if (Result.isFailure(validation)) {
+    await replyCancelWeekButtonError(interaction, validation.failure);
     return;
   }
 
-  const { choice } = validation.right;
+  const { choice } = validation.success;
 
   if (choice === "abort") {
     await interaction.editReply({
@@ -117,13 +116,13 @@ export const handleCancelWeekButton = async (
     return;
   }
 
-  const result = await runPromiseBoundary(Effect.either(applyManualSkip(deps.client, deps.context, {
+  const result = await runPromiseResultBoundary(applyManualSkip(deps.client, deps.context, {
     invokerUserId: interaction.user.id,
-    expectedWeekKey: validation.right.weekKey
-  })));
+    expectedWeekKey: validation.success.weekKey
+  }));
 
-  await Either.match(result, {
-    onRight: async (outcome) => {
+  await Result.match(result, {
+    onSuccess: async (outcome) => {
       if (outcome.kind === "expired") {
         await interaction.editReply({ content: cancelWeekMessages.cancelWeek.expired, components: [] });
         return;
@@ -134,6 +133,6 @@ export const handleCancelWeekButton = async (
         components: []
       });
     },
-    onLeft: (error) => replyCancelWeekButtonError(interaction, error)
+    onFailure: (error) => replyCancelWeekButtonError(interaction, error)
   });
 };

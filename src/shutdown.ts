@@ -1,7 +1,7 @@
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { promiseCall, runPromiseBoundary } from "./runtime/effect.ts";
+import { errorFromCause } from "./runtime/cause.ts";
 import { logger } from "./logger.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./config.ts";
 
@@ -43,8 +43,8 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
 
   logger.info({ signal: deps.signal }, "Shutdown started.");
   const attempt = <T, E>(effect: Effect.Effect<T, E>, message: string): Effect.Effect<void> =>
-    Effect.asVoid(Effect.catchAllCause(effect, cause => Effect.sync(() => {
-      logger.error({ error: Cause.squash(cause), signal: deps.signal }, message);
+    Effect.asVoid(Effect.catchCause(effect, cause => Effect.sync(() => {
+      logger.error({ error: errorFromCause(cause), signal: deps.signal }, message);
     })));
 
   const closeResources = Effect.gen(function* () {

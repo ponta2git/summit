@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -13,7 +13,7 @@ import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
 import type { SessionRow } from "../../db/rows.ts";
 import type { AppError } from "../../errors/index.ts";
 import { fromDatabaseCall } from "../../errors/effect.ts";
-import { runPromiseBoundary } from "../../runtime/effect.ts";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -56,8 +56,8 @@ interface AbsentConfirmPipelineReady extends AbsentConfirmPipelineParsed {
 
 const validateAbsentConfirmPipeline = (
   start: AbsentConfirmPipelineStart
-): Either.Either<AbsentConfirmPipelineParsed, AppError> =>
-  Either.gen(function* () {
+): Result.Result<AbsentConfirmPipelineParsed, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(start.interaction.guildId);
     yield* guardChannelId(start.interaction.channelId);
     yield* guardMemberUserId(start.interaction.user.id);
@@ -65,72 +65,70 @@ const validateAbsentConfirmPipeline = (
     return { ...start, sessionId: parsed.sessionId, choice: parsed.choice };
   });
 
-const loadSessionAndMemberStep = (
+const loadSessionAndMemberStep = Effect.fnUntraced(function* (
   context: AbsentConfirmPipelineParsed
-): Effect.Effect<AbsentConfirmPipelineReady, AppError> =>
-  Effect.gen(function* () {
-    const [session, memberId] = yield* Effect.all([
-      fromDatabaseCall(
-        () => context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to load interaction session."
-      ),
-      fromDatabaseCall(
-        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
-        "Failed to load interaction member."
-      )
-    ], { concurrency: 2 });
-    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
-    const existingSession = yield* guardSessionExists(session);
-    yield* guardSessionAsking(existingSession);
-    yield* guardSessionAskingDeadlineOpen(existingSession, context.context.clock.now());
-    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
-    return { ...context, session: existingSession, memberId: registeredMemberId };
-  });
+): Effect.fn.Return<AbsentConfirmPipelineReady, AppError> {
+  const [session, memberId] = yield* Effect.all([
+    fromDatabaseCall(
+      () => context.context.ports.sessions.findSessionById(context.sessionId),
+      "Failed to load interaction session."
+    ),
+    fromDatabaseCall(
+      () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+      "Failed to load interaction member."
+    )
+  ], { concurrency: 2 });
+  // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+  const existingSession = yield* Effect.fromResult(guardSessionExists(session));
+  yield* Effect.fromResult(guardSessionAsking(existingSession));
+  yield* Effect.fromResult(guardSessionAskingDeadlineOpen(existingSession, context.context.clock.now()));
+  const registeredMemberId = yield* Effect.fromResult(guardRegisteredMemberId(memberId));
+  return { ...context, session: existingSession, memberId: registeredMemberId };
+});
 
-const recordAbsentAndApplyStep = (
+const recordAbsentAndApplyStep = Effect.fnUntraced(function* (
   context: AbsentConfirmPipelineReady
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    const now = context.context.clock.now();
-    const result = yield* fromDatabaseCall(
-      () => context.context.ports.sessionCommands.submitAskResponse({
-        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
-        choice: "ABSENT", sourceInteractionId: context.interaction.id, now,
-        memberCountExpected: MEMBER_COUNT_EXPECTED
-      }),
-      "Failed to record absent response atomically."
-    );
-    logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
-      userId: context.interaction.user.id, memberId: context.memberId, choice: "ABSENT" },
-      "Absent response recorded via confirmation.");
-    switch (result.kind) {
-      case "transitioned":
-        context.deps.wakeScheduler?.("ask_absent_confirmed");
-        return yield* reflectAskingCancellation(context.deps.client, context.context, result.session);
-      case "stale_interaction":
-      case "accepted_pending":
-        context.deps.wakeScheduler?.("ask_absent_confirmed");
+): Effect.fn.Return<void, AppError> {
+  const now = context.context.clock.now();
+  const result = yield* fromDatabaseCall(
+    () => context.context.ports.sessionCommands.submitAskResponse({
+      responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+      choice: "ABSENT", sourceInteractionId: context.interaction.id, now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED
+    }),
+    "Failed to record absent response atomically."
+  );
+  logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
+    userId: context.interaction.user.id, memberId: context.memberId, choice: "ABSENT" },
+    "Absent response recorded via confirmation.");
+  switch (result.kind) {
+    case "transitioned":
+      context.deps.wakeScheduler?.("ask_absent_confirmed");
+      return yield* reflectAskingCancellation(context.deps.client, context.context, result.session);
+    case "stale_interaction":
+    case "accepted_pending":
+      context.deps.wakeScheduler?.("ask_absent_confirmed");
+      return;
+    case "closed":
+      if (result.session.status === "CANCELLED") {
+        yield* settleAskingSession(context.deps.client, context.context, result.session.id,
+          result.session.cancelReason === "saturday_cancelled" ? "saturday_cancelled" : "absent",
+          () => context.deps.wakeScheduler?.("ask_absent_confirmed"));
         return;
-      case "closed":
-        if (result.session.status === "CANCELLED") {
-          yield* settleAskingSession(context.deps.client, context.context, result.session.id,
-            result.session.cancelReason === "saturday_cancelled" ? "saturday_cancelled" : "absent",
-            () => context.deps.wakeScheduler?.("ask_absent_confirmed"));
-          return;
-        }
-        yield* guardSessionAsking(result.session);
-        return;
-      case "session_not_found":
-        yield* guardSessionExists(undefined);
-        return;
-      case "member_not_found":
-        yield* guardRegisteredMemberId(undefined);
-        return;
-      case "deadline_passed":
-        yield* guardSessionAskingDeadlineOpen(result.session, now);
-        return;
-    }
-  });
+      }
+      yield* Effect.fromResult(guardSessionAsking(result.session));
+      return;
+    case "session_not_found":
+      yield* Effect.fromResult(guardSessionExists(undefined));
+      return;
+    case "member_not_found":
+      yield* Effect.fromResult(guardRegisteredMemberId(undefined));
+      return;
+    case "deadline_passed":
+      yield* Effect.fromResult(guardSessionAskingDeadlineOpen(result.session, now));
+      return;
+  }
+});
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。
@@ -195,12 +193,12 @@ export const handleAbsentConfirmButton = async (
   _ack: { readonly acknowledged: true } = { acknowledged: true }
 ): Promise<void> => {
   const validation = validateAbsentConfirmPipeline({ interaction, deps, context: deps.context });
-  if (Either.isLeft(validation)) {
-    await handleAbsentConfirmError(interaction, validation.left);
+  if (Result.isFailure(validation)) {
+    await handleAbsentConfirmError(interaction, validation.failure);
     return;
   }
 
-  const parsed = validation.right;
+  const parsed = validation.success;
 
   if (parsed.choice === "abort") {
     await interaction.editReply({
@@ -214,18 +212,18 @@ export const handleAbsentConfirmButton = async (
     return;
   }
 
-  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+  const result = await runPromiseResultBoundary(Effect.gen(function* () {
     const ready = yield* loadSessionAndMemberStep(parsed);
     yield* recordAbsentAndApplyStep(ready);
-  })));
+  }));
 
-  await Either.match(result, {
-    onRight: async () => {
+  await Result.match(result, {
+    onSuccess: async () => {
       await interaction.editReply({
         content: askMessages.absentConfirm.confirmed,
         components: []
       });
     },
-    onLeft: (error) => handleAbsentConfirmError(interaction, error)
+    onFailure: (error) => handleAbsentConfirmError(interaction, error)
   });
 };

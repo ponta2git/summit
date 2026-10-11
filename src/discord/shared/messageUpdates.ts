@@ -1,10 +1,12 @@
 import * as Effect from "effect/Effect";
+import * as Semaphore from "effect/Semaphore";
 import type { AppContext } from "../../appContext.ts";
 import type { AppError } from "../../errors/index.ts";
 import { logger } from "../../logger.ts";
+import { catchExpectedError } from "../../runtime/effect.ts";
 
 interface MessageLock {
-  readonly semaphore: Effect.Semaphore;
+  readonly semaphore: Semaphore.Semaphore;
   users: number;
 }
 
@@ -15,10 +17,10 @@ export const bestEffortMessageUpdate = (
   update: Effect.Effect<void, AppError>,
   sessionId: string,
   messageKind: "ask" | "postpone"
-): Effect.Effect<void> => update.pipe(Effect.catchAll(error => Effect.sync(() => {
+): Effect.Effect<void, AppError> => catchExpectedError(update, error => Effect.sync(() => {
   logger.warn({ event: "message.repaint_failed", sessionId, messageKind, error },
     "State is committed; the public message could not be synchronized.");
-})));
+}));
 
 /** 同じmessageの再読込とeditを直列化し、別Sessionの更新は待たせない。 */
 export const serializeMessageUpdate = <T>(
@@ -32,7 +34,7 @@ export const serializeMessageUpdate = <T>(
       if (!queue) { queue = new Map(); queues.set(context, queue); }
       let lock = queue.get(key);
       if (!lock) {
-        lock = { semaphore: Effect.unsafeMakeSemaphore(1), users: 0 };
+        lock = { semaphore: Semaphore.makeUnsafe(1), users: 0 };
         queue.set(key, lock);
       }
       lock.users += 1;

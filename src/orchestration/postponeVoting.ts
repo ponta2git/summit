@@ -46,40 +46,39 @@ export const buildSaturdaySessionInput = (
  * Parent POSTPONED + Saturday ASKING + Saturday ask intent are committed atomically before
  * this function runs. This function only repaints the existing parent message.
  */
-export const applyPostponeTransition = (
+export const applyPostponeTransition = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   result: PersistedPostponeTransition
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    yield* bestEffortMessageUpdate(updatePostponeMessage(client, ctx, result.session), result.session.id, "postpone");
+): Effect.fn.Return<void, AppError> {
+  yield* bestEffortMessageUpdate(updatePostponeMessage(client, ctx, result.session), result.session.id, "postpone");
 
-    if (result.outcome === "cancelled") {
-      logger.info(
-        {
-          sessionId: result.session.id,
-          weekKey: result.session.weekKey,
-          from: "POSTPONE_VOTING",
-          to: "COMPLETED",
-          reason: result.session.cancelReason
-        },
-        "Postpone voting cancelled."
-      );
-      return;
-    }
-
+  if (result.outcome === "cancelled") {
     logger.info(
       {
         sessionId: result.session.id,
         weekKey: result.session.weekKey,
         from: "POSTPONE_VOTING",
-        to: "POSTPONED",
-        reason: "all votes ok",
-        saturdaySessionId: result.saturdaySession.id
+        to: "COMPLETED",
+        reason: result.session.cancelReason
       },
-      "Postpone voting decided with Saturday session."
+      "Postpone voting cancelled."
     );
-  });
+    return;
+  }
+
+  logger.info(
+    {
+      sessionId: result.session.id,
+      weekKey: result.session.weekKey,
+      from: "POSTPONE_VOTING",
+      to: "POSTPONED",
+      reason: "all votes ok",
+      saturdaySessionId: result.saturdaySession.id
+    },
+    "Postpone voting decided with Saturday session."
+  );
+});
 
 /**
  * Settle a POSTPONE_VOTING aggregate from one locked Session/Response snapshot.

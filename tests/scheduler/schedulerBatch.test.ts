@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import * as Cause from "effect/Cause";
 import * as Exit from "effect/Exit";
 import { runEffect } from "../helpers/assertions.ts";
@@ -11,18 +11,18 @@ describe("scheduler batch failure isolation", () => {
   it.each(["throw", "reject", "typed failure"])("preserves AppError identity and continues after an item %s", async mode => {
     const failure = new DatabaseError("item unavailable"); const onFailure = vi.fn();
     const visited: string[] = [];
-    const result = await runEffect(Effect.either(runSchedulerBatchEffect("recovery", ["failed", "next"], id => {
+    const result = await runEffect(Effect.result(runSchedulerBatchEffect("recovery", ["failed", "next"], id => {
       visited.push(id);
       if (id === "next") { return Effect.succeed(1); }
       if (mode === "throw") { throw failure; }
       if (mode === "reject") { return Effect.promise(() => Promise.reject(failure)); }
       return Effect.fail(failure);
     }, sessionId => ({ sessionId }), onFailure)));
-    expect(Either.isRight(result)).toBe(true);
-    if (!Either.isRight(result)) { throw result.left; }
-    expect(result.right).toStrictEqual({ processed: 2, succeeded: 1,
+    expect(Result.isSuccess(result)).toBe(true);
+    if (!Result.isSuccess(result)) { throw result.failure; }
+    expect(result.success).toStrictEqual({ processed: 2, succeeded: 1,
       failures: [{ phase: "recovery", sessionId: "failed", error: failure }] });
-    expect(result.right.failures[0]?.error).toBe(failure);
+    expect(result.success.failures[0]?.error).toBe(failure);
     expect(visited).toStrictEqual(["failed", "next"]);
     expect(onFailure).toHaveBeenCalledOnce();
   });
@@ -30,18 +30,18 @@ describe("scheduler batch failure isolation", () => {
   it.each(["throw", "reject"])("reports an item defect as invariant failure on %s and continues", async mode => {
     const defect = new TypeError("broken adapter");
     const visited: string[] = [];
-    const result = await runEffect(Effect.either(runSchedulerBatchEffect("recovery", ["failed", "next"], id => {
+    const result = await runEffect(Effect.result(runSchedulerBatchEffect("recovery", ["failed", "next"], id => {
       visited.push(id);
       if (id === "next") { return Effect.succeed(1); }
       if (mode === "throw") { throw defect; }
       return Effect.promise(() => Promise.reject(defect));
     }, sessionId => ({ sessionId }), () => undefined)));
-    expect(Either.isRight(result)).toBe(true);
-    if (!Either.isRight(result)) { throw result.left; }
-    expect(result.right.processed).toBe(2);
-    expect(result.right.succeeded).toBe(1);
-    expect(result.right.failures).toHaveLength(1);
-    expect(result.right.failures[0]).toMatchObject({ phase: "recovery", sessionId: "failed",
+    expect(Result.isSuccess(result)).toBe(true);
+    if (!Result.isSuccess(result)) { throw result.failure; }
+    expect(result.success.processed).toBe(2);
+    expect(result.success.succeeded).toBe(1);
+    expect(result.success.failures).toHaveLength(1);
+    expect(result.success.failures[0]).toMatchObject({ phase: "recovery", sessionId: "failed",
       error: { code: "INVARIANT_VIOLATION", cause: defect } });
     expect(visited).toStrictEqual(["failed", "next"]);
   });
@@ -51,14 +51,14 @@ describe("scheduler batch failure isolation", () => {
     const fail = (): never => { throw defect; };
     const run = vi.fn((): SchedulerEffect<number> => stage === "onFailure"
       ? Effect.fail(new DatabaseError("item unavailable")) : Effect.succeed(1));
-    const result = await runEffect(Effect.either(runSchedulerBatchEffect("recovery", ["first", "next"], run,
+    const result = await runEffect(Effect.result(runSchedulerBatchEffect("recovery", ["first", "next"], run,
       stage === "identify" ? fail : sessionId => ({ sessionId }),
       stage === "onFailure" ? fail : () => undefined,
       stage === "successCount" ? fail : value => value)));
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) { throw new Error("Expected an invalid batch report to fail."); }
-    expect(result.left.code).toBe("INVARIANT_VIOLATION");
-    expect(result.left.cause).toBe(defect);
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) { throw new Error("Expected an invalid batch report to fail."); }
+    expect(result.failure.code).toBe("INVARIANT_VIOLATION");
+    expect(result.failure.cause).toBe(defect);
     expect(run).toHaveBeenCalledTimes(stage === "identify" ? 0 : 1);
   });
 
@@ -81,7 +81,31 @@ describe("scheduler batch failure isolation", () => {
     const exit = await runEffect(Effect.exit(batch));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) { throw new Error("Expected interruption to propagate."); }
-    expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    expect(Cause.hasInterrupts(exit.cause)).toBe(true);
     expect(visited).toStrictEqual(["interrupted"]); expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it.each(["failure", "defect"] as const)("does not continue after an interruption mixed with a %s", async kind => {
+    const error = new DatabaseError("operation failed");
+    const cause = Cause.combine(kind === "failure" ? Cause.fail(error) : Cause.die(error), Cause.interrupt());
+    const visited: string[] = []; const onFailure = vi.fn();
+    const batch = runSchedulerBatchEffect("recovery", ["interrupted", "next"], id => {
+      visited.push(id);
+      return id === "interrupted" ? Effect.failCause(cause) : Effect.succeed(1);
+    }, sessionId => ({ sessionId }), onFailure);
+    const exit = await runEffect(Effect.exit(batch));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) { throw new Error("Expected the mixed interruption to propagate."); }
+    expect(exit.cause).toBe(cause);
+    expect(visited).toStrictEqual(["interrupted"]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it("retains a mixed expected failure and defect as an invariant failure", async () => {
+    const cause = Cause.combine(Cause.fail(new DatabaseError("operation failed")), Cause.die(new TypeError("broken adapter")));
+    const report = await runEffect(runSchedulerBatchEffect("recovery", ["failed", "next"], id =>
+      id === "failed" ? Effect.failCause(cause) : Effect.succeed(1), sessionId => ({ sessionId }), () => undefined));
+    expect(report.succeeded).toBe(1);
+    expect(report.failures[0]?.error).toMatchObject({ code: "INVARIANT_VIOLATION", cause });
   });
 });

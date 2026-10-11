@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setImmediate } from "node:timers/promises";
@@ -61,10 +61,10 @@ describe("updateAskMessage recovery", () => {
       throw Object.assign(new Error("Missing Access"), { code: 50001 });
     });
 
-    const result = await runEffect(Effect.either(updateAskMessage(client, ctx, session)));
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) {throw new Error("Expected ask message update to fail.");}
-    expect(result.left.cause).toMatchObject({ code: 50001 });
+    const result = await runEffect(Effect.result(updateAskMessage(client, ctx, session)));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) {throw new Error("Expected ask message update to fail.");}
+    expect(result.failure.cause).toMatchObject({ code: 50001 });
 
     expect((await ctx.ports.sessions.findSessionById("s-other"))?.askMessageId).toBe("old-id");
     expect(sentMessages).toStrictEqual([]);
@@ -88,11 +88,11 @@ describe("updateAskMessage recovery", () => {
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
     vi.spyOn(ctx.ports.members, "listMembers").mockRejectedValue(new Error("db unavailable"));
 
-    const result = await runEffect(Effect.either(updateAskMessage(client, ctx, session)));
+    const result = await runEffect(Effect.result(updateAskMessage(client, ctx, session)));
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) {throw new Error("Expected ask message update to fail.");}
-    expect(result.left.code).toBe("DATABASE");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) {throw new Error("Expected ask message update to fail.");}
+    expect(result.failure.code).toBe("DATABASE");
   });
 });
 

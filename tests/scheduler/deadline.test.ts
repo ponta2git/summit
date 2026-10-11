@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import type { Client } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
@@ -100,10 +100,10 @@ describe("runDeadlineTick", () => {
     const ctx = createTestAppContext();
     // race: findDueAskingSessions の失敗は tick 関数が throw して返し、runTickSafely が握り潰す (FR-M3)。
     vi.spyOn(ctx.ports.sessions, "findDueAskingSessions").mockRejectedValue(new Error("boom"));
-    const result = await runEffect(Effect.either(runDeadlineTick(client, ctx)));
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) {throw new Error("Expected deadline tick to fail.");}
-    expect(result.left.cause).toBeInstanceOf(Error);
+    const result = await runEffect(Effect.result(runDeadlineTick(client, ctx)));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) {throw new Error("Expected deadline tick to fail.");}
+    expect(result.failure.cause).toBeInstanceOf(Error);
   });
 });
 
@@ -255,10 +255,10 @@ describe("runPostponeDeadlineTick", () => {
       new Error("db down")
     );
 
-    const result = await runEffect(Effect.either(runPostponeDeadlineTick(client, ctx)));
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) {throw new Error("Expected postpone deadline tick to fail.");}
-    expect(result.left.cause).toBeInstanceOf(Error);
+    const result = await runEffect(Effect.result(runPostponeDeadlineTick(client, ctx)));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) {throw new Error("Expected postpone deadline tick to fail.");}
+    expect(result.failure.cause).toBeInstanceOf(Error);
   });
 
 });

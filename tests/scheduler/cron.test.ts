@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import { runEffect } from "../helpers/assertions.ts";
 import type { Client } from "discord.js";
@@ -95,10 +95,10 @@ describe("ask scheduler", () => {
       throw new Error("network failure");
     });
 
-    const result = await runEffect(Effect.either(runScheduledAskTick(sendAsk, createTestAppContext())));
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) {throw new Error("Expected ask scheduler tick to fail.");}
-    expect(result.left.cause).toBeInstanceOf(Error);
+    const result = await runEffect(Effect.result(runScheduledAskTick(sendAsk, createTestAppContext())));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) {throw new Error("Expected ask scheduler tick to fail.");}
+    expect(result.failure.cause).toBeInstanceOf(Error);
   });
 
   it("wraps every business-logic tick in runTickSafely (FR-M3)", async () => {

@@ -17,9 +17,9 @@ import { notificationNonce } from "./deliveryNonce.ts";
 class DeliveryTimeout extends Error {}
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
 const boundedSend = <T>(send: () => Promise<T>): Effect.Effect<T, unknown> =>
-  promiseCall(send).pipe(Effect.timeoutFail({
+  promiseCall(send).pipe(Effect.timeoutOrElse({
     duration: RESULT_NOTIFICATION_SEND_TIMEOUT_MS,
-    onTimeout: () => new DeliveryTimeout()
+    orElse: () => Effect.fail(new DeliveryTimeout())
   }));
 
 const databaseCall = <T>(call: () => Promise<T>): Effect.Effect<T, DatabaseError> =>

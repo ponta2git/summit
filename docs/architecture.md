@@ -48,7 +48,7 @@ Session の `CANCELLED` は収束途中の短命な状態になり得る。一�
 
 ### 結果の分類
 
-同期 guard は `Either`、非同期 application operation は `Effect<A, AppError>`、port は Promise と domain value を返す。分類と I/O の error 変換は [src/errors](../src/errors/) が所有する。独自 Result 型で既存 API を再現せず、`AppError.code` と既存 AppError の identity を保つ。duplicate、claim loss、race-lost、no-op は型付きの結果で表す。
+同期 guard は Effect の `Result`、非同期 application operation は `Effect<A, AppError>`、port は Promise と domain value を返す。分類と I/O の error 変換は [src/errors](../src/errors/) が所有する。独自 Result 型で既存 API を再現せず、`AppError.code` と既存 AppError の identity を保つ。duplicate、claim loss、race-lost、no-op は型付きの結果で表す。`Result` を非同期処理へ取り込むときは、実行中の generator 内で `Effect.fromResult` を使う。
 
 batch の item failure は集計して次へ進み、同期 throw と非同期 reject で扱いを変えない。既存 AppError 以外の予期しない失敗は invariant error とする。対象の取得・識別、集計、失敗報告自体が壊れた場合は phase failure として伝える。interruption を item failure に変換して続行しない。
 
@@ -56,22 +56,22 @@ env / config 不正、`assertNever`、成立しない起動前提は fail-fast �
 
 ### 実行と所有権
 
-[Effect adapter](../src/runtime/effect.ts) を application の実行境界で使う。Effect v3 の安定版で非同期処理と resource lifetime を合成し、内部で Effect → Promise → Effect を往復しない。port や DI 全体は置き換えない。API の根拠は [導入 version に合う資料](./dev-rule.md#外部仕様を判断するとき) で確認し、別 major の preview と混在させない。
+[Effect adapter](../src/runtime/effect.ts) を application の実行境界で使う。Effect v4 の安定版で非同期処理と resource lifetime を合成し、内部で Effect → Promise → Effect を往復しない。port や DI 全体は置き換えない。API の根拠は [導入 version に合う資料](./dev-rule.md#外部仕様を判断するとき) で確認し、別 major の preview と混在させない。
 
 | 境界 | 維持する契約 |
 |---|---|
-| operation の生成 | I/O・clock 読取・lock 取得を始めない。`gen` / `suspend` 内で実行時の状態を使う |
+| operation の生成 | I/O・clock 読取・lock 取得を始めない。再利用する generator 関数は `fnUntraced`、局所的な合成は `gen` / `suspend` を使い、実行時の状態を読む |
 | 外部 Promise | thunk を `promiseCall` に渡し、同期 throw も失敗として受け取る |
-| process / callback への出口 | `runPromiseBoundary` で一度だけ実行し、終了まで owner が追跡する。元の error を保持し、`Cause.pretty` や既定 console 出力で情報を漏らさない |
-| expected failure / defect | 前者は `either` / `catchAll`、後者と interruption は別の失敗として扱う |
+| process / callback への出口 | `runPromiseBoundary` または `runPromiseResultBoundary` で一度だけ実行し、終了まで owner が追跡する。単一 error の identity を保持し、`Cause.pretty` や既定 console 出力で情報を漏らさない |
+| expected failure / defect | `runPromiseResultBoundary` / `catchExpectedError` は Cause 全体を分類してから typed failure だけを回復する。defect / interruption が混在する Cause を `result` / `catch` / `squash` だけで正常結果に変換しない |
 | 中断できない I/O | `settledCall` 等で実際の完了を待つ。並列の一つが失敗しても、未完了の兄弟より先に lock や drain の所有権を解放しない |
 | resource 解放 | stop / drain の失敗後も後続 finalizer を実行する。fiber を fork するなら owner と join / interrupt を定め、daemon に逃がさない |
 
 timeout は待機の限界であり、Discord send や DB commit が取り消された証拠ではない。中断できない I/O の完了待ちは timeout 後も続き得る。write を一般的な Effect retry で繰り返さず、durable claim・nonce・CAS による回復を使う。
 
-message 再作成は send と message ID 保存までを中断から保護する。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
+message 再作成は channel 取得後の send と message ID 保存までを中断から保護する。取得待機中の interruption 後に新しい send を始めない。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-出欠と A/B の delivery scope は共通の [heartbeat](../src/scheduler/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
+出欠と A/B の delivery scope は共通の [heartbeat](../src/scheduler/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。claim loss は通知 callback より先に記録し、heartbeat 自体の予期しない失敗も配送の settlement 後に owner へ返す。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
 
 複数 resource の stop / drain は [lifecycle](../src/runtime/lifecycle.ts) に thunk を渡す。先行 owner の同期 throw で後続 owner を省略せず、非同期の Discord destroy も await する。失敗は settlement 後に元の原因で返す。
 

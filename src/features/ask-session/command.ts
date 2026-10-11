@@ -1,5 +1,5 @@
-import { runPromiseBoundary } from "../../runtime/effect.ts";
-import * as Either from "effect/Either";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
@@ -24,8 +24,8 @@ interface AskCommandPipelineStart {
 
 const validateAskCommand = (
   context: AskCommandPipelineStart
-): Either.Either<AskCommandPipelineStart, AppError> =>
-  Either.gen(function* () {
+): Result.Result<AskCommandPipelineStart, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(context.interaction.guildId);
     yield* guardChannelId(context.interaction.channelId);
     yield* guardMemberUserId(context.interaction.user.id);
@@ -72,13 +72,13 @@ export const handleAskCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const pipelineStart: AskCommandPipelineStart = { interaction, deps };
-  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
-    const validated = yield* validateAskCommand(pipelineStart);
+  const result = await runPromiseResultBoundary(Effect.gen(function* () {
+    const validated = yield* Effect.fromResult(validateAskCommand(pipelineStart));
     return yield* sendAskStep(validated);
-  })));
+  }));
 
-  await Either.match(result, {
-    onRight: async (sendResult) => {
+  await Result.match(result, {
+    onSuccess: async (sendResult) => {
       if (sendResult.status === "queued") {
         deps.wakeScheduler?.("ask_command_queued");
         await interaction.editReply(askMessages.interaction.ask.queued);
@@ -93,6 +93,6 @@ export const handleAskCommand = async (
       // invariant: SendAskMessageResult.status 追加時に型エラーで気付くため assertNever を残す。
       return assertNever(sendResult.status, "handleAskCommand: sendAsk result.status");
     },
-    onLeft: (error) => replyAskCommandError(interaction, error)
+    onFailure: (error) => replyAskCommandError(interaction, error)
   });
 };

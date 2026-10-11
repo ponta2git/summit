@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -41,8 +41,8 @@ interface CancelWeekCommandStart {
 
 const validateCancelWeekCommand = (
   context: CancelWeekCommandStart
-): Either.Either<CancelWeekCommandStart, AppError> =>
-  Either.gen(function* () {
+): Result.Result<CancelWeekCommandStart, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(context.interaction.guildId);
     yield* guardChannelId(context.interaction.channelId);
     yield* guardMemberUserId(context.interaction.user.id);
@@ -68,8 +68,8 @@ export const handleCancelWeekCommand = async (
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const validation = validateCancelWeekCommand({ interaction });
-  if (Either.isLeft(validation)) {
-    await replyCancelWeekCommandValidationError(interaction, validation.left);
+  if (Result.isFailure(validation)) {
+    await replyCancelWeekCommandValidationError(interaction, validation.failure);
     return;
   }
 

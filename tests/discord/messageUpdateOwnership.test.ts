@@ -1,14 +1,14 @@
 import { setImmediate } from "node:timers/promises";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { serializeMessageUpdate } from "../../src/discord/shared/messageUpdates.ts";
 import { fromDiscordCall } from "../../src/errors/effect.ts";
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.ts";
 import { updatePostponeMessage } from "../../src/features/postpone-voting/messageEditor.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
-import { createDiscordTextFixture, createEditableMessage } from "../helpers/discord.ts";
+import { asTextChannel, createDiscordTextFixture, createEditableMessage } from "../helpers/discord.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 
@@ -36,6 +36,44 @@ describe("message update ownership", () => {
       await Promise.all([owner, follower, runEffect(Fiber.interrupt(waiter))]);
     }
     expect(completed).toStrictEqual(["owner", "follower"]);
+  });
+
+  it.each(["ask", "postpone"] as const)("stops before sending a replacement %s message when interrupted during channel lookup", async kind => {
+    const session = buildSessionRow({ status: kind === "ask" ? "ASKING" : "POSTPONE_VOTING",
+      askMessageId: "deleted-id", postponeMessageId: "deleted-id" });
+    const context = createTestAppContext({ seed: { sessions: [session] } });
+    const lookingUp = deferred<void>(); const releaseLookup = deferred<void>();
+    const events: string[] = [];
+    const fixture = createDiscordTextFixture();
+    fixture.fetch.mockRejectedValue(Object.assign(new Error("Deleted message"), { code: 10008 }));
+    vi.spyOn(fixture.client.channels, "fetch")
+      .mockResolvedValueOnce(asTextChannel(fixture.channel))
+      .mockImplementationOnce(async () => {
+        lookingUp.resolve(); await releaseLookup.promise; events.push("lookup settled");
+        return asTextChannel(fixture.channel);
+      });
+    const save = vi.spyOn(context.ports.sessions, kind === "ask" ? "updateAskMessageId" : "updatePostponeMessageId");
+    const update = kind === "ask" ? updateAskMessage : updatePostponeMessage;
+    const fiber = Effect.runFork(update(fixture.client, context, session));
+    let interrupted: Promise<unknown> | undefined;
+    let follower: Promise<void> | undefined;
+    try {
+      await lookingUp.promise;
+      interrupted = runEffect(Fiber.interrupt(fiber));
+      follower = runEffect(serializeMessageUpdate(context, `${kind}:${session.id}`, () =>
+        Effect.sync(() => { events.push("follower"); })));
+      await setImmediate();
+      expect(events).toEqual([]);
+      releaseLookup.resolve();
+      await Promise.all([interrupted, follower]);
+      expect(events).toEqual(["lookup settled", "follower"]);
+      expect(fixture.send).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      releaseLookup.resolve();
+      await Promise.all([interrupted ?? runEffect(Fiber.interrupt(fiber)), follower]);
+      save.mockRestore();
+    }
   });
 
   it.each(["ask", "postpone"] as const)("persists a recreated %s message ID before honoring interruption", async kind => {

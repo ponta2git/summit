@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { setImmediate } from "node:timers/promises";
 import { type ActionRowBuilder, type ButtonBuilder } from "discord.js";
 import { describe, expect, it } from "vitest";
@@ -87,12 +87,12 @@ describe("message updates from persisted state", () => {
       written.push(payload);
     });
     const { client } = createDiscordTextFixture(undefined, { fetchedMessage: message });
-    const first = runEffect(Effect.either(updateAskMessage(client, context, session)));
+    const first = runEffect(Effect.result(updateAskMessage(client, context, session)));
     await entered.promise;
     await context.ports.sessions.skipSession({ id: session.id, cancelReason: "manual_skip" });
     const second = runEffect(updateAskMessage(client, context, session));
     release.resolve();
-    expect(Either.isLeft(await first)).toBe(true);
+    expect(Result.isFailure(await first)).toBe(true);
     await second;
     expect(written).toHaveLength(1);
     expect(disabledButtons(written[0] as Payload)).toStrictEqual([true, true, true, true, true]);

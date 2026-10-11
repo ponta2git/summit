@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
 import { runEffect } from "../helpers/assertions.ts";
 import { ChannelType } from "discord.js";
@@ -28,11 +28,11 @@ describe("outbox worker delivery", () => {
     channel.send.mockRejectedValueOnce(new Error("Discord failed")).mockImplementationOnce(async body => ({ ...await completion.promise, payload: body }));
     ctx.ports.outbox.markFailed = async () => { failed.resolve(); throw new Error("Database failed"); };
     let finished = false;
-    const tick = Promise.resolve(runEffect(Effect.either(runOutboxWorkerTick(stubClient(channel), ctx)))).then(result => { finished = true; return result; });
+    const tick = Promise.resolve(runEffect(Effect.result(runOutboxWorkerTick(stubClient(channel), ctx)))).then(result => { finished = true; return result; });
     await failed.promise; await setImmediate();
     expect(finished).toBe(false);
     completion.resolve({ id: "accepted" }); const result = await tick;
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
     expect(ctx.ports.outbox.listEntries().filter(entry => entry.status === "DELIVERED")).toHaveLength(1);
   });
   it("starts claimed deliveries concurrently within one batch", async () => {

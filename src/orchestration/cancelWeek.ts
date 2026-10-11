@@ -10,6 +10,7 @@ import { fromDatabaseCall } from "../errors/effect.ts";
 import { updateAskMessage } from "../features/ask-session/messageEditor.ts";
 import { updatePostponeMessage } from "../features/postpone-voting/messageEditor.ts";
 import { logger } from "../logger.ts";
+import { catchExpectedError } from "../runtime/effect.ts";
 import {
   candidateDateForAsk,
   deadlineFor,
@@ -24,88 +25,86 @@ export type SkipWeekOutcome = { readonly kind: "expired" } | {
   readonly weekKey: string;
 };
 
-const repaintSkippedSession = (
+const repaintSkippedSession = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   session: SessionRow
-): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
-    const keepCommittedCancellation = (messageKind: "ask" | "postpone") => (error: AppError) => {
-      logger.warn({ event: "cancel_week.repaint_failed", sessionId: session.id, weekKey: session.weekKey, messageKind, error },
-        "Cancellation is committed; a message could not be repainted.");
-      return Effect.void;
-    };
-    yield* updateAskMessage(client, ctx, session).pipe(Effect.catchAll(keepCommittedCancellation("ask")));
-    if (session.postponeMessageId) {
-      yield* updatePostponeMessage(client, ctx, session).pipe(Effect.catchAll(keepCommittedCancellation("postpone")));
-    }
-  });
+): Effect.fn.Return<void, AppError> {
+  const keepCommittedCancellation = (messageKind: "ask" | "postpone") => (error: AppError) => {
+    logger.warn({ event: "cancel_week.repaint_failed", sessionId: session.id, weekKey: session.weekKey, messageKind, error },
+      "Cancellation is committed; a message could not be repainted.");
+    return Effect.void;
+  };
+  yield* catchExpectedError(updateAskMessage(client, ctx, session), keepCommittedCancellation("ask"));
+  if (session.postponeMessageId) {
+    yield* catchExpectedError(updatePostponeMessage(client, ctx, session), keepCommittedCancellation("postpone"));
+  }
+});
 
 /**
  * Apply /cancel_week as one week-level transaction, then repaint affected messages.
  */
-export const applyManualSkip = (
+export const applyManualSkip = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   params: { readonly invokerUserId: string; readonly expectedWeekKey: string }
-): Effect.Effect<SkipWeekOutcome, AppError> =>
-  Effect.gen(function* () {
-    const now = ctx.clock.now();
-    const weekKey = isoWeekKey(now);
-    if (weekKey !== params.expectedWeekKey) {
-      return { kind: "expired" as const };
-    }
-    const candidateDate = candidateDateForAsk(now);
-    const outcome = yield* fromDatabaseCall(
-      () => ctx.ports.sessionCommands.cancelWeekAtomically({
-        sentinelSessionId: randomUUID(),
-        weekKey,
-        candidateDateIso: formatCandidateDateIso(candidateDate),
-        channelId: appConfig.discord.channelId,
-        deadlineAt: deadlineFor(candidateDate),
-        invokerUserId: params.invokerUserId,
-        suppressMentions: appConfig.dev.suppressMentions,
-        now
-      }),
-      "Failed to skip current week atomically."
-    );
+): Effect.fn.Return<SkipWeekOutcome, AppError> {
+  const now = ctx.clock.now();
+  const weekKey = isoWeekKey(now);
+  if (weekKey !== params.expectedWeekKey) {
+    return { kind: "expired" as const };
+  }
+  const candidateDate = candidateDateForAsk(now);
+  const outcome = yield* fromDatabaseCall(
+    () => ctx.ports.sessionCommands.cancelWeekAtomically({
+      sentinelSessionId: randomUUID(),
+      weekKey,
+      candidateDateIso: formatCandidateDateIso(candidateDate),
+      channelId: appConfig.discord.channelId,
+      deadlineAt: deadlineFor(candidateDate),
+      invokerUserId: params.invokerUserId,
+      suppressMentions: appConfig.dev.suppressMentions,
+      now
+    }),
+    "Failed to skip current week atomically."
+  );
 
-    if (outcome.kind === "already_held") {
-      logger.warn(
-        {
-          weekKey,
-          sessionId: outcome.session.id,
-          invokerUserId: params.invokerUserId
-        },
-        "Manual skip ignored because the week already has a held event."
-      );
-      return { kind: "applied" as const, skippedCount: 0, weekKey };
-    }
-    if (outcome.kind === "already_closed") {
-      logger.info(
-        { weekKey, invokerUserId: params.invokerUserId },
-        "Manual skip found only already-closed sessions."
-      );
-      return { kind: "applied" as const, skippedCount: 0, weekKey };
-    }
-
-    for (const session of outcome.skippedSessions) {
-      yield* repaintSkippedSession(client, ctx, session);
-    }
-    logger.info(
+  if (outcome.kind === "already_held") {
+    logger.warn(
       {
         weekKey,
-        invokerUserId: params.invokerUserId,
-        skippedCount: outcome.skippedSessions.length,
-        skippedSessionIds: outcome.skippedSessions.map((session) => session.id),
-        sentinelCreated: outcome.sentinelCreated,
-        noticeEnqueued: outcome.noticeEnqueued
+        sessionId: outcome.session.id,
+        invokerUserId: params.invokerUserId
       },
-      "Manual skip applied atomically."
+      "Manual skip ignored because the week already has a held event."
     );
-    return {
-      kind: "applied" as const,
+    return { kind: "applied" as const, skippedCount: 0, weekKey };
+  }
+  if (outcome.kind === "already_closed") {
+    logger.info(
+      { weekKey, invokerUserId: params.invokerUserId },
+      "Manual skip found only already-closed sessions."
+    );
+    return { kind: "applied" as const, skippedCount: 0, weekKey };
+  }
+
+  for (const session of outcome.skippedSessions) {
+    yield* repaintSkippedSession(client, ctx, session);
+  }
+  logger.info(
+    {
+      weekKey,
+      invokerUserId: params.invokerUserId,
       skippedCount: outcome.skippedSessions.length,
-      weekKey
-    };
-  });
+      skippedSessionIds: outcome.skippedSessions.map((session) => session.id),
+      sentinelCreated: outcome.sentinelCreated,
+      noticeEnqueued: outcome.noticeEnqueued
+    },
+    "Manual skip applied atomically."
+  );
+  return {
+    kind: "applied" as const,
+    skippedCount: outcome.skippedSessions.length,
+    weekKey
+  };
+});

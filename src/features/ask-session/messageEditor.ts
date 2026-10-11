@@ -11,34 +11,34 @@ import { renderAskBody } from "./render.ts";
 import { buildAskMessageViewModel } from "./viewModel.ts";
 import type { AppError } from "../../errors/index.ts";
 import { serializeMessageUpdate } from "../../discord/shared/messageUpdates.ts";
+import { catchExpectedError } from "../../runtime/effect.ts";
 
-const recreateAskMessage = (
+// invariant: 送信が成功したら中断要求があってもID保存まで排他所有を維持する。
+const recreateAskMessage = Effect.fnUntraced(function* (
   channel: Awaited<ReturnType<typeof getTextChannel>>,
   ctx: AppContext,
   session: SessionRow,
   rendered: ReturnType<typeof renderAskBody>
-): Effect.Effect<void, AppError> =>
-  // invariant: 送信が成功したら中断要求があってもID保存まで排他所有を維持する。
-  Effect.gen(function* () {
-    const sent = yield* fromDiscordCall(
-      () => channel.send(rendered),
-      "Failed to recreate deleted ask message."
-    );
-    yield* fromDatabaseCall(
-      () => ctx.ports.sessions.updateAskMessageId(session.id, sent.id),
-      "Failed to persist recreated ask message id."
-    );
-    logger.warn(
-      {
-        event: "reconciler.message_recreated",
-        sessionId: session.id,
-        weekKey: session.weekKey,
-        previousMessageId: session.askMessageId,
-        messageId: sent.id
-      },
-      "Reconciler: recreated ask message after Unknown Message (10008)."
-    );
-  }).pipe(Effect.uninterruptible);
+): Effect.fn.Return<void, AppError> {
+  const sent = yield* fromDiscordCall(
+    () => channel.send(rendered),
+    "Failed to recreate deleted ask message."
+  );
+  yield* fromDatabaseCall(
+    () => ctx.ports.sessions.updateAskMessageId(session.id, sent.id),
+    "Failed to persist recreated ask message id."
+  );
+  logger.warn(
+    {
+      event: "reconciler.message_recreated",
+      sessionId: session.id,
+      weekKey: session.weekKey,
+      previousMessageId: session.askMessageId,
+      messageId: sent.id
+    },
+    "Reconciler: recreated ask message after Unknown Message (10008)."
+  );
+}, Effect.uninterruptible);
 
 const synchronizeAskMessage = (
   client: Client,
@@ -55,12 +55,11 @@ const synchronizeAskMessage = (
     if (!fresh?.askMessageId) { return false; }
     const messageId = fresh.askMessageId;
     if (mode === "probe") {
-      const exists = yield* fromDiscordCall(async () => {
+      const exists = yield* catchExpectedError(fromDiscordCall(async () => {
         const channel = await getTextChannel(client, fresh.channelId);
         return channel.messages.fetch(messageId);
-      }, "Failed to probe ask message.").pipe(
-        Effect.as(true),
-        Effect.catchAll(error => isUnknownMessageError(error.cause) ? Effect.succeed(false) : Effect.fail(error))
+      }, "Failed to probe ask message.").pipe(Effect.as(true)),
+        error => isUnknownMessageError(error.cause) ? Effect.succeed(false) : Effect.fail(error)
       );
       if (exists) { return false; }
     }
@@ -73,14 +72,13 @@ const synchronizeAskMessage = (
       () => getTextChannel(client, fresh.channelId), "Failed to load channel for ask message recovery."
     ).pipe(Effect.flatMap(channel => recreateAskMessage(channel, ctx, fresh, rendered)), Effect.as(true));
     if (mode === "probe") { return yield* recreate(); }
-    return yield* fromDiscordCall(async () => {
+    return yield* catchExpectedError(fromDiscordCall(async () => {
       if (knownMessage?.id === messageId) { return knownMessage.edit(rendered); }
       const channel = await getTextChannel(client, fresh.channelId);
       const message = await channel.messages.fetch(messageId);
       return message.edit(rendered);
-    }, "Failed to edit ask message.").pipe(
-      Effect.as(false),
-      Effect.catchAll(error => isUnknownMessageError(error.cause) ? recreate() : Effect.fail(error))
+    }, "Failed to edit ask message.").pipe(Effect.as(false)),
+      error => isUnknownMessageError(error.cause) ? recreate() : Effect.fail(error)
     );
   }));
 

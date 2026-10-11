@@ -1,4 +1,4 @@
-import * as Either from "effect/Either";
+import * as Result from "effect/Result";
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -13,7 +13,7 @@ import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
 import type { SessionRow } from "../../db/rows.ts";
 import type { AppError } from "../../errors/index.ts";
 import { fromDatabaseCall } from "../../errors/effect.ts";
-import { runPromiseBoundary } from "../../runtime/effect.ts";
+import { runPromiseResultBoundary } from "../../runtime/effect.ts";
 import { logger } from "../../logger.ts";
 import {
   getGuardFailureReason,
@@ -56,8 +56,8 @@ interface PostponeNgConfirmPipelineReady extends PostponeNgConfirmPipelineParsed
 
 const validatePostponeNgConfirmPipeline = (
   start: PostponeNgConfirmPipelineStart
-): Either.Either<PostponeNgConfirmPipelineParsed, AppError> =>
-  Either.gen(function* () {
+): Result.Result<PostponeNgConfirmPipelineParsed, AppError> =>
+  Result.gen(function* () {
     yield* guardGuildId(start.interaction.guildId);
     yield* guardChannelId(start.interaction.channelId);
     yield* guardMemberUserId(start.interaction.user.id);
@@ -65,66 +65,64 @@ const validatePostponeNgConfirmPipeline = (
     return { ...start, sessionId: parsed.sessionId, choice: parsed.choice };
   });
 
-const loadSessionAndMemberStep = (
+const loadSessionAndMemberStep = Effect.fnUntraced(function* (
   context: PostponeNgConfirmPipelineParsed
-): Effect.Effect<PostponeNgConfirmPipelineReady, AppError> =>
-  Effect.gen(function* () {
-    const [session, memberId] = yield* Effect.all([
-      fromDatabaseCall(
-        () => context.context.ports.sessions.findSessionById(context.sessionId),
-        "Failed to load interaction session."
-      ),
-      fromDatabaseCall(
-        () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
-        "Failed to load interaction member."
-      )
-    ], { concurrency: 2 });
-    // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
-    const existingSession = yield* guardSessionExists(session);
-    yield* guardSessionPostponeVoting(existingSession);
-    yield* guardSessionPostponeDeadlineOpen(existingSession, context.context.clock.now());
-    const registeredMemberId = yield* guardRegisteredMemberId(memberId);
-    return { ...context, session: existingSession, memberId: registeredMemberId };
-  });
+): Effect.fn.Return<PostponeNgConfirmPipelineReady, AppError> {
+  const [session, memberId] = yield* Effect.all([
+    fromDatabaseCall(
+      () => context.context.ports.sessions.findSessionById(context.sessionId),
+      "Failed to load interaction session."
+    ),
+    fromDatabaseCall(
+      () => context.context.ports.members.findMemberIdByUserId(context.interaction.user.id),
+      "Failed to load interaction member."
+    )
+  ], { concurrency: 2 });
+  // invariant: 読取は並列でも、検証失敗の優先順位はsession → memberを維持する。
+  const existingSession = yield* Effect.fromResult(guardSessionExists(session));
+  yield* Effect.fromResult(guardSessionPostponeVoting(existingSession));
+  yield* Effect.fromResult(guardSessionPostponeDeadlineOpen(existingSession, context.context.clock.now()));
+  const registeredMemberId = yield* Effect.fromResult(guardRegisteredMemberId(memberId));
+  return { ...context, session: existingSession, memberId: registeredMemberId };
+});
 
-const recordNgAndApplyStep = (
+const recordNgAndApplyStep = Effect.fnUntraced(function* (
   context: PostponeNgConfirmPipelineReady
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    const now = context.context.clock.now();
-    const result = yield* fromDatabaseCall(
-      () => context.context.ports.sessionCommands.submitPostponeVote({
-        responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
-        choice: "POSTPONE_NG", sourceInteractionId: context.interaction.id, now,
-        memberCountExpected: MEMBER_COUNT_EXPECTED, saturday: buildSaturdaySessionInput(context.session)
-      }),
-      "Failed to record postpone NG response atomically."
-    );
-    logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
-      userId: context.interaction.user.id, memberId: context.memberId, choice: "POSTPONE_NG" },
-      "Postpone NG response recorded via confirmation.");
-    switch (result.kind) {
-      case "transitioned":
-        context.deps.wakeScheduler?.("postpone_ng_confirmed");
-        return yield* applyPostponeTransition(context.deps.client, context.context, result);
-      case "stale_interaction":
-      case "accepted_pending":
-        context.deps.wakeScheduler?.("postpone_ng_confirmed");
-        return;
-      case "closed":
-        yield* guardSessionPostponeVoting(result.session);
-        return;
-      case "session_not_found":
-        yield* guardSessionExists(undefined);
-        return;
-      case "member_not_found":
-        yield* guardRegisteredMemberId(undefined);
-        return;
-      case "deadline_passed":
-        yield* guardSessionPostponeDeadlineOpen(result.session, now);
-        return;
-    }
-  });
+): Effect.fn.Return<void, AppError> {
+  const now = context.context.clock.now();
+  const result = yield* fromDatabaseCall(
+    () => context.context.ports.sessionCommands.submitPostponeVote({
+      responseId: randomUUID(), sessionId: context.sessionId, memberId: context.memberId,
+      choice: "POSTPONE_NG", sourceInteractionId: context.interaction.id, now,
+      memberCountExpected: MEMBER_COUNT_EXPECTED, saturday: buildSaturdaySessionInput(context.session)
+    }),
+    "Failed to record postpone NG response atomically."
+  );
+  logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
+    userId: context.interaction.user.id, memberId: context.memberId, choice: "POSTPONE_NG" },
+    "Postpone NG response recorded via confirmation.");
+  switch (result.kind) {
+    case "transitioned":
+      context.deps.wakeScheduler?.("postpone_ng_confirmed");
+      return yield* applyPostponeTransition(context.deps.client, context.context, result);
+    case "stale_interaction":
+    case "accepted_pending":
+      context.deps.wakeScheduler?.("postpone_ng_confirmed");
+      return;
+    case "closed":
+      yield* Effect.fromResult(guardSessionPostponeVoting(result.session));
+      return;
+    case "session_not_found":
+      yield* Effect.fromResult(guardSessionExists(undefined));
+      return;
+    case "member_not_found":
+      yield* Effect.fromResult(guardRegisteredMemberId(undefined));
+      return;
+    case "deadline_passed":
+      yield* Effect.fromResult(guardSessionPostponeDeadlineOpen(result.session, now));
+      return;
+  }
+});
 
 // invariant: `GuardFailureReason` → reject message 網羅は `GUARD_REASON_TO_MESSAGE` で担保。
 //   ephemeral 上のボタンなので editReply でダイアログを更新し、ボタンを除去する。
@@ -197,12 +195,12 @@ export const handlePostponeNgConfirmButton = async (
     deps,
     context: deps.context
   });
-  if (Either.isLeft(validation)) {
-    await handlePostponeNgConfirmError(interaction, validation.left);
+  if (Result.isFailure(validation)) {
+    await handlePostponeNgConfirmError(interaction, validation.failure);
     return;
   }
 
-  const parsed = validation.right;
+  const parsed = validation.success;
 
   if (parsed.choice === "abort") {
     await interaction.editReply({
@@ -216,18 +214,18 @@ export const handlePostponeNgConfirmButton = async (
     return;
   }
 
-  const result = await runPromiseBoundary(Effect.either(Effect.gen(function* () {
+  const result = await runPromiseResultBoundary(Effect.gen(function* () {
     const ready = yield* loadSessionAndMemberStep(parsed);
     yield* recordNgAndApplyStep(ready);
-  })));
+  }));
 
-  await Either.match(result, {
-    onRight: async () => {
+  await Result.match(result, {
+    onSuccess: async () => {
       await interaction.editReply({
         content: postponeMessages.ngConfirm.confirmed,
         components: []
       });
     },
-    onLeft: (error) => handlePostponeNgConfirmError(interaction, error)
+    onFailure: (error) => handlePostponeNgConfirmError(interaction, error)
   });
 };

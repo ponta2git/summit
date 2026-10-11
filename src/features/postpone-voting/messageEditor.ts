@@ -9,6 +9,7 @@ import { getTextChannel } from "../../discord/shared/channels.ts";
 import { serializeMessageUpdate } from "../../discord/shared/messageUpdates.ts";
 import { isUnknownMessageError } from "../../discord/shared/discordErrors.ts";
 import { logger } from "../../logger.ts";
+import { catchExpectedError } from "../../runtime/effect.ts";
 import { askMessages } from "../ask-session/messages.ts";
 import { renderPostponeBody } from "./render.ts";
 import { buildPostponeMessageViewModel } from "./viewModel.ts";
@@ -22,6 +23,23 @@ const displayOptions = (session: SessionRow): { readonly disabled: boolean; read
     default: return { disabled: true, footerText: postponeMessages.postpone.footerCancelled };
   }
 };
+
+// invariant: 送信が成功したら中断要求があってもID保存まで排他所有を維持する。
+const recreatePostponeMessage = Effect.fnUntraced(function* (
+  channel: Awaited<ReturnType<typeof getTextChannel>>,
+  ctx: AppContext,
+  session: SessionRow,
+  rendered: ReturnType<typeof renderPostponeBody>
+): Effect.fn.Return<boolean, AppError> {
+  const sent = yield* fromDiscordCall(() => channel.send(rendered), "Failed to recreate postpone message.");
+  yield* fromDatabaseCall(
+    () => ctx.ports.sessions.updatePostponeMessageId(session.id, sent.id), "Failed to persist recreated postpone message ID."
+  );
+  logger.warn({ event: "reconciler.message_recreated", sessionId: session.id,
+    previousMessageId: session.postponeMessageId, messageId: sent.id },
+    "Recreated postpone message after Unknown Message.");
+  return true;
+}, Effect.uninterruptible);
 
 const synchronizePostponeMessage = (
   client: Client,
@@ -37,12 +55,11 @@ const synchronizePostponeMessage = (
     if (!fresh?.postponeMessageId) { return false; }
     const messageId = fresh.postponeMessageId;
     if (mode === "probe") {
-      const exists = yield* fromDiscordCall(async () => {
+      const exists = yield* catchExpectedError(fromDiscordCall(async () => {
         const channel = await getTextChannel(client, fresh.channelId);
         return channel.messages.fetch(messageId);
-      }, "Failed to probe postpone message.").pipe(
-        Effect.as(true),
-        Effect.catchAll(error => isUnknownMessageError(error.cause) ? Effect.succeed(false) : Effect.fail(error))
+      }, "Failed to probe postpone message.").pipe(Effect.as(true)),
+        error => isUnknownMessageError(error.cause) ? Effect.succeed(false) : Effect.fail(error)
       );
       if (exists) { return false; }
     }
@@ -51,33 +68,22 @@ const synchronizePostponeMessage = (
       fromDatabaseCall(() => ctx.ports.members.listMembers(), "Failed to load postpone members.")
     ], { concurrency: 2 });
     const rendered = renderPostponeBody(buildPostponeMessageViewModel(fresh, responses, memberRows, displayOptions(fresh)));
-    // invariant: 送信が成功したら中断要求があってもID保存まで排他所有を維持する。
-    const recreate = (): Effect.Effect<boolean, AppError> => Effect.gen(function* () {
-      const channel = yield* fromDiscordCall(
-        () => getTextChannel(client, fresh.channelId), "Failed to load postpone recovery channel."
-      );
-      const sent = yield* fromDiscordCall(() => channel.send(rendered), "Failed to recreate postpone message.");
-      yield* fromDatabaseCall(
-        () => ctx.ports.sessions.updatePostponeMessageId(fresh.id, sent.id), "Failed to persist recreated postpone message ID."
-      );
-      logger.warn({ event: "reconciler.message_recreated", sessionId: fresh.id, previousMessageId: messageId, messageId: sent.id },
-        "Recreated postpone message after Unknown Message.");
-      return true;
-    }).pipe(Effect.uninterruptible);
+    const recreate = (): Effect.Effect<boolean, AppError> => fromDiscordCall(
+      () => getTextChannel(client, fresh.channelId), "Failed to load postpone recovery channel."
+    ).pipe(Effect.flatMap(channel => recreatePostponeMessage(channel, ctx, fresh, rendered)));
     if (mode === "probe") { return yield* recreate(); }
     const editPayload = {
       content: rendered.content ?? "",
       ...(rendered.allowedMentions ? { allowedMentions: rendered.allowedMentions } : {}),
       ...(rendered.components ? { components: rendered.components } : {})
     };
-    return yield* fromDiscordCall(async () => {
+    return yield* catchExpectedError(fromDiscordCall(async () => {
       if (knownMessage?.id === messageId) { return knownMessage.edit(editPayload); }
       const channel = await getTextChannel(client, fresh.channelId);
       const message = await channel.messages.fetch(messageId);
       return message.edit(editPayload);
-    }, "Failed to edit postpone message.").pipe(
-      Effect.as(false),
-      Effect.catchAll(error => isUnknownMessageError(error.cause) ? recreate() : Effect.fail(error))
+    }, "Failed to edit postpone message.").pipe(Effect.as(false)),
+      error => isUnknownMessageError(error.cause) ? recreate() : Effect.fail(error)
     );
   }));
 

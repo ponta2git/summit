@@ -12,25 +12,24 @@ import { bestEffortMessageUpdate } from "../discord/shared/messageUpdates.ts";
 
 type AskingCancelReason = Extract<CancelReason, "absent" | "deadline_unanswered" | "saturday_cancelled">;
 
-export const reflectAskingCancellation = (
+export const reflectAskingCancellation = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   settled: SessionRow
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    yield* bestEffortMessageUpdate(updateAskMessage(client, ctx, settled), settled.id, "ask");
-    logger.info(
-      {
-        sessionId: settled.id,
-        weekKey: settled.weekKey,
-        from: "ASKING",
-        to: settled.status,
-        reason: settled.cancelReason,
-        delivery: "outbox"
-      },
-      "Asking cancellation settled."
-    );
-  });
+): Effect.fn.Return<void, AppError> {
+  yield* bestEffortMessageUpdate(updateAskMessage(client, ctx, settled), settled.id, "ask");
+  logger.info(
+    {
+      sessionId: settled.id,
+      weekKey: settled.weekKey,
+      from: "ASKING",
+      to: settled.status,
+      reason: settled.cancelReason,
+      delivery: "outbox"
+    },
+    "Asking cancellation settled."
+  );
+});
 
 /**
  * Settles an ASKING session into the cancelled path, including saturday completion
@@ -41,42 +40,41 @@ export const reflectAskingCancellation = (
  * source-of-truth: settle / postpone の新規投稿は同 transaction の ordered outbox intent。
  *   この関数は既存 ask message の再描画だけを best-effort で行う。
  */
-export const settleAskingSession = (
+export const settleAskingSession = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   sessionId: string,
   reason: CancelReason,
   onCommitted?: () => void
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    const resolvedReason: AskingCancelReason =
-      reason === "absent"
-        ? "absent"
-        : reason === "saturday_cancelled"
-          ? "saturday_cancelled"
-          : "deadline_unanswered";
-    const result = yield* fromDatabaseCall(
-      () => ctx.ports.sessionCommands.settleAskingCancellation({
-        sessionId,
-        now: ctx.clock.now(),
-        reason: resolvedReason
-      }),
-      "Failed to settle cancelled ASKING aggregate."
-    );
-    if (result.kind === "session_not_found") {return;}
+): Effect.fn.Return<void, AppError> {
+  const resolvedReason: AskingCancelReason =
+    reason === "absent"
+      ? "absent"
+      : reason === "saturday_cancelled"
+        ? "saturday_cancelled"
+        : "deadline_unanswered";
+  const result = yield* fromDatabaseCall(
+    () => ctx.ports.sessionCommands.settleAskingCancellation({
+      sessionId,
+      now: ctx.clock.now(),
+      reason: resolvedReason
+    }),
+    "Failed to settle cancelled ASKING aggregate."
+  );
+  if (result.kind === "session_not_found") {return;}
 
-    if (result.kind === "closed") {
-      logger.info(
-        {
-          sessionId,
-          weekKey: result.session.weekKey,
-          status: result.session.status,
-          reason: "closed status, skip settle"
-        },
-        "settleAskingSession called on an already settled session; skipping."
-      );
-      return;
-    }
-    onCommitted?.();
-    yield* reflectAskingCancellation(client, ctx, result.session);
-  });
+  if (result.kind === "closed") {
+    logger.info(
+      {
+        sessionId,
+        weekKey: result.session.weekKey,
+        status: result.session.status,
+        reason: "closed status, skip settle"
+      },
+      "settleAskingSession called on an already settled session; skipping."
+    );
+    return;
+  }
+  onCommitted?.();
+  yield* reflectAskingCancellation(client, ctx, result.session);
+});

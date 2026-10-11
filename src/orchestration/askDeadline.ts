@@ -13,21 +13,20 @@ import { shouldSkipReminder } from "../features/reminder/time.ts";
 import { reflectAskingCancellation } from "./askSettleCancel.ts";
 import { bestEffortMessageUpdate } from "../discord/shared/messageUpdates.ts";
 
-const applyDecidedSideEffects = (
+const applyDecidedSideEffects = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   session: SessionRow,
   settledAt: Date
-): Effect.Effect<void, AppError> =>
-  Effect.gen(function* () {
-    if (session.reminderAt && shouldSkipReminder(settledAt, session.reminderAt)) {
-      yield* fromDatabaseCall(
-        () => skipReminderAndComplete(ctx, session, settledAt),
-        "Failed to skip reminder and complete session."
-      );
-    }
-    yield* bestEffortMessageUpdate(updateAskMessage(client, ctx, session), session.id, "ask");
-  });
+): Effect.fn.Return<void, AppError> {
+  if (session.reminderAt && shouldSkipReminder(settledAt, session.reminderAt)) {
+    yield* fromDatabaseCall(
+      () => skipReminderAndComplete(ctx, session, settledAt),
+      "Failed to skip reminder and complete session."
+    );
+  }
+  yield* bestEffortMessageUpdate(updateAskMessage(client, ctx, session), session.id, "ask");
+});
 
 const applySettledDeadlineResult = (
   client: Client,

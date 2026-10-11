@@ -43,7 +43,7 @@
     "discord-api-types": "^0.38.56",
     "discord.js": "^14.27.0",
     "drizzle-orm": "^0.45.4",
-    "effect": "3.22.2",
+    "effect": "4.0.2",
     "node-cron": "^4.6.0",
     "pino": "^10.4.0",
     "postgres": "^3.4.9",
