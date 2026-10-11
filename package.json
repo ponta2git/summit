@@ -40,23 +40,23 @@
     "@discordjs/rest": "^2.6.3",
     "@momo/db": "file:../momo-db",
     "date-fns": "^4.4.0",
-    "discord-api-types": "^0.38.52",
+    "discord-api-types": "^0.38.56",
     "discord.js": "^14.27.0",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "effect": "3.22.2",
     "node-cron": "^4.6.0",
-    "pino": "^10.3.1",
+    "pino": "^10.4.0",
     "postgres": "^3.4.9",
     "yaml": "^2.9.1",
-    "zod": "^4.6.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^24.13.4",
+    "@types/node": "^24.19.2",
     "dotenv-cli": "^11.0.0",
-    "knip": "^6.35.1",
-    "oxlint": "^1.82.0",
+    "knip": "^6.41.0",
+    "oxlint": "^1.87.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.0"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
   }
 }
