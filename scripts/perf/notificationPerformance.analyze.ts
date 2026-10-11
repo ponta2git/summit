@@ -12,7 +12,10 @@ const runSchema = z.object({
     imageId: z.string(), postgresVersion: z.string() }),
   workload: z.object({ fixtureBytes: z.record(z.string(), z.object({ jsonBytes: z.number(), jsonbBytes: z.number(),
     nameCodePoints: z.number().optional() })), expectedNotifications: z.number(), completedParts: z.number(),
-    barrierControlled: z.boolean(), warmupNotifications: z.number(), legacyJsonbBytes: z.number().optional() }),
+    barrierControlled: z.boolean(), warmupNotifications: z.number(), legacyJsonbBytes: z.number().optional(),
+    rounds: z.number().int().positive().optional(), syntheticSendDelayMs: z.number().nonnegative().optional(),
+    analysisPartsAtArrivalEnd: z.number().int().nonnegative().optional(),
+    barriers: z.array(z.object({ kind: z.enum(["delivery", "receipt"]), milliseconds: z.number().nonnegative() })).optional() }),
   host: z.object({ elapsedMilliseconds: z.number(), httpSamples: z.array(sample) }), metrics: performanceMetrics,
   profiles: z.object({ cpu: z.string().optional(), heap: z.string().optional() }),
   verification: z.object({ passed: z.literal(true) })
@@ -103,7 +106,7 @@ const analyze = async (): Promise<void> => {
   }
   const scenarios = [];
   for (const scenario of performanceScenarios) {
-    const baseline = runs.filter(run => run.run.scenario === scenario && !run.run.profiled);
+    const baseline = runs.filter(run => run.run.scenario === scenario && !run.run.profiled && !run.metrics.databaseDiagnostics?.enabled);
     if (!baseline.length) { continue; }
     const sorted = [...baseline].sort((left, right) => left.host.elapsedMilliseconds - right.host.elapsedMilliseconds);
     const representative = sorted[Math.floor(sorted.length / 2)]!;
@@ -114,6 +117,11 @@ const analyze = async (): Promise<void> => {
       [key, durationSummary(baseline.flatMap(run => run.metrics.operationDurationsMs[key] ?? []))]));
     const latencies = Object.fromEntries(Object.keys(representative.metrics.notificationLatencyMs).map(key => [key,
       durationSummary(baseline.flatMap(run => run.metrics.notificationLatencyMs[key as keyof typeof run.metrics.notificationLatencyMs]))]));
+    const latencyByKind = Object.fromEntries((["ocr_completed", "analysis_completed"] as const).map(kind => {
+      const values = baseline.flatMap(run => run.metrics.completedNotifications.filter(value => value.kind === kind));
+      return [kind, Object.fromEntries((["queueWaitMs", "receiptToFirstSendMs", "receiptToCompleteMs", "claimToCompleteMs"] as const)
+        .map(key => [key, durationSummary(values.flatMap(value => value[key] === null || value[key] === undefined ? [] : [value[key]]))]))];
+    }));
     const profiles = [];
     for (const run of runs.filter(value => value.run.scenario === scenario && value.run.profiled)) {
       if (!run.profiles.cpu || !run.profiles.heap) { throw new Error("Missing profile artifact"); }
@@ -130,11 +138,17 @@ const analyze = async (): Promise<void> => {
     scenarios.push({ scenario, repetitions: baseline.length, fixture: representative.workload,
       baseline: baseline.map(runSummary), elapsedMs: durationSummary(baseline.map(run => run.host.elapsedMilliseconds)),
       throughputPartsPerSecond: total(baseline.map(run => run.workload.completedParts)) * 1000 / total(baseline.map(run => run.host.elapsedMilliseconds)),
-      http, operations, latencies, partDeciles: partDeciles(baseline), representativeMemory: memoryTrace(representative), profiles });
+      http, operations, latencies, latencyByKind, partDeciles: partDeciles(baseline), representativeMemory: memoryTrace(representative), profiles });
   }
-  await writeFile(output, JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios,
+  const databaseDiagnostics = runs.filter(run => run.metrics.databaseDiagnostics?.enabled).map(run => ({
+    artifact: run.artifact, scenario: run.run.scenario, ...run.metrics.databaseDiagnostics,
+    durations: Object.fromEntries(Object.entries(run.metrics.operationDurationsMs).filter(([key]) => key.startsWith("database."))
+      .map(([key, values]) => [key, durationSummary(values)]))
+  }));
+  await writeFile(output, JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios, databaseDiagnostics,
     interpretation: { percentileMethod: "nearest-rank over pooled raw observations; event-loop histograms remain per-run",
-      profilesExcludedFromBaseline: true, samplingHeapMeasures: "estimated cumulative allocation including collected objects",
+      profilesExcludedFromBaseline: true, databaseDiagnosticsExcludedFromBaseline: true,
+      samplingHeapMeasures: "estimated cumulative allocation including collected objects",
       postGcHeapIncludesRecorderArrays: true, memoryTrace: "at most 500 bucket maxima from 50ms samples" } }, null, 2) + "\n", { flag: "wx" });
   console.log(`Analyzed ${runs.length} runs across ${scenarios.length} scenarios.`);
 };

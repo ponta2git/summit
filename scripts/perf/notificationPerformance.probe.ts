@@ -1,4 +1,5 @@
 import { notificationPerformanceTelemetry } from "./notificationPerformance.telemetry.ts";
+import { notificationPerformanceDatabase } from "./notificationPerformance.database.ts";
 
 // The host supplies only synthetic fixtures and disposable local DB credentials.
 // Only the Discord transport is replaced; admission, SQL and dispatch stay real.
@@ -8,19 +9,25 @@ import { LimitedCollection } from 'discord.js';
 import { createServer as createProxy, createConnection } from 'node:net';
 import { createServer } from 'node:http';
 import { createAppContext } from './dist/appContext.js';
-import { closeDb } from './dist/db/client.js';
+import { closeDb, db } from './dist/db/client.js';
+import * as schema from './dist/db/schema.js';
+import { makeResultNotificationsPort } from './dist/db/repositories/resultNotifications.js';
+import { assertNewNotificationPartLimit } from './dist/features/result-notifications/render.js';
 import { createDiscordClient } from './dist/discord/client.js';
 import { createNotificationReceiver } from './dist/notifications/http.js';
 import { createResultNotificationDispatcher } from './dist/scheduler/resultNotifications.js';
 import { notificationNonce } from './dist/scheduler/deliveryNonce.js';
 ${notificationPerformanceTelemetry}
+${notificationPerformanceDatabase}
 
 assert.notEqual(process.getuid(), 0);
 assert.equal(typeof globalThis.gc, 'function');
 const client = createDiscordClient();
 const context = createAppContext();
 let telemetry;
+const databaseDiagnostics = createPerformanceDatabase({ db, schema, record: (...args) => telemetry?.record(...args) });
 let holdDelivery = false, holdReceipts = false, finished = false;
+let sendDelayMs = 0, wakeAt, slotFreedAt;
 let pendingSends = 0, pendingReceipts = 0, inflightOperations = 0;
 let maxPendingSends = 0, maxPendingReceipts = 0, maxInflightOperations = 0;
 let received = 0, sentParts = 0, sendAttempts = 0, deliveredNotifications = 0;
@@ -32,12 +39,18 @@ const traces = new Map();
 const begun = new Map();
 const observers = new Set();
 let completed = [];
+let sentPartsByKind = { ocr_completed: 0, analysis_completed: 0 };
 const freshLatencies = () => ({ receiptToFirstSend: [], receiptToComplete: [],
   claimToFirstSend: [], claimToComplete: [], firstSendToComplete: [] });
 let latencies = freshLatencies();
 const changed = () => { for (const resolve of observers) resolve(); observers.clear(); };
 const waitFor = async predicate => { while (!predicate()) await new Promise(resolve => observers.add(resolve)); };
-const logger = { info() {}, warn() { applicationWarnings++; }, error() { applicationErrors++; changed(); } };
+const logger = { info(value) {
+  if (value?.event === 'result_notification.wake') {
+    wakeAt ??= performance.now();
+    if (value.reason === 'delivery_finished') slotFreedAt ??= performance.now();
+  }
+}, warn() { applicationWarnings++; }, error() { applicationErrors++; changed(); } };
 const traceFor = id => {
   let trace = traces.get(id);
   if (!trace) {
@@ -46,11 +59,12 @@ const traceFor = id => {
   }
   return trace;
 };
-const original = context.ports.resultNotifications;
+const original = makeResultNotificationsPort(databaseDiagnostics.db,
+  payload => assertNewNotificationPartLimit(payload, process.env.RESULT_NOTIFICATION_WEB_ORIGIN));
 const call = async (name, args, part) => {
   const started = performance.now(); let failed = true;
   inflightOperations++; maxInflightOperations = Math.max(maxInflightOperations, inflightOperations);
-  try { const result = await original[name](...args); failed = false; return result; }
+  try { const result = await databaseDiagnostics.run(name, () => original[name](...args)); failed = false; return result; }
   finally { telemetry.record(name, performance.now() - started, failed, part); inflightOperations--; changed(); }
 };
 const port = Object.fromEntries(Object.keys(original).map(name => [name, (...args) => call(name, args)]));
@@ -61,16 +75,26 @@ port.receive = async (...args) => {
     await waitFor(() => !holdReceipts);
     const result = await call('receive', args);
     failed = false; receiptDispositions[result.disposition] = (receiptDispositions[result.disposition] ?? 0) + 1;
-    if (result.disposition === 'accepted') traceFor(result.notificationId).receiptAt = started;
+    if (result.disposition === 'accepted') {
+      const trace = traceFor(result.notificationId); trace.receiptAt = started; trace.receiptCommittedAt = performance.now();
+    }
     return result;
   } finally { telemetry.record('receiveTotal', performance.now() - started, failed); pendingReceipts--; changed(); }
 };
 port.claim = async options => {
+  const started = performance.now();
+  if (wakeAt !== undefined) telemetry.record('dispatch.wakeToClaimStart', started - wakeAt, false);
+  if (slotFreedAt !== undefined) telemetry.record('dispatch.slotReleaseToClaimStart', started - slotFreedAt, false);
+  wakeAt = undefined; slotFreedAt = undefined;
   const rows = await call('claim', [options]);
   maxClaimBatchCount = Math.max(maxClaimBatchCount, rows.length);
   maxClaimBatchBytes = Math.max(maxClaimBatchBytes, rows.reduce((total, row) => total + row.payloadBytes, 0));
-  for (const row of rows) { const trace = traceFor(row.id); trace.claimAt ??= performance.now(); trace.payloadBytes = row.payloadBytes; }
-  maxActivePayloadBytes = Math.max(maxActivePayloadBytes, [...traces.values()].reduce((sum, trace) => sum + (trace.payloadBytes ?? 0), 0));
+  for (const row of rows) {
+    const trace = traceFor(row.id); trace.claimAt ??= performance.now(); trace.payloadBytes = row.payloadBytes;
+    trace.kind = row.kind; trace.retained = true;
+    if (trace.receiptCommittedAt !== undefined) trace.queueWaitMs ??= trace.claimAt - trace.receiptCommittedAt;
+  }
+  maxActivePayloadBytes = Math.max(maxActivePayloadBytes, [...traces.values()].reduce((sum, trace) => sum + (trace.retained ? trace.payloadBytes : 0), 0));
   return rows;
 };
 port.plan = async (id, token, options) => {
@@ -92,7 +116,8 @@ port.complete = async (id, partNo, ...args) => {
     if (trace.receiptAt !== undefined) telemetry.append(latencies.receiptToComplete, now - trace.receiptAt);
     if (trace.claimAt !== undefined) telemetry.append(latencies.claimToComplete, now - trace.claimAt);
     if (trace.firstSendAt !== undefined) telemetry.append(latencies.firstSendToComplete, now - trace.firstSendAt);
-    telemetry.append(completed, { notificationOrdinal: trace.ordinal, parts: trace.parts, payloadBytes: trace.payloadBytes,
+    telemetry.append(completed, { notificationOrdinal: trace.ordinal, kind: trace.kind, parts: trace.parts, payloadBytes: trace.payloadBytes,
+      queueWaitMs: trace.queueWaitMs ?? null,
       origin: trace.receiptAt === undefined ? 'seeded_claim' : 'receipt',
       receiptToFirstSendMs: trace.receiptAt === undefined ? null : trace.firstSendAt - trace.receiptAt,
       receiptToCompleteMs: trace.receiptAt === undefined ? null : now - trace.receiptAt,
@@ -104,6 +129,11 @@ port.complete = async (id, partNo, ...args) => {
   return result;
 };
 port.fail = async (id, ...args) => { try { return await call('fail', [id, ...args]); } finally { traces.delete(id); } };
+if (original.yield) port.yield = async (id, ...args) => {
+  const result = await call('yield', [id, ...args]);
+  if (result) traceFor(id).retained = false;
+  return result;
+};
 const messages = { cache: new LimitedCollection({ maxSize: 200 }) };
 client.channels.fetch = async () => ({ type: 0, isSendable: () => true, messages, send: async body => {
   let part;
@@ -122,7 +152,9 @@ client.channels.fetch = async () => ({ type: 0, isSendable: () => true, messages
   pendingSends++; sendAttempts++; maxPendingSends = Math.max(maxPendingSends, pendingSends); changed();
   try {
     await waitFor(() => !holdDelivery);
+    if (sendDelayMs > 0) await new Promise(resolve => setTimeout(resolve, sendDelayMs));
     const message = { id: 'performance-message-' + (++sentParts) };
+    sentPartsByKind[part.trace.kind]++;
     messages.cache.set(message.id, message);
     return message;
   }
@@ -144,7 +176,8 @@ telemetry = await createPerformanceTelemetry();
 const counters = () => ({ received, sentParts, sendCount: sentParts, sendAttempts, deliveredNotifications,
   pendingSends, pendingReceipts, inflightOperations, activeNotifications: traces.size,
   maxPendingSends, maxPendingReceipts, maxInflightOperations, maxClaimBatchBytes, maxClaimBatchCount, maxActivePayloadBytes,
-  protocolFailures, applicationWarnings, applicationErrors, receiptDispositions });
+  protocolFailures, applicationWarnings, applicationErrors, receiptDispositions, sentPartsByKind,
+  databaseDiagnostics: databaseDiagnostics.metrics() });
 const idle = () => pendingSends === 0 && pendingReceipts === 0 && inflightOperations === 0 && traces.size === 0;
 const awaitIdle = async () => {
   await waitFor(() => idle() || protocolFailures > 0 || applicationErrors > 0);
@@ -157,6 +190,8 @@ const reset = async () => {
   maxClaimBatchBytes = 0; maxClaimBatchCount = 0; maxActivePayloadBytes = 0;
   protocolFailures = 0; applicationWarnings = 0; applicationErrors = 0;
   receiptDispositions = Object.create(null); ordinal = 0; completed = []; latencies = freshLatencies(); begun.clear();
+  sentPartsByKind = { ocr_completed: 0, analysis_completed: 0 }; wakeAt = undefined; slotFreedAt = undefined;
+  databaseDiagnostics.reset();
   await telemetry.reset();
 };
 // server.close() reaps responses whose end() was called even while their socket
@@ -191,6 +226,11 @@ const control = createServer({ maxHeaderSize: 8192 }, async (request, response) 
     else if (path === '/hold-receipts') holdReceipts = true;
     else if (path === '/release-receipts') { holdReceipts = false; changed(); }
     else if (path === '/wake') dispatcher.wake('performance_probe');
+    else if (path?.startsWith('/send-delay/')) {
+      const value = Number(path.slice('/send-delay/'.length));
+      assert.ok(Number.isSafeInteger(value) && value >= 0 && value <= 100);
+      sendDelayMs = value;
+    }
     else if (path === '/reset') await reset();
     else if (path === '/gc') { await awaitIdle(); await telemetry.diagnosticGc(); }
     else if (path?.startsWith('/wait/')) {

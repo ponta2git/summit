@@ -3,12 +3,13 @@ import { performance } from "node:perf_hooks";
 import type postgres from "postgres";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
 import { ocrNotification } from "../../tests/features/result-notifications/fixtures.ts";
-import { capacityAnalysis, capacityNamePoints, canonicalCapacityBytes } from "../verify/notificationCapacity.fixtures.ts";
+import { capacityAnalysis, capacityNamePoints, canonicalCapacityBytes, seedLegacyCapacityNotification } from "../verify/notificationCapacity.fixtures.ts";
 import { capacityMetrics } from "../verify/notificationCapacity.contract.ts";
 import type { CapacitySession } from "../verify/notificationCapacity.scenarios.ts";
 import { performanceControl, performancePost, type PerformanceHttpSample } from "./notificationPerformance.http.ts";
 import { performanceStage, type PerformanceScenario } from "./notificationPerformance.contract.ts";
 import { capacityPartAnalysis } from "./notificationPerformance.parts.ts";
+import { assertLegacyQueueOrder, runFairnessScenario } from "./notificationPerformance.fairness.ts";
 
 const ocr = (index: number) => ({
   ...ocrNotification(`00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`), settingsGeneration: "0"
@@ -26,13 +27,15 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
   readonly scenario: PerformanceScenario; readonly rounds: number; readonly legacyBytes?: number;
 }) => {
   const { scenario, rounds } = options;
+  const fairness = scenario === "mixed" || scenario === "stream" || scenario === "legacyqueue";
   const points = await capacityNamePoints(client, RESULT_NOTIFICATION_MAX_JSONB_BYTES);
   const fixture = (index: number, mode: "normal" | "unicode" | "markdown" | "parts") => {
     const sourceId = `perf-${mode}-${index.toString().padStart(4, "0")}`;
     return mode === "parts" ? capacityPartAnalysis(sourceId)
       : capacityAnalysis(sourceId, mode, mode === "unicode" ? points : 256);
   };
-  const modes = scenario === "normal" ? ["normal"] as const : scenario === "markdown" ? ["markdown"] as const
+  const modes = fairness ? (scenario === "legacyqueue" ? [] : ["markdown"] as const)
+    : scenario === "normal" ? ["normal"] as const : scenario === "markdown" ? ["markdown"] as const
     : scenario === "parts" ? ["parts"] as const
     : scenario === "soak" ? ["unicode", "markdown"] as const : scenario === "legacy" ? [] : ["unicode"] as const;
   const fixtureBytes: Record<string, { jsonBytes: number; jsonbBytes: number; nameCodePoints?: number }> = {};
@@ -41,7 +44,7 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
     fixtureBytes[mode] = { jsonBytes: Buffer.byteLength(JSON.stringify(value)),
       jsonbBytes: await canonicalCapacityBytes(client, value), nameCodePoints: [...value.data.gameTitleName].length };
   }
-  if (scenario === "normal") {
+  if (scenario === "normal" || fairness) {
     fixtureBytes["ocr"] = { jsonBytes: Buffer.byteLength(JSON.stringify(ocr(1))), jsonbBytes: await canonicalCapacityBytes(client, ocr(1)) };
   }
   const conflictBase = JSON.stringify(capacityAnalysis("performance-warmup", "normal"));
@@ -71,7 +74,15 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
   const barriers: { kind: "delivery" | "receipt"; milliseconds: number }[] = [];
   let expectedNotifications = 0;
   let index = 0;
+  let fairnessResult: Awaited<ReturnType<typeof runFairnessScenario>> | undefined;
   await performanceStage(`scenario_${scenario}`, async () => {
+    if (scenario === "mixed" || scenario === "stream" || scenario === "legacyqueue") {
+      fairnessResult = await runFairnessScenario({ scenario, rounds, seedLegacy: () => seedLegacyCapacityNotification(client), control, post,
+        analysis: () => fixture(index++, "markdown"), ocr: () => ocr(++index) });
+      expectedNotifications = fairnessResult.expectedNotifications;
+      barriers.push(...fairnessResult.barriers);
+      return;
+    }
     if (scenario === "legacy") {
       expectedNotifications = 1;
       await control("/wake"); await control("/wait/delivered/1");
@@ -134,11 +145,25 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
   assert.equal(rowsAfter.plannedParts, rowsAfter.completedParts);
   if (scenario === "legacy") { assert.ok(metrics.sentParts > 8_000 && metrics.sentParts <= 10_000); }
   if (scenario === "overlap") { assert.equal(metrics.maxPendingSends, 2); assert.equal(metrics.maxPendingReceipts, 4); }
+  if (scenario === "legacyqueue") {
+    assert.equal(metrics.maxPendingSends, 1);
+    assert.equal(metrics.maxClaimBatchCount, 1);
+    assert.ok(fairnessResult?.legacyJsonbBytes !== undefined);
+    assertLegacyQueueOrder(rawProbe, fairnessResult.legacyJsonbBytes);
+  }
+  if (fairness) {
+    const [attempts] = await client<{ maximum: number }[]>`
+      SELECT max(attempt_count)::int AS maximum FROM discord_notifications WHERE family = 'result'`;
+    assert.equal(attempts?.maximum, 1);
+  }
   });
   return { rawProbe, httpSamples, host: { elapsedMilliseconds, forcedGcDuringWorkload: false }, workload: {
     fixtureBytes, expectedNotifications, completedParts: metrics.sentParts,
-    rounds: ["legacy", "overlap"].includes(scenario) ? 1 : rounds,
-    warmupNotifications: scenario === "legacy" ? 0 : 2, barrierControlled: scenario === "overlap", barriers,
+    rounds: ["legacy", "overlap", "stream", "legacyqueue"].includes(scenario) ? 1 : rounds,
+    warmupNotifications: scenario === "legacy" ? 0 : 2, barrierControlled: scenario === "overlap" || fairness, barriers,
+    ...(fairnessResult === undefined ? {} : { syntheticSendDelayMs: fairnessResult.syntheticSendDelayMs,
+      ...(fairnessResult.legacyJsonbBytes === undefined ? {} : { legacyJsonbBytes: fairnessResult.legacyJsonbBytes }),
+      ...(fairnessResult.analysisPartsAtArrivalEnd === undefined ? {} : { analysisPartsAtArrivalEnd: fairnessResult.analysisPartsAtArrivalEnd }) }),
     ...(options.legacyBytes === undefined ? {} : { legacyJsonbBytes: options.legacyBytes }), rowsBefore, rowsAfter
   } };
 };

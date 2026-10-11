@@ -24,7 +24,8 @@ const verify = async (signal: AbortSignal): Promise<void> => {
   const configuration = await performanceStage("configuration", () => readFile(new URL("summit.config.example.yml", performanceRoot), "utf8"));
   await writePerformanceArtifact(output, "manifest.json", { schemaVersion: 1, startedAt: new Date().toISOString(),
     requested: { scenarios: options.scenarios, repetitions: options.profileOnly ? 0 : options.repetitions,
-      rounds: options.rounds, profile: options.profile || options.profileOnly, profileOnly: options.profileOnly },
+      rounds: options.rounds, profile: options.profile || options.profileOnly, profileOnly: options.profileOnly,
+      databaseDiagnostics: options.databaseDiagnostics },
     resources: { memoryMiB: 256, swapMiB: 0, cpus: 1 }, provenance,
     methodology: { freshDatabasePerRun: true, freshContainerPerRun: true, fakeDiscordTransport: true,
       fixturesGeneratedOutsideContainer: true, forcedGcDuringWorkload: false, memorySamplingMilliseconds: 50,
@@ -39,7 +40,8 @@ const verify = async (signal: AbortSignal): Promise<void> => {
       if (scenario === "parts") { await performanceStage("scenario_seed", () => seedCapacityPartSources(client)); }
       const result = await performanceStage("container", () => withCapacityContainer({ image: provenance.image.id, memoryMiB: 256, databaseUrl: url, configuration,
         scenario: scenario === "legacy" ? "legacy" : "standard", cpus: 1, deadlineMs: 900_000, signal,
-        probeScript: notificationPerformanceProbe, readyMarker: "PERFORMANCE_READY", env: { PERF_PROFILE: profiled ? "1" : "0" }
+        probeScript: notificationPerformanceProbe, readyMarker: "PERFORMANCE_READY",
+        env: { PERF_PROFILE: profiled ? "1" : "0", PERF_DATABASE_DIAGNOSTICS: options.databaseDiagnostics ? "1" : "0" }
       }, session => performanceStage("workload", () => runPerformanceScenario(session, client, { scenario, rounds: options.rounds,
         ...(legacyBytes === undefined ? {} : { legacyBytes }) }))));
       return performanceStage("result", () => savePerformanceResult(output!, `${scenario}-${profiled ? "profile" : repetition.toString().padStart(2, "0")}`,

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { CapacityError } from "../verify/notificationCapacity.contract.ts";
 export { performanceStage } from "./notificationPerformance.diagnostics.ts";
 
-export const performanceScenarios = ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak"] as const;
+export const performanceScenarios = ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"] as const;
 export type PerformanceScenario = typeof performanceScenarios[number];
 export interface PerformanceOptions {
   readonly image: string;
@@ -11,6 +11,7 @@ export interface PerformanceOptions {
   readonly rounds: number;
   readonly profile: boolean;
   readonly profileOnly: boolean;
+  readonly databaseDiagnostics: boolean;
   readonly scenarios: readonly PerformanceScenario[];
 }
 
@@ -22,6 +23,7 @@ export const performanceOptions = (args: readonly string[]): PerformanceOptions 
   let rounds = 10;
   let profile = false;
   let profileOnly = false;
+  let databaseDiagnostics = false;
   let scenarios: readonly PerformanceScenario[] = performanceScenarios;
   const seen = new Set<string>();
   for (let index = 0; index < flags.length; index++) {
@@ -30,6 +32,7 @@ export const performanceOptions = (args: readonly string[]): PerformanceOptions 
     seen.add(name);
     if (name === "--profile") { profile = true; continue; }
     if (name === "--profile-only") { profileOnly = true; continue; }
+    if (name === "--database-diagnostics") { databaseDiagnostics = true; continue; }
     const value = flags[++index];
     if (value === undefined || value.startsWith("--")) { throw new CapacityError("setup_or_measurement", "arguments"); }
     if (name === "--output" && value.length > 0 && !value.includes("\0")) { output = resolve(value); }
@@ -41,10 +44,11 @@ export const performanceOptions = (args: readonly string[]): PerformanceOptions 
       if (name === "--repetitions") { repetitions = number; } else { rounds = number; }
     } else { throw new CapacityError("setup_or_measurement", "arguments"); }
   }
-  if (!output || (profile && profileOnly) || (profileOnly && seen.has("--repetitions"))) {
+  if (!output || (profile && profileOnly) || (profileOnly && seen.has("--repetitions"))
+    || (databaseDiagnostics && (profile || profileOnly))) {
     throw new CapacityError("setup_or_measurement", "arguments");
   }
-  return { image, output, repetitions, rounds, profile, profileOnly, scenarios };
+  return { image, output, repetitions, rounds, profile, profileOnly, databaseDiagnostics, scenarios };
 };
 
 /** Nearest-rank percentiles retain actual observations; small tails remain

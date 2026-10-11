@@ -20,7 +20,7 @@
 
 warmup を除く21実行で555通知・61,023 partsをDB確定まで処理し、OOM・投稿契約違反・計測欠落・予期しないアプリエラーはなかった。全実行の通知単位 sample をまとめた受付→完了p95は normal **314.68 ms**、soak **5.854秒**。overlap の時間は意図的な送信保留を含む。
 
-同条件のv3との比較とCPU / heap sampling profile採取は実施していない。過去の表とはDBなどの条件が異なるため、Effect単体の速度・memoryの改善率には換算しない。速度の合意済みSLOはなく、実Discord・Neon・Gatewayを含む本番性能は測定していない。再測定は専用local DBを指定し、`pnpm profile:notifications <image> --output <new-directory>` の既定7ケース・3回で行える。
+同条件のv3との比較とCPU / heap sampling profile採取は実施していない。過去の表とはDBなどの条件が異なるため、Effect単体の速度・memoryの改善率には換算しない。速度の合意済みSLOはなく、実Discord・Neon・Gatewayを含む本番性能は測定していない。再測定は専用local DBを指定し、`pnpm profile:notifications <image> --output <new-directory>` の当時の7ケース・各3回を再現できる。現在の既定ケースは後述の公平配送3ケースを加えた10ケース。
 
 移行の品質 gate は `pnpm run ci` の116 files / 902 tests、実DB integration の26 files / 131 tests、Docker build・非root / read-only / runtime依存検証が成功した。file-size は既存4件のadvisoryのみ。API・エラー分類・resource所有権の契約は [Architecture §5](./architecture.md#5-非同期処理とエラー) を参照する。
 
@@ -93,7 +93,7 @@ normal〜partsは各60通知、soakは300通知の集計。legacyはHTTP受付�
 
 ![通知latencyと各実行のthroughput](./performance/latency-throughput.png)
 
-normalは2通知ごとに完了を待つため、[scheduler](../src/scheduler/resultNotifications.ts)の250 ms wake debounceが繰り返し入る。6.59 parts/秒をサーバーの最大処理能力と解釈しない。soakは10件ずつ受け付けるためqueueができ、claim→完了p95の2.126秒に対して受付→完了p95が8.645秒となった。これらのpercentileの差を、同一通知のqueue時間として引き算はしない。
+初回測定当時のnormalは2通知ごとに完了を待つため、schedulerの250 ms wake debounceが繰り返し入った。6.59 parts/秒をサーバーの最大処理能力と解釈しない。soakは10件ずつ受け付けるためqueueができ、claim→完了p95の2.126秒に対して受付→完了p95が8.645秒となった。これらのpercentileの差を、同一通知のqueue時間として引き算はしない。
 
 Unicodeの全完了時間には2.39倍、partsには1.59倍の最速・最遅差がある。Unicodeの初回はCPU 11.99秒、後続は4.67 / 5.10秒で、CPU throttleも1.44秒対0.06 / 0.08秒だった。throttle・GCだけで差全体を説明できず、JIT・host / DB状態等の要因は切り分けていない。最速値だけで性能を評価しない。
 
@@ -196,10 +196,13 @@ CPU quota 1 は CPU 時間の制限であり、Fly の shared CPU の競合・cr
 | overlap | 大本文4件を配送。2配送保留中に512 KiB本文を2受付、さらに旧容量へ数値展開する4競合受付と過負荷1受付 | 受付と配送の資源重複、409 / 503 の応答 |
 | legacy | 旧8 MiB近傍の通知1件、8,823投稿すべてを確定 | 既受理データの後方互換と長い配送 |
 | soak | Unicode と Markdown を各5件ずつ投入する round を10回、計100件 | 継続した queue・allocation・自然GC・終了後の残存量 |
+| mixed | 長い分析2件を先頭送信で保留し、後着OCR1件を受け付けてから解放。10 roundで30通知 | 長文2件によるslot占有と後着OCRの待ち時間 |
+| stream | 分析2件を保留し、OCRの初回受付後に解放。以後25 ms間隔で計20 OCR、各送信に5 msの模擬遅延 | OCRの継続到着中にも分析が進むか。到着終了時の分析送信数を記録 |
+| legacyqueue | 小さいOCRの送信保留中に旧8 MiB分析、後続OCRを投入。旧分析8,823 partsも全件確定 | 最古の大容量通知が追い越されず、単独配送を保つこと |
 
 `parts` は [fixture](../scripts/perf/notificationPerformance.parts.ts) を new-admission validator と renderer に通して確認した。128投稿は安全上限であり、112が全制約下の数学的な最大であるとも、128を実測したとも主張しない。
 
-各 round の受付は2並列。通常ケースは2件の配送完了を待って次 round へ進み、soak は10件を受け付けてから全完了を待つ。legacy 以外は分析・OCR を各1件配送して warmup し、GC 後に counters と計測窓をリセットする。legacy は既存 DB 行から開始するため、初回 claim を含む cold な経路を測る。
+normal / unicode / markdown / parts の各 round は2並列で受け付け、その2件の配送完了後に次 round へ進む。soak は2並列で10件を受け付けてから全完了を待つ。追加した公平配送ケースの到着・保留条件は上表のとおり。legacy 以外は分析・OCR を各1件配送して warmup し、GC 後に counters と計測窓をリセットする。legacy は既存 DB 行から開始するため、初回 claim を含む cold な経路を測る。
 
 測定中の強制GCは行わない。全処理と drain が完了した時点で負荷の metrics を固定し、その後で profiler 停止・診断GC・profile JSON 生成を行う。診断GC後の heap と serialization 後の cgroup peak は `finalization` に分離する。
 
@@ -207,7 +210,9 @@ CPU quota 1 は CPU 時間の制限であり、Fly の shared CPU の競合・cr
 |---|---|
 | HTTP latency | host の request 開始から HTTP response body の終了まで。202は永続受付の完了であり配送完了ではない |
 | receipt → first send / complete | server の receive port 入口から初回 `send` 開始 / 最終 part の DB 確定まで。queue 待ちを含む |
-| claim → first send / complete | DB claim の応答から初回 `send` / 最終確定まで。legacy の比較はこちらを使用 |
+| claim → first send / complete | 初回DB claim の応答から初回 `send` / 最終確定まで。譲渡後の再待機も含む。legacy の比較はこちらを使用 |
+| `queueWaitMs` | 受付commitのport応答から初回claimのport応答まで。claimのDB処理・通信も含み、純粋なqueue待ちではない |
+| `dispatch.wakeToClaimStart` / `slotReleaseToClaimStart` | 最初の未消化wake / 配送終了wakeから次のclaim command開始まで。枠待ちを含み、timerの遅延だけを測る値ではない |
 | `receive`, `claim`, `plan`, `begin`, `complete` | 実 repository port の wall time。SQL・lock・network 待ちを含む。`plan` は part 行を DB に保存する操作であり純粋 renderer の計画時間ではない |
 | CPU | `process.cpuUsage()` の user / system。CPU使用率は1 CPUに対する割合 |
 | event-loop delay | 10 ms 間隔 histogram。値は nanoseconds から ms へ換算し、計測間隔由来の約10 msも含む |
@@ -286,7 +291,11 @@ node scripts/perf/notificationPerformance.analyze.ts \
   artifacts/notification-performance/new-run /tmp/notification-summary.json
 ```
 
-pnpm が script 追加に伴う依存再検証を要求するときは、[開発規約](./dev-rule.md)に従い、その command だけ `pnpm_config_verify_deps_before_run=false` を付けられる。`--scenario normal|unicode|markdown|parts|overlap|legacy|soak` で個別実行できる。`--profile` を外すと速度計測のみ、`--profile-only` は速度の再測定を省略してprofileだけを採る。
+pnpm が script 追加に伴う依存再検証を要求するときは、[開発規約](./dev-rule.md)に従い、その command だけ `pnpm_config_verify_deps_before_run=false` を付けられる。`--scenario normal|unicode|markdown|parts|overlap|legacy|soak|mixed|stream|legacyqueue` で個別実行できる。`--profile` を外すと速度計測のみ、`--profile-only` は速度の再測定を省略してprofileだけを採る。
+
+`--database-diagnostics` はDBのcommand別statement数・transaction数・時間を追加する独立実行で、profileとの併用は拒否する。速度baselineへ混ぜない。Drizzleのstatementは実測、driverが出す成功transactionのBEGIN / COMMITは2件として別欄に推計する。transaction入口はpool取得・BEGIN・isolation設定を含み、gate呼出しは通信・server待ちを含む。gate保持時間は応答後からcommit / rollback完了までであり、server内の正確なlock保持時間ではない。SQL本文・引数・接続情報は記録しない。この診断だけではSQLのserver実行時間・network RTT・純粋なlock待ちへ分解できない。
+
+HTTP接続の比較は引数なしの `pnpm profile:notification-http` で行う。loopback・DB代替・TLSなし・同時1要求で、各modeのwarmup20件を除き、500要求×各5反復のcold / reuseを交互に測る。両modeとも候補receiverを使い、coldだけclientがcloseを指定する。同一OCR identityの初回は202、残り499件はduplicateの200となる。再利用統計は100要求ごとの新接続を除く2,475 sampleで、接続確立は別集計する。request時間にはHTTP・fake DB処理も含み、純TCP時間ではない。実DB・Discordを含まず、本番のproducerやネットワークの改善量へ換算しない。
 
 SQL診断は同じlocal `TEST_DATABASE_URL` を明示し、`node scripts/perf/notificationPerformance.explain.ts --output <new-directory>` で実行する。性能測定とは同時実行しない。
 

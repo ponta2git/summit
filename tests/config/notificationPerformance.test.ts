@@ -20,17 +20,24 @@ describe("notification performance harness", () => {
   it("keeps timing runs separate from an optional profile run", () => {
     const options = performanceOptions(["summit:perf", "--output", "/tmp/summit-perf", "--scenario", "normal", "--profile"]);
     expect(options).toStrictEqual({ image: "summit:perf", output: "/tmp/summit-perf", repetitions: 3, rounds: 10,
-      scenarios: ["normal"], profile: true, profileOnly: false });
+      scenarios: ["normal"], profile: true, profileOnly: false, databaseDiagnostics: false });
     expect(performanceOptions(["summit:perf", "--output", "/tmp/summit-perf", "--repetitions", "1", "--rounds", "2"]).scenarios)
-      .toStrictEqual(["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak"]);
+      .toStrictEqual(["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"]);
   });
 
   it("allows profile-only runs without baseline repetitions or the profile flag", () => {
     expect(performanceOptions(["summit:perf", "--output", "/tmp/profiles", "--profile-only"]))
       .toMatchObject({ profile: false, profileOnly: true, repetitions: 3,
-        scenarios: ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak"] });
+        scenarios: ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"] });
     expect(performanceOptions(["summit:perf", "--output", "/tmp/profiles", "--scenario", "legacy", "--profile-only"]).scenarios)
       .toStrictEqual(["legacy"]);
+  });
+
+  it("runs database diagnostics separately from profiler measurements", () => {
+    expect(performanceOptions(["summit:perf", "--output", "/tmp/diagnostics", "--database-diagnostics", "--scenario", "mixed"]))
+      .toMatchObject({ databaseDiagnostics: true, profile: false, profileOnly: false, scenarios: ["mixed"] });
+    expect(() => performanceOptions(["summit:perf", "--output", "/tmp/diagnostics", "--database-diagnostics", "--profile"]))
+      .toThrow("setup_or_measurement");
   });
 
   it.each([

@@ -108,7 +108,7 @@ dispatcher は出欠とは独立した上限付き slot と、実行中 payload 
 
 次 retry / claim expiry は one-shot で起動する。DB failure の有限 backoff 中は、処理中に受けた wake や新規受付でも回復期限を早めない。claim と必要な次時刻取得がともに成功したときに reset し、有限 retry を使い切った後も新しい wake / supervisor で再開できる。
 
-claim は OCR と分析の優先種別を交互に切り替え、一方だけなら空き slot を使う。種別内は既存の予定時刻・ID 順を保ち、残りの byte 予算に収まらない最古通知は追い越さず、実行中配送を排出してから扱う。別種別の due 通知が待つ場合、長文配送は投稿の complete 後・次の begin 前に claim を譲れる。開始済み投稿がないことを DB で確認し、失敗の試行予算を消費せず再取得する。既受理の本文・renderer・宛先・配送済み番号を再開時も使い、完了済み投稿を繰り返さない。予算超過の旧通知は単独配送を続け、途中で譲らない。
+claim は OCR と分析の優先種別を交互に切り替え、一方だけなら空き slot を使う。種別内は既存の予定時刻・ID 順を保ち、残りの byte 予算に収まらない最古通知は追い越さず、実行中配送を排出してから扱う。別種別の due 通知が待つ場合、長文配送は投稿の complete 後・次の begin 前に claim を譲れる。開始済み投稿がないことを DB で確認し、失敗の試行予算を消費せず再取得する。既受理の本文・renderer・宛先・配送済み番号を再開時も使い、完了済み投稿を繰り返さない。予算超過の旧通知は単独配送を続け、途中で譲らない。譲渡のDB確認は配送開始後と外部wakeの世代が変わった時に限り、各投稿で繰り返さない。全slot使用中に未来のretryがdueになった場合は、次のwake・slot解放・supervisorで検知する。
 
 claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別 Promise の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。譲渡時も配送と heartbeat の settlement まで slot・byte 予算を保持し、plan の参照を手放してから補充する。再開用 payload をメモリに退避して予算外へ増やさない。
 

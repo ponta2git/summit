@@ -43,6 +43,7 @@ export const performanceMetrics = z.object({
   partOperations: z.object({ begin: z.array(partOperation), complete: z.array(partOperation) }),
   memorySamples: z.array(memory.extend({ elapsedMs: number })), notificationLatencyMs: latency,
   completedNotifications: z.array(z.object({ notificationOrdinal: count, parts: count, payloadBytes: count,
+    kind: z.enum(["ocr_completed", "analysis_completed"]).optional(), queueWaitMs: number.nullable().optional(),
     origin: z.enum(["seeded_claim", "receipt"]), receiptToFirstSendMs: number.nullable(), receiptToCompleteMs: number.nullable(),
     claimToFirstSendMs: number.nullable(), claimToCompleteMs: number.nullable(), firstSendToCompleteMs: number.nullable() })),
   finalization: z.object({ postGc: checkpoint, gcWallMs: number, gcCpuUserMicros: number, gcCpuSystemMicros: number,
@@ -51,6 +52,10 @@ export const performanceMetrics = z.object({
   pendingSends: z.literal(0), pendingReceipts: z.literal(0), inflightOperations: z.literal(0), activeNotifications: z.literal(0),
   maxPendingSends: count, maxPendingReceipts: count, maxInflightOperations: count,
   maxClaimBatchBytes: count, maxClaimBatchCount: count, maxActivePayloadBytes: count,
+  sentPartsByKind: z.object({ ocr_completed: count, analysis_completed: count }).optional(),
+  databaseDiagnostics: z.object({ enabled: z.boolean(), byCommand: z.record(z.string(), z.object({
+    drizzleStatements: count, committedTransactions: count, failedTransactions: count, estimatedCommittedBeginCommitStatements: count
+  })) }).optional(),
   protocolFailures: z.literal(0), applicationWarnings: count, applicationErrors: z.literal(0), receiptDispositions: numbers
 });
 const callFrame = z.object({ functionName: z.string(), scriptId: z.string(), url: z.string(), lineNumber: number, columnNumber: number });

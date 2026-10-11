@@ -5,6 +5,19 @@ import { cpuProfileSchema, heapProfileSchema, performanceMetrics } from "./notif
 import { writePerformanceArtifact } from "./notificationPerformance.storage.ts";
 import type { runPerformanceScenario } from "./notificationPerformance.scenarios.ts";
 
+/** Expected identity conflicts roll back only the receipt transaction after its gate was acquired. */
+export const assertPerformanceOperationErrors = (
+  actual: Readonly<Record<string, number>>, expectedConflicts: number, databaseDiagnostics: boolean
+): void => {
+  const expected: Record<string, number> = expectedConflicts
+    ? { receive: expectedConflicts, receiveTotal: expectedConflicts } : {};
+  if (databaseDiagnostics && expectedConflicts) {
+    expected["database.transactionWall.receive"] = expectedConflicts;
+    expected["database.gateHold.receive"] = expectedConflicts;
+  }
+  assert.deepEqual(actual, expected);
+};
+
 export const savePerformanceResult = async (directory: string, filename: string, run: {
   readonly scenario: PerformanceScenario; readonly repetition: number; readonly profiled: boolean;
   readonly rounds: number; readonly imageId: string; readonly postgresVersion: string;
@@ -18,9 +31,11 @@ export const savePerformanceResult = async (directory: string, filename: string,
     assert.equal(metrics.sentParts, metrics.partOperations.begin.length);
     assert.equal(metrics.sentParts, metrics.partOperations.complete.length);
     assert.equal(metrics.deliveredNotifications, metrics.completedNotifications.length);
+    assert.ok(metrics.completedNotifications.every(value => value.kind !== undefined));
+    assert.ok(metrics.databaseDiagnostics);
     assert.ok(metrics.partOperations.begin.every(part => !part.failed));
     assert.ok(metrics.partOperations.complete.every(part => !part.failed));
-    assert.deepEqual(metrics.operationErrors, expectedConflicts ? { receive: expectedConflicts, receiveTotal: expectedConflicts } : {});
+    assertPerformanceOperationErrors(metrics.operationErrors, expectedConflicts, metrics.databaseDiagnostics.enabled);
     for (const [operation, count] of Object.entries(metrics.operationCounts)) {
       assert.equal(metrics.operationDurationsMs[operation]?.length, count);
     }
@@ -49,9 +64,14 @@ export const savePerformanceResult = async (directory: string, filename: string,
   }]));
   const operations = Object.fromEntries(Object.entries(metrics.operationDurationsMs).map(([key, values]) => [key, durationSummary(values)]));
   const notificationLatencyMs = Object.fromEntries(Object.entries(metrics.notificationLatencyMs).map(([key, values]) => [key, durationSummary(values)]));
+  const latencyByKind = Object.fromEntries((["ocr_completed", "analysis_completed"] as const).map(kind => {
+    const values = metrics.completedNotifications.filter(value => value.kind === kind);
+    return [kind, Object.fromEntries((["queueWaitMs", "receiptToFirstSendMs", "receiptToCompleteMs", "claimToCompleteMs"] as const)
+      .map(key => [key, durationSummary(values.flatMap(value => value[key] === null || value[key] === undefined ? [] : [value[key]]))]))];
+  }));
   const artifact = { schemaVersion: 1, run: { ...run, memoryMiB: 256, cpus: 1, swapMiB: 0 },
     workload: result.workload, host: { ...result.host, httpSamples: result.httpSamples, httpLatencyMs },
-    metrics, statistics: { percentileMethod: "nearest-rank", operations, notificationLatencyMs }, profiles: profileArtifacts,
+    metrics, statistics: { percentileMethod: "nearest-rank", operations, notificationLatencyMs, latencyByKind }, profiles: profileArtifacts,
     verification: { passed: true, protocolFailures: 0, sampleFailures: 0, droppedSamples: 0,
       expectedIdentityConflicts: expectedConflicts, applicationErrors: 0 } };
   await writePerformanceArtifact(directory, `${filename}.json`, artifact);
@@ -64,7 +84,7 @@ export const savePerformanceResult = async (directory: string, filename: string,
     postGcIncludesProfileObjects: metrics.finalization.postGcIncludesProfileObjects,
     cpuUserMilliseconds: metrics.cpu.userMicros / 1_000, cpuSystemMilliseconds: metrics.cpu.systemMicros / 1_000,
     eventLoop: metrics.eventLoop, gc: { count: metrics.gc.count, totalMs: metrics.gc.totalMs, maxMs: metrics.gc.maxMs },
-    httpLatencyMs, notificationLatencyMs, operations };
+    httpLatencyMs, notificationLatencyMs, latencyByKind, databaseDiagnostics: metrics.databaseDiagnostics, operations };
   console.log(JSON.stringify({ event: "notification_performance.completed", scenario: run.scenario, repetition: run.repetition,
     profiled: run.profiled, elapsedMilliseconds: summary.elapsedMilliseconds, cgroupPeakMiB: summary.cgroupPeakMiB,
     completedParts: summary.sentParts, artifact: `${filename}.json` }));
