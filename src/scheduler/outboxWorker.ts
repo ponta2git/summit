@@ -1,5 +1,7 @@
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
-import type { Client } from "discord.js";
+import * as Exit from "effect/Exit";
+import type { Client, MessageCreateOptions } from "discord.js";
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -11,18 +13,18 @@ import {
 } from "../config.ts";
 import type { OutboxEntry } from "../db/ports.ts";
 import { AppError, InvariantViolationError } from "../errors/index.ts";
-import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
+import { fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import { getTextChannel } from "../discord/shared/channels.ts";
 import {
   completeReminderDelivery
 } from "../features/reminder/send.ts";
 import { addMs } from "../time/index.ts";
-import { runPromiseBoundary, settledCall } from "../runtime/effect.ts";
+import { errorFromCause } from "../runtime/cause.ts";
+import { catchExpectedError, settledCall } from "../runtime/effect.ts";
 import { withClaimHeartbeat } from "./claimHeartbeat.ts";
 import { notificationNonce } from "./deliveryNonce.ts";
 import { renderOutboxPayload } from "./outboxRenderers.ts";
-import type { SchedulerEffect } from "./scheduler.types.ts";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -43,172 +45,203 @@ export const computeOutboxBackoff = (
   return addMs(now, delayMs);
 };
 
-const deliverClaimedEntry = async (
+interface PreparedDelivery {
+  readonly body: MessageCreateOptions;
+  readonly channel: Awaited<ReturnType<typeof getTextChannel>>;
+}
+
+const prepareDelivery = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   entry: OutboxEntry,
   claimToken: string,
   isStopping: () => boolean
-): Promise<void> => {
+): Effect.fn.Return<PreparedDelivery | undefined, unknown> {
   const payload = entry.payload;
-  try {
-    if (isStopping()) { return; }
-    const body = await renderOutboxPayload(ctx, entry);
-    if (isStopping()) { return; }
-    if (body === undefined) {
-      // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
-      const marked = await ctx.ports.outbox.markFailed(entry.id, {
-        error: "Unsupported outbox payload.",
-        claimToken,
-        now: ctx.clock.now(),
-        nextAttemptAt: null
-      });
-      if (!marked) {
-        logger.error(
-          { event: "outbox.claim_lost", outboxId: entry.id, sessionId: entry.sessionId },
-          "Outbox worker lost claim while dead-lettering unsupported payload."
-        );
-        return;
-      }
-      logger.error(
-        {
-          event: "outbox.unsupported_payload",
-          outboxId: entry.id,
-          sessionId: entry.sessionId,
-          dedupeKey: entry.dedupeKey
-        },
-        "Outbox worker: unsupported payload; moved to FAILED."
-      );
-      return;
-    }
-
-    const channel = await getTextChannel(client, payload.channelId);
-    if (isStopping()) { return; }
-    const canSend = await ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() });
-    if (!canSend) {
-      logger.info(
-        { event: "outbox.send_not_started", outboxId: entry.id },
-        "Notification was cancelled or its claim expired before send."
-      );
-      return;
-    }
-    if (isStopping()) { return; }
-    const sent = await channel.send({ ...body, nonce: notificationNonce(entry.id, 0), enforceNonce: true });
-    if (payload.renderer === "reminder") {
-      const completed = await completeReminderDelivery(
-        ctx,
-        entry.sessionId,
-        ctx.clock.now()
-      );
-      if (!completed) {
-        throw new Error("Reminder delivered but Session/HeldEvent completion failed");
-      }
-    }
-    // race: claim expiry 後は旧・新 worker が Discord 受理まで到達し得る。CAS-on-NULL で
-    // canonical message を先勝ちにし、outbox の確定自体は claimToken で fence する。
-    let backfillResult: boolean | undefined;
-    if (payload.target === "askMessageId") {
-      backfillResult = await ctx.ports.sessions.backfillAskMessageId(entry.sessionId, sent.id);
-    } else if (payload.target === "postponeMessageId") {
-      backfillResult = await ctx.ports.sessions.backfillPostponeMessageId(
-        entry.sessionId,
-        sent.id
-      );
-    }
-    const marked = await ctx.ports.outbox.markDelivered(entry.id, {
+  if (isStopping()) { return; }
+  const body = yield* renderOutboxPayload(ctx, entry);
+  if (isStopping()) { return; }
+  if (body === undefined) {
+    // state: 未対応 renderer / state mismatch は dead letter (握り潰し禁止)。
+    const marked = yield* settledCall(() => ctx.ports.outbox.markFailed(entry.id, {
+      error: "Unsupported outbox payload.",
       claimToken,
-      deliveredMessageId: sent.id,
-      now: ctx.clock.now()
-    });
+      now: ctx.clock.now(),
+      nextAttemptAt: null
+    }));
     if (!marked) {
       logger.error(
-        {
-          event: "outbox.claim_lost_after_send",
-          outboxId: entry.id,
-          sessionId: entry.sessionId,
-          messageId: sent.id
-        },
-        "Outbox worker lost claim after Discord accepted the message."
+        { event: "outbox.claim_lost", outboxId: entry.id, sessionId: entry.sessionId },
+        "Outbox worker lost claim while dead-lettering unsupported payload."
       );
       return;
     }
-    if (backfillResult === false) {
-      logger.warn(
-        {
-          event: "outbox.backfill_skipped",
-          outboxId: entry.id,
-          sessionId: entry.sessionId,
-          dedupeKey: entry.dedupeKey,
-          target: payload.target,
-          messageId: sent.id
-        },
-        "Outbox worker: target column already set; skipped back-fill."
-      );
-    }
-    logger.info(
+    logger.error(
       {
-        event: "outbox.delivered",
+        event: "outbox.unsupported_payload",
         outboxId: entry.id,
         sessionId: entry.sessionId,
-        dedupeKey: entry.dedupeKey,
-        messageId: sent.id,
-        attempt: entry.attemptCount
+        dedupeKey: entry.dedupeKey
       },
-      "Outbox worker: delivered message."
+      "Outbox worker: unsupported payload; moved to FAILED."
     );
-  } catch (error: unknown) {
-    const failedNow = ctx.clock.now();
-    const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
-    // redact: 外部例外のmessageにはtokenや接続情報が含まれるため、DBにも固定診断だけを保存する。
-    const message = error instanceof AppError ? `Outbox delivery failed (${error.code}).` : "Outbox delivery failed.";
-    const marked = await ctx.ports.outbox.markFailed(entry.id, {
-      error: message,
-      claimToken,
-      now: failedNow,
-      nextAttemptAt
-    });
-    if (!marked) {
-      logger.error(
-        {
-          event: "outbox.claim_lost",
-          outboxId: entry.id,
-          sessionId: entry.sessionId,
-          error,
-          failureSummary: message
-        },
-        "Outbox worker lost claim while recording delivery failure."
-      );
-      return;
+    return;
+  }
+
+  const channel = yield* settledCall(() => getTextChannel(client, payload.channelId));
+  if (isStopping()) { return; }
+  const canSend = yield* settledCall(() => ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() }));
+  if (!canSend) {
+    logger.info(
+      { event: "outbox.send_not_started", outboxId: entry.id },
+      "Notification was cancelled or its claim expired before send."
+    );
+    return;
+  }
+  if (isStopping()) { return; }
+  return { body, channel };
+});
+
+const sendAndFinalize = Effect.fnUntraced(function* (
+  ctx: AppContext,
+  entry: OutboxEntry,
+  claimToken: string,
+  { body, channel }: PreparedDelivery,
+  isStopping: () => boolean
+): Effect.fn.Return<void, unknown> {
+  const payload = entry.payload;
+  const sent = yield* settledCall(() => isStopping() ? Promise.resolve(undefined) :
+    channel.send({ ...body, nonce: notificationNonce(entry.id, 0), enforceNonce: true }));
+  if (!sent) { return; }
+  if (payload.renderer === "reminder") {
+    const completed = yield* settledCall(() => completeReminderDelivery(ctx, entry.sessionId, ctx.clock.now()));
+    if (!completed) {
+      return yield* Effect.fail(new Error("Reminder delivered but Session/HeldEvent completion failed"));
     }
+  }
+  // race: claim expiry 後は旧・新 worker が Discord 受理まで到達し得る。CAS-on-NULL で
+  // canonical message を先勝ちにし、outbox の確定自体は claimToken で fence する。
+  let backfillResult: boolean | undefined;
+  if (payload.target === "askMessageId") {
+    backfillResult = yield* settledCall(() => ctx.ports.sessions.backfillAskMessageId(entry.sessionId, sent.id));
+  } else if (payload.target === "postponeMessageId") {
+    backfillResult = yield* settledCall(() => ctx.ports.sessions.backfillPostponeMessageId(entry.sessionId, sent.id));
+  }
+  const marked = yield* settledCall(() => ctx.ports.outbox.markDelivered(entry.id, {
+    claimToken,
+    deliveredMessageId: sent.id,
+    now: ctx.clock.now()
+  }));
+  if (!marked) {
+    logger.error(
+      {
+        event: "outbox.claim_lost_after_send",
+        outboxId: entry.id,
+        sessionId: entry.sessionId,
+        messageId: sent.id
+      },
+      "Outbox worker lost claim after Discord accepted the message."
+    );
+    return;
+  }
+  if (backfillResult === false) {
     logger.warn(
       {
-        event: nextAttemptAt === null ? "outbox.dead_letter" : "outbox.retry_scheduled",
+        event: "outbox.backfill_skipped",
         outboxId: entry.id,
         sessionId: entry.sessionId,
         dedupeKey: entry.dedupeKey,
-        attempt: entry.attemptCount,
-        nextAttemptAt: nextAttemptAt?.toISOString() ?? null,
+        target: payload.target,
+        messageId: sent.id
+      },
+      "Outbox worker: target column already set; skipped back-fill."
+    );
+  }
+  logger.info(
+    {
+      event: "outbox.delivered",
+      outboxId: entry.id,
+      sessionId: entry.sessionId,
+      dedupeKey: entry.dedupeKey,
+      messageId: sent.id,
+      attempt: entry.attemptCount
+    },
+    "Outbox worker: delivered message."
+  );
+});
+
+const recordDeliveryFailure = Effect.fnUntraced(function* (
+  ctx: AppContext,
+  entry: OutboxEntry,
+  claimToken: string,
+  error: unknown
+): Effect.fn.Return<void, unknown> {
+  const failedNow = ctx.clock.now();
+  const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
+  // redact: 外部例外のmessageにはtokenや接続情報が含まれるため、DBにも固定診断だけを保存する。
+  const message = error instanceof AppError ? `Outbox delivery failed (${error.code}).` : "Outbox delivery failed.";
+  const marked = yield* settledCall(() => ctx.ports.outbox.markFailed(entry.id, {
+    error: message,
+    claimToken,
+    now: failedNow,
+    nextAttemptAt
+  }));
+  if (!marked) {
+    logger.error(
+      {
+        event: "outbox.claim_lost",
+        outboxId: entry.id,
+        sessionId: entry.sessionId,
         error,
         failureSummary: message
       },
-      "Outbox worker: send failed."
+      "Outbox worker lost claim while recording delivery failure."
     );
+    return;
   }
-};
+  logger.warn(
+    {
+      event: nextAttemptAt === null ? "outbox.dead_letter" : "outbox.retry_scheduled",
+      outboxId: entry.id,
+      sessionId: entry.sessionId,
+      dedupeKey: entry.dedupeKey,
+      attempt: entry.attemptCount,
+      nextAttemptAt: nextAttemptAt?.toISOString() ?? null,
+      error,
+      failureSummary: message
+    },
+    "Outbox worker: send failed."
+  );
+}, Effect.uninterruptible);
 
-const deliverOne = async (
+const deliverClaimedEntry = Effect.fnUntraced(function* (
+  client: Client,
+  ctx: AppContext,
+  entry: OutboxEntry,
+  claimToken: string,
+  isStopping: () => boolean
+): Effect.fn.Return<void, unknown> {
+  const prepared = yield* catchExpectedError(prepareDelivery(client, ctx, entry, claimToken, isStopping),
+    error => recordDeliveryFailure(ctx, entry, claimToken, error).pipe(Effect.as(undefined)));
+  if (prepared === undefined || isStopping()) { return; }
+  // invariant: send 開始後は中断要求があっても成功保存または失敗確定まで所有する。
+  yield* catchExpectedError(sendAndFinalize(ctx, entry, claimToken, prepared, isStopping),
+    error => recordDeliveryFailure(ctx, entry, claimToken, error)).pipe(Effect.uninterruptible);
+});
+
+const deliverOne = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   entry: OutboxEntry,
   isStopping: () => boolean
-): Promise<void> => {
+): Effect.fn.Return<void, unknown> {
   const claimToken = entry.claimToken;
   if (!claimToken) {
     logger.error({ event: "outbox.missing_claim_token", outboxId: entry.id, sessionId: entry.sessionId },
       "Outbox worker received an unfenced claim.");
     return;
   }
-  await runPromiseBoundary(withClaimHeartbeat({
+  yield* withClaimHeartbeat({
     intervalMs: OUTBOX_HEARTBEAT_MS,
     renew: () => ctx.ports.outbox.renewClaim(entry.id, {
       claimToken, now: ctx.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS
@@ -217,45 +250,49 @@ const deliverOne = async (
       logger.warn({ event: reason === "uncertain" ? "outbox.lease_uncertain" : "outbox.claim_lost",
         outboxId: entry.id, sessionId: entry.sessionId });
     }
-  }, isClaimLost => settledCall(() =>
-    deliverClaimedEntry(client, ctx, entry, claimToken, () => isStopping() || isClaimLost()))));
-};
+  }, isClaimLost => deliverClaimedEntry(client, ctx, entry, claimToken, () => isStopping() || isClaimLost()));
+});
 
 /**
  * Claim a batch of PENDING outbox entries and deliver each.
  *
  * @remarks
- * idempotent: 各 entry は独立の try/catch で隔離。全体例外は呼び出し側 (`runEffectTickSafely`) が閉じ込める。
+ * idempotent: 各 entry の Exit を集計して隔離。全体例外は呼び出し側 (`runEffectTickSafely`) が閉じ込める。
  */
-export const runOutboxWorkerTick = (
+export const runOutboxWorkerTick = Effect.fnUntraced(function* (
   client: Client,
   ctx: AppContext,
   isStopping: () => boolean = () => false
-): SchedulerEffect<{ readonly claimed: number }> => Effect.suspend(() => {
-  if (isStopping()) { return Effect.succeed({ claimed: 0 }); }
+): Effect.fn.Return<{ readonly claimed: number }, unknown> {
+  if (isStopping()) { return { claimed: 0 }; }
   const now = ctx.clock.now();
-  return Effect.flatMap(fromDatabaseCall(
+  const batch = yield* fromDatabaseCall(
     () => ctx.ports.outbox.claimNextBatch({
       limit: OUTBOX_WORKER_BATCH_LIMIT,
       now,
       claimDurationMs: OUTBOX_CLAIM_DURATION_MS
     }),
     "Failed to claim outbox batch."
-  ), (batch) => {
-    if (batch.length === 0) {
-      return Effect.succeed({ claimed: 0 });
-    }
-    // race: entry 単位の DB CAS と try/catch で隔離済みなので、batch は並列配送して claim 期限切れを避ける。
-    return fromAppCall(
-      async () => {
-        const results = await Promise.allSettled(batch.map((entry) => deliverOne(client, ctx, entry, isStopping)));
-        const failed = results.find(result => result.status === "rejected");
-        if (failed) { throw new InvariantViolationError("Failed to finalize outbox delivery.", { cause: failed.reason }); }
-        return { claimed: batch.length };
-      },
-      (cause: unknown): AppError => cause instanceof AppError
-        ? cause
-        : new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause })
-    );
+  );
+  // race: Fail / Die を含め全配送と heartbeat の settlement を待ち、入力順で失敗を選ぶ。
+  const results = yield* Effect.forEach(batch, entry => Effect.exit(deliverOne(client, ctx, entry, isStopping)), {
+    concurrency: OUTBOX_WORKER_BATCH_LIMIT
   });
-});
+  const interrupted = results.find(exit => Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause));
+  if (interrupted && Exit.isFailure(interrupted)) { return yield* Effect.failCause(interrupted.cause); }
+  const failed = results.find(Exit.isFailure);
+  if (failed) {
+    return yield* Effect.fail(new InvariantViolationError("Failed to finalize outbox delivery.", {
+      cause: errorFromCause(failed.cause)
+    }));
+  }
+  return { claimed: batch.length };
+}, Effect.catchCause(cause => {
+  if (Cause.hasInterrupts(cause)) {
+    return Effect.failCause(Cause.map(cause, error => error instanceof AppError ? error :
+      new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause: error })));
+  }
+  const error = errorFromCause(cause);
+  return Effect.fail(error instanceof AppError ? error :
+    new InvariantViolationError("Failed to finalize outbox delivery batch.", { cause: error }));
+}));

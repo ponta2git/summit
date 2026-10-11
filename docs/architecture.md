@@ -52,6 +52,8 @@ Session の `CANCELLED` は収束途中の短命な状態になり得る。一�
 
 batch の item failure は集計して次へ進み、同期 throw と非同期 reject で扱いを変えない。既存 AppError 以外の予期しない失敗は invariant error とする。対象の取得・識別、集計、失敗報告自体が壊れた場合は phase failure として伝える。interruption を item failure に変換して続行しない。
 
+出欠 outbox は明示した上限で並列配送し、全配送の settlement 後に入力順で最初の確定失敗を返す。render から配送までを同じ Effect の Context と中断管理下で合成し、defect / interruption を通常の retry 記録へ変換しない。
+
 env / config 不正、`assertNever`、成立しない起動前提は fail-fast にする。callback と fire-and-forget の最外周は失敗を必ず受け取り、裸の Promise を残さない。result dispatcher の公開境界は `Promise<void>` とし、内部で最終 DB 状態と安全な log に収束させる。送信前の DB failure は `delivery_failed`、送信後の確定失敗は `delivery_uncertain` と区別する。
 
 ### 実行と所有権
