@@ -4,6 +4,7 @@ import { durationSummary, performanceStage, type PerformanceScenario } from "./n
 import { cpuProfileSchema, heapProfileSchema, performanceMetrics } from "./notificationPerformance.metrics.ts";
 import { writePerformanceArtifact } from "./notificationPerformance.storage.ts";
 import type { runPerformanceScenario } from "./notificationPerformance.scenarios.ts";
+import { summarizePerformanceTimings } from "./notificationPerformance.statistics.ts";
 
 /** Expected identity conflicts roll back only the receipt transaction after its gate was acquired. */
 export const assertPerformanceOperationErrors = (
@@ -62,13 +63,7 @@ export const savePerformanceResult = async (directory: string, filename: string,
     unheld: durationSummary(result.httpSamples.filter(sample => sample.kind === kind && !sample.barrierHeld).map(sample => sample.milliseconds)),
     barrierHeld: durationSummary(result.httpSamples.filter(sample => sample.kind === kind && sample.barrierHeld).map(sample => sample.milliseconds))
   }]));
-  const operations = Object.fromEntries(Object.entries(metrics.operationDurationsMs).map(([key, values]) => [key, durationSummary(values)]));
-  const notificationLatencyMs = Object.fromEntries(Object.entries(metrics.notificationLatencyMs).map(([key, values]) => [key, durationSummary(values)]));
-  const latencyByKind = Object.fromEntries((["ocr_completed", "analysis_completed"] as const).map(kind => {
-    const values = metrics.completedNotifications.filter(value => value.kind === kind);
-    return [kind, Object.fromEntries((["queueWaitMs", "receiptToFirstSendMs", "receiptToCompleteMs", "claimToCompleteMs"] as const)
-      .map(key => [key, durationSummary(values.flatMap(value => value[key] === null || value[key] === undefined ? [] : [value[key]]))]))];
-  }));
+  const { operations, notificationLatencyMs, latencyByKind } = summarizePerformanceTimings([metrics]);
   const artifact = { schemaVersion: 1, run: { ...run, memoryMiB: 256, cpus: 1, swapMiB: 0 },
     workload: result.workload, host: { ...result.host, httpSamples: result.httpSamples, httpLatencyMs },
     metrics, statistics: { percentileMethod: "nearest-rank", operations, notificationLatencyMs, latencyByKind }, profiles: profileArtifacts,

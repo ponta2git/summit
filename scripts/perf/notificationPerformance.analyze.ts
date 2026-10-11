@@ -5,6 +5,7 @@ import { z } from "zod";
 import { durationSummary, performanceScenarios } from "./notificationPerformance.contract.ts";
 import { performanceMetrics } from "./notificationPerformance.metrics.ts";
 import { summarizeCpuProfile, summarizeHeapProfile } from "./notificationPerformance.profileSummary.ts";
+import { summarizePartDeciles, summarizePerformanceTimings } from "./notificationPerformance.statistics.ts";
 
 const sample = z.object({ kind: z.string(), status: z.number(), milliseconds: z.number(), barrierHeld: z.boolean() });
 const runSchema = z.object({
@@ -48,21 +49,6 @@ const runSummary = (run: Run) => ({
   observationCounts: run.metrics.retainedObservationCounts,
   maxClaimBatchBytes: run.metrics.maxClaimBatchBytes, maxActivePayloadBytes: run.metrics.maxActivePayloadBytes,
   maxPendingReceipts: run.metrics.maxPendingReceipts, maxPendingSends: run.metrics.maxPendingSends
-});
-
-const partDeciles = (runs: readonly Run[]) => Array.from({ length: 10 }, (_, decile) => {
-  const operations = Object.fromEntries((["begin", "complete"] as const).map(operation => {
-    const values = runs.flatMap(run => {
-      const counts = new Map(run.metrics.completedNotifications.map(value => [value.notificationOrdinal, value.parts]));
-      return run.metrics.partOperations[operation].filter(value => {
-        const count = counts.get(value.notificationOrdinal);
-        if (!count) { throw new Error("Missing notification part count"); }
-        return Math.min(9, Math.floor(value.partNo / count * 10)) === decile;
-      }).map(value => value.durationMs);
-    });
-    return [operation, durationSummary(values)];
-  }));
-  return { fromPercent: decile * 10, toPercent: (decile + 1) * 10, ...operations };
 });
 
 // Preserve each bucket's maximum rather than silently hiding sampled peaks.
@@ -113,15 +99,8 @@ const analyze = async (): Promise<void> => {
     const httpSamples = baseline.flatMap(run => run.host.httpSamples);
     const http = Object.fromEntries([...new Set(httpSamples.map(value => `${value.kind}:${value.status}:${value.barrierHeld ? "held" : "unheld"}`))].map(key => [key,
       durationSummary(httpSamples.filter(value => key === `${value.kind}:${value.status}:${value.barrierHeld ? "held" : "unheld"}`).map(value => value.milliseconds))]));
-    const operations = Object.fromEntries([...new Set(baseline.flatMap(run => Object.keys(run.metrics.operationDurationsMs)))].map(key =>
-      [key, durationSummary(baseline.flatMap(run => run.metrics.operationDurationsMs[key] ?? []))]));
-    const latencies = Object.fromEntries(Object.keys(representative.metrics.notificationLatencyMs).map(key => [key,
-      durationSummary(baseline.flatMap(run => run.metrics.notificationLatencyMs[key as keyof typeof run.metrics.notificationLatencyMs]))]));
-    const latencyByKind = Object.fromEntries((["ocr_completed", "analysis_completed"] as const).map(kind => {
-      const values = baseline.flatMap(run => run.metrics.completedNotifications.filter(value => value.kind === kind));
-      return [kind, Object.fromEntries((["queueWaitMs", "receiptToFirstSendMs", "receiptToCompleteMs", "claimToCompleteMs"] as const)
-        .map(key => [key, durationSummary(values.flatMap(value => value[key] === null || value[key] === undefined ? [] : [value[key]]))]))];
-    }));
+    const metrics = baseline.map(run => run.metrics);
+    const { operations, notificationLatencyMs: latencies, latencyByKind } = summarizePerformanceTimings(metrics);
     const profiles = [];
     for (const run of runs.filter(value => value.run.scenario === scenario && value.run.profiled)) {
       if (!run.profiles.cpu || !run.profiles.heap) { throw new Error("Missing profile artifact"); }
@@ -138,7 +117,7 @@ const analyze = async (): Promise<void> => {
     scenarios.push({ scenario, repetitions: baseline.length, fixture: representative.workload,
       baseline: baseline.map(runSummary), elapsedMs: durationSummary(baseline.map(run => run.host.elapsedMilliseconds)),
       throughputPartsPerSecond: total(baseline.map(run => run.workload.completedParts)) * 1000 / total(baseline.map(run => run.host.elapsedMilliseconds)),
-      http, operations, latencies, latencyByKind, partDeciles: partDeciles(baseline), representativeMemory: memoryTrace(representative), profiles });
+      http, operations, latencies, latencyByKind, partDeciles: summarizePartDeciles(metrics), representativeMemory: memoryTrace(representative), profiles });
   }
   const databaseDiagnostics = runs.filter(run => run.metrics.databaseDiagnostics?.enabled).map(run => ({
     artifact: run.artifact, scenario: run.run.scenario, ...run.metrics.databaseDiagnostics,
