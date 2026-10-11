@@ -26,7 +26,7 @@ OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ pr
 
 feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
 
-A/B の本文は `features/result-notifications`、配送は `scheduler/resultNotifications*` が所有する。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
+A/B の本文は `features/result-notifications`、配送は `scheduler/resultNotifications*` が所有する。HTTP の受付枠・本文予約・DB work の drain は [http.ts](../src/notifications/http.ts)、socket の header 待ち・再利用・pipeline の応答追跡は [http.connections.ts](../src/notifications/http.connections.ts) に集約する。未受付の接続を回収しても、受付済み DB work の所有を失わない境界とする。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
 
 ## 3. Composition root
 
@@ -105,6 +105,8 @@ active message の存在 probe と出欠の FAILED chain 再投入は startup �
 receiver は DB commit 後にだけ 2xx と wake を返す。request deadline で実行中 command の slot を先に解放せず、commit 後の切断を受付失敗に戻さない。初回 startup 完了前は 503、その後の一時的な Discord 切断中は DB 受付を続ける。
 
 dispatcher は出欠とは独立した上限付き slot と、実行中 payload の byte 予算を持つ。DB で本文サイズを確認してから claim し、予算待ちは配送完了で wake する。新規受付・枠補充の wake は次の timer turn で起動し、重複要求だけをまとめる。実行中・idle 移行中の wake を保持し、連続 wake で開始時刻を延期しない。出欠の debounce は変更しない。
+
+配送 Promise と予約 byte 数は同じ実行中 Map で所有し、残り予算はそこから導出する。timer と起動期限も一つの状態として保持し、別 counter や別変数の同期を前提にしない。
 
 次 retry / claim expiry は one-shot で起動する。DB failure の有限 backoff 中は、処理中に受けた wake や新規受付でも回復期限を早めない。claim と必要な次時刻取得がともに成功したときに reset し、有限 retry を使い切った後も新しい wake / supervisor で再開できる。
 

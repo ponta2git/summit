@@ -1,7 +1,7 @@
 import type { ResultNotificationKind } from "@momo/db";
 import { supportedResultNotification } from "./notifications.supported.ts";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationAttendance as attendance } from "../schema.ts";
 import { addMs } from "../../time/index.ts";
 import { afterDeliveryFailure } from "../../domain/notification.ts";
@@ -62,6 +62,29 @@ export interface NotificationClaimOptions {
   readonly preferredKind?: ResultNotificationKind;
 }
 
+/** Keep family-specific eligibility, ordering and parent locking in the candidate query. */
+const selectClaimCandidates = (
+  tx: NotificationDb, family: NotificationFamily, due: SQL | undefined, limit: number, preferredKind?: ResultNotificationKind
+) => {
+  const query = tx.select({
+    id: notifications.id, kind: notifications.kind, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts,
+    payloadBytes: family === "result" ? sql<number>`octet_length(${notifications.payload}::text)` : sql<number>`0`
+  }).from(notifications);
+  if (family === "result") {
+    return query.where(and(due, preferredKind ? eq(notifications.kind, preferredKind) : undefined))
+      .orderBy(notifications.nextAttemptAt, notifications.id).limit(limit).for("update", { skipLocked: true });
+  }
+  return query.innerJoin(attendance, eq(attendance.notificationId, notifications.id))
+    .where(and(due, isNotNull(attendance.sessionId), sql`NOT EXISTS (
+      SELECT 1 FROM discord_notification_attendance previous
+      JOIN discord_notifications predecessor ON predecessor.id = previous.notification_id
+      WHERE previous.session_id = ${attendance.sessionId} AND predecessor.status IN ('PENDING','IN_FLIGHT','FAILED')
+        AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal})
+    )`))
+    .orderBy(notifications.nextAttemptAt, attendance.sessionId, attendance.aggregateRevision, attendance.ordinal, notifications.id)
+    .limit(limit).for("update", { of: notifications, skipLocked: true });
+};
+
 export const claimNotifications = async (
   tx: NotificationDb, family: NotificationFamily, options: NotificationClaimOptions
 ): Promise<readonly string[]> => {
@@ -74,34 +97,19 @@ export const claimNotifications = async (
   const due = and(eq(notifications.family, family), family === "result" ? supportedResultNotification() : undefined, eq(notifications.status, "PENDING"),
     lte(notifications.nextAttemptAt, options.now), isNull(notifications.purgedAt),
     options.excludeIds?.length ? notInArray(notifications.id, [...options.excludeIds]) : undefined);
-  const selectCandidates = (limit: number, preferredKind?: ResultNotificationKind) => family === "result"
-    ? tx.select({ id: notifications.id, kind: notifications.kind, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts,
-      payloadBytes: sql<number>`octet_length(${notifications.payload}::text)` }).from(notifications)
-      .where(and(due, preferredKind ? eq(notifications.kind, preferredKind) : undefined)).orderBy(notifications.nextAttemptAt, notifications.id)
-      .limit(limit).for("update", { skipLocked: true })
-    : tx.select({ id: notifications.id, kind: notifications.kind, attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts,
-      payloadBytes: sql<number>`0` }).from(notifications).innerJoin(attendance, eq(attendance.notificationId, notifications.id))
-      .where(and(due, isNotNull(attendance.sessionId), sql`NOT EXISTS (
-        SELECT 1 FROM discord_notification_attendance previous
-        JOIN discord_notifications predecessor ON predecessor.id = previous.notification_id
-        WHERE previous.session_id = ${attendance.sessionId} AND predecessor.status IN ('PENDING','IN_FLIGHT','FAILED')
-          AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal})
-      )`))
-      .orderBy(notifications.nextAttemptAt, attendance.sessionId, attendance.aggregateRevision, attendance.ordinal, notifications.id)
-      .limit(limit).for("update", { of: notifications, skipLocked: true });
   const claimed: string[] = [];
   const payloadBudget = options.payloadBudgetBytes ?? RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
   let claimedBytes = 0;
   let scanned = 0;
   let preferredKind = options.preferredKind;
   while (claimed.length < options.limit && scanned < NOTIFICATION_MAINTENANCE_BATCH_SIZE) {
-    let rows = await selectCandidates(family === "result" && preferredKind ? 1
+    let rows = await selectClaimCandidates(tx, family, due, family === "result" && preferredKind ? 1
       : Math.min(options.limit - claimed.length, NOTIFICATION_MAINTENANCE_BATCH_SIZE - scanned));
     const oldest = rows[0];
     // invariant: 種別を交互に選んでも、予算に収まらない最古通知を追い越さない。
     if (family === "result" && preferredKind && oldest && oldest.kind !== preferredKind
       && oldest.payloadBytes <= payloadBudget - claimedBytes) {
-      const preferred = await selectCandidates(1, preferredKind);
+      const preferred = await selectClaimCandidates(tx, family, due, 1, preferredKind);
       if (preferred.length > 0) { rows = preferred; }
     }
     if (rows.length === 0) { break; }

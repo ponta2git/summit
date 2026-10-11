@@ -23,10 +23,8 @@ export const createResultNotificationDispatcher = (deps: {
   readonly logger?: Pick<Logger, "info" | "warn" | "error">;
 }): ResultNotificationDispatcher => {
   const logger = deps.logger ?? defaultLogger;
-  const active = new Map<string, Promise<void>>();
-  let activePayloadBytes = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let timerDueAt: number | undefined;
+  const active = new Map<string, { readonly work: Promise<void>; readonly payloadBytes: number }>();
+  let timer: { readonly handle: ReturnType<typeof setTimeout>; readonly dueAt: number } | undefined;
   let pumping: Promise<void> | undefined;
   let queued = false;
   let stopped = false;
@@ -35,34 +33,37 @@ export const createResultNotificationDispatcher = (deps: {
   let preferredKind: ResultNotificationKind = "ocr_completed";
   let wakeGeneration = 0;
   const deliveryDeps = { ...deps, logger, isStopping: () => stopped };
+  const remainingPayloadBytes = (): number => {
+    let remaining = RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
+    for (const delivery of active.values()) { remaining -= delivery.payloadBytes; }
+    return remaining;
+  };
   const schedule = (delay: number): void => {
     if (stopped) { return; }
     const boundedDelay = Math.max(0, Math.min(Math.max(delay, recoveryDueAt - performance.now()), 2_147_483_647));
     const dueAt = performance.now() + boundedDelay;
     // invariant: 新しい wake は既存の起動期限を遅らせない。継続的な受付でも配送を開始する。
-    if (timer !== undefined && timerDueAt !== undefined && timerDueAt <= dueAt) { return; }
-    clearTimeout(timer);
-    timerDueAt = dueAt;
-    timer = setTimeout(() => { timer = undefined; timerDueAt = undefined; void pump(); }, boundedDelay);
+    if (timer && timer.dueAt <= dueAt) { return; }
+    clearTimeout(timer?.handle);
+    timer = { dueAt, handle: setTimeout(() => { timer = undefined; void pump(); }, boundedDelay) };
   };
   const trackDelivery = (notificationId: string, payloadBytes: number, work: Promise<void>): void => {
     const delivery = work.catch(() => { logger.error({ event: "result_notification.dispatch_failed", notificationId }); })
-      .finally(() => { active.delete(notificationId); activePayloadBytes -= payloadBytes; dispatcher.wake("delivery_finished"); });
-    active.set(notificationId, delivery);
+      .finally(() => { active.delete(notificationId); dispatcher.wake("delivery_finished"); });
+    active.set(notificationId, { work: delivery, payloadBytes });
   };
   const startBatch = (batch: readonly ClaimedResultNotification[]): void => {
     if (stopped) { return; }
     for (const entry of batch) {
-      activePayloadBytes += entry.payloadBytes;
       preferredKind = entry.kind === "ocr_completed" ? "analysis_completed" : "ocr_completed";
       const oversized = entry.payloadBytes > RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
       let checkedGeneration = -1;
-      const shouldYield = (): boolean => {
+      const consumeYieldRequest = (): boolean => {
         if (oversized || checkedGeneration === wakeGeneration) { return false; }
         checkedGeneration = wakeGeneration;
         return true;
       };
-      trackDelivery(entry.id, entry.payloadBytes, deliverResultNotification({ ...deliveryDeps, shouldYield }, entry));
+      trackDelivery(entry.id, entry.payloadBytes, deliverResultNotification({ ...deliveryDeps, consumeYieldRequest }, entry));
     }
   };
   const pump = (): Promise<void> => {
@@ -72,13 +73,13 @@ export const createResultNotificationDispatcher = (deps: {
     pumping = (async () => {
       try {
         const capacity = RESULT_NOTIFICATION_CONCURRENCY - active.size;
-        const payloadBudgetBytes = RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - activePayloadBytes;
+        const payloadBudgetBytes = remainingPayloadBytes();
         if (capacity <= 0 || payloadBudgetBytes <= 0) { return; }
         // why: batch と raw payload は同期処理へ渡し、次の DB 待機や配送 callback に保持しない。
         startBatch(await deps.port.claim({ limit: capacity, now: deps.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS,
           excludeIds: [...active.keys()], payloadBudgetBytes, allowOversizedPayload: active.size === 0, preferredKind }));
         if (stopped) { return; }
-        if (active.size < RESULT_NOTIFICATION_CONCURRENCY && activePayloadBytes < RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES) {
+        if (active.size < RESULT_NOTIFICATION_CONCURRENCY && remainingPayloadBytes() > 0) {
           const next = await deps.port.getNextDispatchAt([...active.keys()]);
           // A due item may be waiting for the remaining byte budget. Completion
           // wakes us; polling that same item would spin while a delivery is slow.
@@ -111,8 +112,8 @@ export const createResultNotificationDispatcher = (deps: {
       logger.info({ event: "result_notification.wake", reason });
       if (!pumping) { schedule(0); }
     },
-    stop: () => { stopped = true; clearTimeout(timer); timer = undefined; timerDueAt = undefined; },
-    drain: async () => { await pumping; await Promise.all(active.values()); }
+    stop: () => { stopped = true; clearTimeout(timer?.handle); timer = undefined; },
+    drain: async () => { await pumping; await Promise.all(Array.from(active.values(), delivery => delivery.work)); }
   };
   return dispatcher;
 };
