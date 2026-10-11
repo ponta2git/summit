@@ -2,6 +2,37 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
+## 2026-10-12 通知待ち時間の改善
+
+**結果通知の即時wake、取消照会の集約、OCR／分析の公平配送、有限HTTP接続再利用を実装した。** 同じ計測器による各10ケース×3回の比較で、通常通知の受付→完了p95は **325.50→85.07 ms**、連続負荷は **5.212→3.841秒**、長い分析2件に後着するOCRの受付→初回送信p95は **1,313.95→67.32 ms** となった。本文・投稿数・2配送枠・512 KiB保持予算は変更していない。
+
+旧runtime `b1ad65d`／image `96f5f34da7a3` と新runtime `a3dce91`／image `17d37a9b82d99` を比較した。Node 24.21.0 / Linux arm64、同じNode base digest `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20`、momo-db `fdae7a5`、専用local PostgreSQL **18.4**、256 MiB・swapなし・1 CPU、Discord代替送信を使用。新実装の測定開始時は計測器commit `d9ed82e` でworking treeはcleanだった。これは複数の変更をまとめた比較であり、各最適化単独の寄与率や本番性能には換算しない。
+
+| ケース | 全完了の秒数：中央値［範囲］（旧→新） | cgroup peak MiB：最大（旧→新） |
+|---|---:|---:|
+| normal | 3.138［3.113–3.256］ → 0.640［0.562–0.757］ | 91.32 → 132.69 |
+| unicode | 10.798［10.443–11.055］ → 9.614［7.732–10.238］ | 92.41 → 99.36 |
+| markdown | 13.507［12.789–14.036］ → 9.461［9.235–9.946］ | 95.68 → 90.81 |
+| parts | 26.659［26.461–27.291］ → 27.570［25.026–31.546］ | 94.54 → 97.50 |
+| overlap | 3.061［2.872–3.361］ → 2.058［2.049–2.113］ | 146.85 → 135.43 |
+| legacy | 82.228［81.569–83.228］ → 81.045［80.841–82.245］ | 148.46 → 137.24 |
+| soak | 53.297［52.245–55.992］ → 41.248［41.223–41.860］ | 105.88 → 102.73 |
+| mixed | 15.579［15.461–15.610］ → 9.938［9.931–10.804］ | 91.10 → 96.12 |
+| stream | 4.721［4.680–4.723］ → 2.043［2.010–2.043］ | 82.29 → 86.13 |
+| legacyqueue | 92.120［89.931–98.134］ → 80.251［79.733–80.331］ | 175.69 → 150.48 |
+
+warmupを除く採用60実行は計1,440通知・184,680 partsをDB確定まで処理し、OOM・投稿契約違反・計測欠落・予期しないアプリエラーはなかった。`overlap`・公平配送3ケースは意図的な送信保留を含む。`parts` の中央値は3.4%増え、範囲も重なるため、このケースの高速化は確認できていない。通常通知等ではmemory peakが増えたケースもあり、一様なmemory削減とは扱わない。[集計JSON](./performance/notification-speed-20261012.json)に各実行・種別別p50／p95／p99・最大待ち時間・処理量・event loop・raw SHA-256を残した。
+
+`mixed` の分析完了p95は1.263→1.186秒だった。OCR連続到着の `stream` はOCR初回送信p95が3.681→0.206秒、全22通知の完了中央値が4.721→2.043秒。一方、分析完了p95は1.601→2.036秒へ延びた。OCR到着終了時に代替Discord送信が完了した分析投稿は旧77／78／78に対して新17／16／16で、分析は進むものの枠の譲渡によって遅くなる。これはOCR待ち時間とのトレードオフとして採用した。有限20件のOCR到着による観測であり、無制限負荷のSLAを示すものではない。旧大容量通知は途中譲渡せず、`legacyqueue` の全反復で先頭OCR→旧分析→後続OCRの順序と単独配送を維持した。
+
+DB診断は速度測定から分離して6実行を採取した。正常20投稿と多投稿224投稿の双方で、begin／completeは **17→16 SQL・2 transactions／投稿** だった。224投稿ではDrizzleが記録したstatementが2,912→2,688、成功transactionのBEGIN／COMMIT推計896を合わせて3,808→3,584 SQLとなる。claim・plan・renew・yieldは別計上する。新 `parts` のyield確認は2回・16 SQL、新 `mixed` は4回・34 SQLで、公平配送には追加の照会・再取得が伴う。診断にはtransaction入口・gate呼出し・gate応答後からcommitまでのwall timeを保存した。SQLのserver実行時間・通信・純lock待ちへ分解した値ではない。`plan＋最初のbegin` 統合はchannel取得失敗時のrenderer／宛先固定境界を変えるため採用を見送った。[DB契約](./db-rule.md#6-ocr分析通知の保存と取消)
+
+HTTP単独のloopback測定は同一候補receiver上のcold／reuseを各500要求×5回で比較した。1実行の接続数は500→5、cold要求p95は0.268 ms、再利用要求p95は0.111 ms、接続確立p95は0.043 ms。Node 24.19.0 / macOS arm64、DB代替・同一identityの重複受付・TLSなしであり、本番通信の短縮量を示さない。接続再利用は有限idle・要求数・受付予算と、異常時切断・shutdown drainの回帰検証を含めて採用した。
+
+容量gateは標準17通知・932 partsで **141.64 MiB** と192 MiB目標を達成した。別containerの旧8 MiB通知は8,823 partsの計画・先頭1 partと4競合受付を **174.50 MiB** で検証した。`pnpm run ci` は121 files／939 tests、実DB integrationは27 files／144 tests、Docker buildと非root・read-only・runtime依存検証も成功した。file-sizeは5件のadvisory。取消、gate後のREAD COMMITTED可視性、claim fencing、開始済み投稿保存、譲渡rollback／応答喪失からの再開を維持している。本番deploy・実Discord／Neonでの性能測定は行っていない。
+
+旧実装の最初の `legacyqueue` 試行は、編集中の計測検証がschemaから除かれる項目を比較して失敗した。負荷・probeは変更せず、生の計測結果から検証する確定版で同ケース3回を再実行した。成功済み27実行とこの3実行を採用し、失敗試行・元manifestのhashと除外理由を集計へ保存した。統合テストの初回はCIとの同時負荷で大量fixtureの2件が5秒期限を超えたが、負荷を分離した全suite再実行は成功した。いずれも失敗を成功sampleへ混ぜていない。
+
 ## 2026-10-11 Effect v4 移行後の検証
 
 **Effect 4.0.2 への移行後、容量 gate と7ケース各3回の性能測定を完了した。** 対象は runtime `b1ad65d`、image ID `96f5f34da7a3`、momo-db `fdae7a5`。測定開始時の working tree は clean で、Node base digest は `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20`。Node 24.21.0 / Linux arm64、専用の local PostgreSQL 18.6、256 MiB・swapなし・1 CPU、既存 fixture と Discord 代替送信で測定した。DB と負荷 client はアプリの resource 制限外にある。
