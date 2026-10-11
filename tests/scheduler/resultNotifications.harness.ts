@@ -1,7 +1,7 @@
 import { ChannelType, type MessageCreateOptions } from "discord.js";
 import { vi } from "vitest";
 import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifications.ts";
-import { analysisNotification } from "../features/result-notifications/fixtures.ts";
+import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
 import { deliverResultNotification } from "../../src/scheduler/resultNotifications.delivery.ts";
 import type { ClaimedResultNotification } from "../../src/db/ports.resultNotifications.ts";
@@ -29,6 +29,12 @@ export const resultWorkerHarness = () => {
       const payload = { ...original, notificationId: `result:analysis_completed:${jobId}`, sourceJobId: jobId, data: { ...original.data, matches: original.data.matches.map(match => ({ ...match, note: summary })) } };
       // Delivery must retain historical long notes even after admission limits tighten.
       port.seedStoredNotification(payload); return payload.notificationId;
+    },
+    enqueueOcr: async (submissionId?: string) => {
+      const payload = { ...ocrNotification(submissionId), settingsGeneration: "0" };
+      port.setTargetAvailable("match_draft", payload.data.matchDraftId, true);
+      await port.receive(JSON.stringify(payload), clock.now());
+      return payload.notificationId;
     },
     claim: async () => {
       const [entry] = await port.claim({ limit: 1, now: clock.now(), claimDurationMs: 30_000 });

@@ -88,25 +88,22 @@ export const cancelLockedNotifications = async (
   }).where(inArray(notifications.id, [...ids]));
 };
 
-/** Read cancellation evidence under the command's gate; never take source locks. */
+/** Read cancellation evidence in one statement after the command's gate; never take source locks. */
 export const loadResultCancellationReason = async (
   tx: NotificationDb, id: string
 ): Promise<ResultCancellationReason | null> => {
   const [context] = await tx.select({
-    enabled: settings.enabled, currentGeneration: settings.generation, receivedGeneration: results.settingsGeneration
+    enabled: settings.enabled, currentGeneration: settings.generation, receivedGeneration: results.settingsGeneration,
+    unavailableDraft: sql<boolean>`EXISTS (SELECT 1 FROM ${targets}
+      LEFT JOIN ${matchDrafts} ON ${matchDrafts.id} = ${targets.targetId}
+      WHERE ${targets.notificationId} = ${results.notificationId} AND ${targets.targetKind} = 'match_draft'
+        AND (${matchDrafts.id} IS NULL OR ${matchDrafts.status} IN ('confirmed', 'cancelled')
+          OR ${matchDrafts.confirmedMatchId} IS NOT NULL))`,
+    deletedMatch: sql<boolean>`EXISTS (SELECT 1 FROM ${targets}
+      LEFT JOIN ${matches} ON ${matches.id} = ${targets.targetId}
+      WHERE ${targets.notificationId} = ${results.notificationId} AND ${targets.targetKind} = 'match'
+        AND ${matches.id} IS NULL)`
   }).from(results).innerJoin(settings, eq(settings.kind, results.kind)).where(eq(results.notificationId, id));
   if (!context) { throw new Error("Missing notification result context"); }
-  const references = await tx.select({
-    kind: targets.targetKind, draftId: matchDrafts.id, draftStatus: matchDrafts.status,
-    confirmedMatchId: matchDrafts.confirmedMatchId, matchId: matches.id
-  }).from(targets)
-    .leftJoin(matchDrafts, and(eq(targets.targetKind, "match_draft"), eq(matchDrafts.id, targets.targetId)))
-    .leftJoin(matches, and(eq(targets.targetKind, "match"), eq(matches.id, targets.targetId)))
-    .where(eq(targets.notificationId, id));
-  return resultCancellationReason({
-    ...context,
-    unavailableDraft: references.some(target => target.kind === "match_draft" && (target.draftId === null
-      || target.draftStatus === "confirmed" || target.draftStatus === "cancelled" || target.confirmedMatchId !== null)),
-    deletedMatch: references.some(target => target.kind === "match" && target.matchId === null)
-  });
+  return resultCancellationReason(context);
 };

@@ -2,11 +2,13 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "../../src/db/schema.ts";
-import { discordNotifications as notifications, discordNotificationParts as parts, matchDrafts } from "../../src/db/schema.ts";
+import { discordNotifications as notifications, discordNotificationParts as parts,
+  discordNotificationSettings as settings, matchDrafts, matches } from "../../src/db/schema.ts";
 import { completeNotificationPart } from "../../src/db/repositories/notifications.delivery.ts";
 import { lockNotificationFamily, notificationTransaction } from "../../src/db/repositories/notifications.storage.ts";
 import { makeResultNotificationsPort } from "../../src/db/repositories/resultNotifications.ts";
 import { notificationNow as now, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
+import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { checkNotificationAdmission, createResultNotificationHarness } from "./_resultNotifications.ts";
 import { waitForBlockedBy } from "./locking.ts";
@@ -27,8 +29,8 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
   let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
   beforeEach(async () => { h = await createResultNotificationHarness(); });
 
-  const prepare = async (count: number) => {
-    await h.port.receive(JSON.stringify(ocrReceiptPayload()), now);
+  const prepare = async (count: number, kind = "ocr_completed") => {
+    await h.port.receive(JSON.stringify(kind === "analysis_completed" ? analysisNotification() : ocrReceiptPayload()), now);
     const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 30_000 });
     if (!entry) { throw new Error("Expected result notification claim"); }
     await h.port.plan(entry.id, entry.claimToken, {
@@ -85,12 +87,30 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     ] });
   });
 
-  it("rechecks source cancellation after waiting for the family gate", async () => {
-    const { id, claimToken } = await prepare(2);
+  it.each([
+    { change: "cancelled draft", reason: "draft_unavailable", kind: "ocr_completed" },
+    { change: "confirmed draft", reason: "draft_unavailable", kind: "ocr_completed" },
+    { change: "deleted draft", reason: "draft_unavailable", kind: "ocr_completed" },
+    { change: "deleted match", reason: "match_deleted", kind: "analysis_completed" },
+    { change: "OFF and cancelled draft", reason: "setting_off", kind: "ocr_completed" },
+    { change: "new generation and cancelled draft", reason: "stale_generation", kind: "ocr_completed" }
+  ])("rechecks $change after waiting for the family gate", async ({ change, reason, kind }) => {
+    const { id, claimToken } = await prepare(2, kind);
     const locked = deferred<number>(); const release = deferred<void>();
     const source = h.db.transaction(async tx => {
-      await tx.update(matchDrafts).set({ status: "cancelled" }).where(eq(matchDrafts.id, "draft-1"));
+      if (change === "deleted match") { await tx.delete(matches).where(eq(matches.id, "match-1")); }
+      else if (change === "deleted draft") { await tx.delete(matchDrafts).where(eq(matchDrafts.id, "draft-1")); }
+      else {
+        await tx.update(matchDrafts).set(change === "confirmed draft"
+          ? { status: "confirmed", confirmedMatchId: "match-1" } : { status: "cancelled" })
+          .where(eq(matchDrafts.id, "draft-1"));
+      }
       await lockNotificationFamily(tx, "result");
+      // regression: retain setting/generation precedence even when source cancellation is also visible.
+      if (change === "OFF and cancelled draft" || change === "new generation and cancelled draft") {
+        await tx.update(settings).set({ enabled: change !== "OFF and cancelled draft", generation: 2n })
+          .where(eq(settings.kind, "ocr_completed"));
+      }
       const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);
       if (!backend) { throw new Error("Expected source transaction backend"); }
       locked.resolve(backend.pid); await release.promise;
@@ -100,12 +120,12 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     try { await waitForBlockedBy(h.client, pid); }
     finally { release.resolve(); await source; }
     expect(await begin).toBe(false);
-    expect(await h.port.inspect(id)).toMatchObject({ status: "CANCELLED", cancelReason: "draft_unavailable", parts: [
+    expect(await h.port.inspect(id)).toMatchObject({ status: "CANCELLED", cancelReason: reason, parts: [
       { partNo: 0, status: "CANCELLED", attemptCount: 0 }, { partNo: 1, status: "CANCELLED", attemptCount: 0 }
     ] });
   });
 
-  it("delivers one part within thirteen application statements without rereading its payload", async () => {
+  it("delivers one part within twelve application statements without rereading its payload", async () => {
     const { id, claimToken } = await prepare(1);
     const queries: string[] = [];
     const measured = makeResultNotificationsPort(drizzle(h.client, { schema, casing: "snake_case",
@@ -113,8 +133,8 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     }), checkNotificationAdmission);
     expect(await measured.begin(id, 0, claimToken, now)).toBe(true);
     expect(await measured.complete(id, 0, claimToken, "message", at(1))).toBe(true);
-    // why: postgres.js の BEGIN / COMMIT 各2回は別に発行され、合計17 SQL・2 transactionsとなる。
-    expect(queries).toHaveLength(13);
+    // why: postgres.js の BEGIN / COMMIT 各2回は別に発行され、合計16 SQL・2 transactionsとなる。
+    expect(queries).toHaveLength(12);
     expect(queries.filter(query => query.startsWith("set transaction"))).toHaveLength(2);
     expect(queries.every(query => !query.includes('"payload"'))).toBe(true);
     expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", parts: [{ deliveredMessageId: "message" }] });

@@ -44,6 +44,7 @@ export interface ResultDeliveryDeps {
   readonly context: ResultDeliveryContext;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
   readonly isStopping: () => boolean;
+  readonly shouldYield?: () => boolean;
 }
 
 type ResultDeliveryMetadata = Pick<ClaimedResultNotification, "id" | "kind" | "claimToken" | "attemptCount" | "maxAttempts">;
@@ -114,6 +115,11 @@ const deliverPreparedResultNotification = async (
           notificationId: entry.id, kind: entry.kind, partNo, messageId, attempt: entry.attemptCount });
         if (!changed) { return; }
         sending = false;
+        if (nextPartNo < notification.partCount && !isClaimLost() && !deps.isStopping() && deps.shouldYield?.()
+          && (yield* databaseCall(() => port.yield(entry.id, entry.claimToken, clock.now())))) {
+          logger.info({ event: "result_notification.yielded", notificationId: entry.id, kind: entry.kind, partNo });
+          return;
+        }
       }
     })));
   } catch (error: unknown) {

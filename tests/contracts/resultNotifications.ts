@@ -166,6 +166,70 @@ export const resultNotificationContract = (
       expect(await port.inspect(second.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0, claimExpiresAt: null });
     });
 
+    it("alternates available kinds in claim order and uses spare slots for the remaining kind", async () => {
+      const ocr = ocrReceiptPayload(); const analysis = analysisNotification();
+      const second = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
+      await port.receive(JSON.stringify(ocr), at(0));
+      await port.receive(JSON.stringify(second), at(1));
+      await port.receive(JSON.stringify(analysis), at(2));
+      const batch = await port.claim({ limit: 3, now: at(3), claimDurationMs: 1_000, preferredKind: "analysis_completed" });
+      expect(batch.map(entry => entry.id)).toEqual([analysis.notificationId, ocr.notificationId, second.notificationId]);
+    });
+
+    it("hands off only after a completed part, keeps the snapshot, and does not charge a retry", async () => {
+      const analysis = analysisNotification(); await port.receive(JSON.stringify(analysis), notificationNow);
+      const entry = await claim(); await plan(entry.id, entry.claimToken, 3);
+      await receive();
+      expect(await port.yield(entry.id, entry.claimToken, at(1))).toBe(false);
+      await port.begin(entry.id, 0, entry.claimToken, at(2));
+      expect(await port.yield(entry.id, entry.claimToken, at(3))).toBe(false);
+      await port.complete(entry.id, 0, entry.claimToken, "before-yield", at(4));
+      expect(await port.yield(entry.id, entry.claimToken, at(5))).toBe(true);
+      expect(await port.inspect(entry.id)).toMatchObject({ status: "PENDING", attemptCount: 0, claimExpiresAt: null,
+        parts: [{ status: "DELIVERED", deliveredMessageId: "before-yield" }, { status: "PENDING" }, { status: "PENDING" }] });
+      expect(await port.yield(entry.id, entry.claimToken, at(6))).toBe(false);
+      expect(await port.begin(entry.id, 1, entry.claimToken, at(6))).toBe(false);
+      expect(await port.renew(entry.id, entry.claimToken, at(6), 1_000)).toBe(false);
+      const [resumed] = await port.claim({ limit: 1, now: at(7), claimDurationMs: 1_000, preferredKind: "analysis_completed" });
+      expect(resumed).toMatchObject({ id: entry.id, payload: analysis, attemptCount: 1,
+        partCount: 3, rendererVersion: 1, deliveryContext: context, deliveredPartNos: [0] });
+      expect(resumed?.claimToken).not.toBe(entry.claimToken);
+      if (!resumed) { throw new Error("Expected resumed claim"); }
+      expect(await port.begin(entry.id, 1, resumed.claimToken, at(8))).toBe(true);
+    });
+
+    it("does not hand off without another due kind or after expiry or cancellation", async () => {
+      const analysis = analysisNotification(); await port.receive(JSON.stringify(analysis), notificationNow);
+      const entry = await claim(); await plan(entry.id, entry.claimToken, 2);
+      await port.begin(entry.id, 0, entry.claimToken, at(1));
+      await port.complete(entry.id, 0, entry.claimToken, "sent", at(2));
+      expect(await port.yield(entry.id, entry.claimToken, at(3))).toBe(false);
+      await receive();
+      expect(await port.yield(entry.id, "wrong-token", at(4))).toBe(false);
+      expect(await port.yield(entry.id, entry.claimToken, at(1_000))).toBe(false);
+      expect(await port.inspect(entry.id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+      await harness.deleteMatch();
+      expect(await port.yield(entry.id, entry.claimToken, at(5))).toBe(false);
+      expect(await port.inspect(entry.id)).toMatchObject({ status: "CANCELLED", attemptCount: 1,
+        parts: [{ status: "DELIVERED", deliveredMessageId: "sent" }, { status: "CANCELLED" }] });
+    });
+
+    it("keeps the final retry available across a handoff but exhausts it on a subsequent crash", async () => {
+      const analysis = analysisNotification(); await port.receive(JSON.stringify(analysis), notificationNow);
+      let entry = await claim();
+      for (let attempt = 1; attempt < entry.maxAttempts; attempt += 1) { entry = await claim(attempt * 1_001); }
+      const ms = (entry.maxAttempts - 1) * 1_001;
+      await plan(entry.id, entry.claimToken, 3, ms);
+      await port.begin(entry.id, 0, entry.claimToken, at(ms + 1));
+      await port.complete(entry.id, 0, entry.claimToken, "last-attempt-sent", at(ms + 2));
+      await receive();
+      expect(await port.yield(entry.id, entry.claimToken, at(ms + 3))).toBe(true);
+      const [resumed] = await port.claim({ limit: 1, now: at(ms + 4), claimDurationMs: 1_000, preferredKind: "analysis_completed" });
+      expect(resumed).toMatchObject({ id: entry.id, attemptCount: entry.maxAttempts });
+      await port.claim({ limit: 3, now: at(ms + 1_005), claimDurationMs: 1_000 });
+      expect(await port.inspect(entry.id)).toMatchObject({ status: "FAILED", lastError: "attempt_limit", attemptCount: entry.maxAttempts });
+    });
+
     it("discovers the earlier retry or cancelled send expiry and excludes active IDs", async () => {
       const id = await receive(); const sending = await claim(); await plan(id, sending.claimToken);
       await port.begin(id, 0, sending.claimToken, at(1));

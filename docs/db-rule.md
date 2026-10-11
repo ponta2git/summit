@@ -119,9 +119,15 @@ OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後
 
 配送 query の集約でも family gate 取得後の新しい statement で取消を確認する。begin は前の未完了 part がないことと対象の PENDING を条件付き UPDATE で検証する。complete は part の DELIVERED 更新後、別 statement で残件を確認して親を確定する。同一 statement 内の更新 CTE と残件照会が更新後の状態を読めるとは仮定しない。
 
+取消条件の設定・世代・対象有無は gate 後の一 SELECT で取得し、理由の優先順位は domain の判定を維持する。正常な begin / complete は合計16 SQL・2 transactions（driver の BEGIN / COMMIT を含む）。claim・plan・renew・協調 yield は別計上する。plan と最初の begin の統合は、channel 取得失敗時にも renderer / 宛先を固定する現行境界が変わるため採用しない。再評価時は失敗・再開時の固定内容と削減効果を同時に検証する。
+
 claim は payload 本文を取得する前に DB 内で正規化 byte 数を調べ、実行中の通知を含む byte 予算と配送 slot の両方に収める。予算より大きい既受理 payload は、他に実行中の通知がない場合だけ単独で取得する。配送中に保持する予算は実処理の settlement まで解放せず、予算待ちの due row を短周期で再取得しない。本文は part 数を先に数えてから一投稿ずつ生成し、全投稿の文字列配列を保持しない。
 
 claim の part 情報は昇順・重複なしの配送済み番号に限定する。番号の欠落を許し、連続した prefix と決めつけず再開する。inspect は status・試行回数・message ID を含む詳細を維持する。
+
+result の dispatcher は希望種別を指定して OCR / 分析を交互に claim する。種別内は nextAttemptAt / ID 順を守り、予算に収まらない最古通知を追い越さない。片方だけが待つ場合は空き枠を使用する。
+
+協調 yield は part の complete 成功後、次の begin 前にだけ行う。gate 後に有効 claim・取消を再確認し、別種別の due 通知があり、開始中 part がなく、配送済みと未開始の両 part が残る通常容量通知だけを PENDING に戻して token を解放する。attemptCount は次の claim 加算と相殺するため一つ戻す。失敗・期限切れ・手動 retry の予算は戻さず、旧 token の更新は拒否する。保存済み plan / payload / 宛先 / 配送済み番号は維持し、再 claim は新 token で再開する。旧大容量通知は単独で完了させる。根拠は [共通契約](../tests/contracts/resultNotifications.ts) と [claim integration](../tests/integration/resultNotifications.claim.test.ts)。
 
 claim / 次時刻取得 / inspect / retry は同じ対応 version を扱う。退役 OCR の既存 identity は維持し、通常配送や retry に戻さない。A/B の FAILED は期限内・未取消の明示 retry だけを許し、startup で自動復活させない。ResultNotifications port は DB driver error を安全な分類へ変換し、raw payload / bind / cause を HTTP や log に漏らさない。
 

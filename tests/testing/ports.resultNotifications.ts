@@ -99,11 +99,18 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
       }
       const candidates = [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
-        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id));
       const result: ClaimedResultNotification[] = [];
       const payloadBudget = options.payloadBudgetBytes ?? RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
       let claimedBytes = 0;
-      for (const n of candidates) {
+      let preferredKind = options.preferredKind;
+      let scanned = 0;
+      while (candidates.length > 0 && scanned++ < NOTIFICATION_MAINTENANCE_BATCH_SIZE) {
+        const oldest = candidates[0];
+        const preferredIndex = preferredKind && oldest && oldest.payloadBytes <= payloadBudget - claimedBytes
+          ? candidates.findIndex(n => n.kind === preferredKind) : -1;
+        const [n] = candidates.splice(Math.max(0, preferredIndex), 1);
+        if (!n) { break; }
         if (n.attemptCount >= n.maxAttempts) { n.status = "FAILED"; n.lastError = "attempt_limit"; n.terminalAt = options.now; continue; }
         const why = reason(n); if (why) { cancel(n, why, options.now); continue; }
         if (n.payloadBytes > payloadBudget - claimedBytes && !(result.length === 0 && (options.allowOversizedPayload ?? true))) { break; }
@@ -113,6 +120,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
           maxAttempts: n.maxAttempts, partCount: n.partCount, rendererVersion: n.rendererVersion, deliveryContext: n.deliveryContext,
           deliveredPartNos: n.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo).sort((a, b) => a - b) }));
         claimedBytes += n.payloadBytes;
+        if (preferredKind) { preferredKind = n.kind === "ocr_completed" ? "analysis_completed" : "ocr_completed"; }
         if (claimedBytes > payloadBudget || result.length === options.limit) { break; }
       }
       return result;
@@ -150,6 +158,17 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       else if (n.parts.every(p => p.status === "DELIVERED")) {
         n.status = "DELIVERED"; n.terminalAt = now; n.claimToken = null; n.claimExpiresAt = null; n.lastError = null;
       }
+      return true;
+    },
+    yield: async (id, token, now) => {
+      recordCall(calls, "yield", { id, now });
+      const n = fenced(id, token, now); if (!n) { return false; }
+      const why = reason(n); if (why) { cancel(n, why, now); return false; }
+      if (n.payloadBytes > RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES || n.parts.some(part => part.status === "IN_FLIGHT")
+        || !n.parts.some(part => part.status === "DELIVERED") || !n.parts.some(part => part.status === "PENDING")
+        || ![...entries.values()].some(other => other.kind !== n.kind && isSupportedResultNotification(other.kind, other.schemaVersion)
+          && other.status === "PENDING" && other.nextAttemptAt <= now && !other.purgedAt)) { return false; }
+      n.status = "PENDING"; n.claimToken = null; n.claimExpiresAt = null; n.nextAttemptAt = now; n.attemptCount -= 1;
       return true;
     },
     fail: async (id, token, error, next, now) => {

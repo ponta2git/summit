@@ -7,6 +7,7 @@ import { beginNotificationPart, completeNotificationPart, failNotification, rene
 import { pruneNotificationBatches } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { receiveResultNotification } from "./resultNotifications.receipt.ts";
+import { yieldResultNotification } from "./resultNotifications.yield.ts";
 import { planResultNotification } from "./resultNotifications.plan.ts";
 import { findClaimedResultNotifications, getResultSetting, inspectResultNotification, retryResultNotification, setResultSetting } from "./resultNotifications.state.ts";
 
@@ -30,11 +31,18 @@ export const makeResultNotificationsPort = (db: DbLike, admissionCheck: ResultNo
     receive: (rawJson, now) => run(tx => receiveResultNotification(tx, rawJson, now, admissionCheck)),
     claim: options => run(async tx => {
       const ids = await claimNotifications(tx, "result", options);
-      return findClaimedResultNotifications(tx, ids);
+      const entries = await findClaimedResultNotifications(tx, ids);
+      const byId = new Map(entries.map(entry => [entry.id, entry]));
+      return ids.map(id => {
+        const entry = byId.get(id);
+        if (!entry) { throw new Error("Missing claimed notification"); }
+        return entry;
+      });
     }),
     plan: (id, token, options) => run(tx => planResultNotification(tx, id, token, options)),
     begin: (id, partNo, token, now) => run(tx => beginNotificationPart(tx, id, partNo, token, now, "result")),
     complete: (id, partNo, token, messageId, now) => run(tx => completeNotificationPart(tx, id, partNo, token, messageId, now, "result")),
+    yield: (id, token, now) => run(tx => yieldResultNotification(tx, id, token, now)),
     fail: (id, token, error, nextAttemptAt, now) => run(tx => failNotification(tx, id, token, error, nextAttemptAt, now, "result")),
     renew: (id, token, now, claimDurationMs) => run(tx => renewNotificationClaim(tx, id, token, now, claimDurationMs, "result")),
     getNextDispatchAt: excludeIds => findNextNotificationDispatchAt(db, "result", excludeIds).catch(sanitizeFailure),

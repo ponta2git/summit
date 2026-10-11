@@ -33,7 +33,9 @@
 | 性能・中 | 完了 Session を蓄積し、wake ごとに全件 CASE 集計を実行させる | status / 時刻 index の先頭を別々に取得。[1万件の実行計画](../tests/integration/schedulerQuery.performance.test.ts) |
 | 性能・信頼性・高 | 保守 backlog で family lock を保持し、配送 heartbeat を待たせる | 件数・pass 上限と batch ごとの commit、集合 SQL。[retention](../tests/integration/notifications.retention.test.ts)、[real / fake の保守上限](../tests/contracts/attendance.ts) |
 | 性能・信頼性・中 | 起動時 dead-letter の全 ID を IN 引数・メモリに展開する | Session の keyset page、DB 内の集合更新、同一チェーン原子性。[複数ページ](../tests/integration/outbox.recovery.capacity.test.ts) |
-| 信頼性・高 | A/B 受付を連続させ、毎回 timer を後ろへ張り直す | 予約済みの最早 wake を保持。[dispatcher](../tests/scheduler/resultNotifications.test.ts) |
+| 性能・信頼性・高 | A/B 受付の連続で起動を延期する、処理中の wake を失う、即時 wake が障害 backoff を破る | 次の timer turn へ重複要求を集約し、最早起動・処理中 wake・回復期限を保持。[dispatcher](../tests/scheduler/resultNotifications.test.ts) |
+| 性能・信頼性・中 | 長文分析2件が後着 OCR を待たせる、OCR の連続到着が分析・旧巨大通知を追い越す | 種別交互 claim、complete 後の譲渡、最古の予算待ちと旧巨大通知の単独配送。[公平配送](../tests/scheduler/resultNotifications.test.ts)、[実 DB claim](../tests/integration/resultNotifications.claim.test.ts) |
+| 信頼性・高 | 譲渡と heartbeat が競合する、譲渡 rollback・commit 後の応答喪失で試行数や送信済み投稿を失う | 共通 gate、token fencing、譲渡時の試行予算相殺、固定 snapshot と配送済み番号による再開。[real / fake 契約](../tests/contracts/resultNotifications.ts)、[実 DB 譲渡](../tests/integration/resultNotifications.yield.test.ts) |
 | 信頼性・高 | 出欠の hint / tick / 次時刻取得を一度だけ失敗させる | 有限 backoff、成功 reset、supervisor による再開。[controller recovery](../tests/scheduler/controller.recovery.test.ts) |
 | 信頼性・高 | Discord の rate-limit 待機で出欠 claim の期限を超える | 両 family の共通 heartbeat、期限切れ owner の復活禁止、renew の settlement。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts)、[real / fake 契約](../tests/contracts/attendance.ts) |
 | 信頼性・中 | Discord 受理後の DB 失敗で短時間再送する | 通知 / part の安定 nonce、begin / finalize fencing。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts) |
@@ -47,7 +49,7 @@
 | 信頼性・低 | 実在しない日付、0〜99年、完了済み開催の再描画 | 厳密な ISO date と確定時刻の保持。[日付](../tests/time/jst.test.ts)、[view model](../tests/discord/ask/viewModel.test.ts) |
 | 信頼性・保守性・低 | 表示 test と計算用の負定数を共有し、「-15分後」を正当化 | lead は正値、減算は計算箇所だけ。独立した期待文面。[reminder](../tests/features/reminder/delivery.test.ts) |
 | セキュリティ・中 | 表示名へ everyone / role / 設定外 user の mention を埋め込む | 既定禁止と固定 member 許可リスト、edit も明示。[mention policy](../tests/discord/mentionPolicy.test.ts) |
-| セキュリティ・中 | 未認証の header を完了せず接続を占有する | 接続からの絶対期限、接続上限、stop 時の回収。[connection](../tests/notifications/http.connections.test.ts) |
+| セキュリティ・中 | 初回・再利用・pipeline の header / body を完了せず接続や受付枠を占有する | 接続・応答完了からの header 期限、Node の pipeline 期限、有限 idle / 要求数、接続32・受付4の上限、未読本文と異常応答の切断、stop 時の回収。[connection](../tests/notifications/http.connections.test.ts)、[再利用と pipeline](../tests/notifications/http.keepAlive.test.ts) |
 | セキュリティ・中 | 運用 CLI に巨大・不正 UTF-8・終わらない応答を返す | 実 byte 上限、本文までの deadline、stream cancel。[CLI response](../tests/notifications/cli.response.test.ts) |
 | セキュリティ・中 | 秘匿文字列を含む不正 YAML / warning を設定する | 純粋 parser に集約、byte / alias 制限、安全な固定診断。[YAML](../tests/config/userConfig.yaml.test.ts) |
 | セキュリティ・低 | Authorization の重複や不正 Bearer token を使う | 単一 header と共通 token 構文、origin-form の要求。[HTTP](../tests/notifications/http.test.ts)、[env](../tests/env/env.test.ts) |
@@ -78,7 +80,7 @@
 
 ### 実行メモリの容量契約
 
-標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。設定の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を単独配送する。
+標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。譲渡した配送も heartbeat を含む settlement まで予約し、参照と予約を解放してから補充する。再開待ちの payload を別枠で保持しない。設定の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を途中譲渡せず単独配送する。
 
 合格条件は Node 24 / Debian の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
 

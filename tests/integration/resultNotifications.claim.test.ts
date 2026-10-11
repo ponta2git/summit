@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES } from "../../src/notifications/config.ts";
-import { notificationNow as now } from "../contracts/resultNotifications.ts";
+import { notificationNow as now, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
 import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 import { createResultNotificationHarness } from "./_resultNotifications.ts";
 import { isIntegration } from "./_support.ts";
@@ -48,6 +48,25 @@ import { isIntegration } from "./_support.ts";
     if (!entry) { throw new Error("Expected legacy claim"); }
     await h.port.fail(entry.id, entry.claimToken, "invalid_payload", null, now);
     expect((await h.port.claim(options)).map(value => value.id)).toEqual([normal.notificationId]);
+  });
+
+  it("does not let kind preference overtake an older oversized payload or yield its exclusive claim", async () => {
+    const legacy = storedPayload("a-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
+    await h.seedStoredNotification(legacy);
+    const ocr = ocrReceiptPayload(); await h.port.receive(JSON.stringify(ocr), now);
+    const options = { limit: 2, now, claimDurationMs: 30_000, preferredKind: "ocr_completed" as const,
+      payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES };
+    expect(await h.port.claim({ ...options, allowOversizedPayload: false })).toEqual([]);
+    const [entry] = await h.port.claim({ ...options, allowOversizedPayload: true });
+    expect(entry?.id).toBe(legacy.notificationId);
+    if (!entry) { throw new Error("Expected exclusive legacy claim"); }
+    await h.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
+      context: { channelId: "channel", webOrigin: "https://momo.example.com" }, now });
+    await h.port.begin(entry.id, 0, entry.claimToken, now);
+    await h.port.complete(entry.id, 0, entry.claimToken, "legacy-part", now);
+    expect(await h.port.yield(entry.id, entry.claimToken, now)).toBe(false);
+    expect(await h.port.inspect(entry.id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await h.port.inspect(ocr.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
   });
 
   it("fills the requested slot after removing exhausted and cancelled heads within a bounded scan", async () => {

@@ -16,17 +16,15 @@ describe("result notification dispatcher", () => {
   });
   const tick = () => vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
 
-  it("starts delivery by the first wake deadline while receipts keep arriving", async () => {
+  it("starts on the next timer turn and coalesces simultaneous wakes without delaying delivery", async () => {
     const h = resultWorkerHarness(); const id = await h.enqueue("continuous-receipts", "Short summary");
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("first_receipt");
-    for (let elapsed = 50; elapsed < SCHEDULER_WAKE_DEBOUNCE_MS; elapsed += 50) {
-      await vi.advanceTimersByTimeAsync(50);
-      dispatcher.wake("another_receipt");
-    }
+    dispatcher = createResultNotificationDispatcher(h);
+    for (let i = 0; i < 20; i += 1) { dispatcher.wake("receipt"); }
     expect(h.channel.send).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(0);
     expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
     expect(h.channel.send).toHaveBeenCalledOnce();
+    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(1);
   });
 
   it("continues filling free slots while a long delivery is pending and becomes idle after completion", async () => {
@@ -49,6 +47,50 @@ describe("result notification dispatcher", () => {
     const queries = h.port.calls.length;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(h.port.calls).toHaveLength(queries);
+  });
+
+  it("hands off at a completed post so a late OCR can pass two active analyses", async () => {
+    const h = resultWorkerHarness();
+    const first = await h.enqueue("a-analysis"); const second = await h.enqueue("b-analysis");
+    const firstRelease = deferred<{ id: string }>(); const secondRelease = deferred<{ id: string }>();
+    releases.push(() => firstRelease.resolve({ id: "analysis-first" }), () => secondRelease.resolve({ id: "analysis-second" }));
+    h.channel.send.mockImplementation(async body => {
+      if (body.nonce === notificationNonce(first, 0)) { return firstRelease.promise; }
+      if (body.nonce === notificationNonce(second, 0)) { return secondRelease.promise; }
+      return { id: String(body.nonce) };
+    });
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
+    expect(h.channel.send).toHaveBeenCalledTimes(2);
+    const ocr = await h.enqueueOcr(); dispatcher.wake("receipt"); await tick();
+    expect(await h.port.inspect(ocr)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    firstRelease.resolve({ id: "analysis-first" }); await tick(); await tick();
+    expect(await h.port.inspect(ocr)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(await h.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT" });
+    const nonces = h.channel.send.mock.calls.map(([body]) => body.nonce);
+    expect(nonces.indexOf(notificationNonce(ocr, 0))).toBeLessThan(nonces.indexOf(notificationNonce(first, 1)));
+    expect(await h.port.inspect(first)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    secondRelease.resolve({ id: "analysis-second" }); await dispatcher.drain();
+  });
+
+  it("keeps a long analysis progressing through repeated OCR arrivals without consuming retry attempts", async () => {
+    const h = resultWorkerHarness(); const analysis = await h.enqueue("analysis", "x".repeat(24_000));
+    const ocrIds: string[] = []; let nextPart = 0;
+    h.channel.send.mockImplementation(async body => {
+      if (body.nonce === notificationNonce(analysis, nextPart)) {
+        nextPart += 1;
+        ocrIds.push(await h.enqueueOcr(`${String(nextPart).padStart(8, "0")}-2222-4222-8222-222222222222`));
+        dispatcher?.wake("receipt");
+      }
+      return { id: String(body.nonce) };
+    });
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    for (let i = 0; i < 30; i += 1) { await tick(); }
+    const state = await h.port.inspect(analysis);
+    expect(state).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(state?.partCount).toBeGreaterThan(10);
+    expect(nextPart).toBe(state?.partCount);
+    for (const id of ocrIds) { expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1 }); }
+    expect(h.port.calls.filter(call => call.name === "yield").length).toBeGreaterThan(10);
   });
 
   it("retains a wake that arrives while the final idle query is in flight", async () => {
@@ -174,6 +216,22 @@ describe("result notification dispatcher", () => {
     expect(reclaimed).toHaveLength(1);
     expect(reclaimed[0]).toMatchObject({ id, attemptCount: 2 });
     expect(reclaimed[0]?.payloadBytes).toBeGreaterThan(0);
+  });
+
+  it("coalesces wakes during a failed pump without bypassing database recovery backoff", async () => {
+    const h = resultWorkerHarness(); const entered = deferred<void>(); const release = deferred<void>();
+    releases.push(() => release.resolve());
+    h.port.claim = vi.fn(async () => { entered.resolve(); await release.promise; throw new Error("unavailable"); });
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    await vi.advanceTimersByTimeAsync(0); await entered.promise;
+    for (let i = 0; i < 10; i += 1) { dispatcher.wake("receipt"); }
+    release.resolve(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.port.claim).toHaveBeenCalledTimes(1);
+    dispatcher.wake("receipt_after_failure"); await vi.advanceTimersByTimeAsync(0);
+    expect(h.port.claim).toHaveBeenCalledTimes(1);
+    const delay = RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[0];
+    await vi.advanceTimersByTimeAsync(delay);
+    expect(h.port.claim).toHaveBeenCalledTimes(2);
   });
 
   it.each(["claim", "getNextDispatchAt"] as const)("bounds consecutive %s failures, then recovers on a supervisor wake", async operation => {
