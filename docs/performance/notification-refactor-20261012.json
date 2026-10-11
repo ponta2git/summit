@@ -1,0 +1,3589 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Preserve notification performance while simplifying ownership and aggregation",
+  "runtimeCommits": {
+    "before": "a3dce91",
+    "after": "ae8e94f"
+  },
+  "measurementOrder": [
+    {
+      "variant": "before",
+      "scenario": "normal"
+    },
+    {
+      "variant": "after",
+      "scenario": "normal"
+    },
+    {
+      "variant": "after",
+      "scenario": "parts"
+    },
+    {
+      "variant": "before",
+      "scenario": "parts"
+    },
+    {
+      "variant": "before",
+      "scenario": "mixed"
+    },
+    {
+      "variant": "after",
+      "scenario": "mixed"
+    },
+    {
+      "variant": "after",
+      "scenario": "stream"
+    },
+    {
+      "variant": "before",
+      "scenario": "stream"
+    }
+  ],
+  "methodology": {
+    "repetitionsPerVariantPerScenario": 3,
+    "rounds": 5,
+    "freshDatabaseAndContainerPerRun": true,
+    "fakeDiscordTransport": true,
+    "memoryMiB": 256,
+    "swapMiB": 0,
+    "cpus": 1,
+    "percentiles": "nearest-rank over pooled raw observations",
+    "smallSampleAndLocalEnvironmentDoNotEstablishProductionSLA": true
+  },
+  "scenarios": {
+    "normal": {
+      "before": {
+        "imageId": "sha256:17d37a9b82d992be4d1aef0646a018f8809d5742967fa1f175daf18a969c4f50",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 30,
+        "parts": 30,
+        "elapsedMs": {
+          "count": 3,
+          "min": 242.19283299999915,
+          "max": 281.6101659999995,
+          "mean": 255.93066633333333,
+          "p50": 243.9890000000014,
+          "p95": 281.6101659999995,
+          "p99": 281.6101659999995,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 7.790166000000227,
+              "max": 18.606583000000228,
+              "mean": 11.750091733333283,
+              "p50": 10.057791999999608,
+              "p95": 18.606583000000228,
+              "p99": 18.606583000000228,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 35.23954100000037,
+              "max": 46.984707999999955,
+              "mean": 40.296161,
+              "p50": 40.12629199999992,
+              "p95": 46.984707999999955,
+              "p99": 46.984707999999955,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 41.41070899999977,
+              "max": 54.63725000000022,
+              "mean": 47.08248060000008,
+              "p50": 46.3494169999999,
+              "p95": 54.63725000000022,
+              "p99": 54.63725000000022,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 19.198041999999987,
+              "max": 27.19329199999993,
+              "mean": 22.119138933333367,
+              "p50": 22.039208000000144,
+              "p95": 27.19329199999993,
+              "p99": 27.19329199999993,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 7.496375000000171,
+              "max": 18.212499999999636,
+              "mean": 12.694997333333323,
+              "p50": 13.218958999999813,
+              "p95": 18.212499999999636,
+              "p99": 18.212499999999636,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 32.1723750000001,
+              "max": 51.92483399999992,
+              "mean": 39.29743626666668,
+              "p50": 39.56966700000021,
+              "p95": 51.92483399999992,
+              "p99": 51.92483399999992,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 38.48058399999991,
+              "max": 59.38554199999999,
+              "mean": 46.08882506666662,
+              "p50": 46.439750000000004,
+              "p95": 59.38554199999999,
+              "p99": 59.38554199999999,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 17.67729099999997,
+              "max": 27.375750000000153,
+              "mean": 21.070749799999916,
+              "p50": 20.35174999999981,
+              "p95": 27.375750000000153,
+              "p99": 27.375750000000153,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 30,
+            "min": 32.1723750000001,
+            "max": 51.92483399999992,
+            "mean": 39.79679863333334,
+            "p50": 39.56966700000021,
+            "p95": 46.984707999999955,
+            "p99": 51.92483399999992,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 30,
+            "min": 38.48058399999991,
+            "max": 59.38554199999999,
+            "mean": 46.585652833333356,
+            "p50": 46.3494169999999,
+            "p95": 54.63725000000022,
+            "p99": 59.38554199999999,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 30,
+            "min": 11.44787499999984,
+            "max": 19.915042000000085,
+            "mean": 14.806090166666626,
+            "p50": 14.603834000000006,
+            "p95": 19.421542000000045,
+            "p99": 19.915042000000085,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 30,
+            "min": 17.67729099999997,
+            "max": 27.375750000000153,
+            "mean": 21.594944366666642,
+            "p50": 20.945541999999932,
+            "p95": 27.19329199999993,
+            "p99": 27.375750000000153,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 30,
+            "min": 5.6161669999996775,
+            "max": 8.44158299999981,
+            "mean": 6.7888542000000145,
+            "p50": 6.773125000000164,
+            "p95": 7.9551250000004075,
+            "p99": 8.44158299999981,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "normal-01.json",
+            "elapsedMs": 281.6101659999995,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 73.375,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.608639,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "normal-02.json",
+            "elapsedMs": 243.9890000000014,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 73.19921875,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.739711,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "normal-03.json",
+            "elapsedMs": 242.19283299999915,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 72.9296875,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.813439,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      },
+      "after": {
+        "imageId": "sha256:f08cdefff5bc1ccf58370e2140a0592473ed79fad7dd6adb741c76cbba9c01b3",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 30,
+        "parts": 30,
+        "elapsedMs": {
+          "count": 3,
+          "min": 235.89749999999913,
+          "max": 246.425209,
+          "mean": 240.38415299999937,
+          "p50": 238.82974999999897,
+          "p95": 246.425209,
+          "p99": 246.425209,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 7.203625000000102,
+              "max": 15.370249999999942,
+              "mean": 10.020063933333374,
+              "p50": 8.812083000000257,
+              "p95": 15.370249999999942,
+              "p99": 15.370249999999942,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 32.18183399999998,
+              "max": 43.608458000000155,
+              "mean": 37.63460293333331,
+              "p50": 37.648499999999785,
+              "p95": 43.608458000000155,
+              "p99": 43.608458000000155,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 37.938624999999774,
+              "max": 50.546625000000404,
+              "mean": 43.69619733333335,
+              "p50": 43.48912500000006,
+              "p95": 50.546625000000404,
+              "p99": 50.546625000000404,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 16.46283399999993,
+              "max": 22.65054199999986,
+              "mean": 19.907844466666667,
+              "p50": 20.68491700000004,
+              "p95": 22.65054199999986,
+              "p99": 22.65054199999986,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 5.980083999999806,
+              "max": 16.01608299999998,
+              "mean": 12.115861133333329,
+              "p50": 13.814000000000306,
+              "p95": 16.01608299999998,
+              "p99": 16.01608299999998,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 31.482790999999906,
+              "max": 47.76091699999961,
+              "mean": 36.78450833333327,
+              "p50": 35.26620899999989,
+              "p95": 47.76091699999961,
+              "p99": 47.76091699999961,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 37.66658299999972,
+              "max": 54.06595799999968,
+              "mean": 42.93469999999994,
+              "p50": 41.8627919999999,
+              "p95": 54.06595799999968,
+              "p99": 54.06595799999968,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 17.574499999999716,
+              "max": 24.136207999999897,
+              "mean": 19.964994466666635,
+              "p50": 19.28833399999985,
+              "p95": 24.136207999999897,
+              "p99": 24.136207999999897,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 30,
+            "min": 31.482790999999906,
+            "max": 47.76091699999961,
+            "mean": 37.20955563333329,
+            "p50": 36.493417000000136,
+            "p95": 43.608458000000155,
+            "p99": 47.76091699999961,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 30,
+            "min": 37.66658299999972,
+            "max": 54.06595799999968,
+            "mean": 43.31544866666665,
+            "p50": 42.92975000000024,
+            "p95": 50.546625000000404,
+            "p99": 54.06595799999968,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 30,
+            "min": 10.810042000000067,
+            "max": 18.402000000000044,
+            "mean": 13.830526433333292,
+            "p50": 13.70658400000002,
+            "p95": 17.831166999999823,
+            "p99": 18.402000000000044,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 30,
+            "min": 16.46283399999993,
+            "max": 24.136207999999897,
+            "mean": 19.936419466666653,
+            "p50": 19.335499999999683,
+            "p95": 23.798999999999978,
+            "p99": 24.136207999999897,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 30,
+            "min": 4.489042000000154,
+            "max": 6.938167000000249,
+            "mean": 6.105893033333359,
+            "p50": 6.155167000000347,
+            "p95": 6.808166999999685,
+            "p99": 6.938167000000249,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "normal-01.json",
+            "elapsedMs": 246.425209,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 73.3984375,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.313727,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "normal-02.json",
+            "elapsedMs": 238.82974999999897,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 73.3046875,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.567679,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "normal-03.json",
+            "elapsedMs": 235.89749999999913,
+            "notifications": 10,
+            "parts": 10,
+            "cgroupPeakMiB": 73.66796875,
+            "maxActivePayloadBytes": 6838,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 10.502143,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      }
+    },
+    "parts": {
+      "after": {
+        "imageId": "sha256:f08cdefff5bc1ccf58370e2140a0592473ed79fad7dd6adb741c76cbba9c01b3",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 30,
+        "parts": 3360,
+        "elapsedMs": {
+          "count": 3,
+          "min": 12650.068667,
+          "max": 13816.175791000001,
+          "mean": 13070.5725,
+          "p50": 12745.473042000001,
+          "p95": 13816.175791000001,
+          "p99": 13816.175791000001,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 16.93645800000013,
+              "max": 68.22470799999974,
+              "mean": 38.63054859999984,
+              "p50": 28.110333999999966,
+              "p95": 65.78712499999983,
+              "p99": 68.22470799999974,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 97.93512499999997,
+              "max": 170.63958300000013,
+              "mean": 131.69357646666668,
+              "p50": 131.46129199999996,
+              "p95": 155.87483299999985,
+              "p99": 170.63958300000013,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 2394.4095429999998,
+              "max": 3437.0265849999996,
+              "mean": 2594.8986206,
+              "p50": 2569.48246,
+              "p95": 3433.4590430000007,
+              "p99": 3437.0265849999996,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 2321.7965010000007,
+              "max": 3328.252709999999,
+              "mean": 2503.3770622333336,
+              "p50": 2471.154877000001,
+              "p95": 3325.3566260000007,
+              "p99": 3328.252709999999,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 30,
+            "min": 97.93512499999997,
+            "max": 170.63958300000013,
+            "mean": 131.69357646666668,
+            "p50": 131.46129199999996,
+            "p95": 155.87483299999985,
+            "p99": 170.63958300000013,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 30,
+            "min": 2394.4095429999998,
+            "max": 3437.0265849999996,
+            "mean": 2594.8986206,
+            "p50": 2569.48246,
+            "p95": 3433.4590430000007,
+            "p99": 3437.0265849999996,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 30,
+            "min": 28.990458999998737,
+            "max": 77.44708399999945,
+            "mean": 40.17201810000012,
+            "p50": 36.300084000000425,
+            "p95": 74.3154169999998,
+            "p99": 77.44708399999945,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 30,
+            "min": 2321.7965010000007,
+            "max": 3328.252709999999,
+            "mean": 2503.3770622333336,
+            "p50": 2471.154877000001,
+            "p95": 3325.3566260000007,
+            "p99": 3328.252709999999,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 30,
+            "min": 2286.3969180000004,
+            "max": 3290.274168,
+            "mean": 2463.2050441333336,
+            "p50": 2433.11996,
+            "p95": 3281.1517519999998,
+            "p99": 3290.274168,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "parts-01.json",
+            "elapsedMs": 12650.068667,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 97.28125,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.157503,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "parts-02.json",
+            "elapsedMs": 12745.473042000001,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 89.58984375,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.173887,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "parts-03.json",
+            "elapsedMs": 13816.175791000001,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 88.9140625,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.362303,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      },
+      "before": {
+        "imageId": "sha256:17d37a9b82d992be4d1aef0646a018f8809d5742967fa1f175daf18a969c4f50",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 30,
+        "parts": 3360,
+        "elapsedMs": {
+          "count": 3,
+          "min": 13258.453916999999,
+          "max": 20029.660292,
+          "mean": 16118.206597666665,
+          "p50": 15066.505583999999,
+          "p95": 20029.660292,
+          "p99": 20029.660292,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 0,
+              "min": null,
+              "max": null,
+              "mean": null,
+              "p50": null,
+              "p95": null,
+              "p99": null,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 16.907375000000684,
+              "max": 171.3370840000007,
+              "mean": 54.138604199999904,
+              "p50": 53.481958000000304,
+              "p95": 115.02645899999698,
+              "p99": 171.3370840000007,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 91.32020900000134,
+              "max": 444.5728330000011,
+              "mean": 180.20808340000002,
+              "p50": 148.09720900000002,
+              "p95": 421.8137080000006,
+              "p99": 444.5728330000011,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 2420.569085000001,
+              "max": 4626.91096,
+              "mean": 3205.972186166667,
+              "p50": 2966.6376259999997,
+              "p95": 4621.579210000001,
+              "p99": 4626.91096,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 2357.292168,
+              "max": 4347.972168,
+              "mean": 3077.3842207666667,
+              "p50": 2844.8496259999993,
+              "p95": 4344.343168,
+              "p99": 4347.972168,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 30,
+            "min": 91.32020900000134,
+            "max": 444.5728330000011,
+            "mean": 180.20808340000002,
+            "p50": 148.09720900000002,
+            "p95": 421.8137080000006,
+            "p99": 444.5728330000011,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 30,
+            "min": 2420.569085000001,
+            "max": 4626.91096,
+            "mean": 3205.972186166667,
+            "p50": 2966.6376259999997,
+            "p95": 4621.579210000001,
+            "p99": 4626.91096,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 30,
+            "min": 28.043292000000292,
+            "max": 165.63404100000116,
+            "mean": 51.62011799999997,
+            "p50": 41.40312500000073,
+            "p95": 144.57766600000014,
+            "p99": 165.63404100000116,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 30,
+            "min": 2357.292168,
+            "max": 4347.972168,
+            "mean": 3077.3842207666667,
+            "p50": 2844.8496259999993,
+            "p95": 4344.343168,
+            "p99": 4347.972168,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 30,
+            "min": 2329.2488759999997,
+            "max": 4263.093335000001,
+            "mean": 3025.764102766667,
+            "p50": 2778.5870430000014,
+            "p95": 4252.583126999998,
+            "p99": 4263.093335000001,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "parts-01.json",
+            "elapsedMs": 13258.453916999999,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 87.24609375,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.280383,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "parts-02.json",
+            "elapsedMs": 15066.505583999999,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 86.765625,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.329535,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "parts-03.json",
+            "elapsedMs": 20029.660292,
+            "notifications": 10,
+            "parts": 1120,
+            "cgroupPeakMiB": 99.41796875,
+            "maxActivePayloadBytes": 400380,
+            "maxPendingSends": 1,
+            "eventLoopDelayP95Ms": 11.747327,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      }
+    },
+    "mixed": {
+      "before": {
+        "imageId": "sha256:17d37a9b82d992be4d1aef0646a018f8809d5742967fa1f175daf18a969c4f50",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 45,
+        "parts": 2175,
+        "elapsedMs": {
+          "count": 3,
+          "min": 5177.499917000001,
+          "max": 5626.371917000002,
+          "mean": 5381.701000333334,
+          "p50": 5341.231167000001,
+          "p95": 5626.371917000002,
+          "p99": 5626.371917000002,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 22.477958999999828,
+              "max": 29.526832999999897,
+              "mean": 25.36652773333326,
+              "p50": 24.869708000000173,
+              "p95": 29.526832999999897,
+              "p99": 29.526832999999897,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 46.386708,
+              "max": 64.98183400000016,
+              "mean": 52.329488933333444,
+              "p50": 50.969834000000446,
+              "p95": 64.98183400000016,
+              "p99": 64.98183400000016,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 50.85591699999986,
+              "max": 70.84795900000063,
+              "mean": 57.90499166666671,
+              "p50": 57.04700000000048,
+              "p95": 70.84795900000063,
+              "p99": 70.84795900000063,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 22.04650000000038,
+              "max": 31.03833399999985,
+              "mean": 24.673533333333218,
+              "p50": 24.133708000000297,
+              "p95": 31.03833399999985,
+              "p99": 31.03833399999985,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 11.046125000000757,
+              "max": 68.4931660000002,
+              "mean": 22.12228610000008,
+              "p50": 14.503916000000572,
+              "p95": 41.95329200000015,
+              "p99": 68.4931660000002,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 43.58824999999979,
+              "max": 174.76024999999981,
+              "mean": 80.84923753333325,
+              "p50": 77.69116599999961,
+              "p95": 144.2654579999994,
+              "p99": 174.76024999999981,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 928.1960430000008,
+              "max": 1427.3865420000002,
+              "mean": 1047.5039283333333,
+              "p50": 1026.984375,
+              "p95": 1409.0468339999998,
+              "p99": 1427.3865420000002,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 892.6905840000009,
+              "max": 1373.8133340000004,
+              "mean": 994.4122226666666,
+              "p50": 973.3509590000003,
+              "p95": 1355.9628750000002,
+              "p99": 1373.8133340000004,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 45,
+            "min": 43.58824999999979,
+            "max": 174.76024999999981,
+            "mean": 71.34265466666665,
+            "p50": 65.21600000000035,
+            "p95": 115.32379200000014,
+            "p99": 174.76024999999981,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 45,
+            "min": 50.85591699999986,
+            "max": 1427.3865420000002,
+            "mean": 717.6376161111111,
+            "p50": 985.9989169999999,
+            "p95": 1156.4127089999997,
+            "p99": 1427.3865420000002,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 45,
+            "min": 14.916040999999495,
+            "max": 63.99791699999969,
+            "mean": 24.87103144444434,
+            "p50": 21.993499999999585,
+            "p95": 44.15404200000012,
+            "p99": 63.99791699999969,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 45,
+            "min": 22.04650000000038,
+            "max": 1373.8133340000004,
+            "mean": 671.1659928888888,
+            "p50": 937.398709,
+            "p95": 1049.3164589999997,
+            "p99": 1373.8133340000004,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 45,
+            "min": 4.413833000000523,
+            "max": 1350.4198750000005,
+            "mean": 646.2949614444445,
+            "p50": 911.1389169999993,
+            "p95": 1000.928417000001,
+            "p99": 1350.4198750000005,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "mixed-01.json",
+            "elapsedMs": 5341.231167000001,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 100.6484375,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 11.067391,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "mixed-02.json",
+            "elapsedMs": 5626.371917000002,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 90.33984375,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.969087,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "mixed-03.json",
+            "elapsedMs": 5177.499917000001,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 86.65625,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.780671,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      },
+      "after": {
+        "imageId": "sha256:f08cdefff5bc1ccf58370e2140a0592473ed79fad7dd6adb741c76cbba9c01b3",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 45,
+        "parts": 2175,
+        "elapsedMs": {
+          "count": 3,
+          "min": 5533.855750000002,
+          "max": 5597.740417000001,
+          "mean": 5566.256375333334,
+          "p50": 5567.1729589999995,
+          "p95": 5597.740417000001,
+          "p99": 5597.740417000001,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 15,
+              "min": 22.345249999999396,
+              "max": 32.20520799999986,
+              "mean": 25.917758333333282,
+              "p50": 24.80437499999971,
+              "p95": 32.20520799999986,
+              "p99": 32.20520799999986,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 15,
+              "min": 47.39320899999984,
+              "max": 71.94845799999985,
+              "mean": 53.32408333333327,
+              "p50": 50.197000000000116,
+              "p95": 71.94845799999985,
+              "p99": 71.94845799999985,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 15,
+              "min": 52.39379099999951,
+              "max": 78.26429199999984,
+              "mean": 58.42778339999989,
+              "p50": 54.88104199999998,
+              "p95": 78.26429199999984,
+              "p99": 78.26429199999984,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 15,
+              "min": 22.746749999999338,
+              "max": 33.47683400000005,
+              "mean": 24.94595013333334,
+              "p50": 23.746040999999423,
+              "p95": 33.47683400000005,
+              "p99": 33.47683400000005,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 10.997124999999869,
+              "max": 71.94000000000005,
+              "mean": 24.366474999999962,
+              "p50": 17.856667000000016,
+              "p95": 57.30404200000021,
+              "p99": 71.94000000000005,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 48.51525000000038,
+              "max": 141.19337499999983,
+              "mean": 86.68202223333331,
+              "p50": 78.5478749999993,
+              "p95": 138.289041,
+              "p99": 141.19337499999983,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 1002.6794170000003,
+              "max": 1221.8087080000005,
+              "mean": 1092.1726990666666,
+              "p50": 1088.3722499999994,
+              "p95": 1209.6761259999998,
+              "p99": 1221.8087080000005,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 967.6603340000001,
+              "max": 1114.4375420000001,
+              "mean": 1034.1996102666667,
+              "p50": 1035.9247919999998,
+              "p95": 1103.1764589999998,
+              "p99": 1114.4375420000001,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 45,
+            "min": 47.39320899999984,
+            "max": 141.19337499999983,
+            "mean": 75.56270926666663,
+            "p50": 71.94845799999985,
+            "p95": 121.18375100000003,
+            "p99": 141.19337499999983,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 45,
+            "min": 52.39379099999951,
+            "max": 1221.8087080000005,
+            "mean": 747.5910605111111,
+            "p50": 1052.367792,
+            "p95": 1140.9514170000002,
+            "p99": 1221.8087080000005,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 45,
+            "min": 15.017166999999972,
+            "max": 57.693084000000454,
+            "mean": 25.75337231111115,
+            "p50": 23.72675000000072,
+            "p95": 40.55358299999989,
+            "p99": 57.693084000000454,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 45,
+            "min": 22.746749999999338,
+            "max": 1114.4375420000001,
+            "mean": 697.7817235555556,
+            "p50": 998.6731260000006,
+            "p95": 1099.2359589999996,
+            "p99": 1114.4375420000001,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 45,
+            "min": 4.495624999999563,
+            "max": 1083.5196670000005,
+            "mean": 672.0283512444444,
+            "p50": 970.6888339999996,
+            "p95": 1060.5064999999995,
+            "p99": 1083.5196670000005,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "mixed-01.json",
+            "elapsedMs": 5567.1729589999995,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 86.3828125,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.567679,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "mixed-02.json",
+            "elapsedMs": 5597.740417000001,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 87.78125,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.649599,
+            "analysisPartsAtArrivalEnd": null
+          },
+          {
+            "artifact": "mixed-03.json",
+            "elapsedMs": 5533.855750000002,
+            "notifications": 15,
+            "parts": 725,
+            "cgroupPeakMiB": 85.25,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.567679,
+            "analysisPartsAtArrivalEnd": null
+          }
+        ]
+      }
+    },
+    "stream": {
+      "after": {
+        "imageId": "sha256:f08cdefff5bc1ccf58370e2140a0592473ed79fad7dd6adb741c76cbba9c01b3",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 36,
+        "parts": 462,
+        "elapsedMs": {
+          "count": 3,
+          "min": 2996.510875,
+          "max": 3972.614125,
+          "mean": 3548.6255833333344,
+          "p50": 3676.751750000003,
+          "p95": 3972.614125,
+          "p99": 3972.614125,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 71.22562599999947,
+              "max": 655.5545000000002,
+              "mean": 365.9352265000001,
+              "p50": 269.98020799999995,
+              "p95": 650.7561249999999,
+              "p99": 655.5545000000002,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 113.75183399999969,
+              "max": 726.182417,
+              "mean": 445.8796474666668,
+              "p50": 402.5774590000001,
+              "p95": 725.7377919999999,
+              "p99": 726.182417,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 130.92333400000007,
+              "max": 745.3027499999998,
+              "mean": 468.8524446000002,
+              "p50": 481.24258400000053,
+              "p95": 736.636125,
+              "p99": 745.3027499999998,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 23.354624999999942,
+              "max": 189.22508300000027,
+              "mean": 61.3311223,
+              "p50": 41.25604199999998,
+              "p95": 150.2745840000007,
+              "p99": 189.22508300000027,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 6,
+              "min": 33.525416999999834,
+              "max": 131.00575000000026,
+              "mean": 81.9036251666668,
+              "p50": 74.44645899999978,
+              "p95": 131.00575000000026,
+              "p99": 131.00575000000026,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 6,
+              "min": 205.45479200000045,
+              "max": 582.7209590000002,
+              "mean": 355.8977920000002,
+              "p50": 334.00345800000014,
+              "p95": 582.7209590000002,
+              "p99": 582.7209590000002,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 6,
+              "min": 2915.592167999999,
+              "max": 3901.712710999999,
+              "mean": 3486.5675293333334,
+              "p50": 3618.247668000001,
+              "p95": 3901.712710999999,
+              "p99": 3901.712710999999,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 6,
+              "min": 2780.8072089999996,
+              "max": 3639.708959999999,
+              "mean": 3267.4235291666664,
+              "p50": 3381.04946,
+              "p95": 3639.708959999999,
+              "p99": 3639.708959999999,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 36,
+            "min": 113.75183399999969,
+            "max": 726.182417,
+            "mean": 430.8826715555557,
+            "p50": 399.40579199999956,
+            "p95": 725.7377919999999,
+            "p99": 726.182417,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 36,
+            "min": 130.92333400000007,
+            "max": 3901.712710999999,
+            "mean": 971.8049587222223,
+            "p50": 611.6778330000006,
+            "p95": 3843.2244599999995,
+            "p99": 3901.712710999999,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 36,
+            "min": 11.475333999999748,
+            "max": 277.7125420000002,
+            "mean": 54.757569611111094,
+            "p50": 30.357708999999886,
+            "p95": 190.0821249999999,
+            "p99": 277.7125420000002,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 36,
+            "min": 23.354624999999942,
+            "max": 3639.708959999999,
+            "mean": 595.6798567777777,
+            "p50": 47.86408299999948,
+            "p95": 3538.2160429999994,
+            "p99": 3639.708959999999,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 36,
+            "min": 10.81945799999994,
+            "max": 3449.626834999999,
+            "mean": 540.9222871666666,
+            "p50": 19.120332999999846,
+            "p95": 3325.8055429999995,
+            "p99": 3449.626834999999,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "stream-01.json",
+            "elapsedMs": 3972.614125,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 81.40234375,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 12.713983,
+            "analysisPartsAtArrivalEnd": 4
+          },
+          {
+            "artifact": "stream-02.json",
+            "elapsedMs": 3676.751750000003,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 88,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 11.329535,
+            "analysisPartsAtArrivalEnd": 5
+          },
+          {
+            "artifact": "stream-03.json",
+            "elapsedMs": 2996.510875,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 84.49609375,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 11.329535,
+            "analysisPartsAtArrivalEnd": 6
+          }
+        ]
+      },
+      "before": {
+        "imageId": "sha256:17d37a9b82d992be4d1aef0646a018f8809d5742967fa1f175daf18a969c4f50",
+        "probeSourceCommit": "9469c716b8dd916af007ef55a874c3ae131f55aa",
+        "schemaCommit": "fdae7a5795335aef12fc9f4cb67666c75f8c8607",
+        "lockfileSha256": "aaf4bcf9d4e9c16a6848684cf17c1e9afb9a10598e814d8f3fc08a463a233834",
+        "postgresVersion": "PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+        "runtime": {
+          "versions": {
+            "node": "24.21.0",
+            "acorn": "8.18.0",
+            "ada": "4.0.0",
+            "amaro": "1.1.11",
+            "ares": "1.34.8",
+            "brotli": "1.2.0",
+            "cldr": "48.0",
+            "icu": "78.3",
+            "llhttp": "9.4.3",
+            "merve": "1.2.2",
+            "modules": "137",
+            "napi": "10",
+            "nbytes": "0.1.4",
+            "ncrypto": "0.0.1",
+            "nghttp2": "1.70.0",
+            "nghttp3": "",
+            "ngtcp2": "",
+            "openssl": "3.5.8",
+            "simdjson": "4.6.7",
+            "simdutf": "6.4.0",
+            "sqlite": "3.53.4",
+            "tz": "2026c",
+            "undici": "7.29.1",
+            "unicode": "17.0",
+            "uv": "1.52.1",
+            "uvwasi": "0.0.23",
+            "v8": "13.6.233.17-node.53",
+            "zlib": "1.3.2.1-motley-8002e91",
+            "zstd": "1.5.7"
+          },
+          "platform": "linux",
+          "arch": "arm64"
+        },
+        "notifications": 36,
+        "parts": 462,
+        "elapsedMs": {
+          "count": 3,
+          "min": 1869.7721250000031,
+          "max": 3546.5024589999994,
+          "mean": 2584.897180666668,
+          "p50": 2338.4169580000016,
+          "p95": 3546.5024589999994,
+          "p99": 3546.5024589999994,
+          "smallTailSample": true
+        },
+        "latencyByKind": {
+          "ocr_completed": {
+            "queueWaitMs": {
+              "count": 30,
+              "min": 33.65962499999978,
+              "max": 280.2088339999991,
+              "mean": 136.2622888999999,
+              "p50": 125.69208400000025,
+              "p95": 266.4775000000009,
+              "p99": 280.2088339999991,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 30,
+              "min": 69.05662500000017,
+              "max": 313.304791999999,
+              "mean": 171.97987366666663,
+              "p50": 155.64379199999985,
+              "p95": 298.3473749999994,
+              "p99": 313.304791999999,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 30,
+              "min": 80.60262499999999,
+              "max": 326.2230839999993,
+              "mean": 187.58541263333322,
+              "p50": 169.49916699999994,
+              "p95": 313.81666699999914,
+              "p99": 326.2230839999993,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 30,
+              "min": 21.87537499999962,
+              "max": 69.44470799999908,
+              "mean": 35.3539500333333,
+              "p50": 29.33758299999863,
+              "p95": 68.70879199999945,
+              "p99": 69.44470799999908,
+              "smallTailSample": true
+            }
+          },
+          "analysis_completed": {
+            "queueWaitMs": {
+              "count": 6,
+              "min": 13.139333000000079,
+              "max": 60.806625999999596,
+              "mean": 33.78042366666674,
+              "p50": 27.872000000001208,
+              "p95": 60.806625999999596,
+              "p99": 60.806625999999596,
+              "smallTailSample": true
+            },
+            "receiptToFirstSendMs": {
+              "count": 6,
+              "min": 102.08712500000001,
+              "max": 168.36979200000133,
+              "mean": 129.61252116666697,
+              "p50": 116.10816699999987,
+              "p95": 168.36979200000133,
+              "p99": 168.36979200000133,
+              "smallTailSample": true
+            },
+            "receiptToCompleteMs": {
+              "count": 6,
+              "min": 1823.685167,
+              "max": 3529.207085,
+              "mean": 2470.6094318333335,
+              "p50": 2284.0482509999993,
+              "p95": 3529.207085,
+              "p99": 3529.207085,
+              "smallTailSample": true
+            },
+            "claimToCompleteMs": {
+              "count": 6,
+              "min": 1737.6276669999997,
+              "max": 3405.944168,
+              "mean": 2377.145640166667,
+              "p50": 2211.0836679999993,
+              "p95": 3405.944168,
+              "p99": 3405.944168,
+              "smallTailSample": true
+            }
+          }
+        },
+        "notificationLatencyMs": {
+          "receiptToFirstSend": {
+            "count": 36,
+            "min": 69.05662500000017,
+            "max": 313.304791999999,
+            "mean": 164.91864825000002,
+            "p50": 153.65033399999993,
+            "p95": 298.3473749999994,
+            "p99": 313.304791999999,
+            "smallTailSample": true
+          },
+          "receiptToComplete": {
+            "count": 36,
+            "min": 80.60262499999999,
+            "max": 3529.207085,
+            "mean": 568.0894158333333,
+            "p50": 201.29866700000002,
+            "p95": 3002.9227520000004,
+            "p99": 3529.207085,
+            "smallTailSample": true
+          },
+          "claimToFirstSend": {
+            "count": 36,
+            "min": 11.251999999999498,
+            "max": 48.449125000001004,
+            "mean": 22.481797472222283,
+            "p50": 15.88025000000016,
+            "p95": 45.10687500000131,
+            "p99": 48.449125000001004,
+            "smallTailSample": true
+          },
+          "claimToComplete": {
+            "count": 36,
+            "min": 21.87537499999962,
+            "max": 3405.944168,
+            "mean": 425.65256505555556,
+            "p50": 30.302999999999884,
+            "p95": 2880.619127,
+            "p99": 3405.944168,
+            "smallTailSample": true
+          },
+          "firstSendToComplete": {
+            "count": 36,
+            "min": 10.071416000000227,
+            "max": 3360.8372929999987,
+            "mean": 403.17076758333326,
+            "p50": 14.898333000000093,
+            "p95": 2839.9101680000003,
+            "p99": 3360.8372929999987,
+            "smallTailSample": true
+          }
+        },
+        "runs": [
+          {
+            "artifact": "stream-01.json",
+            "elapsedMs": 3546.5024589999994,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 90.34765625,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 12.247039,
+            "analysisPartsAtArrivalEnd": 6
+          },
+          {
+            "artifact": "stream-02.json",
+            "elapsedMs": 2338.4169580000016,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 102.09375,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.985471,
+            "analysisPartsAtArrivalEnd": 7
+          },
+          {
+            "artifact": "stream-03.json",
+            "elapsedMs": 1869.7721250000031,
+            "notifications": 12,
+            "parts": 154,
+            "cgroupPeakMiB": 84.13671875,
+            "maxActivePayloadBytes": 348054,
+            "maxPendingSends": 2,
+            "eventLoopDelayP95Ms": 10.821631,
+            "analysisPartsAtArrivalEnd": 8
+          }
+        ]
+      }
+    }
+  },
+  "capacity": {
+    "before": {
+      "standard": [
+        {
+          "cgroupPeakMiB": 137.4140625,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 72.33984375
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 79.54296875
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 82.19140625
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 137.4140625
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 137.4140625
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 137.4140625
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 137.4140625
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        },
+        {
+          "cgroupPeakMiB": 138.26171875,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 72.63671875
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 79.59375
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 84.2421875
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 138.26171875
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 138.26171875
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 138.26171875
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 138.26171875
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        },
+        {
+          "cgroupPeakMiB": 137.30078125,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 73.90234375
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 78.61328125
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 82.78515625
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 137.30078125
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 137.30078125
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 137.30078125
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 137.30078125
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        }
+      ],
+      "legacy": [
+        {
+          "cgroupPeakMiB": 174.4921875,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        },
+        {
+          "cgroupPeakMiB": 172.24609375,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        },
+        {
+          "cgroupPeakMiB": 170.65234375,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "summit-notification-refactor-before-capacity.log",
+          "bytes": 2656,
+          "sha256": "47f9fd158dc540c07bf1251f3bc038800720b5bb253ac6a5c8b15c996fcd4d04"
+        },
+        {
+          "name": "summit-refactor-before-capacity-2.log",
+          "bytes": 2656,
+          "sha256": "7a1053ea28531b26d3b82ca3254019f3402efb4117f178d9f4961f00d4cb65aa"
+        },
+        {
+          "name": "summit-refactor-before-capacity-3.log",
+          "bytes": 2662,
+          "sha256": "af6051297f43d84261afcb265f028bbd56948bcd4bbc41090121cee23dc9af17"
+        }
+      ]
+    },
+    "after": {
+      "standard": [
+        {
+          "cgroupPeakMiB": 138.34765625,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 73.7734375
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 80.1640625
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 83.140625
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 138.34765625
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 138.34765625
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 138.34765625
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 138.34765625
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        },
+        {
+          "cgroupPeakMiB": 138.98828125,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 73.48046875
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 78.5
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 81.01171875
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 138.98828125
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 138.98828125
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 138.98828125
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 138.98828125
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        },
+        {
+          "cgroupPeakMiB": 140.59375,
+          "workload": {
+            "notifications": 17,
+            "completedParts": 932,
+            "burstRounds": 5,
+            "nearJsonbBytes": 261691,
+            "wireBytes": 524288,
+            "rejectedCases": 9,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "maxMatches": 50,
+            "maxSeasons": 16,
+            "phases": [
+              {
+                "phase": "normal_delivered",
+                "cgroupPeakMiB": 71.5390625
+              },
+              {
+                "phase": "two_deliveries_held",
+                "cgroupPeakMiB": 81.1953125
+              },
+              {
+                "phase": "two_deliveries_and_two_receipts_held",
+                "cgroupPeakMiB": 84.3828125
+              },
+              {
+                "phase": "two_deliveries_with_expanded_identity_conflicts",
+                "cgroupPeakMiB": 140.59375
+              },
+              {
+                "phase": "overlap_drained",
+                "cgroupPeakMiB": 140.59375
+              },
+              {
+                "phase": "five_bursts_drained",
+                "cgroupPeakMiB": 140.59375
+              },
+              {
+                "phase": "chunked_and_ocr_delivered",
+                "cgroupPeakMiB": 140.59375
+              }
+            ]
+          },
+          "concurrency": {
+            "deliveries": 2,
+            "receipts": 4,
+            "claimBatch": 2,
+            "claimBatchBytes": 523382
+          }
+        }
+      ],
+      "legacy": [
+        {
+          "cgroupPeakMiB": 189.80859375,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        },
+        {
+          "cgroupPeakMiB": 172.15625,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        },
+        {
+          "cgroupPeakMiB": 179.81640625,
+          "workload": {
+            "plannedParts": 8823,
+            "completedParts": 1,
+            "conflictJsonbBytes": 8006627,
+            "overlappingConflicts": 4,
+            "jsonbBytes": 8382648
+          },
+          "concurrency": {
+            "deliveries": 1,
+            "receipts": 4,
+            "claimBatch": 1,
+            "claimBatchBytes": 8382648
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "name": "summit-notification-refactor-capacity.log",
+          "bytes": 2656,
+          "sha256": "b491e88368f0de9c195d7ca8bc6e06cffb60b359cd51343ea07bcbf0b53d1835"
+        },
+        {
+          "name": "summit-refactor-after-capacity-2.log",
+          "bytes": 2649,
+          "sha256": "832f6c472a3f39071eba66927eb41fe3b51e4308d044c59bcb967699dab7ce0f"
+        },
+        {
+          "name": "summit-refactor-after-capacity-3.log",
+          "bytes": 2634,
+          "sha256": "a1dd1e39b7af9dc1a2287f51d50f23ece7382d9971d141e13ac832cb493a4482"
+        }
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "variant": "before",
+      "scenario": "normal",
+      "directory": "/tmp/summit-refactor-before-normal-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1993,
+          "sha256": "65e1bc9ba6771e9497b014dfe3e176266ef0c51c80f1ba5811ff3c271dad28f1"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 34028,
+          "sha256": "de01d5813110e6ff67704dd9596f78e772fa82a336118a9c368639ea2477f6de"
+        },
+        {
+          "name": "normal-01.json",
+          "bytes": 68270,
+          "sha256": "ef73f84bcd19e4aa6c89fdf2d94c44ca03d37e116145836b88436cab82a6c94c"
+        },
+        {
+          "name": "normal-02.json",
+          "bytes": 67786,
+          "sha256": "37865e4ebcc80265476b33417096754954c17bf08c95356f45ad640e5f291eec"
+        },
+        {
+          "name": "normal-03.json",
+          "bytes": 67688,
+          "sha256": "89789228b7587f91bf9a53dad8b1c3978736d945bf6370553824597628f9851d"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "scenario": "normal",
+      "directory": "/tmp/summit-refactor-after-normal-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1996,
+          "sha256": "d1f4e03ec68f8eb24d11c95f88c6d645a3c98f1d7cccc19a2dae561263e0802a"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 33989,
+          "sha256": "934e3b2d03f042a8790f3ad38c7108c9479e867135e06920023aa4551569b3c0"
+        },
+        {
+          "name": "normal-01.json",
+          "bytes": 67621,
+          "sha256": "323eb4d3f894dd156ce49da32484d88e7b7dad5617097aea4d263c327fa9b6ea"
+        },
+        {
+          "name": "normal-02.json",
+          "bytes": 67481,
+          "sha256": "79563bf4c6845c422ad0d2ac8f9d4655b8a1e8daa46e1632e97b3b86d83368bf"
+        },
+        {
+          "name": "normal-03.json",
+          "bytes": 67018,
+          "sha256": "cef7d9aac92cfb3d7c95fd21889931a0e4fe763e8f936e7c8d868c940d7a3fb8"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "scenario": "parts",
+      "directory": "/tmp/summit-refactor-after-parts-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1995,
+          "sha256": "b936a5916afdbcd856eae5a56251826a2fa2a55d3d22232308e9da4cae41205c"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 33558,
+          "sha256": "84c32831bf0b2e76bb3df06b9964b7bd92380771af173c67723f828ae07ea379"
+        },
+        {
+          "name": "parts-01.json",
+          "bytes": 778446,
+          "sha256": "1c4fc8661441b5e8b696c9bfddb19030a42b65ce8418bffd921c9a3613f36fc6"
+        },
+        {
+          "name": "parts-02.json",
+          "bytes": 782026,
+          "sha256": "ea3db57f353ac9f9a8ff0c4bbecfe0ccdaade63d6f3d8fe07ca894d8826b8aeb"
+        },
+        {
+          "name": "parts-03.json",
+          "bytes": 795529,
+          "sha256": "058a2601ed4cc8d4a1a9411b5e7656be1e7145409a05089da206a9d881659535"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "scenario": "parts",
+      "directory": "/tmp/summit-refactor-before-parts-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1992,
+          "sha256": "614c8e1d9b5b17dd478a04a07d9f005582dc615658227a624563b521b7ff12b7"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 33540,
+          "sha256": "9b33108aa433626a3b1e7ee1023fd5394358ac46a8f47a6a1dd022b1eeb31c91"
+        },
+        {
+          "name": "parts-01.json",
+          "bytes": 791825,
+          "sha256": "988b0e2eb1bd9bcfd39b78161b4751df46afc322135f52b3c360e8805e981be8"
+        },
+        {
+          "name": "parts-02.json",
+          "bytes": 811322,
+          "sha256": "45d67c9e6f8df0b22ffd8278d782a19865ba050612941651ce2e86e436533a7f"
+        },
+        {
+          "name": "parts-03.json",
+          "bytes": 873160,
+          "sha256": "fe5171ed874f4cb2574efa43dde727b8db80d97deaf76882295724cbba6f63ee"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "scenario": "mixed",
+      "directory": "/tmp/summit-refactor-before-mixed-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1992,
+          "sha256": "1007fe73682c6b8bb438af75af425155bfb354f4b8692e4a4411863bea4cc1c2"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 34920,
+          "sha256": "d9aeb16f59c1cf7268ba216210207dec59a6ec0d37583807cbd9781743e10041"
+        },
+        {
+          "name": "mixed-01.json",
+          "bytes": 525330,
+          "sha256": "6c0106512723e874c7789abb5a262269ba8d1478672c1cbb9c8afb97aab6fffa"
+        },
+        {
+          "name": "mixed-02.json",
+          "bytes": 528312,
+          "sha256": "dbe18fea87e1079e31598f7d14fcd331c9ddf0e2e6ddc7b9c0cc141706ff4e17"
+        },
+        {
+          "name": "mixed-03.json",
+          "bytes": 523104,
+          "sha256": "d551aca517b44897877cb9718828cef285145dadcf80566e56d78257ab402826"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "scenario": "mixed",
+      "directory": "/tmp/summit-refactor-after-mixed-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1995,
+          "sha256": "d6c949caf22a20a1218f650282f9f8887e8170b84eb56494a7a96eba7b8fe305"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 34923,
+          "sha256": "3e07e1f16f0f01557be2e667ab257b323e9d9ece00a121fc815aba89377b30a0"
+        },
+        {
+          "name": "mixed-01.json",
+          "bytes": 530002,
+          "sha256": "2c67260b4b4be58d9f8bbf3c4639be1de17253ffdc2d2e0e090004f36ae42e0b"
+        },
+        {
+          "name": "mixed-02.json",
+          "bytes": 527604,
+          "sha256": "9a7b9941bf905f310d6dfa4526ae97da018973e68f37cb613c2c095d6736298b"
+        },
+        {
+          "name": "mixed-03.json",
+          "bytes": 527943,
+          "sha256": "e8779ef0c4ddf4e8dcc4b312297751a9a4a229ea821a9f131c5b81c961a37928"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "scenario": "stream",
+      "directory": "/tmp/summit-refactor-after-stream-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1996,
+          "sha256": "d0e074941faa99f0071c241a23ce64495d05a7f92f4a2aa3c8d9245b2483313f"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 34922,
+          "sha256": "692fc832f53c2796f5a98abe6fa5b4d02a5f6b2806f8e43282cbf99206eacd05"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 203824,
+          "sha256": "fead4efb19d497feba82e4b7e8abd6bce6b0352e2b0a6976541babbdf53ede81"
+        },
+        {
+          "name": "stream-02.json",
+          "bytes": 200421,
+          "sha256": "8396eea6d3f303aef13b526fbdcb5dddb7382ee79d30e96cbc493c4248963edc"
+        },
+        {
+          "name": "stream-03.json",
+          "bytes": 192257,
+          "sha256": "9e64779e9dbc4e8e711c7fc1ace3aec1e19bb3417620ff0717826ca37deea81e"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "scenario": "stream",
+      "directory": "/tmp/summit-refactor-before-stream-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1993,
+          "sha256": "e176d8e50211727afc2b182508cd86b3c355169a7c8d228afd9e90e1590612be"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 34889,
+          "sha256": "4410d61fe5aa8d741917c04eed94e44866022a377be921c966876042ed9ada1c"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 200545,
+          "sha256": "ce22016dec48a678aacdfdcabb43d9749e69a7ad014e13986e9de963303901c4"
+        },
+        {
+          "name": "stream-02.json",
+          "bytes": 184412,
+          "sha256": "af7ed9f5f91a1616a26f6f8ef81acf250b9538d73d1d00732a669679533a1ac0"
+        },
+        {
+          "name": "stream-03.json",
+          "bytes": 178770,
+          "sha256": "77226e8435d812a7b5d95029fc682854ee3ae63e83de826c4e936488c59b32bf"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "cohort": "streamConfirmation",
+      "pair": 1,
+      "directory": "/tmp/summit-refactor-confirm-before-1-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1993,
+          "sha256": "7d46779485e7b5b4d0c6bdbabf446cf0b0310316e226869f885abdf79abdf8e0"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11685,
+          "sha256": "de1b3bd42211931740eadd20a47fb8478e37078e001fe26fe22180a6fab38dab"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 175295,
+          "sha256": "fc662577127569b7437ac46fd1112b8c587a6c0e3eca3759431c91d54025ad24"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "cohort": "streamConfirmation",
+      "pair": 2,
+      "directory": "/tmp/summit-refactor-confirm-before-2-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1993,
+          "sha256": "f1bba6ac770fba81512b3615806a697014673f5a60dd98f7eacdd824b83f03fd"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11777,
+          "sha256": "439991b8ac60e0f4abbb75eb96a8bd21bc20060f84ba14a81a21615c55dc6e63"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 176717,
+          "sha256": "727add754d4977cf0cca5205d1cc2c48c4303e6e919a72a190891f3688b0eb1c"
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "cohort": "streamConfirmation",
+      "pair": 3,
+      "directory": "/tmp/summit-refactor-confirm-before-3-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1993,
+          "sha256": "708d0638c0b3f4bf6c152f76603587df7cfdeb6af70fdc2432b986bab78a79e9"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11696,
+          "sha256": "b31f3f19db291319c9b6cebc0577037a99a7048b4e7421a8c69e61b6747e66b1"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 178983,
+          "sha256": "e91e4a4a0edce005e03060c186b7995dbddae31dfd55d6fb931c6bfcca3d91cb"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "cohort": "streamConfirmation",
+      "pair": 1,
+      "directory": "/tmp/summit-refactor-confirm-after-1-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1996,
+          "sha256": "24b3748cc5b3f1cc31a46cd9370455ca989cf0dcad43ccacefe5928b594177e1"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11737,
+          "sha256": "8ec8e08ea2aea0f91b22440aab373542ba93e96014b38d3359041ade770e69a3"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 177504,
+          "sha256": "e9112f321220d7cae715eb85229efdccfcd7a04e79a480d7b9e2e1c8ce9632bf"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "cohort": "streamConfirmation",
+      "pair": 2,
+      "directory": "/tmp/summit-refactor-confirm-after-2-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1996,
+          "sha256": "7e4ec7933b2fd2be42dc1ced6dd0f2d7ddeb5c689ea4f9a48ffeb1a214c6c903"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11782,
+          "sha256": "9636dabb1f834260f48a34622d6f83f673c3fb63753e9c3802eeb0e9c33966b3"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 176775,
+          "sha256": "ecbbddd052eab3b207989c9da9533eb7d83b537315080729479b6b2bab86c329"
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "cohort": "streamConfirmation",
+      "pair": 3,
+      "directory": "/tmp/summit-refactor-confirm-after-3-20261012",
+      "files": [
+        {
+          "name": "manifest.json",
+          "bytes": 1996,
+          "sha256": "52f39c6c20116b1a069be7ff4e61f0fbb9c5a18c0b9e9d943741373fc9faacde"
+        },
+        {
+          "name": "summary.json",
+          "bytes": 11760,
+          "sha256": "b98a43ae294e0e68b3615e14ec6345af52d05b5ea9cf0da9f864324e3b8ab378"
+        },
+        {
+          "name": "stream-01.json",
+          "bytes": 175976,
+          "sha256": "88d0a18d3c55cc5579359103b725abc88d44122ac4e3321cb0e3712e7957b9f5"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "before": {
+      "runs": 12,
+      "notifications": 141,
+      "parts": 6027
+    },
+    "after": {
+      "runs": 12,
+      "notifications": 141,
+      "parts": 6027
+    }
+  },
+  "aggregationCompatibility": {
+    "historicalRuns": 30,
+    "historicalScenarios": 10,
+    "byteIdenticalOutput": true,
+    "sha256": "d07d4f66962fb6ba18b265b7fd4e95c142f9d2814d7c278377955702aac577e7"
+  },
+  "verification": {
+    "unitFiles": 122,
+    "unitTests": 943,
+    "integrationFiles": 27,
+    "integrationTests": 144,
+    "runtimeImage": "passed",
+    "sqlPerSuccessfulPart": 16,
+    "transactionsPerSuccessfulPart": 2,
+    "fileSizeAdvisories": 5,
+    "productionDeploy": false
+  },
+  "streamConfirmation": {
+    "reason": "Initial grouped runs showed a larger stream latency difference; retain them and compare alternating pairs separately.",
+    "order": [
+      {
+        "pair": 1,
+        "variant": "before"
+      },
+      {
+        "pair": 1,
+        "variant": "after"
+      },
+      {
+        "pair": 2,
+        "variant": "after"
+      },
+      {
+        "pair": 2,
+        "variant": "before"
+      },
+      {
+        "pair": 3,
+        "variant": "before"
+      },
+      {
+        "pair": 3,
+        "variant": "after"
+      }
+    ],
+    "before": {
+      "notifications": 36,
+      "parts": 462,
+      "elapsedMs": {
+        "count": 3,
+        "min": 1696.4534999999996,
+        "max": 1858.5406660000003,
+        "mean": 1772.3358886666665,
+        "p50": 1762.0135,
+        "p95": 1858.5406660000003,
+        "p99": 1858.5406660000003,
+        "smallTailSample": true
+      },
+      "operations": {
+        "receive": {
+          "count": 36,
+          "min": 6.756209000000126,
+          "max": 64.54841699999997,
+          "mean": 18.37713430555555,
+          "p50": 11.335125000000062,
+          "p95": 61.631624999999985,
+          "p99": 64.54841699999997,
+          "smallTailSample": true
+        },
+        "receiveTotal": {
+          "count": 36,
+          "min": 6.768041999999696,
+          "max": 64.57262500000024,
+          "mean": 18.395480333333367,
+          "p50": 11.347291999999925,
+          "p95": 61.65162499999997,
+          "p99": 64.57262500000024,
+          "smallTailSample": true
+        },
+        "dispatch.wakeToClaimStart": {
+          "count": 70,
+          "min": 0.14800000000013824,
+          "max": 90.51595799999996,
+          "mean": 15.073788171428545,
+          "p50": 12.463708000000224,
+          "p95": 45.23941700000023,
+          "p99": 90.51595799999996,
+          "smallTailSample": true
+        },
+        "claim": {
+          "count": 70,
+          "min": 3.603166999999303,
+          "max": 48.3563750000003,
+          "mean": 12.701320342857123,
+          "p50": 10.81316699999934,
+          "p95": 26.71104200000036,
+          "p99": 48.3563750000003,
+          "smallTailSample": true
+        },
+        "plan": {
+          "count": 66,
+          "min": 3.2927919999997357,
+          "max": 34.29883299999983,
+          "mean": 8.226285969696978,
+          "p50": 6.484791999999743,
+          "p95": 21.80666700000029,
+          "p99": 34.29883299999983,
+          "smallTailSample": true
+        },
+        "begin": {
+          "count": 462,
+          "min": 4.027374999999665,
+          "max": 33.39441600000009,
+          "mean": 5.948106430735908,
+          "p50": 5.163124999999127,
+          "p95": 11.267832999999882,
+          "p99": 17.37537499999962,
+          "smallTailSample": false
+        },
+        "complete": {
+          "count": 462,
+          "min": 3.651792000000569,
+          "max": 26.093667000000096,
+          "mean": 5.805171474025968,
+          "p50": 5.0896670000001905,
+          "p95": 10.665207999999893,
+          "p99": 16.558124999999563,
+          "smallTailSample": false
+        },
+        "yield": {
+          "count": 36,
+          "min": 5.080333999999766,
+          "max": 21.103333999999904,
+          "mean": 8.648052111111143,
+          "p50": 7.1845830000002024,
+          "p95": 15.134457999999995,
+          "p99": 21.103333999999904,
+          "smallTailSample": true
+        },
+        "dispatch.slotReleaseToClaimStart": {
+          "count": 66,
+          "min": 0.031042000000070402,
+          "max": 35.98649999999998,
+          "mean": 5.563144621212104,
+          "p50": 0.9003750000001673,
+          "p95": 19.791709000000083,
+          "p99": 35.98649999999998,
+          "smallTailSample": true
+        },
+        "getNextDispatchAt": {
+          "count": 25,
+          "min": 0.9153749999995853,
+          "max": 5.2941249999998945,
+          "mean": 1.901549959999993,
+          "p50": 1.6175419999999576,
+          "p95": 4.433999999999742,
+          "p99": 5.2941249999998945,
+          "smallTailSample": true
+        }
+      },
+      "notificationLatencyMs": {
+        "receiptToFirstSend": {
+          "count": 36,
+          "min": 67.14312500000005,
+          "max": 281.07000000000016,
+          "mean": 129.39503475000004,
+          "p50": 109.114916,
+          "p95": 263.48725000000013,
+          "p99": 281.07000000000016,
+          "smallTailSample": true
+        },
+        "receiptToComplete": {
+          "count": 36,
+          "min": 77.25104200000033,
+          "max": 1847.400626,
+          "mean": 414.05043311111103,
+          "p50": 146.90533300000016,
+          "p95": 1818.1589599999998,
+          "p99": 1847.400626,
+          "smallTailSample": true
+        },
+        "claimToFirstSend": {
+          "count": 36,
+          "min": 11.118208000000322,
+          "max": 55.982290999999805,
+          "mean": 20.06151619444443,
+          "p50": 15.209083000000192,
+          "p95": 50.34554200000002,
+          "p99": 55.982290999999805,
+          "smallTailSample": true
+        },
+        "claimToComplete": {
+          "count": 36,
+          "min": 22.008624999999938,
+          "max": 1768.7151680000002,
+          "mean": 304.7169145555555,
+          "p50": 32.5017499999999,
+          "p95": 1738.2983349999995,
+          "p99": 1768.7151680000002,
+          "smallTailSample": true
+        },
+        "firstSendToComplete": {
+          "count": 36,
+          "min": 10.10791700000027,
+          "max": 1737.626918,
+          "mean": 284.6553983611111,
+          "p50": 13.708165999999892,
+          "p95": 1703.5182089999998,
+          "p99": 1737.626918,
+          "smallTailSample": true
+        }
+      },
+      "latencyByKind": {
+        "ocr_completed": {
+          "queueWaitMs": {
+            "count": 30,
+            "min": 32.91466700000001,
+            "max": 242.0866249999999,
+            "mean": 104.11319180000004,
+            "p50": 81.96141699999998,
+            "p95": 228.2961250000003,
+            "p99": 242.0866249999999,
+            "smallTailSample": true
+          },
+          "receiptToFirstSendMs": {
+            "count": 30,
+            "min": 67.14312500000005,
+            "max": 281.07000000000016,
+            "mean": 134.7863680666667,
+            "p50": 105.10666700000002,
+            "p95": 263.48725000000013,
+            "p99": 281.07000000000016,
+            "smallTailSample": true
+          },
+          "receiptToCompleteMs": {
+            "count": 30,
+            "min": 77.25104200000033,
+            "max": 293.86254099999996,
+            "mean": 149.4377848,
+            "p50": 124.54641700000002,
+            "p95": 278.8372909999998,
+            "p99": 293.86254099999996,
+            "smallTailSample": true
+          },
+          "claimToCompleteMs": {
+            "count": 30,
+            "min": 22.008624999999938,
+            "max": 70.43145800000002,
+            "mean": 32.04930139999994,
+            "p50": 27.684291999999914,
+            "p95": 46.593166999999994,
+            "p99": 70.43145800000002,
+            "smallTailSample": true
+          }
+        },
+        "analysis_completed": {
+          "queueWaitMs": {
+            "count": 6,
+            "min": 14.113666999999623,
+            "max": 46.262750000000324,
+            "mean": 25.06561133333336,
+            "p50": 16.160041999999976,
+            "p95": 46.262750000000324,
+            "p99": 46.262750000000324,
+            "smallTailSample": true
+          },
+          "receiptToFirstSendMs": {
+            "count": 6,
+            "min": 70.29262500000004,
+            "max": 114.64075099999991,
+            "mean": 102.43836816666673,
+            "p50": 109.114916,
+            "p95": 114.64075099999991,
+            "p99": 114.64075099999991,
+            "smallTailSample": true
+          },
+          "receiptToCompleteMs": {
+            "count": 6,
+            "min": 1654.672459,
+            "max": 1847.400626,
+            "mean": 1737.1136746666668,
+            "p50": 1685.722167,
+            "p95": 1847.400626,
+            "p99": 1847.400626,
+            "smallTailSample": true
+          },
+          "claimToCompleteMs": {
+            "count": 6,
+            "min": 1576.1828759999999,
+            "max": 1768.7151680000002,
+            "mean": 1668.0549803333333,
+            "p50": 1617.2002929999999,
+            "p95": 1768.7151680000002,
+            "p99": 1768.7151680000002,
+            "smallTailSample": true
+          }
+        }
+      },
+      "runs": [
+        {
+          "pair": 1,
+          "elapsedMs": 1696.4534999999996,
+          "cgroupPeakMiB": 85.30078125,
+          "cpuMilliseconds": 852.18,
+          "gcTotalMs": 64.827292740345,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 23,
+            "claim": 23,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22,
+            "getNextDispatchAt": 8
+          },
+          "analysisPartsAtArrivalEnd": 7,
+          "ocrFirstSendP95Ms": 178.74941700000045
+        },
+        {
+          "pair": 2,
+          "elapsedMs": 1762.0135,
+          "cgroupPeakMiB": 84.58984375,
+          "cpuMilliseconds": 885.202,
+          "gcTotalMs": 65.8064973950386,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 24,
+            "claim": 24,
+            "getNextDispatchAt": 9,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22
+          },
+          "analysisPartsAtArrivalEnd": 8,
+          "ocrFirstSendP95Ms": 154.6440419999999
+        },
+        {
+          "pair": 3,
+          "elapsedMs": 1858.5406660000003,
+          "cgroupPeakMiB": 82.09375,
+          "cpuMilliseconds": 981.848,
+          "gcTotalMs": 73.09533804655075,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 23,
+            "claim": 23,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22,
+            "getNextDispatchAt": 8
+          },
+          "analysisPartsAtArrivalEnd": 7,
+          "ocrFirstSendP95Ms": 281.07000000000016
+        }
+      ]
+    },
+    "after": {
+      "notifications": 36,
+      "parts": 462,
+      "elapsedMs": {
+        "count": 3,
+        "min": 1670.832125,
+        "max": 1763.509,
+        "mean": 1725.0432776666667,
+        "p50": 1740.788708,
+        "p95": 1763.509,
+        "p99": 1763.509,
+        "smallTailSample": true
+      },
+      "operations": {
+        "receive": {
+          "count": 36,
+          "min": 6.674167000000125,
+          "max": 62.180291000000125,
+          "mean": 17.66560994444444,
+          "p50": 10.85024999999996,
+          "p95": 57.66154199999983,
+          "p99": 62.180291000000125,
+          "smallTailSample": true
+        },
+        "receiveTotal": {
+          "count": 36,
+          "min": 6.683207999999922,
+          "max": 62.194082999999864,
+          "mean": 17.680333249999975,
+          "p50": 10.861124999999902,
+          "p95": 57.675958000000264,
+          "p99": 62.194082999999864,
+          "smallTailSample": true
+        },
+        "dispatch.wakeToClaimStart": {
+          "count": 69,
+          "min": 0.13433400000030815,
+          "max": 90.9227920000003,
+          "mean": 14.274639492753673,
+          "p50": 12.553291000000172,
+          "p95": 39.50420800000029,
+          "p99": 90.9227920000003,
+          "smallTailSample": true
+        },
+        "claim": {
+          "count": 69,
+          "min": 3.4759579999999914,
+          "max": 43.24012499999981,
+          "mean": 12.104170289855073,
+          "p50": 10.659000000000106,
+          "p95": 24.897457999999915,
+          "p99": 43.24012499999981,
+          "smallTailSample": true
+        },
+        "plan": {
+          "count": 66,
+          "min": 3.5503749999998035,
+          "max": 20.982500000000073,
+          "mean": 7.460914166666663,
+          "p50": 5.947708000000148,
+          "p95": 17.813374999999724,
+          "p99": 20.982500000000073,
+          "smallTailSample": true
+        },
+        "begin": {
+          "count": 462,
+          "min": 3.9017499999999927,
+          "max": 21.95666700000038,
+          "mean": 6.012055995670999,
+          "p50": 5.613957999999911,
+          "p95": 9.927666999999929,
+          "p99": 16.034833000000162,
+          "smallTailSample": false
+        },
+        "complete": {
+          "count": 462,
+          "min": 3.8800410000003467,
+          "max": 21.533416000000216,
+          "mean": 5.575205253246755,
+          "p50": 5.008874999999989,
+          "p95": 9.973332999999911,
+          "p99": 14.363875000000007,
+          "smallTailSample": false
+        },
+        "yield": {
+          "count": 36,
+          "min": 4.644624999999905,
+          "max": 11.523459000000003,
+          "mean": 7.15971186111114,
+          "p50": 6.4719169999998485,
+          "p95": 11.218374999999924,
+          "p99": 11.523459000000003,
+          "smallTailSample": true
+        },
+        "dispatch.slotReleaseToClaimStart": {
+          "count": 66,
+          "min": 0.13387499999953434,
+          "max": 19.75441600000022,
+          "mean": 4.7188591363636725,
+          "p50": 0.8834580000002461,
+          "p95": 18.27666700000009,
+          "p99": 19.75441600000022,
+          "smallTailSample": true
+        },
+        "getNextDispatchAt": {
+          "count": 23,
+          "min": 1.0316669999992882,
+          "max": 2.150333000000046,
+          "mean": 1.4235888260870286,
+          "p50": 1.3792499999999563,
+          "p95": 2.1252079999999296,
+          "p99": 2.150333000000046,
+          "smallTailSample": true
+        }
+      },
+      "notificationLatencyMs": {
+        "receiptToFirstSend": {
+          "count": 36,
+          "min": 67.69204199999967,
+          "max": 150.78674999999976,
+          "mean": 106.31917944444447,
+          "p50": 103.94366600000012,
+          "p95": 148.7621250000002,
+          "p99": 150.78674999999976,
+          "smallTailSample": true
+        },
+        "receiptToComplete": {
+          "count": 36,
+          "min": 78.25245799999993,
+          "max": 1751.5010430000002,
+          "mean": 382.3047790833333,
+          "p50": 126.08524999999963,
+          "p95": 1729.8091679999998,
+          "p99": 1751.5010430000002,
+          "smallTailSample": true
+        },
+        "claimToFirstSend": {
+          "count": 36,
+          "min": 10.327167000000372,
+          "max": 33.6736249999999,
+          "mean": 17.73549075000003,
+          "p50": 14.264999999999873,
+          "p95": 32.98795800000016,
+          "p99": 33.6736249999999,
+          "smallTailSample": true
+        },
+        "claimToComplete": {
+          "count": 36,
+          "min": 20.844500000000153,
+          "max": 1678.3175430000001,
+          "mean": 293.7210903888889,
+          "p50": 27.54629100000011,
+          "p95": 1657.3077929999995,
+          "p99": 1678.3175430000001,
+          "smallTailSample": true
+        },
+        "firstSendToComplete": {
+          "count": 36,
+          "min": 10.171374999999898,
+          "max": 1648.563501,
+          "mean": 275.9855996388889,
+          "p50": 11.966292000000067,
+          "p95": 1623.6341679999996,
+          "p99": 1648.563501,
+          "smallTailSample": true
+        }
+      },
+      "latencyByKind": {
+        "ocr_completed": {
+          "queueWaitMs": {
+            "count": 30,
+            "min": 32.02774999999974,
+            "max": 133.47837500000014,
+            "mean": 79.76840563333334,
+            "p50": 74.17350000000033,
+            "p95": 127.5674170000002,
+            "p99": 133.47837500000014,
+            "smallTailSample": true
+          },
+          "receiptToFirstSendMs": {
+            "count": 30,
+            "min": 67.69204199999967,
+            "max": 150.78674999999976,
+            "mean": 106.68689313333336,
+            "p50": 101.4622089999998,
+            "p95": 148.7621250000002,
+            "p99": 150.78674999999976,
+            "smallTailSample": true
+          },
+          "receiptToCompleteMs": {
+            "count": 30,
+            "min": 78.25245799999993,
+            "max": 161.00591699999995,
+            "mean": 119.57745416666664,
+            "p50": 117.26233300000013,
+            "p95": 160.0277500000002,
+            "p99": 161.00591699999995,
+            "smallTailSample": true
+          },
+          "claimToCompleteMs": {
+            "count": 30,
+            "min": 20.844500000000153,
+            "max": 46.19145899999967,
+            "mean": 28.060334666666645,
+            "p50": 23.382832999999664,
+            "p95": 44.3068330000001,
+            "p99": 46.19145899999967,
+            "smallTailSample": true
+          }
+        },
+        "analysis_completed": {
+          "queueWaitMs": {
+            "count": 6,
+            "min": 13.906542000000172,
+            "max": 44.2400419999999,
+            "mean": 26.580965333333324,
+            "p50": 15.435750000000098,
+            "p95": 44.2400419999999,
+            "p99": 44.2400419999999,
+            "smallTailSample": true
+          },
+          "receiptToFirstSendMs": {
+            "count": 6,
+            "min": 101.25437499999998,
+            "max": 108.21974999999975,
+            "mean": 104.48061100000002,
+            "p50": 103.94366600000012,
+            "p95": 108.21974999999975,
+            "p99": 108.21974999999975,
+            "smallTailSample": true
+          },
+          "receiptToCompleteMs": {
+            "count": 6,
+            "min": 1628.7367090000002,
+            "max": 1751.5010430000002,
+            "mean": 1695.9414036666665,
+            "p50": 1694.175292,
+            "p95": 1751.5010430000002,
+            "p99": 1751.5010430000002,
+            "smallTailSample": true
+          },
+          "claimToCompleteMs": {
+            "count": 6,
+            "min": 1550.7122500000005,
+            "max": 1678.3175430000001,
+            "mean": 1622.024869,
+            "p50": 1622.5933339999997,
+            "p95": 1678.3175430000001,
+            "p99": 1678.3175430000001,
+            "smallTailSample": true
+          }
+        }
+      },
+      "runs": [
+        {
+          "pair": 1,
+          "elapsedMs": 1763.509,
+          "cgroupPeakMiB": 79.96875,
+          "cpuMilliseconds": 861.519,
+          "gcTotalMs": 67.78433930873871,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 23,
+            "claim": 23,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22,
+            "getNextDispatchAt": 7
+          },
+          "analysisPartsAtArrivalEnd": 8,
+          "ocrFirstSendP95Ms": 148.7621250000002
+        },
+        {
+          "pair": 2,
+          "elapsedMs": 1740.788708,
+          "cgroupPeakMiB": 81.6484375,
+          "cpuMilliseconds": 866.794,
+          "gcTotalMs": 64.59962290525436,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 23,
+            "claim": 23,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22,
+            "getNextDispatchAt": 9
+          },
+          "analysisPartsAtArrivalEnd": 8,
+          "ocrFirstSendP95Ms": 150.78674999999976
+        },
+        {
+          "pair": 3,
+          "elapsedMs": 1670.832125,
+          "cgroupPeakMiB": 80.9921875,
+          "cpuMilliseconds": 767.722,
+          "gcTotalMs": 67.33442175388336,
+          "operationCounts": {
+            "receive": 12,
+            "receiveTotal": 12,
+            "dispatch.wakeToClaimStart": 23,
+            "claim": 23,
+            "plan": 22,
+            "begin": 154,
+            "complete": 154,
+            "yield": 12,
+            "dispatch.slotReleaseToClaimStart": 22,
+            "getNextDispatchAt": 7
+          },
+          "analysisPartsAtArrivalEnd": 8,
+          "ocrFirstSendP95Ms": 140.01133299999992
+        }
+      ]
+    }
+  },
+  "totalsIncludingConfirmation": {
+    "before": {
+      "runs": 15,
+      "notifications": 177,
+      "parts": 6489
+    },
+    "after": {
+      "runs": 15,
+      "notifications": 177,
+      "parts": 6489
+    }
+  },
+  "httpReuse": {
+    "runtime": {
+      "node": "v24.19.0",
+      "platform": "darwin",
+      "arch": "arm64"
+    },
+    "methodology": {
+      "loopback": true,
+      "fakeDatabase": true,
+      "tls": false,
+      "concurrentRequests": 1,
+      "repetitions": 5,
+      "requestsPerRun": 500,
+      "maxRequestsPerSocket": 100,
+      "percentileMethod": "nearest-rank"
+    },
+    "summary": {
+      "coldRequestMs": {
+        "count": 2500,
+        "p50": 0.13724999999999454,
+        "p95": 0.23012500000004366,
+        "max": 3.811083999999937
+      },
+      "reusedRequestMs": {
+        "count": 2475,
+        "p50": 0.07941600000003746,
+        "p95": 0.09687499999995453,
+        "max": 2.6392499999999472
+      },
+      "connectMs": {
+        "count": 2525,
+        "p50": 0.020375000000058208,
+        "p95": 0.03533399999992071,
+        "max": 1.4034590000001117
+      }
+    },
+    "runs": [
+      {
+        "repetition": 1,
+        "mode": "cold",
+        "connections": 500,
+        "elapsedMs": 110.7796659999999
+      },
+      {
+        "repetition": 1,
+        "mode": "reused",
+        "connections": 5,
+        "elapsedMs": 46.93233299999997
+      },
+      {
+        "repetition": 2,
+        "mode": "reused",
+        "connections": 5,
+        "elapsedMs": 47.186916999999994
+      },
+      {
+        "repetition": 2,
+        "mode": "cold",
+        "connections": 500,
+        "elapsedMs": 70.13037499999996
+      },
+      {
+        "repetition": 3,
+        "mode": "cold",
+        "connections": 500,
+        "elapsedMs": 67.89370799999983
+      },
+      {
+        "repetition": 3,
+        "mode": "reused",
+        "connections": 5,
+        "elapsedMs": 43.841666999999916
+      },
+      {
+        "repetition": 4,
+        "mode": "reused",
+        "connections": 5,
+        "elapsedMs": 40.94833300000005
+      },
+      {
+        "repetition": 4,
+        "mode": "cold",
+        "connections": 500,
+        "elapsedMs": 73.93508299999985
+      },
+      {
+        "repetition": 5,
+        "mode": "cold",
+        "connections": 500,
+        "elapsedMs": 68.30658400000016
+      },
+      {
+        "repetition": 5,
+        "mode": "reused",
+        "connections": 5,
+        "elapsedMs": 41.02833399999986
+      }
+    ],
+    "artifact": {
+      "name": "summit-notification-refactor-http.json",
+      "bytes": 251427,
+      "sha256": "9cf488c78869125e0eaef44d41d8f85c8a67d8782be17d0c3a8e43066d17f60e"
+    }
+  },
+  "interpretation": {
+    "initialSamplesRetained": true,
+    "initialStreamSlowdownNotReproducedInAlternatingPairs": true,
+    "initialStreamVariationCauseEstablished": false,
+    "stablePerformanceImprovementClaimed": false,
+    "legacyCapacityPeakRangeWiderAfterRefactor": true,
+    "standardCapacityTargetMetInAllRuns": true
+  },
+  "fairnessAudit": {
+    "streamRunsIncludingConfirmation": 12,
+    "matchedInEveryRun": {
+      "plan": 22,
+      "begin": 154,
+      "complete": 154,
+      "yield": 12,
+      "ocrBeginPositions": [
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        18,
+        20
+      ],
+      "ocrCompletionOrdinalsBeforeBothAnalyses": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "analysisPartsPerNotification": 72
+    },
+    "analysisCompletionOrdersObserved": [
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        1
+      ]
+    ]
+  }
+}
