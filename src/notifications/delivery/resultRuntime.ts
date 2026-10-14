@@ -1,31 +1,24 @@
-import type { Client } from "discord.js";
 import type { Logger } from "pino";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificationsPort } from "../../db/ports.resultNotifications.ts";
+import type { ClaimedResultNotification } from "../../db/ports.resultNotifications.ts";
 import { RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_MIN_TIMER_DELAY_MS } from "../../config.ts";
-import { logger as defaultLogger } from "../../logger.ts";
 import { catchExpectedError, runPromiseBoundary } from "../../runtime/effect.ts";
 import type { Clock } from "../../time/index.ts";
-import { createDeliveryCapacity, type DeliveryExecution } from "./capacity.ts";
+import { createDeliveryCapacity } from "./capacity.ts";
 import { deliveryLanes } from "./lanes.ts";
-import { prepareResultDelivery } from "./definitions/result.ts";
-import { deliverPreparedResultNotification } from "./resultDelivery.ts";
-import { createResultDeliverySource } from "./sources/result.ts";
+import { prepareDeliveryTask, type DeliveryTask } from "./contracts.ts";
+import type { ResultDeliverySource } from "./sources/result.ts";
 import type { DeliveryRuntime } from "./runtime.ts";
 
-export type ResultNotificationDispatcher = DeliveryRuntime;
-
 /** Refill result deliveries on completion; capacity accounting never selects notification kinds. */
-export const createResultNotificationDispatcher = (deps: {
-  readonly client: Client;
-  readonly port: ResultNotificationsPort;
+export const createResultDeliveryRuntime = <E>(deps: {
+  readonly source: ResultDeliverySource;
   readonly clock: Clock;
-  readonly context: ResultDeliveryContext;
-  readonly logger?: Pick<Logger, "info" | "warn" | "error">;
-}): ResultNotificationDispatcher => {
-  const logger = deps.logger ?? defaultLogger;
-  const source = createResultDeliverySource(deps.port, deps.clock);
+  readonly prepareTask: (entry: ClaimedResultNotification, consumeYieldRequest: () => boolean) => DeliveryTask<E>;
+  readonly logger: Pick<Logger, "info" | "warn" | "error">;
+}): DeliveryRuntime => {
+  const { source, logger } = deps;
   const capacity = createDeliveryCapacity({ laneId: "results", ...deliveryLanes.results,
     onSettled: (notificationId, exit) => {
       if (Exit.isFailure(exit)) { logger.error({ event: "result_notification.dispatch_failed", notificationId }); }
@@ -46,21 +39,9 @@ export const createResultNotificationDispatcher = (deps: {
     clearTimeout(timer?.handle);
     timer = { dueAt, handle: setTimeout(() => { timer = undefined; void pump(); }, boundedDelay) };
   };
-  const prepare = (entry: ClaimedResultNotification): {
-    readonly id: string;
-    readonly payloadBytes: number;
-    readonly run: (execution: DeliveryExecution) => ReturnType<typeof deliverPreparedResultNotification>;
-  } => {
-    const { id, payloadBytes } = entry;
+  const prepare = (entry: ClaimedResultNotification): DeliveryTask<E> => {
     const consumeYieldRequest = source.claimed(entry);
-    try {
-      const prepared = prepareResultDelivery(entry, deps.context);
-      return { id, payloadBytes, run: execution => deliverPreparedResultNotification({
-        ...deps, logger, isStopping: execution.isStopping, consumeYieldRequest
-      }, prepared) };
-    } catch (error: unknown) {
-      return { id, payloadBytes, run: () => Effect.die(error) };
-    }
+    return prepareDeliveryTask(entry, () => deps.prepareTask(entry, consumeYieldRequest));
   };
   const startBatch = (batch: readonly ClaimedResultNotification[]): Effect.Effect<void> => {
     if (capacity.isStopping()) { return Effect.void; }
@@ -104,7 +85,7 @@ export const createResultNotificationDispatcher = (deps: {
       });
     return pumping;
   };
-  const dispatcher: ResultNotificationDispatcher = {
+  const dispatcher: DeliveryRuntime = {
     wake: reason => {
       if (capacity.isStopping()) { return; }
       queued = true;

@@ -124,35 +124,43 @@ const countParts = (parts: Iterable<string>, maximum: number): number => {
   return count;
 };
 
-/** Check the actual escaped text and configured links before accepting a new notification. */
-export const assertNewNotificationPartLimit = (notification: DiscordResultNotification, webOrigin: string): void => {
-  const links = buildNotificationLinks(webOrigin);
-  if (notification.kind === "ocr_completed") { renderOcr(notification, links); return; }
-  if (countParts(splitNotificationTextParts(renderAnalysis(notification, links)), RESULT_NOTIFICATION_MAX_PARTS)
-    > RESULT_NOTIFICATION_MAX_PARTS) { throw new NotificationInputError("payload_too_large"); }
+export type ResultNotificationPayloads = {
+  readonly [Kind in DiscordResultNotification["kind"]]: Extract<DiscordResultNotification, { readonly kind: Kind }>;
 };
 
-/** Count once, then yield retained renderer parts without holding the expanded full body. */
-export const planResultNotification = (
-  notification: DiscordResultNotification,
-  webOrigin: string,
-  rendererVersion = notification.kind === "ocr_completed" ? 2 : 1
-): PlannedResultNotification => {
-  if (rendererVersion !== (notification.kind === "ocr_completed" ? 2 : 1)) { throw new Error("Unsupported notification renderer."); }
-  const links = buildNotificationLinks(webOrigin);
-  if (notification.kind === "ocr_completed") {
+export interface ResultNotificationRenderer<Notification extends DiscordResultNotification> {
+  readonly rendererVersion: number;
+  readonly plan: (notification: Notification, webOrigin: string, maximumParts?: number) => PlannedResultNotification;
+}
+
+type ResultNotificationRenderers = {
+  readonly [Kind in keyof ResultNotificationPayloads]: ResultNotificationRenderer<ResultNotificationPayloads[Kind]>;
+};
+
+const defineRenderer = <Notification extends DiscordResultNotification>(
+  rendererVersion: number,
+  plan: (notification: Notification, links: NotificationLinks, maximumParts: number) => Omit<PlannedResultNotification, "rendererVersion">
+): ResultNotificationRenderer<Notification> => ({
+  rendererVersion,
+  plan: (notification, webOrigin, maximumParts = 10_000) => ({
+    rendererVersion, ...plan(notification, buildNotificationLinks(webOrigin), maximumParts)
+  })
+});
+
+/** Renderer versions, preparation and admission all select the same retained implementation. */
+export const resultNotificationRenderers: ResultNotificationRenderers = {
+  ocr_completed: defineRenderer<OcrCompletedNotification>(2, (notification, links) => {
     const content = renderOcr(notification, links);
-    return { rendererVersion, partCount: 1, *parts() {
+    return { partCount: 1, *parts() {
       yield { content, allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }, flags: MessageFlags.SuppressEmbeds };
     } };
-  }
-  const partCount = countParts(splitNotificationTextParts(renderAnalysis(notification, links)), 10_000);
-  if (partCount === 0 || partCount > 10_000) {
-    throw new NotificationInputError(partCount === 0 ? "invalid_input" : "payload_too_large");
-  }
-  return {
-    rendererVersion, partCount,
-    *parts() {
+  }),
+  analysis_completed: defineRenderer<AnalysisCompletedNotification>(1, (notification, links, maximumParts) => {
+    const partCount = countParts(splitNotificationTextParts(renderAnalysis(notification, links)), maximumParts);
+    if (partCount === 0 || partCount > maximumParts) {
+      throw new NotificationInputError(partCount === 0 ? "invalid_input" : "payload_too_large");
+    }
+    return { partCount, *parts() {
       let index = 0;
       for (const chunk of splitNotificationTextParts(renderAnalysis(notification, links))) {
         yield {
@@ -161,15 +169,35 @@ export const planResultNotification = (
         };
         index += 1;
       }
-    }
-  };
+    } };
+  })
+};
+
+const selectRenderer = <Kind extends keyof ResultNotificationPayloads>(
+  kind: Kind
+): ResultNotificationRenderer<ResultNotificationPayloads[Kind]> => resultNotificationRenderers[kind];
+
+/** Check the actual escaped text and configured links before accepting a new notification. */
+export const assertNewNotificationPartLimit = (notification: DiscordResultNotification, webOrigin: string): void => {
+  selectRenderer(notification.kind).plan(notification, webOrigin, RESULT_NOTIFICATION_MAX_PARTS);
+};
+
+/** Count once, then yield retained renderer parts without holding the expanded full body. */
+export const planResultNotification = (
+  notification: DiscordResultNotification,
+  webOrigin: string,
+  rendererVersion?: number
+): PlannedResultNotification => {
+  const renderer = selectRenderer(notification.kind);
+  if (rendererVersion !== undefined && rendererVersion !== renderer.rendererVersion) { throw new Error("Unsupported notification renderer."); }
+  return renderer.plan(notification, webOrigin);
 };
 
 /** Materialize the retained rendering for callers that need a complete value. */
 export const renderResultNotification = (
   notification: DiscordResultNotification,
   webOrigin: string,
-  rendererVersion = notification.kind === "ocr_completed" ? 2 : 1
+  rendererVersion?: number
 ): RenderedResultNotification => {
   const plan = planResultNotification(notification, webOrigin, rendererVersion);
   return { rendererVersion: plan.rendererVersion, parts: [...plan.parts()] };

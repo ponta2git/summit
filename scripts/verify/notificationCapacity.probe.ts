@@ -10,7 +10,7 @@ import { createAppContext } from './dist/appContext.js';
 import { closeDb } from './dist/db/client.js';
 import { createDiscordClient } from './dist/discord/client.js';
 import { createNotificationReceiver } from './dist/notifications/http.js';
-import { createResultNotificationDispatcher } from './dist/notifications/delivery/resultRuntime.js';
+import { createResultNotificationDispatcher } from './dist/notifications/delivery/composition.result.js';
 
 assert.notEqual(process.getuid(), 0);
 const client = createDiscordClient(); // Never log in or call the Discord network.

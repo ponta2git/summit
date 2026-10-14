@@ -22,7 +22,7 @@ OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ pr
 | `src/scheduler/` | clock / DB に基づく業務処理の起動時刻、復旧、supervisor |
 | `src/runtime/` | Promise / Effect の実行・settlement、process lifecycle |
 | `src/notifications/` | A/B の HTTP 認証・入力制限・運用 CLI・receiver lifecycle、配送 runtime の組立て |
-| `src/notifications/delivery/` | 出欠と A/B の配送 runtime、容量、取得方針、配送方式、通知定義 |
+| `src/notifications/delivery/` | 出欠と A/B の配送 runtime、容量、取得方針、配送方式、通知定義とその組立て |
 | `scripts/dev/`、`scripts/verify/` | local tool と決定論的な検証。production runtime は `src/` に置く |
 
 feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
@@ -34,7 +34,9 @@ feature 間では pure な型・builder・constant を参照できる。副作�
 | 変更 | 所有する場所と根拠 |
 |---|---|
 | 件数・byte 上限 | [出欠 config](../src/config.ts) / [結果通知 config](../src/notifications/config.ts) が正本。`lanes.ts` と DB の既定値・譲渡条件も同じ定数を参照する。[容量契約](../tests/notifications/delivery.capacity.test.ts)は通知種類なしで検証する |
-| 既存方式の本文・業務確定 | definition / renderer と必要な登録箇所。[単発 Strategy](../tests/notifications/delivery.singlePost.test.ts)は出欠 row や容量実装なしで異なる型の業務確定結果を扱う |
+| 既存方式の本文・業務確定 | definition の登録表と feature の renderer。出欠は描画と固有の業務確定を同じ定義へ登録する。[追加定義の配送](../tests/notifications/attendance.definitions.test.ts)で共通 backfill・配送確定まで検証する |
+| 結果通知の描画 version | [renderer 登録表](../src/features/result-notifications/render.ts)が正本。受付時の投稿数検査と配送時の定義が同じ renderer を参照する。新規受付上限と保存済み通知の上限は分ける |
+| Delivery / Strategy の差替え | `composition.attendance.ts` / `composition.result.ts` が手動 DI で組み立てる。[runtime 注入](../tests/notifications/delivery.runtimeInjection.test.ts)と[結果の実配送](../tests/notifications/delivery.resultComposition.test.ts)で容量・終了待ち・保存まで検証する |
 | 連番の再開・譲渡手順 | [連番 Strategy](../src/notifications/delivery/strategies/resumable.ts)が所有。[再開契約](../tests/notifications/resumable.test.ts)は通知種類なしで順序と確定後の譲渡を検証する |
 | 結果通知の失敗分類 | 配送の外部 I/O adapter と同期準備の入力検証。Strategy・容量管理へ通知種類や retry の分岐を追加しない。[配送テスト](../tests/scheduler/resultNotifications.delivery.test.ts)と[準備テスト](../tests/notifications/resultDefinition.test.ts)で通常失敗と defect を区別する |
 
@@ -47,6 +49,14 @@ HTTP の受付枠・本文予約・DB work の drain は [http.ts](../src/notifi
 - production は `makeRealPorts`、test は `createTestAppContext` で同じ interface を満たす。port 変更時は real / fake を同時に整合させる。
 - port は業務単位の入出力を公開し、SQL・join・lock の知識を実装内に閉じる。各 port の責務は [DB 規約 §3](./db-rule.md#3-port-と書込の所有者)。
 - Discord SDK は豊かな object model のまま境界で扱い、SDK 全体を独自 port に写さない。初期化順と resource の所有は factory / AppContext で見える形にする。
+
+配送の具体実装は [出欠の組立て](../src/notifications/delivery/composition.attendance.ts) / [結果の組立て](../src/notifications/delivery/composition.result.ts) が接続する。runtime は具体的な Delivery・renderer・Strategy を import せず、取得済み通知を [DeliveryTask](../src/notifications/delivery/contracts.ts) にする関数を受け取る。Task は通知 ID・予約 byte 数・実行関数だけを持ち、実行関数へ渡す停止確認を尊重する。容量の予約・解放は runtime が所有する。出欠の timer は注入した batch と次回時刻取得を起動し、batch は Task の全件終了を待つ。
+
+定義の登録表は保存契約に合わせて出欠 / 結果を分ける。出欠の共通 message ID 保存と claim 付き配送確定は定義の組立てに残し、通知固有の業務確定だけを登録する。結果は renderer version・宛先・partCount の保存済み契約を確認してから再開する。Strategy は方式別の公開入力型・関数型で注入し、単発と連番を optional field の多い共通型へ統一しない。現在の出欠は単発、OCR・分析は連番であり、1投稿という理由で方式を切り替えない。
+
+Task の生成は非同期 I/O を開始しない。出欠の DB 読取・描画は heartbeat 管理下の遅延 Effect、結果の検証・plan 準備は同期のままにする。factory の同期 throw や claim と異なる ID・byte 予約は、元の予約情報を持つ個別 defect として終了を追跡し、後続通知を止めたり通常の retry に変換したりしない。出欠の byte 会計は従来どおり0で件数を制限する。停止後に claim が返った場合は新規 Task を起動せず、未開始 claim は期限切れ回復へ残す。
+
+同じ配送契約の本文追加は定義・描画・必要な受付契約で扱い、runtime・容量・既存 Strategy に通知種類の分岐を追加しない。新しい結果 kind の受付には共有 schema と validation、取得の優先・譲渡条件も整合させる。異なる保存・確定手順には対応する Delivery / Strategy が必要であり、DI だけで任意に互換になるとは扱わない。動的 plugin、DI container、汎用 Source への統一は現在の拡張点に必要ない。
 
 ## 4. Domain の表現
 

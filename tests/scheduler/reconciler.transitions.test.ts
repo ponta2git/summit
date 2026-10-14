@@ -12,7 +12,7 @@ import {
   setFetchImpl
 } from "./reconciler.harness.js";
 import { reconcileStrandedCancelled } from "../../src/scheduler/reconciler.js";
-import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.js";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
 import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";

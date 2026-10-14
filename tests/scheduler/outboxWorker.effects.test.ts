@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OUTBOX_HEARTBEAT_MS } from "../../src/config.ts";
 import { DatabaseError, InvariantViolationError } from "../../src/errors/index.ts";
 import * as effectRuntime from "../../src/runtime/effect.ts";
-import * as renderers from "../../src/notifications/delivery/outboxRenderers.ts";
-import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.ts";
+import * as definitions from "../../src/notifications/delivery/definitions/attendance.ts";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
@@ -42,9 +42,9 @@ describe("outbox Effect composition", () => {
     // Observe the Context at the external Promise boundary without changing the port behavior.
     vi.spyOn(effectRuntime, "settledCall").mockImplementation(<T>(call: () => PromiseLike<T>) =>
       Effect.flatMap(Effect.service(Probe), value => settledCall(() => { bridgeContext = value; return call(); })));
-    const render = renderers.renderOutboxPayload;
-    vi.spyOn(renderers, "renderOutboxPayload").mockImplementation((ctx, entry) =>
-      Effect.flatMap(Effect.service(Probe), value => { seen.render.push(value); return render(ctx, entry); }));
+    const render = definitions.prepareAttendanceNotification;
+    vi.spyOn(definitions, "prepareAttendanceNotification").mockImplementation((ctx, entry, claimToken) =>
+      Effect.flatMap(Effect.service(Probe), value => { seen.render.push(value); return render(ctx, entry, claimToken); }));
     const { ctx, channel, client } = await createBatch("ask_body");
     const responses = ctx.ports.responses.listResponses; const members = ctx.ports.members.listMembers;
     const renew = ctx.ports.outbox.renewClaim;
@@ -116,9 +116,9 @@ describe("outbox Effect composition", () => {
     const { ctx, channel, client } = await createBatch();
     const defect = new Error("renderer defect"); const failure = new DatabaseError("expected failure");
     const cause = mode === "defect" ? Cause.die(defect) : Cause.combine(Cause.fail(failure), Cause.die(defect));
-    const render = renderers.renderOutboxPayload;
-    vi.spyOn(renderers, "renderOutboxPayload").mockImplementation((context, entry) =>
-      entry.sessionId === "first" ? Effect.failCause(cause) : render(context, entry));
+    const render = definitions.prepareAttendanceNotification;
+    vi.spyOn(definitions, "prepareAttendanceNotification").mockImplementation((context, entry, claimToken) =>
+      entry.sessionId === "first" ? Effect.failCause(cause) : render(context, entry, claimToken));
     const failed = vi.spyOn(ctx.ports.outbox, "markFailed");
     const sending = deferred<void>(); const sent = deferred<{ id: string }>();
     channel.send.mockImplementation(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
@@ -141,7 +141,7 @@ describe("outbox Effect composition", () => {
     const { ctx, channel, client } = await createBatch();
     const failure = new DatabaseError("concurrent delivery failure");
     const cause = mode === "mixed" ? Cause.combine(Cause.fail(failure), Cause.interrupt()) : Cause.interrupt();
-    vi.spyOn(renderers, "renderOutboxPayload").mockImplementation((_context, entry) =>
+    vi.spyOn(definitions, "prepareAttendanceNotification").mockImplementation((_context, entry) =>
       entry.sessionId === "first" ? Effect.fail(new Error("render query failed")) : Effect.failCause(cause));
     const failed = vi.spyOn(ctx.ports.outbox, "markFailed").mockRejectedValue(new Error("finalization failed"));
     const exit = await runEffect(Effect.exit(runOutboxWorkerTick(client, ctx)));

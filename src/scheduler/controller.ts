@@ -13,7 +13,7 @@ import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger as defaultLogger } from "../logger.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
-import { createAttendanceDeliveryRuntime } from "../notifications/delivery/attendanceRuntime.ts";
+import { createAttendanceDeliveryRuntime } from "../notifications/delivery/composition.attendance.ts";
 import { readAttendanceDispatchAt } from "../notifications/delivery/sources/attendance.ts";
 import { runEffectTickSafely } from "./tickRunner.ts";
 import type { SchedulerEffect } from "./scheduler.types.ts";

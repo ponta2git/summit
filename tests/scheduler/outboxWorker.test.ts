@@ -6,7 +6,7 @@ import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 
 import { computeOutboxBackoff } from "../../src/notifications/delivery/attendanceDelivery.js";
-import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.js";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
 import { deferred } from "../helpers/deferred.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";

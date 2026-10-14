@@ -8,7 +8,7 @@ import { getTextChannel } from "../../discord/shared/channels.ts";
 import { sendResultMessage } from "../../discord/shared/sendResultMessage.ts";
 import type { ResultDeliveryError } from "../../domain/notification.ts";
 import type { PreparedResultDelivery } from "./definitions/result.ts";
-import { deliverResumable } from "./strategies/resumable.ts";
+import type { ResumableStrategy } from "./strategies/resumable.ts";
 import { catchExpectedError, promiseCall, settledCall } from "../../runtime/effect.ts";
 import { addMs, type Clock } from "../../time/index.ts";
 import { withClaimHeartbeat } from "./claimHeartbeat.ts";
@@ -50,6 +50,7 @@ export interface ResultDeliveryDeps {
   readonly clock: Clock;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
   readonly isStopping: () => boolean;
+  readonly strategy: ResumableStrategy;
   /** Consume a coalesced request to check for waiting work, only after a part is persisted. */
   readonly consumeYieldRequest?: () => boolean;
 }
@@ -90,7 +91,7 @@ export const deliverPreparedResultNotification = (
     const shouldStop = (): boolean => isClaimLost() || deps.isStopping();
     if (shouldStop()) { return; }
     const channel = yield* boundedSend(() => getTextChannel(deps.client, context.channelId));
-    yield* deliverResumable<MessageCreateOptions, DeliveryFailure>({
+    yield* deps.strategy<MessageCreateOptions, DeliveryFailure>({
       parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop,
       begin: partNo => databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())),
       send: (partNo, body) => Effect.suspend(() => {

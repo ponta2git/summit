@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import type { Client, MessageCreateOptions } from "discord.js";
+import type { Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.ts";
 import {
@@ -12,8 +12,8 @@ import type { OutboxEntry } from "../../db/ports.ts";
 import { AppError } from "../../errors/index.ts";
 import { logger } from "../../logger.ts";
 import { getTextChannel } from "../../discord/shared/channels.ts";
-import { prepareAttendanceNotification } from "./definitions/attendance.ts";
-import { deliverSinglePost, type SinglePostDefinition } from "./strategies/singlePost.ts";
+import type { prepareAttendanceNotification } from "./definitions/attendance.ts";
+import type { SinglePostInput, SinglePostStrategy } from "./strategies/singlePost.ts";
 import type { DeliveryExecution } from "./capacity.ts";
 import { addMs } from "../../time/index.ts";
 import { catchExpectedError, settledCall } from "../../runtime/effect.ts";
@@ -41,11 +41,12 @@ export const computeOutboxBackoff = (
 type OutboxDeliveryMetadata = Pick<OutboxEntry, "id" | "sessionId" | "dedupeKey" | "attemptCount">;
 type AttendanceNotification = Effect.Success<ReturnType<typeof prepareAttendanceNotification>>;
 
-interface PreparedDelivery {
-  readonly body: MessageCreateOptions;
-  readonly definition: SinglePostDefinition<boolean | undefined>;
-  readonly channel: Awaited<ReturnType<typeof getTextChannel>>;
+export interface AttendanceDeliveryAdapters {
+  readonly prepareNotification: typeof prepareAttendanceNotification;
+  readonly strategy: SinglePostStrategy;
 }
+
+type PreparedDelivery = SinglePostInput<boolean | undefined>;
 
 const prepareDelivery = Effect.fnUntraced(function* (
   client: Client,
@@ -147,7 +148,8 @@ const deliverClaimedEntry = (
   entry: OutboxDeliveryMetadata,
   claimToken: string,
   render: Effect.Effect<AttendanceNotification, unknown>,
-  isStopping: () => boolean
+  isStopping: () => boolean,
+  strategy: SinglePostStrategy
 ): Effect.Effect<void, unknown> => {
   const preparation = Effect.suspend(() => isStopping() ? Effect.succeed(undefined) : render).pipe(
     Effect.flatMap(notification => prepareDelivery(client, ctx, entry, claimToken, notification, isStopping))
@@ -157,7 +159,7 @@ const deliverClaimedEntry = (
     Effect.flatMap(prepared => {
       if (prepared === undefined || isStopping()) { return Effect.void; }
       // invariant: send 開始後は中断要求があっても成功保存または失敗確定まで所有する。
-      return catchExpectedError(deliverSinglePost(prepared, { isStopping }),
+      return catchExpectedError(strategy(prepared, { isStopping }),
         error => recordDeliveryFailure(ctx, entry, claimToken, error)).pipe(Effect.uninterruptible);
     })
   );
@@ -167,7 +169,8 @@ export const deliverOutboxEntry = (
   client: Client,
   ctx: AppContext,
   entry: OutboxEntry,
-  execution: DeliveryExecution
+  execution: DeliveryExecution,
+  adapters: AttendanceDeliveryAdapters
 ): Effect.Effect<void, unknown> => {
   const { claimToken } = entry;
   const metadata: OutboxDeliveryMetadata = {
@@ -180,7 +183,7 @@ export const deliverOutboxEntry = (
     });
   }
   // The reusable render Effect owns its input; lease, failure and post-render work use metadata only.
-  const render = prepareAttendanceNotification(ctx, entry, claimToken);
+  const render = Effect.suspend(() => adapters.prepareNotification(ctx, entry, claimToken));
   return withClaimHeartbeat({
     intervalMs: OUTBOX_HEARTBEAT_MS,
     renew: () => ctx.ports.outbox.renewClaim(metadata.id, {
@@ -191,5 +194,5 @@ export const deliverOutboxEntry = (
         outboxId: metadata.id, sessionId: metadata.sessionId });
     }
   }, isClaimLost => deliverClaimedEntry(client, ctx, metadata, claimToken, render,
-    () => execution.isStopping() || isClaimLost()));
+    () => execution.isStopping() || isClaimLost(), adapters.strategy));
 };

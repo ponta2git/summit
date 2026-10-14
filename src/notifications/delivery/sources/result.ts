@@ -8,13 +8,15 @@ import type { Clock } from "../../../time/index.ts";
 import type { DeliveryBudget } from "../capacity.ts";
 import { deliveryLanes } from "../lanes.ts";
 
-/** Own result selection and handoff fairness, independently of capacity accounting. */
-export const createResultDeliverySource = (port: ResultNotificationsPort, clock: Clock): {
+export interface ResultDeliverySource {
   claim(budget: DeliveryBudget): Effect.Effect<readonly ClaimedResultNotification[], DatabaseError>;
   nextDispatchAt(activeIds: readonly string[]): Effect.Effect<Date | null, DatabaseError>;
   wake(reason: string): void;
   claimed(entry: ClaimedResultNotification): () => boolean;
-} => {
+}
+
+/** Own result selection and handoff fairness, independently of capacity accounting. */
+export const createResultDeliverySource = (port: ResultNotificationsPort, clock: Clock): ResultDeliverySource => {
   let preferredKind: ResultNotificationKind = "ocr_completed";
   let wakeGeneration = 0;
   const claim = (budget: DeliveryBudget): Effect.Effect<readonly ClaimedResultNotification[], DatabaseError> => fromDatabaseCall(() => port.claim({

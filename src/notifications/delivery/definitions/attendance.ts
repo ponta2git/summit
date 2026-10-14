@@ -6,24 +6,49 @@ import { completeReminderDelivery } from "../../../features/reminder/send.ts";
 import { logger } from "../../../logger.ts";
 import { settledCall } from "../../../runtime/effect.ts";
 import { notificationNonce } from "../deliveryNonce.ts";
-import { renderOutboxPayload } from "../outboxRenderers.ts";
+import {
+  renderAskOutbox, renderCancelWeekOutbox, renderDecidedOutbox, renderPostponeOutbox,
+  renderReminderOutbox, renderSettleOutbox, type OutboxRenderer
+} from "../outboxRenderers.ts";
 import type { SinglePostDefinition } from "../strategies/singlePost.ts";
 
-const defineAttendance = (
+/** Register rendering and notification-specific business confirmation together. */
+export interface AttendanceNotificationDefinition {
+  readonly render: OutboxRenderer;
+  readonly confirmBusiness?: (ctx: AppContext, sessionId: string, messageId: string) => Effect.Effect<void, unknown>;
+}
+export type AttendanceNotificationRegistry = Readonly<Record<string, AttendanceNotificationDefinition>>;
+
+export const attendanceDefinitions: AttendanceNotificationRegistry = {
+  ask_body: { render: renderAskOutbox },
+  settle_notice: { render: renderSettleOutbox },
+  postpone_vote: { render: renderPostponeOutbox },
+  decided_announcement: { render: renderDecidedOutbox },
+  reminder: {
+    render: renderReminderOutbox,
+    confirmBusiness: Effect.fnUntraced(function* (ctx: AppContext, sessionId: string) {
+      const completed = yield* settledCall(() => completeReminderDelivery(ctx, sessionId, ctx.clock.now()));
+      if (!completed) {
+        return yield* Effect.fail(new Error("Reminder delivered but Session/HeldEvent completion failed"));
+      }
+    })
+  },
+  cancel_week_notice: { render: renderCancelWeekOutbox }
+};
+
+const bindSinglePostDelivery = (
   ctx: AppContext,
   entry: OutboxEntry,
-  claimToken: string
+  claimToken: string,
+  confirmBusiness: AttendanceNotificationDefinition["confirmBusiness"]
 ): SinglePostDefinition<boolean | undefined> => {
-  const { id, sessionId, dedupeKey, attemptCount, payload: { renderer, target } } = entry;
+  const { id, sessionId, dedupeKey, attemptCount, payload: { target } } = entry;
   return {
     strategy: "singlePost",
     nonce: notificationNonce(id, 0),
     confirmBusiness: Effect.fnUntraced(function* (messageId: string) {
-      if (renderer === "reminder") {
-        const completed = yield* settledCall(() => completeReminderDelivery(ctx, sessionId, ctx.clock.now()));
-        if (!completed) {
-          return yield* Effect.fail(new Error("Reminder delivered but Session/HeldEvent completion failed"));
-        }
+      if (confirmBusiness) {
+        yield* confirmBusiness(ctx, sessionId, messageId);
       }
       // race: CAS-on-NULL keeps the first canonical message even after claim expiry;
       // the durable delivery acknowledgement remains fenced by claimToken.
@@ -58,13 +83,16 @@ const defineAttendance = (
 export const prepareAttendanceNotification = Effect.fnUntraced(function* (
   ctx: AppContext,
   entry: OutboxEntry,
-  claimToken: string
+  claimToken: string,
+  registry: AttendanceNotificationRegistry = attendanceDefinitions
 ) {
-  const body = yield* renderOutboxPayload(ctx, entry);
+  const notification = Object.hasOwn(registry, entry.payload.renderer) ? registry[entry.payload.renderer] : undefined;
+  if (!notification) { return undefined; }
+  const body = yield* notification.render({ ctx, entry });
   if (body === undefined) { return undefined; }
   return {
     body,
     channelId: entry.payload.channelId,
-    definition: defineAttendance(ctx, entry, claimToken)
+    definition: bindSinglePostDelivery(ctx, entry, claimToken, notification.confirmBusiness)
   };
 });

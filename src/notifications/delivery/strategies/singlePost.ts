@@ -11,15 +11,24 @@ export interface SinglePostDefinition<Receipt> {
   readonly confirmDelivery: (messageId: string, receipt: Receipt) => Effect.Effect<void, unknown>;
 }
 
-interface PreparedSinglePost<Receipt> {
+export interface SinglePostInput<Receipt> {
   readonly body: MessageCreateOptions;
   readonly channel: { send(body: MessageCreateOptions): PromiseLike<{ readonly id: string }> };
   readonly definition: SinglePostDefinition<Receipt>;
 }
 
+/**
+ * Check stop before send; after acceptance, confirm business then durable delivery exactly
+ * in that order. A replacement must preserve nonce use and ownership through settlement.
+ */
+export type SinglePostStrategy = <Receipt>(
+  input: SinglePostInput<Receipt>,
+  execution: { readonly isStopping: () => boolean }
+) => Effect.Effect<void, unknown>;
+
 /** Once send starts, retain ownership through business confirmation and durable acknowledgement. */
-export const deliverSinglePost = Effect.fnUntraced(function* <Receipt>(
-  { body, channel, definition }: PreparedSinglePost<Receipt>,
+export const deliverSinglePost: SinglePostStrategy = Effect.fnUntraced(function* <Receipt>(
+  { body, channel, definition }: SinglePostInput<Receipt>,
   execution: { readonly isStopping: () => boolean }
 ): Effect.fn.Return<void, unknown> {
   const sent = yield* settledCall(() => execution.isStopping() ? Promise.resolve(undefined) :

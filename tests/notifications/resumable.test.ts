@@ -2,12 +2,12 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { describe, expect, it, vi } from "vitest";
-import { deliverResumable } from "../../src/notifications/delivery/strategies/resumable.ts";
+import { deliverResumable, type ResumableDelivery } from "../../src/notifications/delivery/strategies/resumable.ts";
 import { promiseCall } from "../../src/runtime/effect.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
 
-const deliveryHarness = () => {
+const deliveryHarness = (): ResumableDelivery<string, never> & { readonly events: string[] } => {
   const events: string[] = [];
   return { events, parts: () => ["first", "second", "third", "fourth"], partCount: 4, deliveredPartNos: [0, 2],
     shouldStop: () => false,

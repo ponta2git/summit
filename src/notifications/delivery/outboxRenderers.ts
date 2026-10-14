@@ -22,7 +22,7 @@ interface RendererInput {
   readonly ctx: AppContext;
   readonly entry: OutboxEntry;
 }
-type Renderer = (input: RendererInput) => Effect.Effect<MessageCreateOptions | undefined, unknown>;
+export type OutboxRenderer = (input: RendererInput) => Effect.Effect<MessageCreateOptions | undefined, unknown>;
 
 const cancelWeekNoticeExtraSchema = z.object({
   invokerUserId: z.string(),
@@ -41,70 +41,60 @@ const parseExtra = <T extends z.ZodType>(
   return result.success ? result.data : undefined;
 };
 
-// source-of-truth: typed intent renderer registry. Unknown or state-incompatible rows dead-letter.
-const renderers: Readonly<Record<string, Renderer>> = {
-  ask_body: Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-    const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
-    if (!session) {return undefined;}
-    const [responses, members] = yield* loadAttendance(ctx, session.id);
-    return renderAskBody(buildAskMessageViewModel(session, responses, members));
-  }),
-  settle_notice: ({ entry }) => Effect.sync(() => {
-    const extra = parseExtra(settleNoticeExtraSchema, entry.payload.extra);
-    return extra
-      ? renderSettleNotice(buildSettleNoticeViewModel(extra.reason, {
-          ...(extra.forceSuppressMentions === undefined
-            ? {}
-            : { forceSuppressMentions: extra.forceSuppressMentions })
-        }))
-      : undefined;
-  }),
-  postpone_vote: Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-    const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
-    if (!session) {return undefined;}
-    const [responses, members] = yield* loadAttendance(ctx, session.id);
-    return renderPostponeBody(buildPostponeMessageViewModel(session, responses, members, {
-      disabled: session.status !== "POSTPONE_VOTING"
-    }));
-  }),
-  decided_announcement: Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-    const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
-    if (
-      !session ||
-      (session.status !== "DECIDED" && session.status !== "COMPLETED") ||
-      !session.decidedStartAt
-    ) {
-      return undefined;
-    }
-    const [responses, members] = yield* loadAttendance(ctx, session.id);
-    const vm = buildDecidedAnnouncementViewModel(session, responses, members);
-    return vm ? renderDecidedAnnouncement(vm) : undefined;
-  }),
-  reminder: Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-    const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
-    if (
-      !session ||
-      (session.status !== "DECIDED" && session.status !== "COMPLETED") ||
-      !session.decidedStartAt
-    ) {
-      return undefined;
-    }
-    return { content: buildReminderContent(session.decidedStartAt) };
-  }),
-  cancel_week_notice: ({ entry }) => Effect.sync(() => {
-    const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
-    if (!extra) {return undefined;}
-    return {
-      content: extra.suppressMentions === true
-        ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({
-            invokerUserId: extra.invokerUserId
-          })
-        : cancelWeekMessages.cancelWeek.channelNotice({
-            invokerUserId: extra.invokerUserId
-          })
-    };
-  })
-};
+export const renderAskOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  if (!session) {return undefined;}
+  const [responses, members] = yield* loadAttendance(ctx, session.id);
+  return renderAskBody(buildAskMessageViewModel(session, responses, members));
+});
+
+export const renderSettleOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() => {
+  const extra = parseExtra(settleNoticeExtraSchema, entry.payload.extra);
+  return extra
+    ? renderSettleNotice(buildSettleNoticeViewModel(extra.reason, {
+        ...(extra.forceSuppressMentions === undefined
+          ? {}
+          : { forceSuppressMentions: extra.forceSuppressMentions })
+      }))
+    : undefined;
+});
+
+export const renderPostponeOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  if (!session) {return undefined;}
+  const [responses, members] = yield* loadAttendance(ctx, session.id);
+  return renderPostponeBody(buildPostponeMessageViewModel(session, responses, members, {
+    disabled: session.status !== "POSTPONE_VOTING"
+  }));
+});
+
+export const renderDecidedOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  if (!session || (session.status !== "DECIDED" && session.status !== "COMPLETED") || !session.decidedStartAt) {
+    return undefined;
+  }
+  const [responses, members] = yield* loadAttendance(ctx, session.id);
+  const vm = buildDecidedAnnouncementViewModel(session, responses, members);
+  return vm ? renderDecidedAnnouncement(vm) : undefined;
+});
+
+export const renderReminderOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  if (!session || (session.status !== "DECIDED" && session.status !== "COMPLETED") || !session.decidedStartAt) {
+    return undefined;
+  }
+  return { content: buildReminderContent(session.decidedStartAt) };
+});
+
+export const renderCancelWeekOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() => {
+  const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
+  if (!extra) {return undefined;}
+  return {
+    content: extra.suppressMentions === true
+      ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId: extra.invokerUserId })
+      : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId: extra.invokerUserId })
+  };
+});
 
 const loadAttendance = (
   ctx: AppContext,
@@ -116,11 +106,3 @@ const loadAttendance = (
   settledCall(() => ctx.ports.responses.listResponses(sessionId)),
   settledCall(() => ctx.ports.members.listMembers())
 ], { concurrency: 2 });
-
-export const renderOutboxPayload = (
-  ctx: AppContext,
-  entry: OutboxEntry
-): Effect.Effect<MessageCreateOptions | undefined, unknown> => Effect.suspend(() => {
-  const renderer = renderers[entry.payload.renderer];
-  return renderer ? renderer({ ctx, entry }) : Effect.succeed(undefined);
-});

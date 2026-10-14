@@ -15,7 +15,7 @@ import { makeResultNotificationsPort } from './dist/db/repositories/resultNotifi
 import { assertNewNotificationPartLimit } from './dist/features/result-notifications/render.js';
 import { createDiscordClient } from './dist/discord/client.js';
 import { createNotificationReceiver } from './dist/notifications/http.js';
-import { createResultNotificationDispatcher } from './dist/notifications/delivery/resultRuntime.js';
+import { createResultNotificationDispatcher } from './dist/notifications/delivery/composition.result.js';
 import { notificationNonce } from './dist/notifications/delivery/deliveryNonce.js';
 ${notificationPerformanceTelemetry}
 ${notificationPerformanceDatabase}

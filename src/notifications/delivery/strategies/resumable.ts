@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 
-interface ResumableDelivery<Part, E> {
+/** Stable ordered parts and sorted, unique delivered numbers from the persisted plan. */
+export interface ResumableDelivery<Part, E> {
   readonly parts: () => Iterable<Part>;
   readonly partCount: number;
   readonly deliveredPartNos: readonly number[];
@@ -12,8 +13,17 @@ interface ResumableDelivery<Part, E> {
   readonly yield: (partNo: number) => Effect.Effect<boolean, E>;
 }
 
+/**
+ * Skip persisted parts, stop before a new send, and attempt complete for each accepted
+ * message even after stop. begin/complete false ends ownership; yield only after complete.
+ * Preserve typed failures and defects. I/O adapters own actual settlement and send timeouts.
+ */
+export interface ResumableStrategy {
+  <Part, E>(delivery: ResumableDelivery<Part, E>): Effect.Effect<void, E>;
+}
+
 /** Resume missing parts in order and hand off ownership only after a completed part. */
-export const deliverResumable = <Part, E>(delivery: ResumableDelivery<Part, E>): Effect.Effect<void, E> =>
+export const deliverResumable: ResumableStrategy = <Part, E>(delivery: ResumableDelivery<Part, E>): Effect.Effect<void, E> =>
   Effect.gen(function* () {
     let nextPartNo = 0;
     let deliveredIndex = 0;

@@ -3,7 +3,7 @@ import type { Client } from "discord.js";
 import type { AppContext } from "../appContext.ts";
 import { logger } from "../logger.ts";
 import { drainResources, stopResources } from "../runtime/lifecycle.ts";
-import { createResultNotificationDispatcher } from "./delivery/resultRuntime.ts";
+import { createResultNotificationDispatcher } from "./delivery/composition.result.ts";
 import { createNotificationReceiver } from "./http.ts";
 
 interface ResultNotificationRuntime {

@@ -5,6 +5,7 @@ import { analysisNotification, ocrNotification } from "../features/result-notifi
 import { stubClient } from "./outboxWorker.harness.ts";
 import { deliverPreparedResultNotification } from "../../src/notifications/delivery/resultDelivery.ts";
 import * as Effect from "effect/Effect";
+import { deliverResumable } from "../../src/notifications/delivery/strategies/resumable.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { prepareResultDelivery } from "../../src/notifications/delivery/definitions/result.ts";
 import type { ClaimedResultNotification } from "../../src/db/ports.resultNotifications.ts";
@@ -25,7 +26,7 @@ export const resultWorkerHarness = () => {
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   let stopping = false;
   const context = { channelId: "channel-1", webOrigin: "https://momo.example.com" };
-  const deps = { port, clock, client, logger, context, isStopping: () => stopping };
+  const deps = { port, clock, client, logger, context, strategy: deliverResumable, isStopping: () => stopping };
   return { ...deps, channel, stop: () => { stopping = true; },
     enqueue: async (jobId = "job-1", summary = "長いメモ。".repeat(800)) => {
       const original = analysisNotification();

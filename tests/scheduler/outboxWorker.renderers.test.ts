@@ -1,7 +1,7 @@
 import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 
-import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.js";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
 import { appConfig } from "../../src/userConfig.js";
 import { createTestAppContext, makeResponse } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";

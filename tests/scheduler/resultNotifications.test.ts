@@ -1,5 +1,6 @@
+import type { DeliveryRuntime as ResultNotificationDispatcher } from "../../src/notifications/delivery/runtime.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createResultNotificationDispatcher, type ResultNotificationDispatcher } from "../../src/notifications/delivery/resultRuntime.ts";
+import { createResultNotificationDispatcher } from "../../src/notifications/delivery/composition.result.ts";
 import { notificationNonce } from "../../src/notifications/delivery/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
