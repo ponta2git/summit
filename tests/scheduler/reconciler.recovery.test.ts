@@ -4,10 +4,8 @@ import {
   resetReconcilerHarness,
   sentMessages
 } from "./reconciler.harness.js";
-import {
-  reconcileMissingAsk,
-  reconcileMissingMessageIntents
-} from "../../src/scheduler/reconciler.js";
+import { reconcileMissingAsk } from "../../src/scheduler/reconciler.missingAsk.js";
+import { reconcileMissingMessageIntents } from "../../src/scheduler/reconciler.missingAskMessage.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";

@@ -21,7 +21,7 @@ const expectedReminderContent = (): string =>
     : `${appConfig.memberUserIds.map((id) => `<@${id}>`).join(" ")}\n${reminderBody}`;
 
 describe("sendReminderForSession", () => {
-  it("sends the exact reminder and completes the claimed session", async () => {
+  it("sends the exact reminder, records held participants and leaves a completed retry unchanged", async () => {
     const session = decidedSession();
     const ctx = createTestAppContext({
       now: TEST_NOW,
@@ -44,6 +44,32 @@ describe("sendReminderForSession", () => {
       reminderSentAt: TEST_NOW,
       updatedAt: TEST_NOW
     });
+    expect(ctx.ports.heldEvents.listHeldEvents()).toStrictEqual([{
+      id: "fake-held-1",
+      sessionId: session.id,
+      heldDateIso: "2026-04-24",
+      startAt: session.decidedStartAt,
+      createdAt: TEST_NOW
+    }]);
+    expect(ctx.ports.heldEvents.listAllParticipants()).toStrictEqual(
+      ["member-1", "member-2", "member-3", "member-4"].map(memberId => ({
+        heldEventId: "fake-held-1", memberId, createdAt: TEST_NOW
+      }))
+    );
+    const before = {
+      sessions: ctx.ports.sessions.listSessions(),
+      events: ctx.ports.heldEvents.listHeldEvents(),
+      participants: ctx.ports.heldEvents.listAllParticipants(),
+      outbox: ctx.ports.outbox.listEntries()
+    };
+    await sendReminderForSession(client, ctx, session.id, new Date("2026-04-24T12:46:00.000Z"));
+    expect(send).toHaveBeenCalledOnce();
+    expect({
+      sessions: ctx.ports.sessions.listSessions(),
+      events: ctx.ports.heldEvents.listHeldEvents(),
+      participants: ctx.ports.heldEvents.listAllParticipants(),
+      outbox: ctx.ports.outbox.listEntries()
+    }).toStrictEqual(before);
   });
 
   it("recovers a legacy claim marker through the outbox", async () => {

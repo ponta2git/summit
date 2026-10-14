@@ -48,10 +48,6 @@ export const isoWeekKey = (value: Date): string => {
   return `${isoYear}-W${isoWeek}`;
 };
 
-// why: 送信時点の now をそのまま候補日とする恒等関数。日付境界を跨ぐ操作が必要になった場合のみ拡張。
-// @see docs/time-rule.md
-export const candidateDateForAsk = (now: Date): Date => now;
-
 export const formatCandidateJa = (value: Date): string =>
   `${format(value, "yyyy-MM-dd(E)", { locale: ja })} ${SLOT_TO_LABEL.T2200} 以降`;
 
@@ -60,8 +56,6 @@ export const formatCandidateDateIso = (value: Date): string =>
 
 export const formatTimestampJst = (value: Date): string =>
   `${format(value, "yyyy-MM-dd HH:mm:ss")} JST`;
-
-export type AskTimeChoice = SlotKey;
 
 /**
  * Parses a `YYYY-MM-DD` string as the JST midnight of that date.
@@ -104,7 +98,7 @@ export const postponeDeadlineFor = (candidateDate: Date): Date =>
 export const saturdayCandidateFrom = (fridayCandidate: Date): Date =>
   startOfDay(addDays(fridayCandidate, 1));
 
-const CHOICE_RANK: Record<AskTimeChoice, number> = {
+const CHOICE_RANK: Record<SlotKey, number> = {
   T2200: 0,
   T2230: 1,
   T2300: 2,
@@ -119,8 +113,8 @@ const CHOICE_RANK: Record<AskTimeChoice, number> = {
  * 入力順に依存しないよう `CHOICE_RANK` で決定する。
  */
 export const latestChoice = (
-  choices: readonly AskTimeChoice[]
-): AskTimeChoice | undefined => {
+  choices: readonly SlotKey[]
+): SlotKey | undefined => {
   if (choices.length === 0) {return undefined;}
   return [...choices].sort((a, b) => CHOICE_RANK[b] - CHOICE_RANK[a])[0];
 };
@@ -133,7 +127,7 @@ export const latestChoice = (
  */
 export const decidedStartAt = (
   candidateDate: Date,
-  choices: readonly AskTimeChoice[]
+  choices: readonly SlotKey[]
 ): Date | undefined => {
   const latest = latestChoice(choices);
   if (!latest) {return undefined;}

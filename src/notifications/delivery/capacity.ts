@@ -4,7 +4,6 @@ import * as Exit from "effect/Exit";
 import type * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import { InvariantViolationError } from "../../errors/index.ts";
-import type { DeliveryLaneId } from "./lanes.ts";
 
 export interface DeliveryBudget {
   readonly slots: number;
@@ -14,8 +13,6 @@ export interface DeliveryBudget {
 }
 
 export interface DeliveryExecution {
-  readonly deliveryId: string;
-  readonly laneId: DeliveryLaneId;
   readonly isStopping: () => boolean;
 }
 
@@ -31,7 +28,6 @@ export interface DeliveryCapacity {
 
 /** Own logical delivery reservations and fibers independently of notification kinds. */
 export const createDeliveryCapacity = (options: {
-  readonly laneId: DeliveryLaneId;
   readonly slots: number;
   readonly payloadBytes?: number;
   readonly onSettled?: (id: string, exit: Exit.Exit<void, unknown>) => void;
@@ -61,7 +57,7 @@ export const createDeliveryCapacity = (options: {
           active.set(id, { payloadBytes, completed: settlement });
           return settlement;
         });
-        const execution: DeliveryExecution = { deliveryId: id, laneId: options.laneId, isStopping: () => stopped };
+        const execution: DeliveryExecution = { isStopping: () => stopped };
         const owned = Effect.suspend(() => work(execution)).pipe(Effect.onExit(exit =>
           Effect.sync(() => { active.delete(id); options.onSettled?.(id, exit); })
             .pipe(Effect.ensuring(Deferred.succeed(completed, undefined)))));

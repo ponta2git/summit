@@ -7,7 +7,7 @@ import type {
   OutboxEntry,
   OutboxPort
 } from "../../src/db/ports.js";
-import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
+import { recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
 import { createFakeOutboxMaintenance } from "./ports.outbox.maintenance.js";
 import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.js";
 import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims } from "./ports.outbox.claims.ts";
@@ -26,8 +26,8 @@ export interface FakeOutboxPort extends OutboxPort {
 
 /** In-memory outbox with global dedupe, claims, retry, metrics, and retention semantics. */
 export const createFakeOutboxPort = (
-  seed: ReadonlyArray<OutboxEntry> = [],
-  clock: FakeClock = DEFAULT_CLOCK
+  seed: ReadonlyArray<OutboxEntry>,
+  clock: FakeClock
 ): FakeOutboxPort => {
   const calls: AnyCall[] = [];
   const byId = new Map<string, OutboxEntry>(seed.map((entry) => [entry.id, structuredClone(entry)]));

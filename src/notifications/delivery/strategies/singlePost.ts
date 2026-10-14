@@ -5,7 +5,6 @@ import { settledCall } from "../../../runtime/effect.ts";
 
 /** Business confirmation must succeed before the durable delivery is acknowledged. */
 export interface SinglePostDefinition<Receipt> {
-  readonly strategy: "singlePost";
   readonly nonce: string;
   readonly confirmBusiness: (messageId: string) => Effect.Effect<Receipt, unknown>;
   readonly confirmDelivery: (messageId: string, receipt: Receipt) => Effect.Effect<void, unknown>;

@@ -122,7 +122,7 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
   prune: (options) => pruneOutbox(db, options),
   getMetrics: (now) => getOutboxMetrics(db, now),
-  getNextDispatchAt: (now) => getNextOutboxDispatchAt(db, now)
+  getNextDispatchAt: () => getNextOutboxDispatchAt(db)
 });
 
 export const makeRealPorts = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck): AppPorts => ({

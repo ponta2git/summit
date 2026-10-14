@@ -66,8 +66,8 @@ describe("scheduler transient-failure recovery", () => {
     else {
       const getNext = context.ports.outbox.getNextDispatchAt;
       let calls = 0;
-      context.ports.outbox.getNextDispatchAt = async now => {
-        calls += 1; if (calls === 2) { throw new Error("dispatch query unavailable"); } return getNext(now);
+      context.ports.outbox.getNextDispatchAt = async () => {
+        calls += 1; if (calls === 2) { throw new Error("dispatch query unavailable"); } return getNext();
       };
     }
     const { channel } = stubChannel();

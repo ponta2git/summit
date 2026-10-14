@@ -13,20 +13,13 @@ import { assertEnum } from "../rows.ts";
 //   既存 message の編集は DB 正本からの best-effort 経路であり outbox へ混在させない。
 const OUTBOX_PAYLOAD_TARGETS = ["askMessageId", "postponeMessageId"] as const;
 
-const outboxPayloadExtraSchema = z.record(z.string(), z.unknown());
-
-const outboxPayloadBaseSchema = z.object({
+const outboxPayloadSchema = z.object({
+  kind: z.literal("send_message"),
+  renderer: z.string(),
   channelId: z.string(),
   target: z.enum(OUTBOX_PAYLOAD_TARGETS).optional(),
-  extra: outboxPayloadExtraSchema.optional()
+  extra: z.record(z.string(), z.unknown()).optional()
 });
-
-const outboxSendMessagePayloadSchema = outboxPayloadBaseSchema.extend({
-  kind: z.literal("send_message"),
-  renderer: z.string()
-});
-
-const outboxPayloadSchema = outboxSendMessagePayloadSchema;
 
 export type OutboxPayload = z.infer<typeof outboxPayloadSchema>;
 

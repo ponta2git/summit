@@ -7,7 +7,6 @@ import {
 import { createAskSession } from "../../src/db/repositories/sessions.js";
 import { discordNotifications } from "../../src/db/schema.js";
 import {
-  assertSchemaReady,
   createIntegrationDb,
   seedBaseMembers,
   truncatePerTestTables
@@ -63,16 +62,12 @@ export const createOutboxContractHarness = (options: { maxConnections?: number }
     basePayload,
     enqueueWithNextAttempt,
     initialize: async (): Promise<void> => {
-      await assertSchemaReady(db);
       await seedBaseMembers(db);
     },
     reset: async (): Promise<void> => {
       nextAggregateRevision = 0;
       await truncatePerTestTables(db);
       await createAskSession(db, { ...baseSession });
-    },
-    close: async (): Promise<void> => {
-      await client.end({ timeout: 5 });
     }
   };
 };

@@ -1,5 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
-import type { z } from "zod";
+import { describe, expect, it } from "vitest";
 
 import { envSchema } from "../../src/envSchema.ts";
 
@@ -12,9 +11,10 @@ const validEnvInput = {
 
 describe("envSchema", () => {
   it("accepts valid required fields and preserves the injected config YAML", () => {
-    const parsed = envSchema.parse(validEnvInput);
+    const parsed = envSchema.parse({ ...validEnvInput, DIRECT_URL: "postgres://unused@localhost/migrations" });
 
     expect(parsed.SUMMIT_CONFIG_YAML).toBe("discord: {}");
+    expect(parsed).not.toHaveProperty("DIRECT_URL");
   });
 
   it("rejects invalid inputs", () => {
@@ -39,13 +39,6 @@ describe("envSchema", () => {
     }
   });
 
-  it("provides expected inferred types", () => {
-    const parsed = envSchema.parse(validEnvInput);
-
-    expectTypeOf(parsed.TZ).toEqualTypeOf<"Asia/Tokyo">();
-    expectTypeOf(parsed.SUMMIT_CONFIG_YAML).toEqualTypeOf<string>();
-  });
-
   it("requires complete notification configuration, separate credentials and a private bind", () => {
     const notifications = { ...validEnvInput, RESULT_NOTIFICATION_TOKEN: "p".repeat(32),
       RESULT_NOTIFICATION_OPERATIONS_TOKEN: "o".repeat(32), RESULT_NOTIFICATION_WEB_ORIGIN: "https://example.test" };
@@ -64,13 +57,5 @@ describe("envSchema", () => {
       { ...notifications, RESULT_NOTIFICATION_PORT: "0" }
     ];
     for (const input of invalid) { expect(envSchema.safeParse(input).success).toBe(false); }
-  });
-
-  it("does not expose DIRECT_URL in env type", () => {
-    type Env = z.infer<typeof envSchema>;
-    type HasDirectUrl = "DIRECT_URL" extends keyof Env ? true : false;
-    const hasDirectUrl: HasDirectUrl = false;
-
-    expect(hasDirectUrl).toBe(false);
   });
 });

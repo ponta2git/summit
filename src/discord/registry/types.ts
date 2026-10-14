@@ -8,13 +8,13 @@ import type {
 
 import type { InteractionHandlerDeps } from "../shared/interactionHandlerDeps.ts";
 
-export type ButtonHandler = (
+type ButtonHandler = (
   interaction: ButtonInteraction,
   deps: InteractionHandlerDeps,
   ack: { readonly acknowledged: true }
 ) => Promise<void>;
 
-export type CommandHandler = (
+type CommandHandler = (
   interaction: ChatInputCommandInteraction,
   deps: InteractionHandlerDeps
 ) => Promise<void>;

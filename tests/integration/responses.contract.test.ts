@@ -1,10 +1,9 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { listResponses } from "../../src/db/repositories/responses.js";
 import { createAskSession } from "../../src/db/repositories/sessions.js";
 import {
-  assertSchemaReady,
   createIntegrationDb,
   isIntegration,
   seedBaseMembers,
@@ -14,7 +13,7 @@ import {
 const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("responses read repository and schema contract (integration)", () => {
-  const { db, client } = createIntegrationDb();
+  const { db } = createIntegrationDb();
   const session = {
     id: "sess-responses",
     weekKey: "2026-W17",
@@ -25,7 +24,6 @@ describeDb("responses read repository and schema contract (integration)", () => 
   } as const;
 
   beforeAll(async () => {
-    await assertSchemaReady(db);
     await seedBaseMembers(db);
   });
 
@@ -34,28 +32,14 @@ describeDb("responses read repository and schema contract (integration)", () => 
     await createAskSession(db, session);
   });
 
-  afterAll(async () => {
-    await client.end({ timeout: 5 });
-  });
-
   it("returns no rows for an unanswered Session", async () => {
     expect(await listResponses(db, session.id)).toStrictEqual([]);
   });
 
   it("rejects an invalid choice at the database boundary", async () => {
-    let caught: unknown;
-    try {
-      await db.execute(sql`
+    await expect(db.execute(sql`
         INSERT INTO responses (id, session_id, member_id, choice, answered_at)
         VALUES ('r-bad', ${session.id}, 'm1', 'INVALID_CHOICE', now())
-      `);
-    } catch (error: unknown) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(Error);
-    const cause =
-      (caught as { cause?: { constraint_name?: string; message?: string } }).cause ?? {};
-    expect(String(cause.constraint_name ?? cause.message ?? (caught as Error).message))
-      .toContain("responses_choice_check");
+      `)).rejects.toMatchObject({ cause: { code: "23514", constraint_name: "responses_choice_check" } });
   });
 });

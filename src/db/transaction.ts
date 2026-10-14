@@ -3,7 +3,7 @@ import type { DbLike } from "./rows.ts";
 
 export type DbTransaction = Parameters<Parameters<DbLike["transaction"]>[0]>[0];
 
-export interface TransactionLimits {
+interface TransactionLimits {
   readonly lockTimeoutMs: number;
   readonly statementTimeoutMs: number;
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { runTransaction } from "../../src/db/transaction.ts";
 import { sessions } from "../../src/db/schema.ts";
 import { deferred } from "../helpers/deferred.ts";
@@ -7,10 +7,9 @@ import { makeSession } from "../testing/fixtures.ts";
 import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("database transaction limits", () => {
-  const { db, client } = createIntegrationDb();
+  const { db } = createIntegrationDb();
   const blocker = createIntegrationDb();
   beforeEach(() => truncatePerTestTables(db));
-  afterAll(async () => { await Promise.all([client.end({ timeout: 5 }), blocker.client.end({ timeout: 5 })]); });
 
   const settings = async (): Promise<unknown> => db.execute(sql`SELECT
     current_setting('lock_timeout') AS lock, current_setting('statement_timeout') AS statement`);

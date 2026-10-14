@@ -4,7 +4,7 @@ import { fromDatabaseCall } from "../errors/effect.ts";
 import { logger } from "../logger.ts";
 import type { SchedulerEffect } from "./scheduler.types.ts";
 
-export interface ReconciledOutboxDeadLetters {
+interface ReconciledOutboxDeadLetters {
   readonly deadLettersRequeued: number;
   readonly successorsRequeued: number;
 }

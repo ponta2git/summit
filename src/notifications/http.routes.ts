@@ -9,7 +9,7 @@ import { readNotificationBody, NotificationHttpError } from "./http.body.ts";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES } from "../config.ts";
 import { parseNotificationJson } from "../domain/resultNotificationPayload.ts";
 
-export interface NotificationHttpResult { readonly status: number; readonly body: unknown; }
+interface NotificationHttpResult { readonly status: number; readonly body: unknown; }
 export interface NotificationHttpDeps {
   readonly port: ResultNotificationsPort;
   readonly clock: Clock;

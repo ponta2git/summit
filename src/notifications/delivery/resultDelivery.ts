@@ -44,7 +44,7 @@ const classifyFailure = (error: DeliveryFailure, sending: boolean): { code: Resu
   return { code: sending ? "delivery_uncertain" : "discord_unavailable", retry: true };
 };
 
-export interface ResultDeliveryDeps {
+interface ResultDeliveryDeps {
   readonly client: Client;
   readonly port: ResultNotificationsPort;
   readonly clock: Clock;

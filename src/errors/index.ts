@@ -9,7 +9,7 @@ const APP_ERROR_CODES = [
 
 type AppErrorCode = (typeof APP_ERROR_CODES)[number];
 
-export interface AppErrorOptions {
+interface AppErrorOptions {
   cause?: unknown;
 }
 

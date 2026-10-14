@@ -5,7 +5,7 @@ import type {
   HeldEventRow,
   HeldEventsPort
 } from "../../src/db/ports.js";
-import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
+import { recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
 import type { FakeSessionsPort } from "./ports.sessions.js";
 
 export interface FakeHeldEventsPort extends HeldEventsPort {
@@ -20,8 +20,8 @@ export const createFakeHeldEventsPort = (
   seed: {
     readonly heldEvents?: ReadonlyArray<HeldEventRow>;
     readonly participants?: ReadonlyArray<HeldEventParticipantRow>;
-  } = {},
-  clock: FakeClock = DEFAULT_CLOCK
+  },
+  clock: FakeClock
 ): FakeHeldEventsPort => {
   const calls: AnyCall[] = [];
   const heldEvents = (seed.heldEvents ?? []).map((event) => structuredClone(event));

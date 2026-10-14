@@ -23,7 +23,7 @@ interface MemberDisplayNameUpdate {
   readonly displayName: string;
 }
 
-export interface MemberReconcilePlan {
+interface MemberReconcilePlan {
   readonly rowsToInsert: readonly MemberRowToInsert[];
   readonly displayNameUpdates: readonly MemberDisplayNameUpdate[];
   readonly alreadyPresent: readonly string[];

@@ -34,7 +34,6 @@ describe("injected delivery ownership", () => {
         return Effect.succeed([{ id: "failed" }, { id: "held" }]);
       },
       prepareTask: ({ id }) => ({ id, payloadBytes: 0, run: execution => Effect.suspend(() => {
-        expect(execution).toMatchObject({ deliveryId: id, laneId: "attendance" });
         expect(execution.isStopping()).toBe(false);
         if (id === "failed") { return Effect.fail(failure); }
         return settledCall(async () => { started.resolve(); await release.promise; events.push("held-complete"); });
@@ -58,8 +57,7 @@ describe("injected delivery ownership", () => {
     runtime = createResultDeliveryRuntime({ clock: h.clock, logger: h.logger,
       source: createResultDeliverySource(h.port, h.clock),
       prepareTask: entry => ({ id: entry.id, payloadBytes: entry.payloadBytes,
-        run: execution => settledCall(async () => {
-          expect(execution.laneId).toBe("results");
+        run: () => settledCall(async () => {
           started.push(entry.id);
           await held.get(entry.id)?.promise;
           finished.push(entry.id);

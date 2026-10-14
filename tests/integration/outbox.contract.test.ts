@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   claimNextOutboxBatch,
@@ -34,8 +34,6 @@ describeDb("discord_outbox repository contract (integration)", () => {
   beforeAll(() => harness.initialize());
 
   beforeEach(() => harness.reset());
-
-  afterAll(() => harness.close());
 
   it("enqueueOutbox: second enqueue for same dedupeKey returns skipped=true", async () => {
     const first = await enqueueOutbox(db, {

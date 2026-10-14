@@ -99,14 +99,14 @@ describe("outbox port fake", () => {
       nextAttemptAt: new Date(now.getTime() + 300_000)
     });
 
-    expect(await ctx.ports.outbox.getNextDispatchAt(now)).toStrictEqual(
+    expect(await ctx.ports.outbox.getNextDispatchAt()).toStrictEqual(
       new Date(now.getTime() - 1)
     );
   });
 
   it("returns null when no dispatchable rows exist", async () => {
     const ctx = createTestAppContext();
-    expect(await ctx.ports.outbox.getNextDispatchAt(ctx.clock.now())).toBeNull();
+    expect(await ctx.ports.outbox.getNextDispatchAt()).toBeNull();
   });
 
   it("does not reclaim an in-flight row before expiry, then reclaims at the boundary", async () => {

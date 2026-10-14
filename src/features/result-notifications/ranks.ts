@@ -34,6 +34,3 @@ export function* renderNotificationRankParts(ranks: readonly RankComparison[]): 
     yield `: ${sample(rank.before)} → ${sample(rank.after)} / ${comparison(rank)}`;
   }
 }
-
-export const renderNotificationRanks = (ranks: readonly RankComparison[]): string =>
-  [...renderNotificationRankParts(ranks)].join("");

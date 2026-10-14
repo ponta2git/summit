@@ -19,7 +19,7 @@ export const createResultDeliveryRuntime = <E>(deps: {
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
 }): DeliveryRuntime => {
   const { source, logger } = deps;
-  const capacity = createDeliveryCapacity({ laneId: "results", ...deliveryLanes.results,
+  const capacity = createDeliveryCapacity({ ...deliveryLanes.results,
     onSettled: (notificationId, exit) => {
       if (Exit.isFailure(exit)) { logger.error({ event: "result_notification.dispatch_failed", notificationId }); }
       dispatcher.wake("delivery_finished");

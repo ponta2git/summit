@@ -4,7 +4,7 @@ import type {
   SessionsPort
 } from "../../src/db/ports.js";
 import { checkpointMap } from "./transactions.ts";
-import { DEFAULT_CLOCK, type AnyCall, type FakeClock } from "./ports.shared.js";
+import type { AnyCall, FakeClock } from "./ports.shared.js";
 import { createFakeSessionMessageMethods } from "./ports.sessions.messages.js";
 import { createFakeSessionQueryMethods } from "./ports.sessions.queries.js";
 import { createFakeSessionsState } from "./ports.sessions.state.js";
@@ -23,9 +23,9 @@ export interface FakeSessionsPort extends SessionsPort, FakeSessionTransitionMet
 
 /** In-memory SessionsPort with production-like CAS and uniqueness semantics. */
 export const createFakeSessionsPort = (
-  seed: ReadonlyArray<SessionRow> = [],
-  clock: FakeClock = DEFAULT_CLOCK,
-  outboxEnqueue?: (entry: EnqueueOutboxInput) => Promise<void>
+  seed: ReadonlyArray<SessionRow>,
+  clock: FakeClock,
+  outboxEnqueue: (entry: EnqueueOutboxInput) => Promise<void>
 ): FakeSessionsPort => {
   const state = createFakeSessionsState(seed, clock, outboxEnqueue);
   return {

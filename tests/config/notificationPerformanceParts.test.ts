@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { capacityPartAnalysis } from "../../scripts/perf/notificationPerformance.parts.ts";
 import { validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
-import { assertNewNotificationPartLimit, planResultNotification } from "../../src/features/result-notifications/render.ts";
+import { assertNewNotificationPartLimit, resultNotificationRenderers } from "../../src/features/result-notifications/render.ts";
 import { buildNotificationLinks } from "../../src/features/result-notifications/links.ts";
 import { semanticJson } from "../testing/ports.resultNotifications.state.ts";
 
@@ -24,7 +24,7 @@ describe("high-part notification performance fixture", () => {
       expect(links.match(match.matchId).length).toBe(1_802); // Angle brackets surround the 1,800-character URL.
       expect(match.ginjiTotal).toBe(9_007_199_254_740_988);
     }
-    const plan = planResultNotification(payload, origin);
+    const plan = resultNotificationRenderers.analysis_completed.plan(payload, origin);
     expect(plan.partCount).toBe(112);
     let count = 0;
     let maximumLength = 0;

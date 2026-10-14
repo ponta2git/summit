@@ -32,7 +32,7 @@ export interface SchedulerController {
   recompute(reason: string): Promise<void>;
 }
 
-export interface SchedulerControllerDeps {
+interface SchedulerControllerDeps {
   readonly client: Client;
   readonly context: AppContext;
   readonly runDeadlineTick: () => SchedulerEffect<unknown>;
@@ -135,7 +135,7 @@ export const createSchedulerController = (
           () => context.ports.sessions.getSchedulerSessionHints(now),
           "Failed to read scheduler session hints."
         ),
-        readAttendanceDispatchAt(context, now)
+        readAttendanceDispatchAt(context)
       ], { concurrency: 2 }));
       if (stopped) { return { didRun, failed }; }
       let ranThisPass = false;

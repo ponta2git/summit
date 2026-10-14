@@ -29,7 +29,7 @@ const claimNotification = async (renderer: string, reminder = false) => {
   if (!entry?.claimToken) { throw new Error("Expected a fenced fixture claim."); }
   const { channel } = stubChannel();
   return { ctx, entry, channel, client: stubClient(channel), session,
-    execution: { deliveryId: entry.id, laneId: "attendance" as const, isStopping: () => false },
+    execution: { isStopping: () => false },
     advance: () => { now = new Date(now.getTime() + 2_000); } };
 };
 

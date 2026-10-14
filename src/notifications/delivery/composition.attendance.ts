@@ -49,6 +49,6 @@ export const createAttendanceDeliveryRuntime = (deps: {
   return createAttendanceRuntime({
     clock: context.clock, logger, onWake,
     runBatch: isStopping => runOutboxWorkerTick(client, context, isStopping, adapters),
-    nextDispatchAt: now => readAttendanceDispatchAt(context, now)
+    nextDispatchAt: () => readAttendanceDispatchAt(context)
   });
 };

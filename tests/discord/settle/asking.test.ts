@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  evaluateAndApplyDeadlineDecision,
-  settleAskingSession
-} from "../../../src/orchestration/index.js";
+import { evaluateAndApplyDeadlineDecision } from "../../../src/orchestration/index.js";
+import { settleAskingSession } from "../../../src/orchestration/askSettleCancel.js";
 import { runOutboxWorkerTick } from "../../../src/notifications/delivery/composition.attendance.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { callArg, runEffect } from "../../helpers/assertions.js";

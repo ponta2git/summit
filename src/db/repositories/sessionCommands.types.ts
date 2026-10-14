@@ -8,7 +8,7 @@ export type AskResponseChoice = Exclude<
   ResponseChoice,
   "POSTPONE_OK" | "POSTPONE_NG"
 >;
-export type PostponeResponseChoice = Extract<
+type PostponeResponseChoice = Extract<
   ResponseChoice,
   "POSTPONE_OK" | "POSTPONE_NG"
 >;
@@ -83,7 +83,7 @@ export type CancelWeekResult =
       readonly sessions: readonly SessionRow[];
     };
 
-export type InteractionCommandRejection =
+type InteractionCommandRejection =
   | { readonly kind: "session_not_found" }
   | { readonly kind: "member_not_found"; readonly session: SessionRow }
   | { readonly kind: "deadline_passed"; readonly session: SessionRow }

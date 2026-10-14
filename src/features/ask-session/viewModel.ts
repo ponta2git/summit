@@ -1,10 +1,9 @@
-import { isSlotKey, slotKeySchema } from "../../slot.ts";
+import { isSlotKey, slotKeySchema, type SlotKey } from "../../slot.ts";
 import { appConfig } from "../../userConfig.ts";
 import { askMessages, type SettleCancelReason } from "./messages.ts";
 import {
   decidedStartAt,
-  parseCandidateDateIso,
-  type AskTimeChoice
+  parseCandidateDateIso
 } from "../../time/index.ts";
 import type {
   ViewModelMemberInput,
@@ -24,7 +23,7 @@ export interface AskMessageViewModel {
   readonly footer: string | undefined;
 }
 
-export interface SettleNoticeViewModel {
+interface SettleNoticeViewModel {
   readonly cancelText: string;
   readonly memberUserIds: readonly string[];
   readonly suppressMentions: boolean;
@@ -63,7 +62,7 @@ const computeAskFooter = (
         choiceByUserId.set(userId, r.choice);
       }
     }
-    const timeChoices: AskTimeChoice[] = [];
+    const timeChoices: SlotKey[] = [];
     for (const userId of appConfig.memberUserIds) {
       const choice = choiceByUserId.get(userId);
       const parsed = choice ? slotKeySchema.safeParse(choice) : undefined;

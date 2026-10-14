@@ -15,11 +15,6 @@ import { escapeNotificationText as plain, escapeNotificationTextParts, splitNoti
 
 type NotificationPart = MessageCreateOptions & { readonly content: string };
 
-export interface RenderedResultNotification {
-  readonly rendererVersion: number;
-  readonly parts: readonly NotificationPart[];
-}
-
 export interface PlannedResultNotification {
   readonly rendererVersion: number;
   readonly partCount: number;
@@ -180,25 +175,4 @@ const selectRenderer = <Kind extends keyof ResultNotificationPayloads>(
 /** Check the actual escaped text and configured links before accepting a new notification. */
 export const assertNewNotificationPartLimit = (notification: DiscordResultNotification, webOrigin: string): void => {
   selectRenderer(notification.kind).plan(notification, webOrigin, RESULT_NOTIFICATION_MAX_PARTS);
-};
-
-/** Count once, then yield retained renderer parts without holding the expanded full body. */
-export const planResultNotification = (
-  notification: DiscordResultNotification,
-  webOrigin: string,
-  rendererVersion?: number
-): PlannedResultNotification => {
-  const renderer = selectRenderer(notification.kind);
-  if (rendererVersion !== undefined && rendererVersion !== renderer.rendererVersion) { throw new Error("Unsupported notification renderer."); }
-  return renderer.plan(notification, webOrigin);
-};
-
-/** Materialize the retained rendering for callers that need a complete value. */
-export const renderResultNotification = (
-  notification: DiscordResultNotification,
-  webOrigin: string,
-  rendererVersion?: number
-): RenderedResultNotification => {
-  const plan = planResultNotification(notification, webOrigin, rendererVersion);
-  return { rendererVersion: plan.rendererVersion, parts: [...plan.parts()] };
 };

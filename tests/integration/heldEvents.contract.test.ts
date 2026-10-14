@@ -1,20 +1,18 @@
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   completeDecidedSessionAsHeld,
-  findHeldEventBySessionId,
-  listHeldEventParticipants
+  findHeldEventBySessionId
 } from "../../src/db/repositories/heldEvents.js";
 import {
   createAskSession
 } from "../../src/db/repositories/sessions.js";
 import { deferred } from "../helpers/deferred.ts";
 import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
-import { sessions } from "../../src/db/schema.js";
+import { heldEventParticipants, sessions } from "../../src/db/schema.js";
 
 import {
-  assertSchemaReady,
   createIntegrationDb,
   isIntegration,
   seedBaseMembers,
@@ -25,6 +23,8 @@ const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("heldEvents repository contract (integration)", () => {
   const { db, client } = createIntegrationDb({ maxConnections: 4 });
+  const listParticipants = (heldEventId: string) => db.select().from(heldEventParticipants)
+    .where(eq(heldEventParticipants.heldEventId, heldEventId));
 
   const baseSession = {
     id: "sess-held",
@@ -36,17 +36,12 @@ describeDb("heldEvents repository contract (integration)", () => {
   } as const;
 
   beforeAll(async () => {
-    await assertSchemaReady(db);
     await seedBaseMembers(db);
   });
 
   beforeEach(async () => {
     await truncatePerTestTables(db);
     await createAskSession(db, { ...baseSession });
-  });
-
-  afterAll(async () => {
-    await client.end({ timeout: 5 });
   });
 
   const decide = async (): Promise<void> => {
@@ -88,7 +83,7 @@ describeDb("heldEvents repository contract (integration)", () => {
       participantMemberIds: ["m1", "m2", "m3", "m4"]
     });
 
-    expect((await listHeldEventParticipants(db, result.heldEvent.id)).map((row) => row.memberId))
+    expect((await listParticipants(result.heldEvent.id)).map((row) => row.memberId))
       .toStrictEqual(["m1", "m2", "m3", "m4"]);
   });
 
@@ -112,7 +107,7 @@ describeDb("heldEvents repository contract (integration)", () => {
     // idempotent: 既存の held_event / participants は保持される。
     const held = await findHeldEventBySessionId(db, baseSession.id);
     expect(held?.id).toBe(first.heldEvent.id);
-    const participants = await listHeldEventParticipants(db, first.heldEvent.id);
+    const participants = await listParticipants(first.heldEvent.id);
     expect(participants.map((participant) => participant.memberId)).toStrictEqual(["m1"]);
   });
 
@@ -143,7 +138,7 @@ describeDb("heldEvents repository contract (integration)", () => {
 
     const held = await findHeldEventBySessionId(db, baseSession.id);
     expect(held?.id).toBe(winner.heldEvent.id);
-    expect((await listHeldEventParticipants(db, winner.heldEvent.id)).map((row) => row.memberId))
+    expect((await listParticipants(winner.heldEvent.id)).map((row) => row.memberId))
       .toStrictEqual(winner.participants.map((row) => row.memberId));
   });
 

@@ -74,7 +74,7 @@ export const guardMemberUserId = (userId: string): Result.Result<string, Validat
   return Result.succeed(userId);
 };
 
-export interface AskCustomIdGuardResult {
+interface AskCustomIdGuardResult {
   readonly sessionId: string;
   readonly choice: AskCustomIdChoice;
 }
@@ -91,7 +91,7 @@ export const guardAskCustomId = (customId: string): Result.Result<AskCustomIdGua
   });
 };
 
-export interface PostponeCustomIdGuardResult {
+interface PostponeCustomIdGuardResult {
   readonly sessionId: string;
   readonly choice: PostponeCustomIdChoice;
 }
@@ -110,7 +110,7 @@ export const guardPostponeCustomId = (
   });
 };
 
-export interface CancelWeekCustomIdGuardResult {
+interface CancelWeekCustomIdGuardResult {
   readonly weekKey: string;
   readonly choice: CancelWeekCustomIdChoice;
 }
@@ -126,7 +126,7 @@ export const guardCancelWeekCustomId = (
   return Result.succeed({ weekKey: parsed.data.weekKey, choice: parsed.data.choice });
 };
 
-export interface AbsentConfirmCustomIdGuardResult {
+interface AbsentConfirmCustomIdGuardResult {
   readonly sessionId: string;
   readonly choice: AbsentConfirmCustomIdChoice;
 }
@@ -142,7 +142,7 @@ export const guardAbsentConfirmCustomId = (
   return Result.succeed({ sessionId: parsed.data.sessionId, choice: parsed.data.choice });
 };
 
-export interface PostponeNgConfirmCustomIdGuardResult {
+interface PostponeNgConfirmCustomIdGuardResult {
   readonly sessionId: string;
   readonly choice: PostponeNgConfirmCustomIdChoice;
 }

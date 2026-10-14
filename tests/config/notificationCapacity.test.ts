@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { capacityMetrics, capacityOptions, capacityTargetMet } from "../../scripts/verify/notificationCapacity.contract.ts";
 import { capacityAnalysis } from "../../scripts/verify/notificationCapacity.fixtures.ts";
 import { validateNewNotification } from "../../src/domain/resultNotificationPayload.ts";
-import { planResultNotification } from "../../src/features/result-notifications/render.ts";
+import { resultNotificationRenderers } from "../../src/features/result-notifications/render.ts";
 
 describe("notification capacity verification contract", () => {
   it("reports invalid CLI setup without loading runtime credentials or opening Docker", () => {
@@ -55,7 +55,7 @@ describe("notification capacity verification contract", () => {
     expect([...value.data.gameTitleName]).toHaveLength(256);
     expect([...value.data.matches[0]!.players[0].displayName]).toHaveLength(32);
     expect([...value.data.matches[0]!.note!]).toHaveLength(150);
-    const plan = planResultNotification(value, "https://results.example.com");
+    const plan = resultNotificationRenderers.analysis_completed.plan(value, "https://results.example.com");
     expect(plan.partCount).toBeGreaterThan(50);
     expect(plan.partCount).toBeLessThanOrEqual(128);
     const parts = [...plan.parts()];

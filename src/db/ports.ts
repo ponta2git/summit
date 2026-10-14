@@ -253,7 +253,7 @@ export interface OutboxPort {
     readonly oldestPendingAgeMs: number | null;
     readonly oldestFailedAgeMs: number | null;
   }>;
-  getNextDispatchAt(now: Date): Promise<Date | null>;
+  getNextDispatchAt(): Promise<Date | null>;
 }
 
 /**

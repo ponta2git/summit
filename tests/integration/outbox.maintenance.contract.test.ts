@@ -1,5 +1,5 @@
 import { isNull, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   claimNextOutboxBatch,
@@ -35,10 +35,6 @@ describeDb("discord_outbox maintenance contract (integration)", () => {
 
   beforeEach(async () => {
     await harness.reset();
-  });
-
-  afterAll(async () => {
-    await harness.close();
   });
 
   it("DB rejects outbox kinds without a delivery implementation", async () => {

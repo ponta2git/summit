@@ -6,7 +6,6 @@ import { logger } from "../../logger.ts";
 import { buildAskBodyIntent } from "../../db/repositories/sessionOutboxIntents.ts";
 import { isShuttingDown } from "../../shutdown.ts";
 import {
-  candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
   isoWeekKey
@@ -65,9 +64,8 @@ const doSendAskMessage = async (
   }
 
   const { ports } = context.context;
-  const candidateDate = candidateDateForAsk(now);
-  const candidateIso = formatCandidateDateIso(candidateDate);
-  const deadline = deadlineFor(candidateDate);
+  const candidateIso = formatCandidateDateIso(now);
+  const deadline = deadlineFor(now);
 
   const existing = await ports.sessions.findSessionByWeekKeyAndPostponeCount(weekKey, 0);
   if (existing) {
@@ -173,8 +171,4 @@ export const waitForInFlightSend = async (): Promise<void> => {
   const inflight = [...inFlightSends.values()].flatMap(requests => [...requests.values()]);
   if (inflight.length === 0) {return;}
   await Promise.allSettled(inflight);
-};
-
-export const resetSendStateForTest = (): void => {
-  inFlightSends.clear();
 };

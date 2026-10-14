@@ -21,7 +21,7 @@ export interface DecidedAnnouncementViewModel {
  *
  * @remarks
  * Pure. session.decidedStartAt と user config の member 順で memberLines を組む。
- * DECIDED セッションは全員が時間回答済み (ABSENT 不在) を ask-session/decide で保証するが、
+ * DECIDED セッションは全員が時間回答済み (ABSENT 不在) を domain/askDecision で保証するが、
  * 直前 race 防御として未回答/ABSENT は "-" に fallback する。
  * @see requirements/base.md §5.1
  */

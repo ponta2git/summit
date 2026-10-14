@@ -45,7 +45,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const expiry = new Date(now.getTime() + 1_000);
       expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(NOTIFICATION_MAINTENANCE_BATCH_SIZE);
       expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 2, failed: 0 });
-      expect(await h.ports.outbox.getNextDispatchAt(expiry)).toEqual(expiry);
+      expect(await h.ports.outbox.getNextDispatchAt()).toEqual(expiry);
       expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(2);
       expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(0);
       expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: count, inFlight: 0, failed: 0 });
@@ -64,9 +64,9 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       if (!first?.claimToken) { throw new Error("Expected predecessor claim"); }
       expect(await h.ports.outbox.markFailed(first.id, { claimToken: first.claimToken, now, nextAttemptAt: null, error: "controlled_failure" })).toBe(true);
       expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: count - 1 - NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 0, failed: 1 });
-      expect(await h.ports.outbox.getNextDispatchAt(now)).not.toBeNull();
+      expect(await h.ports.outbox.getNextDispatchAt()).not.toBeNull();
       expect(await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 })).toEqual([]);
-      expect(await h.ports.outbox.getNextDispatchAt(now)).toBeNull();
+      expect(await h.ports.outbox.getNextDispatchAt()).toBeNull();
       expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: 0, inFlight: 0, failed: 1 });
     });
 
@@ -146,6 +146,8 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const created = await h.ports.sessions.createAskSession(row);
       expect(created).toMatchObject({ id: row.id, status: "ASKING", revision: 0 });
       expect(await h.ports.sessions.createAskSession({ ...row, id: "duplicate" })).toBeUndefined();
+      expect(await h.ports.sessions.findSessionByWeekKeyAndPostponeCount(row.weekKey, row.postponeCount))
+        .toMatchObject({ id: row.id });
       expect(await h.ports.sessions.backfillAskMessageId(row.id, "first")).toBe(true);
       expect(await h.ports.sessions.backfillAskMessageId(row.id, "second")).toBe(false);
       created!.deadlineAt.setTime(0);
@@ -173,7 +175,8 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     it("records ABSENT, final state and the two ordered notices", async () => {
       const h = await create({ sessions: [makeSession()] });
       expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT" }))
-        .toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "POSTPONE_VOTING", revision: 2, deadlineAt: new Date("2026-04-24T15:00:00Z") } });
+        .toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "POSTPONE_VOTING", revision: 2,
+          deadlineAt: new Date("2026-04-24T15:00:00Z"), updatedAt: attendanceNow } });
       expect((await h.intents()).map(row => ({ revision: row.aggregateRevision, ordinal: row.ordinal, payload: row.payload })))
         .toStrictEqual([
           { revision: 2, ordinal: 0, payload: { kind: "send_message", channelId: "223456789012345678", renderer: "settle_notice", extra: { reason: "absent", forceSuppressMentions: true } } },
@@ -198,7 +201,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       expect(await h.snapshot()).toStrictEqual(before);
       expect(await h.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, now: row.deadlineAt }))
         .toMatchObject({ kind: "transitioned", outcome: "decided", session: { status: "DECIDED", revision: 1,
-          decidedStartAt: new Date("2026-04-25T14:00:00Z"), reminderAt: new Date("2026-04-25T13:45:00Z") } });
+          decidedStartAt: new Date("2026-04-25T14:00:00Z"), reminderAt: new Date("2026-04-25T13:45:00Z"), updatedAt: row.deadlineAt } });
       expect((await h.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["decided-announcement-session-1"]);
     });
 
@@ -226,7 +229,8 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const result = reason === "ng" ? await h.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_NG" })
         : await h.ports.sessionCommands.settlePostponeVoting({ ...input, now: row.deadlineAt });
       expect(result).toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "COMPLETED", revision: 1,
-        cancelReason: reason === "ng" ? "postpone_ng" : "postpone_unanswered" } });
+        cancelReason: reason === "ng" ? "postpone_ng" : "postpone_unanswered", deadlineAt: row.deadlineAt,
+        updatedAt: reason === "ng" ? attendanceNow : row.deadlineAt } });
       expect(await h.ports.sessions.findSessionById("saturday")).toBeUndefined();
       expect(await h.intents()).toStrictEqual([]);
     });

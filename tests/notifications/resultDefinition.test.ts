@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ClaimedResultNotification } from "../../src/db/ports.resultNotifications.ts";
 import { NotificationInputError } from "../../src/domain/notificationInput.ts";
-import { planResultNotification } from "../../src/features/result-notifications/render.ts";
+import { resultNotificationRenderers } from "../../src/features/result-notifications/render.ts";
 import { prepareResultDelivery, resultNotificationDefinitions, type ResultNotificationDefinitions } from "../../src/notifications/delivery/definitions/result.ts";
 import { analysisNotification } from "../features/result-notifications/fixtures.ts";
 
@@ -78,7 +78,7 @@ describe("result notification definition", () => {
   it("keeps the historical part ceiling an expected payload rejection", () => {
     const original = analysisNotification();
     const payload = { ...original, data: { ...original.data, gameTitleName: "x".repeat(1_900 * 10_000) } };
-    expect(() => planResultNotification(payload, context.webOrigin)).toThrow(new NotificationInputError("payload_too_large"));
+    expect(() => resultNotificationRenderers.analysis_completed.plan(payload, context.webOrigin)).toThrow(new NotificationInputError("payload_too_large"));
     expect(prepareResultDelivery({ ...claimed(), payload }, context)).toMatchObject({ strategy: "rejected", error: "invalid_payload" });
   });
 });

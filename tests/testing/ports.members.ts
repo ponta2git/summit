@@ -7,7 +7,7 @@ export interface FakeMembersPort extends MembersPort {
 }
 
 export const createFakeMembersPort = (
-  seed: ReadonlyArray<MemberRow> = []
+  seed: ReadonlyArray<MemberRow>
 ): FakeMembersPort => {
   const calls: AnyCall[] = [];
   const members = seed.map((member) => makeMember(member));

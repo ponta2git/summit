@@ -21,7 +21,7 @@ export interface SchedulerBatchReport {
 
 export type SchedulerEffect<T> = Effect.Effect<T, AppError>;
 
-export interface SchedulerItemIdentity {
+interface SchedulerItemIdentity {
   readonly sessionId?: string;
   readonly weekKey?: string;
   readonly outboxId?: string;

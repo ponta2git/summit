@@ -11,7 +11,7 @@ import {
   sentMessages,
   setFetchImpl
 } from "./reconciler.harness.js";
-import { reconcileStrandedCancelled } from "../../src/scheduler/reconciler.js";
+import { reconcileStrandedCancelled } from "../../src/scheduler/reconciler.strandedCancelled.js";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
 import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";

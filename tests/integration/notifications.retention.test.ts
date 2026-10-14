@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isNull, sql } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationAttendance as attendance, discordNotificationParts as parts } from "../../src/db/schema.ts";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
@@ -20,7 +20,6 @@ import { isIntegration } from "./_support.ts";
     await h.db.execute(sql`DROP FUNCTION IF EXISTS retention_test_trigger()`);
     await h.db.execute(sql`DROP TABLE IF EXISTS retention_audit`);
   });
-  afterAll(async () => { await h.close(); });
 
   const seed = async (count: number): Promise<string> => {
     const hash = (await normalizeNotificationJson(h.db, JSON.stringify(h.basePayload))).hash;

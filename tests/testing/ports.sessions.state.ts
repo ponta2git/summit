@@ -16,7 +16,7 @@ export interface FakeSessionsState {
 export const createFakeSessionsState = (
   seed: readonly SessionRow[],
   clock: FakeClock,
-  outboxEnqueue: ((entry: EnqueueOutboxInput) => Promise<void>) | undefined
+  outboxEnqueue: (entry: EnqueueOutboxInput) => Promise<void>
 ): FakeSessionsState => {
   const calls: AnyCall[] = [];
   const byId = new Map<string, SessionRow>(
@@ -29,8 +29,7 @@ export const createFakeSessionsState = (
     clock,
     clone: (session) => makeSession(session),
     enqueueOutbox: async (entries) => {
-      if (!entries || entries.length === 0 || !outboxEnqueue) {return;}
-      for (const entry of entries) {
+      for (const entry of entries ?? []) {
         await outboxEnqueue(entry);
       }
     }

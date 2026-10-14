@@ -1,12 +1,11 @@
 import { sql } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { requeueFailedOutboxChains } from "../../src/db/repositories/outbox.recovery.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../src/notifications/config.ts";
 import { createIntegrationDb, isIntegration } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("startup recovery capacity", () => {
-  const { db, client } = createIntegrationDb();
-  afterAll(() => client.end({ timeout: 5 }));
+  const { db } = createIntegrationDb();
 
   it("recovers chains across Session pages while preserving delivered parts and manual cancellation", async () => {
     const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE + 1;

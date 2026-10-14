@@ -2,9 +2,3 @@
 // @see docs/architecture.md
 
 export { runReconciler } from "./reconciler.run.ts";
-
-export { reconcileStrandedCancelled } from "./reconciler.strandedCancelled.ts";
-export { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
-export { reconcileMissingMessageIntents } from "./reconciler.missingAskMessage.ts";
-export { probeDeletedMessagesAtStartup } from "./reconciler.probeDeleted.ts";
-export { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";

@@ -152,8 +152,8 @@ export const createFakeOutboxMaintenance = (
       oldestFailedAgeMs: ageMs(oldestFailed)
     };
   },
-  getNextDispatchAt: async (now) => {
-    recordCall(calls, "getNextDispatchAt", { now });
+  getNextDispatchAt: async () => {
+    recordCall(calls, "getNextDispatchAt", {});
     const candidates = Array.from(byId.values())
       .map((entry) => {
         if (entry.status === "PENDING") {return entry.nextAttemptAt;}

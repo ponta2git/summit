@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  resetSendStateForTest,
   sendAskMessage
 } from "../../../src/features/ask-session/send.js";
 import {
@@ -13,7 +12,6 @@ import { createTestAppContext } from "../../testing/index.js";
 
 describe("sendAskMessage", () => {
   beforeEach(() => {
-    resetSendStateForTest();
     resetShutdownStateForTest();
   });
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  candidateDateForAsk,
   decidedStartAt,
   deadlineFor,
   formatCandidateJa,
@@ -46,18 +45,6 @@ describe("time utilities", () => {
       expect(new Date(`${sat}T08:00:00+09:00`).getDay()).toBe(6);
       expect(isoWeekKey(new Date(`${sat}T08:00:00+09:00`))).toBe(weekKey);
     });
-  });
-
-  it("returns the input date as candidate date for /ask", () => {
-    const samples = [
-      new Date("2026-04-20T09:00:00+09:00"),
-      new Date("2026-04-24T18:00:00+09:00"),
-      new Date("2026-04-26T23:59:00+09:00")
-    ];
-
-    for (const sample of samples) {
-      expect(candidateDateForAsk(sample)).toBe(sample);
-    }
   });
 
   it("formats candidate date in Japanese short weekday format", () => {

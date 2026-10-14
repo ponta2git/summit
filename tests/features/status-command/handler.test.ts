@@ -58,16 +58,7 @@ describe("handleStatusCommand", () => {
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(interaction.editReply).toHaveBeenCalledOnce();
     expect(editReplyContent(interaction)).toContain("非終端セッション: なし");
-  });
-
-  it("returns session info for an ASKING session", async () => {
-    const session = makeSession({ status: "ASKING", askMessageId: "msg-1" });
-    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [session] } });
-    const interaction = buildInteraction();
-
-    await handleStatus(interaction, ctx);
-
-    expect(editReplyContent(interaction)).toContain("[ASKING]");
+    expect(editReplyContent(interaction)).not.toContain("宙づり CANCELLED");
   });
 
   it("limits the main status read model to the current week and batches details", async () => {
@@ -92,6 +83,7 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     const content = editReplyContent(interaction);
+    expect(content).toContain("[ASKING]");
     expect(content).toContain("current-");
     expect(content).not.toContain("old-asking");
     expect(content).not.toContain("current-postponed");
@@ -182,43 +174,19 @@ describe("handleStatusCommand", () => {
     expect(editReplyContent(interaction)).toContain("⚠");
   });
 
-  it("does not show stranded CANCELLED section when there are none", async () => {
-    const ctx = createTestAppContext({ seed: {} });
-    const interaction = buildInteraction();
-
-    await handleStatus(interaction, ctx);
-
-    expect(editReplyContent(interaction)).not.toContain("宙づり CANCELLED");
-  });
-
-  it("shows stranded CANCELLED section and warning when stranded sessions exist", async () => {
-    const strandedSession = makeSession({ id: "cancelled-session-1a", status: "CANCELLED" });
-    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [strandedSession] } });
+  it("shows the stranded CANCELLED row count and its group warning", async () => {
+    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [
+      makeSession({ id: "cancelled-session-1a", status: "CANCELLED" }),
+      makeSession({ id: "cancelled-session-2a", status: "CANCELLED" })
+    ] } });
     const interaction = buildInteraction();
 
     await handleStatus(interaction, ctx);
 
     const content = editReplyContent(interaction);
-    expect(content).toContain("宙づり CANCELLED");
-    expect(content).toContain("⚠");
+    expect(content).toContain("⚠ 宙づり CANCELLED (reconciler 未達): 2 件");
+    expect(content).toContain("⚠ 合計 1 件の invariant 警告");
     expect(content).toContain("cancell");
-  });
-
-  it("includes stranded CANCELLED in total warning count", async () => {
-    const strandedSession1 = makeSession({ id: "cancelled-s1-xxxx", status: "CANCELLED" });
-    const strandedSession2 = makeSession({ id: "cancelled-s2-xxxx", status: "CANCELLED" });
-    const ctx = createTestAppContext({
-      now: STATUS_NOW,
-      seed: { sessions: [strandedSession1, strandedSession2] }
-    });
-    const interaction = buildInteraction();
-
-    await handleStatus(interaction, ctx);
-
-    expect(
-      ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")
-    ).toBe(true);
-    expect(editReplyContent(interaction)).toContain("2");
   });
 
   it("renders stranded outbox rows returned by the status snapshot", async () => {

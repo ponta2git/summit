@@ -16,11 +16,10 @@ import { featureModules } from "../registry/modules.ts";
 import { cheapFirstGuard, GUARD_REASON_TO_MESSAGE, buildEphemeralReject } from "./guards.ts";
 import type {
   AppReadyState,
-  InteractionHandlerDeps,
-  SendAsk
+  InteractionHandlerDeps
 } from "./interactionHandlerDeps.ts";
 
-export type { AppReadyState, InteractionHandlerDeps, SendAsk };
+export type { AppReadyState, InteractionHandlerDeps };
 
 const STARTUP_NOT_READY_MESSAGE = "準備中です。数秒待ってもう一度お試しください。";
 

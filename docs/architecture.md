@@ -27,7 +27,7 @@ OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ pr
 
 feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
 
-出欠と A/B の配送は `notifications/delivery`、本文は各 feature が所有する。容量管理は通知種類を参照せず、既存 config の上限を枠へ割り当てるのは `lanes.ts`、claim・次回時刻・公平性は `sources`、単発／再開可能な連番の手順は `strategies`、本文準備・業務確定は `definitions` に置く。枠 ID・通知種類・配送方式を同じ型にしない。OCR の独立枠への再配置には、claim・次回時刻・譲渡の DB 条件も揃える必要があり、設定変更だけで可能とは扱わない。
+出欠と A/B の配送は `notifications/delivery`、本文は各 feature が所有する。容量管理は通知種類を参照せず、既存 config の上限を枠へ割り当てるのは `lanes.ts`、claim・次回時刻・公平性は `sources`、単発／再開可能な連番の手順は `strategies`、本文準備・業務確定は `definitions` に置く。容量枠・通知種類・配送方式は独立して扱う。OCR の独立枠への再配置には、claim・次回時刻・譲渡の DB 条件も揃える必要があり、設定変更だけで可能とは扱わない。
 
 変更範囲の確認には次の契約を使う。構造上の分離を示すもので、保守工数や障害件数の削減を計測した結果ではない。
 

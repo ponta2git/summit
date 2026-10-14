@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   cancelWeekAtomically,
@@ -15,7 +15,6 @@ import {
 } from "../../src/db/repositories/heldEvents.js";
 import { discordNotifications, discordNotificationAttendance, sessions } from "../../src/db/schema.js";
 import {
-  assertSchemaReady,
   createIntegrationDb,
   isIntegration,
   seedBaseMembers,
@@ -48,19 +47,11 @@ describeDb("session aggregate command contract (integration)", () => {
   const contender = createIntegrationDb();
 
   beforeAll(async () => {
-    await assertSchemaReady(primary.db);
     await seedBaseMembers(primary.db);
   });
 
   beforeEach(async () => {
     await truncatePerTestTables(primary.db);
-  });
-
-  afterAll(async () => {
-    await Promise.all([
-      primary.client.end({ timeout: 5 }),
-      contender.client.end({ timeout: 5 })
-    ]);
   });
 
   it("keeps the highest Discord interaction snowflake under delayed delivery", async () => {

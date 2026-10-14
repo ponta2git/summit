@@ -52,7 +52,7 @@ export const releaseExpiredNotificationClaims = async (
   return rows.length;
 };
 
-export interface NotificationClaimOptions {
+interface NotificationClaimOptions {
   readonly limit: number;
   readonly now: Date;
   readonly claimDurationMs: number;

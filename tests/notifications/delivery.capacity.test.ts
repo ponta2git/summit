@@ -10,18 +10,13 @@ import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
 
 describe("delivery capacity ownership", () => {
-  it("reserves count and bytes together and supplies the reservation identity to arbitrary work", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "results", slots: 2, payloadBytes: 100 });
+  it("reserves count and bytes together until the owned work settles", async () => {
+    const capacity = createDeliveryCapacity({ slots: 2, payloadBytes: 100 });
     const release = deferred<void>();
-    const identities: unknown[] = [];
     try {
-      await runEffect(capacity.start("first-source", 40, execution => {
-        identities.push({ id: execution.deliveryId, lane: execution.laneId, stopping: execution.isStopping() });
-        return settledCall(() => release.promise);
-      }));
+      await runEffect(capacity.start("first-source", 40, () => settledCall(() => release.promise)));
       await runEffect(capacity.start("another-source", 60, () => settledCall(() => release.promise)));
       expect(capacity.snapshot()).toEqual({ slots: 0, payloadBytes: 0, activeIds: ["first-source", "another-source"], allowOversized: false });
-      expect(identities).toEqual([{ id: "first-source", lane: "results", stopping: false }]);
       const refused = await runEffect(Effect.exit(capacity.start("overflow", 0, () => Effect.void)));
       expect(Exit.isFailure(refused)).toBe(true);
       expect(capacity.snapshot().activeIds).toEqual(["first-source", "another-source"]);
@@ -30,7 +25,7 @@ describe("delivery capacity ownership", () => {
   });
 
   it("admits an oversized reservation only while idle and excludes other work until it settles", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "results", slots: 2, payloadBytes: 100 });
+    const capacity = createDeliveryCapacity({ slots: 2, payloadBytes: 100 });
     const release = deferred<void>();
     try {
       await runEffect(capacity.start("historical", 150, () => settledCall(() => release.promise)));
@@ -42,7 +37,7 @@ describe("delivery capacity ownership", () => {
   });
 
   it("takes the drain snapshot when executed, including work started after the drain Effect was constructed", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "attendance", slots: 1 });
+    const capacity = createDeliveryCapacity({ slots: 1 });
     const drain = capacity.drain(); const release = deferred<void>();
     await runEffect(capacity.start("late-start", 0, () => settledCall(() => release.promise)));
     capacity.stop();
@@ -55,7 +50,7 @@ describe("delivery capacity ownership", () => {
 
   it("releases a reservation and reports the original defect when synchronous preparation throws", async () => {
     const onSettled = vi.fn();
-    const capacity = createDeliveryCapacity({ laneId: "results", slots: 1, payloadBytes: 100, onSettled });
+    const capacity = createDeliveryCapacity({ slots: 1, payloadBytes: 100, onSettled });
     const defect = new Error("preparation invariant");
     try {
       const fiber = await runEffect(capacity.start("invalid", 80, () => { throw defect; }));
@@ -70,7 +65,7 @@ describe("delivery capacity ownership", () => {
   });
 
   it("keeps capacity reserved until an already-started cleanup actually settles", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "results", slots: 1, payloadBytes: 100 });
+    const capacity = createDeliveryCapacity({ slots: 1, payloadBytes: 100 });
     const started = deferred<void>(); const cleanup = deferred<void>();
     const fiber = await runEffect(capacity.start("cleanup", 80, () => Effect.void.pipe(Effect.ensuring(
       settledCall(() => { started.resolve(); return cleanup.promise; }).pipe(Effect.orDie)
@@ -83,7 +78,7 @@ describe("delivery capacity ownership", () => {
   });
 
   it("prevents starts after close without leaking a reservation into a closed scope", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "attendance", slots: 1 });
+    const capacity = createDeliveryCapacity({ slots: 1 });
     await runEffect(capacity.close());
     expect(capacity.isStopping()).toBe(true);
     const work = vi.fn(() => Effect.void);
@@ -94,7 +89,7 @@ describe("delivery capacity ownership", () => {
   });
 
   it("reserves atomically when competing starts would individually fit the same byte budget", async () => {
-    const capacity = createDeliveryCapacity({ laneId: "results", slots: 8, payloadBytes: 100 });
+    const capacity = createDeliveryCapacity({ slots: 8, payloadBytes: 100 });
     const release = deferred<void>();
     try {
       const exits = await runEffect(Effect.all(Array.from({ length: 8 }, (_, index) => Effect.exit(

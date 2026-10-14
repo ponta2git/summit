@@ -37,6 +37,3 @@ export function* splitNotificationTextParts(parts: Iterable<string>): Generator<
   }
   if (pending.length > 0) { yield pending; }
 }
-
-/** Split without losing whitespace, surrogate pairs, or Markdown escape pairs. */
-export const splitNotificationText = (text: string): readonly string[] => [...splitNotificationTextParts([text])];

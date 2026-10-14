@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
-import { evaluatePostponeVote } from "../../../src/features/postpone-voting/decide.js";
+import { evaluatePostponeVote } from "../../../src/domain/postponeDecision.js";
 import { buildSessionRow } from "../../testing/sessionScenario.ts";
 
 const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
@@ -34,7 +34,7 @@ describe("evaluatePostponeVote", () => {
     expect(result).toStrictEqual({ kind: "all_ok" });
   });
 
-  it("returns cancelled/postpone_ng when at least one latest response is POSTPONE_NG", () => {
+  it("returns cancelled/postpone_ng when at least one response is POSTPONE_NG", () => {
     const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
     const result = evaluatePostponeVote(
       session,
@@ -78,78 +78,4 @@ describe("evaluatePostponeVote", () => {
     expect(result).toStrictEqual({ kind: "pending" });
   });
 
-  it.each([
-    {
-      label: "NG→OK",
-      earlierChoice: "POSTPONE_NG",
-      latestChoice: "POSTPONE_OK",
-      expected: { kind: "all_ok" }
-    },
-    {
-      label: "OK→NG",
-      earlierChoice: "POSTPONE_OK",
-      latestChoice: "POSTPONE_NG",
-      expected: { kind: "cancelled", reason: "postpone_ng" }
-    }
-  ] as const)("uses the latest answer per member when duplicate responses exist ($label)", ({
-    earlierChoice,
-    latestChoice,
-    expected
-  }) => {
-    // race: 再押下で回答が更新された場合は、最新回答を採用して判定する。
-    const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
-    const result = evaluatePostponeVote(
-      session,
-      [
-        responseRow({
-          id: "r1",
-          memberId: "m1",
-          choice: earlierChoice,
-          answeredAt: new Date("2026-04-24T12:00:00.000Z")
-        }),
-        responseRow({
-          id: "r2",
-          memberId: "m1",
-          choice: latestChoice,
-          answeredAt: new Date("2026-04-24T12:05:00.000Z")
-        })
-      ],
-      { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
-    );
-
-    expect(result).toStrictEqual(expected);
-  });
-
-  it("ignores responses that belong to another session", () => {
-    const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
-    const result = evaluatePostponeVote(
-      session,
-      [responseRow({ sessionId: "foreign-session", memberId: "m1" })],
-      { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
-    );
-
-    expect(result).toStrictEqual({ kind: "pending" });
-  });
-
-  it("uses answeredAt rather than input order to select the latest response", () => {
-    const session = sessionRow({ deadlineAt: new Date("2026-04-24T15:00:00.000Z") });
-    const result = evaluatePostponeVote(
-      session,
-      [
-        responseRow({
-          id: "latest",
-          choice: "POSTPONE_NG",
-          answeredAt: new Date("2026-04-24T12:05:00.000Z")
-        }),
-        responseRow({
-          id: "earlier",
-          choice: "POSTPONE_OK",
-          answeredAt: new Date("2026-04-24T12:00:00.000Z")
-        })
-      ],
-      { memberCountExpected: 1, now: new Date("2026-04-24T12:06:00.000Z") }
-    );
-
-    expect(result).toStrictEqual({ kind: "cancelled", reason: "postpone_ng" });
-  });
 });

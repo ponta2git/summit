@@ -4,7 +4,7 @@ import { discordNotifications as notifications, discordNotificationAttendance as
 import { notificationTransaction } from "./notifications.storage.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../notifications/config.ts";
 
-export interface RequeueFailedOutboxChainsResult {
+interface RequeueFailedOutboxChainsResult {
   readonly deadLettersRequeued: number;
   readonly successorsRequeued: number;
 }

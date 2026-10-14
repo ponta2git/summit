@@ -27,7 +27,7 @@ import { DEFAULT_CLOCK, type FakeClock } from "./ports.shared.js";
 import { createFakeSessionsPort, type FakeSessionsPort } from "./ports.sessions.js";
 import { createFakeStatusPort, type FakeStatusPort } from "./ports.status.js";
 
-export interface FakePorts extends AppPorts {
+interface FakePorts extends AppPorts {
   readonly sessions: FakeSessionsPort;
   readonly sessionCommands: FakeSessionCommandsPort;
   readonly responses: FakeResponsesPort;
@@ -38,7 +38,7 @@ export interface FakePorts extends AppPorts {
   readonly resultNotifications: FakeResultNotificationsPort;
 }
 
-export interface FakePortsSeed {
+interface FakePortsSeed {
   readonly sessions?: ReadonlyArray<SessionRow>;
   readonly responses?: ReadonlyArray<ResponseRow>;
   readonly members?: ReadonlyArray<MemberRow>;
@@ -48,8 +48,8 @@ export interface FakePortsSeed {
 }
 
 const createFakePorts = (
-  seed: FakePortsSeed = {},
-  clock: FakeClock = DEFAULT_CLOCK
+  seed: FakePortsSeed,
+  clock: FakeClock
 ): FakePorts => {
   const outbox = createFakeOutboxPort(seed.outbox ?? [], clock);
   const sessions = createFakeSessionsPort(
@@ -98,16 +98,13 @@ export interface TestAppContext {
 }
 
 export const createTestAppContext = (options: {
-  readonly ports?: FakePorts;
   readonly now?: Date | (() => Date);
   readonly seed?: FakePortsSeed;
 } = {}): TestAppContext => {
   const now = options.now ?? DEFAULT_CLOCK.now;
   const clock = { now: typeof now === "function" ? () => new Date(now()) : () => new Date(now) };
   return {
-    ports: options.ports ?? createFakePorts(options.seed ?? {}, clock),
+    ports: createFakePorts(options.seed ?? {}, clock),
     clock
   };
 };
-
-export { createFakeSessionsPort };

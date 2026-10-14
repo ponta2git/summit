@@ -139,14 +139,3 @@ export const findHeldEventBySessionId = async (
     .limit(1);
   return rows[0];
 };
-
-export const listHeldEventParticipants = async (
-  db: DbLike,
-  heldEventId: string
-): Promise<HeldEventParticipantRow[]> => {
-  const rows = await db
-    .select()
-    .from(heldEventParticipants)
-    .where(eq(heldEventParticipants.heldEventId, heldEventId));
-  return rows;
-};

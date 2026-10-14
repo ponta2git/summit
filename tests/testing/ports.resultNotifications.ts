@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { ResultNotificationKind } from "@momo/db";
 import type { DiscordResultNotification } from "@momo/db/notifications";
 import type { ClaimedResultNotification, ResultNotificationAdmissionCheck, ResultNotificationsPort } from "../../src/db/ports.resultNotifications.ts";
-import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS, RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/config.ts";
+import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS } from "../../src/config.ts";
 import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
 import { addMs } from "../../src/time/index.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
-  RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES } from "../../src/notifications/config.ts";
+  RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES,
+  RESULT_NOTIFICATION_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
 import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { DEFAULT_CLOCK, recordCall, type AnyCall, type FakeClock } from "./ports.shared.ts";
 import { createFakeResultState, semanticJson, type FakeResultEntry } from "./ports.resultNotifications.state.ts";

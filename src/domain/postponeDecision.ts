@@ -8,37 +8,22 @@ export type PostponeDecisionResult =
     }
   | { readonly kind: "pending" };
 
-export interface EvaluatePostponeVoteOptions {
+interface EvaluatePostponeVoteOptions {
   readonly memberCountExpected: number;
   readonly now: Date;
 }
 
-const latestResponsesByMember = (
-  session: SessionRow,
-  responses: readonly ResponseRow[]
-): readonly ResponseRow[] => {
-  const deduped = new Map<string, ResponseRow>();
-  for (const response of responses) {
-    if (response.sessionId !== session.id) {continue;}
-    const current = deduped.get(response.memberId);
-    if (!current || response.answeredAt.getTime() >= current.answeredAt.getTime()) {
-      deduped.set(response.memberId, response);
-    }
-  }
-  return [...deduped.values()];
-};
-
+/** Evaluate the locked Session/Response snapshot; storage owns session scope and one current answer per member. */
 export const evaluatePostponeVote = (
   session: SessionRow,
   responses: readonly ResponseRow[],
   options: EvaluatePostponeVoteOptions
 ): PostponeDecisionResult => {
-  const latestResponses = latestResponsesByMember(session, responses);
-  if (latestResponses.some((response) => response.choice === "POSTPONE_NG")) {
+  if (responses.some((response) => response.choice === "POSTPONE_NG")) {
     return { kind: "cancelled", reason: "postpone_ng" };
   }
 
-  const okCount = latestResponses.filter(
+  const okCount = responses.filter(
     (response) => response.choice === "POSTPONE_OK"
   ).length;
   if (okCount >= options.memberCountExpected) {

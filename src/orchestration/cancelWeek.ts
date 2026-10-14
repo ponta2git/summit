@@ -12,14 +12,13 @@ import { updatePostponeMessage } from "../features/postpone-voting/messageEditor
 import { logger } from "../logger.ts";
 import { catchExpectedError } from "../runtime/effect.ts";
 import {
-  candidateDateForAsk,
   deadlineFor,
   formatCandidateDateIso,
   isoWeekKey
 } from "../time/index.ts";
 import { appConfig } from "../userConfig.ts";
 
-export type SkipWeekOutcome = { readonly kind: "expired" } | {
+type SkipWeekOutcome = { readonly kind: "expired" } | {
   readonly kind: "applied";
   readonly skippedCount: number;
   readonly weekKey: string;
@@ -54,14 +53,13 @@ export const applyManualSkip = Effect.fnUntraced(function* (
   if (weekKey !== params.expectedWeekKey) {
     return { kind: "expired" as const };
   }
-  const candidateDate = candidateDateForAsk(now);
   const outcome = yield* fromDatabaseCall(
     () => ctx.ports.sessionCommands.cancelWeekAtomically({
       sentinelSessionId: randomUUID(),
       weekKey,
-      candidateDateIso: formatCandidateDateIso(candidateDate),
+      candidateDateIso: formatCandidateDateIso(now),
       channelId: appConfig.discord.channelId,
-      deadlineAt: deadlineFor(candidateDate),
+      deadlineAt: deadlineFor(now),
       invokerUserId: params.invokerUserId,
       suppressMentions: appConfig.dev.suppressMentions,
       now

@@ -8,7 +8,7 @@ import { runReconciler } from "../scheduler/reconciler.ts";
 import { runStartupRecovery } from "../scheduler/index.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
 
-export interface AppReadiness {
+interface AppReadiness {
   readonly state: AppReadyState;
   markReady(): void;
   markNotReady(reason: string): void;

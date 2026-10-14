@@ -1,40 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createFakeSessionsPort,
   createTestAppContext,
   makeSession
 } from "./index.js";
 
 describe("tests/testing helpers", () => {
-  it("records sessions port calls and applies CAS transition", async () => {
-    const initial = makeSession({ id: "s1", status: "ASKING" });
-    const sessions = createFakeSessionsPort([initial]);
-    const now = new Date("2026-04-24T12:30:00.000Z");
-    const decidedStartAt = new Date("2026-04-24T14:00:00.000Z");
-    const reminderAt = new Date("2026-04-24T13:45:00.000Z");
-
-    const transitioned = await sessions.decideAsking({
-      id: "s1",
-      now,
-      decidedStartAt,
-      reminderAt
-    });
-
-    expect(transitioned).toStrictEqual(makeSession({
-      ...initial,
-      status: "DECIDED",
-      decidedStartAt,
-      reminderAt,
-      revision: initial.revision + 1,
-      updatedAt: now
-    }));
-    expect(sessions.calls.map((call) => call.name)).toStrictEqual(["decideAsking"]);
-  });
-
   it("refuses to transition on CAS loss", async () => {
     const initial = makeSession({ id: "s1", status: "DECIDED" });
-    const sessions = createFakeSessionsPort([initial]);
+    const sessions = createTestAppContext({ seed: { sessions: [initial] } }).ports.sessions;
     const result = await sessions.decideAsking({
       id: "s1",
       now: new Date("2026-04-24T12:30:00.000Z"),
@@ -64,7 +38,7 @@ describe("tests/testing helpers", () => {
 
   it("returns only due POSTPONE_VOTING sessions", async () => {
     const now = new Date("2026-04-24T12:30:00.000Z");
-    const sessions = createFakeSessionsPort([
+    const sessions = createTestAppContext({ seed: { sessions: [
       makeSession({
         id: "due-pv",
         status: "POSTPONE_VOTING",
@@ -90,7 +64,7 @@ describe("tests/testing helpers", () => {
         status: "COMPLETED",
         deadlineAt: new Date("2026-04-24T12:00:00.000Z")
       })
-    ]);
+    ] } }).ports.sessions;
 
     expect((await sessions.findDuePostponeVotingSessions(now)).map((row) => row.id))
       .toStrictEqual(["due-pv"]);
@@ -109,66 +83,20 @@ describe("tests/testing helpers", () => {
       status: "DECIDED",
       reminderAt: new Date("2026-04-24T12:30:01.000Z")
     });
-    const sessions = createFakeSessionsPort([legacyMarked, future]);
+    const sessions = createTestAppContext({ seed: { sessions: [legacyMarked, future] } }).ports.sessions;
 
     expect((await sessions.findDueStartupRecoverySessions(now)).map((row) => row.id))
       .toStrictEqual(["legacy-marked"]);
   });
 
   it("keeps POSTPONED in the message recovery candidate set", async () => {
-    const sessions = createFakeSessionsPort([
+    const sessions = createTestAppContext({ seed: { sessions: [
       makeSession({ id: "postponed", status: "POSTPONED" }),
       makeSession({ id: "completed", status: "COMPLETED" })
-    ]);
+    ] } }).ports.sessions;
 
     expect((await sessions.findMessageRecoveryCandidates()).map((row) => row.id))
       .toStrictEqual(["postponed"]);
-  });
-
-  it("overwrites the ask deadline when postpone voting starts", async () => {
-    const initial = makeSession({
-      id: "s1",
-      status: "CANCELLED",
-      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
-    });
-    const sessions = createFakeSessionsPort([initial]);
-    const now = new Date("2026-04-24T12:30:01.000Z");
-    const postponeDeadlineAt = new Date("2026-04-24T15:00:00.000Z");
-
-    expect(await sessions.startPostponeVoting({
-      id: initial.id,
-      now,
-      postponeDeadlineAt
-    })).toStrictEqual(makeSession({
-      ...initial,
-      status: "POSTPONE_VOTING",
-      deadlineAt: postponeDeadlineAt,
-      revision: initial.revision + 1,
-      updatedAt: now
-    }));
-  });
-
-  it("preserves the postpone deadline while completing a cancelled vote", async () => {
-    const initial = makeSession({
-      id: "s1",
-      status: "POSTPONE_VOTING",
-      deadlineAt: new Date("2026-04-24T15:00:00.000Z")
-    });
-    const sessions = createFakeSessionsPort([initial]);
-    const now = new Date("2026-04-24T15:00:01.000Z");
-
-    expect(await sessions.completePostponeVoting({
-      id: initial.id,
-      now,
-      outcome: "cancelled_full",
-      cancelReason: "postpone_ng"
-    })).toStrictEqual(makeSession({
-      ...initial,
-      status: "COMPLETED",
-      cancelReason: "postpone_ng",
-      revision: initial.revision + 1,
-      updatedAt: now
-    }));
   });
 
   it("keeps the current row unchanged when startPostponeVoting loses its CAS", async () => {
@@ -177,7 +105,7 @@ describe("tests/testing helpers", () => {
       status: "ASKING",
       deadlineAt: new Date("2026-04-24T12:30:00.000Z")
     });
-    const sessions = createFakeSessionsPort([initial]);
+    const sessions = createTestAppContext({ seed: { sessions: [initial] } }).ports.sessions;
 
     expect(await sessions.startPostponeVoting({
       id: initial.id,
@@ -188,7 +116,7 @@ describe("tests/testing helpers", () => {
   });
 
   it("returns scheduler session hints from active DB state", async () => {
-    const sessions = createFakeSessionsPort([
+    const sessions = createTestAppContext({ seed: { sessions: [
       makeSession({
         id: "asking-late",
         status: "ASKING",
@@ -210,7 +138,7 @@ describe("tests/testing helpers", () => {
         reminderAt: new Date("2026-04-24T13:45:00.000Z"),
         reminderSentAt: null
       })
-    ]);
+    ] } }).ports.sessions;
 
     const hints = await sessions.getSchedulerSessionHints(new Date("2026-04-24T11:00:00.000Z"));
 

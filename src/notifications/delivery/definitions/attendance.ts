@@ -13,7 +13,7 @@ import {
 import type { SinglePostDefinition } from "../strategies/singlePost.ts";
 
 /** Register rendering and notification-specific business confirmation together. */
-export interface AttendanceNotificationDefinition {
+interface AttendanceNotificationDefinition {
   readonly render: OutboxRenderer;
   readonly confirmBusiness?: (ctx: AppContext, sessionId: string, messageId: string) => Effect.Effect<void, unknown>;
 }
@@ -44,7 +44,6 @@ const bindSinglePostDelivery = (
 ): SinglePostDefinition<boolean | undefined> => {
   const { id, sessionId, dedupeKey, attemptCount, payload: { target } } = entry;
   return {
-    strategy: "singlePost",
     nonce: notificationNonce(id, 0),
     confirmBusiness: Effect.fnUntraced(function* (messageId: string) {
       if (confirmBusiness) {

@@ -1,7 +1,6 @@
 import type { Client, Message, MessagePayload } from "discord.js";
 import { vi } from "vitest";
 
-import { resetSendStateForTest } from "../../src/features/ask-session/send.js";
 import {
   asDiscordClient,
   asDiscordMessage,
@@ -63,7 +62,6 @@ export const resetReconcilerHarness = (): void => {
     sentMessages.push({ channelId: "fake-channel", payload });
     return asDiscordMessage({ id });
   };
-  resetSendStateForTest();
 };
 
 export const setFetchImpl = (

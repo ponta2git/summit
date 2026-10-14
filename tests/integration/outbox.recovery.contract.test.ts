@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   claimNextOutboxBatch,
@@ -30,7 +30,6 @@ describeDb("discord_outbox recovery contract (integration)", () => {
 
   beforeAll(() => harness.initialize());
   beforeEach(() => harness.reset());
-  afterAll(() => harness.close());
 
   it("dead-lettering cancels existing and future ordered successors", async () => {
     const readyAt = new Date("2026-04-24T12:30:00.000Z");

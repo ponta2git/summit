@@ -8,7 +8,6 @@ import { createTestAppContext } from "../testing/index.js";
 
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 
-
 import { DiscordApiError } from "../../src/errors/index.js";
 import { callArgs, runEffect } from "../helpers/assertions.js";
 
@@ -22,8 +21,6 @@ vi.mock("../../src/orchestration/postponeVoting.js", () => ({
 
 const askSettle = await import("../../src/orchestration/askDeadline.js");
 const postponeSettle = await import("../../src/orchestration/postponeVoting.js");
-// why: 旧来の `settle.foo` 参照をそのまま残すため、orchestration 2 モジュールをマージした view を作る。
-const settle = { ...askSettle, ...postponeSettle };
 const { runDeadlineTick, runPostponeDeadlineTick, runStartupRecovery } = await import(
   "../../src/scheduler/index.js"
 );
@@ -33,8 +30,8 @@ const sessionRow = (overrides: Partial<SessionRow> = {}): SessionRow =>
 
 const client = {} as unknown as Client;
 
-type AskDeadlineCall = Parameters<typeof settle.evaluateAndApplyDeadlineDecision>;
-type PostponeDeadlineCall = Parameters<typeof settle.settlePostponeVotingSession>;
+type AskDeadlineCall = Parameters<typeof askSettle.evaluateAndApplyDeadlineDecision>;
+type PostponeDeadlineCall = Parameters<typeof postponeSettle.settlePostponeVotingSession>;
 
 describe("runDeadlineTick", () => {
   it("evaluates each due ASKING session with shared now timestamp", async () => {
@@ -52,16 +49,17 @@ describe("runDeadlineTick", () => {
     });
     const now = new Date("2026-04-24T12:31:00.000Z");
     const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
+    const listResponses = vi.spyOn(ctx.ports.responses, "listResponses");
 
     await runEffect(runDeadlineTick(client, ctx));
 
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(2);
+    expect(askSettle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(2);
     const firstCall = callArgs<AskDeadlineCall>(
-      vi.mocked(settle.evaluateAndApplyDeadlineDecision),
+      vi.mocked(askSettle.evaluateAndApplyDeadlineDecision),
       0
     );
     const secondCall = callArgs<AskDeadlineCall>(
-      vi.mocked(settle.evaluateAndApplyDeadlineDecision),
+      vi.mocked(askSettle.evaluateAndApplyDeadlineDecision),
       1
     );
     expect(firstCall[0]).toBe(client);
@@ -72,27 +70,6 @@ describe("runDeadlineTick", () => {
     expect(secondCall[1]).toBe(ctx);
     expect(secondCall[2].id).toBe("b");
     expect(secondCall[3]).toStrictEqual({ memberCountExpected: 4, now });
-  });
-
-  it("does not prefetch responses outside the aggregate command", async () => {
-    const s = sessionRow({
-      id: "a",
-      weekKey: "2026-W17",
-      postponeCount: 0,
-      deadlineAt: new Date("2026-04-24T12:30:00.000Z")
-    });
-    const now = new Date("2026-04-24T12:31:00.000Z");
-    const ctx = createTestAppContext({ now, seed: { sessions: [s] } });
-    const listResponses = vi.spyOn(ctx.ports.responses, "listResponses");
-
-    await runEffect(runDeadlineTick(client, ctx));
-
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
-    const call = callArgs<AskDeadlineCall>(vi.mocked(settle.evaluateAndApplyDeadlineDecision));
-    expect(call[0]).toBe(client);
-    expect(call[1]).toBe(ctx);
-    expect(call[2].id).toBe("a");
-    expect(call[3]).toStrictEqual({ memberCountExpected: 4, now });
     expect(listResponses).not.toHaveBeenCalled();
   });
 
@@ -135,8 +112,8 @@ describe("runStartupRecovery", () => {
 
     await runEffect(runStartupRecovery(client, ctx));
 
-    expect(settle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
-    const call = callArgs<AskDeadlineCall>(vi.mocked(settle.evaluateAndApplyDeadlineDecision));
+    expect(askSettle.evaluateAndApplyDeadlineDecision).toHaveBeenCalledTimes(1);
+    const call = callArgs<AskDeadlineCall>(vi.mocked(askSettle.evaluateAndApplyDeadlineDecision));
     expect(call[0]).toBe(client);
     expect(call[1]).toBe(ctx);
     expect(call[2].id).toBe("overdue");
@@ -156,8 +133,8 @@ describe("runStartupRecovery", () => {
 
     await runEffect(runStartupRecovery(client, ctx));
 
-    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(1);
-    const call = callArgs<PostponeDeadlineCall>(vi.mocked(settle.settlePostponeVotingSession));
+    expect(postponeSettle.settlePostponeVotingSession).toHaveBeenCalledTimes(1);
+    const call = callArgs<PostponeDeadlineCall>(vi.mocked(postponeSettle.settlePostponeVotingSession));
     expect(call[0]).toBe(client);
     expect(call[1]).toBe(ctx);
     expect(call[2].id).toBe("pv-overdue");
@@ -177,8 +154,8 @@ describe("runStartupRecovery", () => {
 
     await runEffect(runStartupRecovery(client, ctx));
 
-    expect(settle.settlePostponeVotingSession).not.toHaveBeenCalled();
-    expect(settle.evaluateAndApplyDeadlineDecision).not.toHaveBeenCalled();
+    expect(postponeSettle.settlePostponeVotingSession).not.toHaveBeenCalled();
+    expect(askSettle.evaluateAndApplyDeadlineDecision).not.toHaveBeenCalled();
   });
 });
 
@@ -203,13 +180,13 @@ describe("runPostponeDeadlineTick", () => {
 
     await runEffect(runPostponeDeadlineTick(client, ctx));
 
-    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
+    expect(postponeSettle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
     const firstCall = callArgs<PostponeDeadlineCall>(
-      vi.mocked(settle.settlePostponeVotingSession),
+      vi.mocked(postponeSettle.settlePostponeVotingSession),
       0
     );
     const secondCall = callArgs<PostponeDeadlineCall>(
-      vi.mocked(settle.settlePostponeVotingSession),
+      vi.mocked(postponeSettle.settlePostponeVotingSession),
       1
     );
     expect(firstCall[0]).toBe(client);
@@ -240,13 +217,13 @@ describe("runPostponeDeadlineTick", () => {
     const now = new Date("2026-04-25T15:01:00.000Z");
     const ctx = createTestAppContext({ now, seed: { sessions: [s1, s2] } });
 
-    vi.mocked(settle.settlePostponeVotingSession)
+    vi.mocked(postponeSettle.settlePostponeVotingSession)
       .mockReturnValueOnce(Effect.fail(new DiscordApiError("network failure")))
       .mockReturnValueOnce(Effect.succeed(undefined));
 
     const result = await runEffect(runPostponeDeadlineTick(client, ctx));
     expect(result).toMatchObject({ processed: 2, succeeded: 1, failures: [{ sessionId: "pv-fail" }] });
-    expect(settle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
+    expect(postponeSettle.settlePostponeVotingSession).toHaveBeenCalledTimes(2);
   });
 
   it("propagates port errors to runTickSafely wrapper", async () => {

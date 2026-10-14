@@ -43,7 +43,7 @@ export const runAttendanceBatch = Effect.fnUntraced(function* <Claim extends { r
 ): Effect.fn.Return<{ readonly claimed: number }, unknown> {
   if (isStopping()) { return { claimed: 0 }; }
   return yield* Effect.acquireUseRelease(
-    Effect.sync(() => createDeliveryCapacity({ laneId: "attendance", ...deliveryLanes.attendance })),
+    Effect.sync(() => createDeliveryCapacity(deliveryLanes.attendance)),
     capacity => Effect.gen(function* () {
       const { claimed, fibers } = yield* startAttendanceBatch(batchSource, capacity, isStopping);
       // race: Fail / Die を含め全配送と heartbeat の settlement を待ち、入力順で失敗を選ぶ。

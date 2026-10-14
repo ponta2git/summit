@@ -11,7 +11,7 @@ import { deferred } from "../helpers/deferred.ts";
 const definition = <Receipt>(
   confirmBusiness: SinglePostDefinition<Receipt>["confirmBusiness"],
   confirmDelivery: SinglePostDefinition<Receipt>["confirmDelivery"]
-): SinglePostDefinition<Receipt> => ({ strategy: "singlePost", nonce: "durable-notification-nonce", confirmBusiness, confirmDelivery });
+): SinglePostDefinition<Receipt> => ({ nonce: "durable-notification-nonce", confirmBusiness, confirmDelivery });
 
 describe("single-post delivery strategy", () => {
   it("acknowledges only after business confirmation and carries its typed receipt", async () => {

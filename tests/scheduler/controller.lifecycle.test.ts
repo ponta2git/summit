@@ -122,9 +122,9 @@ describe("scheduler work ownership", () => {
     const readingIdle = deferred<void>(); const idle = deferred<Date | null>();
     const readNext = ctx.ports.outbox.getNextDispatchAt;
     let calls = 0;
-    ctx.ports.outbox.getNextDispatchAt = async now => {
+    ctx.ports.outbox.getNextDispatchAt = async () => {
       if (++calls === 2) { readingIdle.resolve(); return idle.promise; }
-      return readNext(now);
+      return readNext();
     };
     const { channel } = stubChannel();
     const controller = createSchedulerController({ ...options(ctx), client: stubClient(channel) });

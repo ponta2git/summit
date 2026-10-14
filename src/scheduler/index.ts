@@ -72,7 +72,7 @@ interface CronAdapter {
   ): Pick<ScheduledTask, "stop">;
 }
 
-export interface AskSchedulerDeps {
+interface AskSchedulerDeps {
   readonly client: Client;
   readonly context: AppContext;
   readonly sendAsk?: SendAsk;

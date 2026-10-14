@@ -5,7 +5,7 @@ import type {
   ViewModelSessionInput
 } from "../../discord/shared/viewModelInputs.ts";
 
-export interface PostponeMemberStatus {
+interface PostponeMemberStatus {
   readonly userId: string;
   readonly displayLabel: string;
   readonly state: "ok" | "ng" | "unanswered";

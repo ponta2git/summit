@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ResponseRow, SessionRow } from "../../../src/db/rows.js";
-import { evaluateDeadline } from "../../../src/features/ask-session/decide.js";
+import { evaluateDeadline } from "../../../src/domain/askDecision.js";
 import { expectKind } from "../../helpers/assertions.js";
 import { buildSessionRow } from "../../testing/sessionScenario.ts";
 

@@ -37,9 +37,9 @@ export const userConfigSchema = z.object({
   }).default({ suppressMentions: false })
 });
 
-export type UserConfig = z.infer<typeof userConfigSchema>;
+type UserConfig = z.infer<typeof userConfigSchema>;
 
-export interface AppConfig extends UserConfig {
+interface AppConfig extends UserConfig {
   readonly memberUserIds: readonly string[];
   readonly memberDisplayNames: readonly string[];
 }

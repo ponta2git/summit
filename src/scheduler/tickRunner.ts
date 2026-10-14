@@ -5,7 +5,7 @@ import { runPromiseBoundary } from "../runtime/effect.ts";
 import { TICK_DURATION_WARN_MS } from "../config.ts";
 import { AppError, type AppError as AppErrorType } from "../errors/index.ts";
 
-export interface RunTickSafelyOptions {
+interface RunTickSafelyOptions {
   readonly name: string;
   readonly logger: Pick<Logger, "error" | "info" | "warn">;
   readonly nowFn?: () => number;

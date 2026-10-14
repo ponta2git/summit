@@ -22,7 +22,7 @@ export interface FakeResponsesPort extends ResponsesPort {
 
 /** In-memory ResponsesPort with `(sessionId, memberId)` upsert semantics. */
 export const createFakeResponsesPort = (
-  seed: ReadonlyArray<ResponseRow> = []
+  seed: ReadonlyArray<ResponseRow>
 ): FakeResponsesPort => {
   const calls: AnyCall[] = [];
   const responses = seed.map((response) => makeResponse(response));

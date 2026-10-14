@@ -18,13 +18,13 @@ import {
 const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");
 const fmtJstFull = (d: Date): string => format(d, "yyyy-MM-dd HH:mm");
 
-export interface StrandedCancelledEntry {
+interface StrandedCancelledEntry {
   readonly sessionId: string;
   readonly weekKey: string;
   readonly candidateDateIso: string;
 }
 
-export interface SessionStatusViewModel {
+interface SessionStatusViewModel {
   readonly sessionId: string;
   readonly weekKey: string;
   readonly postponeCount: number;
@@ -41,7 +41,7 @@ export interface SessionStatusViewModel {
   readonly warnings: readonly InvariantWarning[];
 }
 
-export interface StatusViewModel {
+interface StatusViewModel {
   readonly nowJst: string;
   readonly currentWeekKey: string;
   readonly sessions: readonly SessionStatusViewModel[];

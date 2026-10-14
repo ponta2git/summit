@@ -13,15 +13,10 @@ export interface AppContext {
   readonly clock: Clock;
 }
 
-export interface AppContextOverrides {
-  readonly ports?: AppPorts;
-  readonly clock?: Clock;
-}
-
-export const createAppContext = (overrides: AppContextOverrides = {}): AppContext => ({
-  ports: overrides.ports ?? makeRealPorts(defaultDb, payload => {
+export const createAppContext = (): AppContext => ({
+  ports: makeRealPorts(defaultDb, payload => {
     if (!env.RESULT_NOTIFICATION_WEB_ORIGIN) { throw new Error("Notification receipt is not configured"); }
     assertNewNotificationPartLimit(payload, env.RESULT_NOTIFICATION_WEB_ORIGIN);
   }),
-  clock: overrides.clock ?? systemClock
+  clock: systemClock
 });

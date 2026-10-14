@@ -1,18 +1,27 @@
 import { createHash } from "node:crypto";
+import type { DiscordResultNotification } from "@momo/db/notifications";
 import { MessageFlags } from "discord.js";
 import { describe, expect, it } from "vitest";
 
-import { assertNewNotificationPartLimit, planResultNotification, renderResultNotification } from "../../../src/features/result-notifications/render.ts";
-import { renderNotificationRanks } from "../../../src/features/result-notifications/ranks.ts";
+import { assertNewNotificationPartLimit, resultNotificationRenderers } from "../../../src/features/result-notifications/render.ts";
+import { renderNotificationRankParts } from "../../../src/features/result-notifications/ranks.ts";
 import { buildNotificationLinks } from "../../../src/features/result-notifications/links.ts";
 import { NotificationInputError, validateNewNotification } from "../../../src/domain/resultNotificationPayload.ts";
 import { analysisNotification, ocrNotification, rankComparisons } from "./fixtures.ts";
 
 const origin = "https://results.example.com";
+const planNotification = (notification: DiscordResultNotification, webOrigin: string) =>
+  notification.kind === "ocr_completed"
+    ? resultNotificationRenderers.ocr_completed.plan(notification, webOrigin)
+    : resultNotificationRenderers.analysis_completed.plan(notification, webOrigin);
+const renderedNotification = (notification: DiscordResultNotification, webOrigin: string) => {
+  const plan = planNotification(notification, webOrigin);
+  return { rendererVersion: plan.rendererVersion, parts: [...plan.parts()] };
+};
 
 describe("fixed result notification rendering", () => {
   it("renders one completed submission without successful-image detail", () => {
-    expect(renderResultNotification(ocrNotification(), origin)).toStrictEqual({
+    expect(renderedNotification(ocrNotification(), origin)).toStrictEqual({
       rendererVersion: 2,
       parts: [{
         content: ["OCRの処理が終了しました。", "作品: テスト作品", "開催日: 2026-09-08", "試合番号: 第2試合",
@@ -24,7 +33,7 @@ describe("fixed result notification rendering", () => {
 
   it("orders only failed image types and includes all failures in a single message", () => {
     const input = ocrNotification();
-    const rendered = renderResultNotification({ ...input, data: { ...input.data,
+    const rendered = renderedNotification({ ...input, data: { ...input.data,
       context: { gameTitleName: null, heldDateIso: null, matchNoInEvent: null },
       failures: [
         { screenType: "incident_log", reason: "cancelled" },
@@ -44,7 +53,7 @@ describe("fixed result notification rendering", () => {
   it("bounds escaped context against the longest accepted link without dropping failures", () => {
     const input = ocrNotification();
     const longOrigin = `https://${"a".repeat(1_770)}.test`;
-    const rendered = renderResultNotification({ ...input, data: { ...input.data,
+    const rendered = renderedNotification({ ...input, data: { ...input.data,
       context: { gameTitleName: "😀*".repeat(67), heldDateIso: "2026-09-21", matchNoInEvent: 2_147_483_647 },
       failures: ["total_assets", "revenue", "incident_log"].map(screenType => ({
         screenType: screenType as "total_assets" | "revenue" | "incident_log", reason: "admission_failed" as const
@@ -64,7 +73,7 @@ describe("fixed result notification rendering", () => {
   it("keeps all four ranks, both aggregates, ginji, full notes, and authenticated routes", () => {
     const input = analysisNotification();
     const saved = structuredClone(input);
-    const rendered = renderResultNotification(input, origin);
+    const rendered = renderedNotification(input, origin);
     const text = rendered.parts.map(part => part.content).join("\n");
     expect(text).toContain("通知の基準日時: 2026-09-09 21:00:00 JST");
     expect(text).toContain("作品通算（全マップ）: 前回成功分析 → 今回");
@@ -90,18 +99,18 @@ describe("fixed result notification rendering", () => {
     ].join("\n"));
     expect(text).toContain("最新の分析を確認: <https://results.example.com/analytics/series?gameTitleId=title-1>");
     expect(input).toStrictEqual(saved);
-    expect(renderResultNotification(input, origin)).toStrictEqual(rendered);
+    expect(renderedNotification(input, origin)).toStrictEqual(rendered);
   });
 
   it("distinguishes first, empty, incomparable, reused, and small improvements", () => {
     const rank = rankComparisons()[0];
-    expect(renderNotificationRanks([
+    expect([...renderNotificationRankParts([
       { ...rank, before: null, delta: null, comparison: "initial" },
       { ...rank, after: { averageRank: null, matchCount: 0 }, delta: null, comparison: "empty" },
       { ...rank, delta: null, comparison: "incomparable" },
       { ...rank, before: rank.after, delta: 0, comparison: "reused" },
       { ...rank, delta: -0.00001 }
-    ])).toStrictEqual([
+    ])].join("")).toStrictEqual([
       "葵: 前回なし → 2.20位（5試合） / 初回",
       "葵: 2.50位（4試合） → 対象なし（0試合） / 対象なし",
       "葵: 2.50位（4試合） → 2.20位（5試合） / 比較不可",
@@ -112,7 +121,7 @@ describe("fixed result notification rendering", () => {
 
   it("does not describe no changed matches as zero ginji", () => {
     const input = analysisNotification();
-    const result = renderResultNotification({ ...input, data: {
+    const result = renderedNotification({ ...input, data: {
       ...input.data, disposition: "reused", matches: []
     } }, origin);
     const text = result.parts.map(part => part.content).join("\n");
@@ -123,7 +132,7 @@ describe("fixed result notification rendering", () => {
 
   it("summarizes all-zero ginji and omits an unentered memo", () => {
     const input = analysisNotification();
-    const result = renderResultNotification({ ...input, data: {
+    const result = renderedNotification({ ...input, data: {
       ...input.data, matches: input.data.matches.map(match => ({
         ...match, note: null, ginjiTotal: 0,
         players: [
@@ -143,7 +152,7 @@ describe("fixed result notification rendering", () => {
     const match = input.data.matches[0];
     if (!match) { throw new Error("Fixture needs a match."); }
     const note = "[x] `raw` *text* 😀 @everyone <@123>\\".repeat(300);
-    const result = renderResultNotification({ ...input, data: {
+    const result = renderedNotification({ ...input, data: {
       ...input.data, matches: [{ ...match, note }]
     } }, origin);
     expect(result.parts.length).toBeGreaterThan(3);
@@ -158,16 +167,15 @@ describe("fixed result notification rendering", () => {
     expect(rejoined).toContain("試合を確認: <https://results.example.com/matches/match-1>");
   });
 
-  it("encodes IDs in their intended route and rejects unsafe origins or renderer versions", () => {
+  it("encodes IDs in their intended route and rejects unsafe origins", () => {
     const input = ocrNotification();
-    const result = renderResultNotification({ ...input, data: {
+    const result = renderedNotification({ ...input, data: {
       ...input.data, matchDraftId: "a/b?x=#日本"
     } }, origin);
     expect(result.parts[0]?.content).toContain("/review/a%2Fb%3Fx%3D%23%E6%97%A5%E6%9C%AC>");
     for (const invalid of ["http://example.com", "https://user:pass@example.com", "https://example.com/path", "https://example.com/?secret=x"]) {
-      expect(() => renderResultNotification(input, invalid)).toThrow("application origin");
+      expect(() => renderedNotification(input, invalid)).toThrow("application origin");
     }
-    expect(() => renderResultNotification(input, origin, 99)).toThrow("Unsupported notification renderer");
   });
 
   it.each(["gameTitleId", "matchId"] as const)("classifies an oversized encoded %s link as a payload limit", field => {
@@ -214,7 +222,7 @@ describe("fixed result notification rendering", () => {
       [original, 1, "534248dec2438d7121ff0603d9f7965e8b366bee00470f00f3f7c8ebf82a0662"],
       [mixed, 20, "743b03335442893a57e816e585accfd029765b2659192a13282576862a69375b"]
     ] as const) {
-      const plan = planResultNotification(payload, origin);
+      const plan = planNotification(payload, origin);
       const rendered = { rendererVersion: plan.rendererVersion, parts: [...plan.parts()] };
       expect(plan.partCount).toBe(count);
       expect(rendered.parts).toHaveLength(count);
@@ -227,17 +235,17 @@ describe("fixed result notification rendering", () => {
     // why: field制限と独立に、escaped本文のpart境界を検証するための旧payloadを用いる。
     const atLimit = { ...original, data: { ...original.data, gameTitleName: "a".repeat(1_900 * 126) } };
     const oversized = { ...original, data: { ...original.data, gameTitleName: "a".repeat(1_900 * 127) } };
-    expect(planResultNotification(atLimit, origin).partCount).toBe(128);
+    expect(planNotification(atLimit, origin).partCount).toBe(128);
     expect(() => assertNewNotificationPartLimit(atLimit, origin)).not.toThrow();
     expect(() => assertNewNotificationPartLimit(oversized, origin)).toThrow("payload_too_large");
-    expect(planResultNotification(oversized, origin).partCount).toBe(129);
+    expect(planNotification(oversized, origin).partCount).toBe(129);
     expect(() => assertNewNotificationPartLimit(ocrNotification(), origin)).not.toThrow();
   });
 
   it("streams the prior 8 MiB Markdown case with intact Unicode and bounded messages", () => {
     const original = analysisNotification();
     const title = "界" + "*".repeat(8 * 1024 * 1024 - 8_192);
-    const plan = planResultNotification({ ...original, data: { ...original.data, gameTitleName: title, matches: [] } }, origin);
+    const plan = planNotification({ ...original, data: { ...original.data, gameTitleName: title, matches: [] } }, origin);
     let received = 0;
     let escapedStars = 0;
     let unicodeTitles = 0;

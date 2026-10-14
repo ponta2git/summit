@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../../src/db/schema.ts";
 import { makeRealPorts } from "../../src/db/ports.real.js";
@@ -9,7 +9,6 @@ import { runReconciler } from "../../src/scheduler/reconciler.js";
 import type { Clock } from "../../src/time/index.js";
 import { runEffect } from "../helpers/assertions.js";
 import {
-  assertSchemaReady,
   createIntegrationDb,
   isIntegration,
   seedBaseMembers,
@@ -34,12 +33,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
   const integrationDb = createIntegrationDb();
 
   beforeAll(async () => {
-    await assertSchemaReady(integrationDb.db);
     await seedBaseMembers(integrationDb.db);
-  });
-
-  afterAll(async () => {
-    await integrationDb.client.end({ timeout: 5 });
   });
 
   beforeEach(async () => {

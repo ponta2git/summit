@@ -1,15 +1,12 @@
 import type { ResponseRow, SessionRow } from "../db/rows.ts";
-import { isSlotKey } from "../slot.ts";
+import { isSlotKey, type SlotKey } from "../slot.ts";
 import {
   decidedStartAt,
   latestChoice,
-  parseCandidateDateIso,
-  type AskTimeChoice
+  parseCandidateDateIso
 } from "../time/index.ts";
 
-export type SlotKey = AskTimeChoice;
-
-export type DecisionResult =
+type DecisionResult =
   | { kind: "decided"; startAt: Date; chosenSlot: SlotKey }
   | { kind: "cancelled"; reason: "all_absent" | "deadline_unanswered" }
   | { kind: "pending"; reason: "not_all_answered_and_not_overdue" };
@@ -18,9 +15,6 @@ export interface EvaluateDeadlineOptions {
   memberCountExpected: number;
   now: Date;
 }
-
-const isAskTimeChoice = (choice: ResponseRow["choice"]): choice is AskTimeChoice =>
-  isSlotKey(choice);
 
 /**
  * Evaluate an ASKING aggregate from one locked Session/Response snapshot.
@@ -40,7 +34,7 @@ export const evaluateDeadline = (
   const allAnswered = responses.length === options.memberCountExpected;
   const timeChoices = responses
     .map((response) => response.choice)
-    .filter(isAskTimeChoice);
+    .filter(isSlotKey);
   const allTimeChoices = allAnswered && timeChoices.length === responses.length;
 
   if (session.deadlineAt.getTime() > options.now.getTime()) {

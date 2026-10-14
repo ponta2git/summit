@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.js";
+import { reconcileOutboxClaims } from "../../src/scheduler/reconciler.outboxClaims.js";
 import { createTestAppContext } from "../testing/index.js";
 import { makeOutboxEntry } from "../testing/fixtures.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";

@@ -16,7 +16,7 @@ import {
   setFetchImpl
 } from "./reconciler.harness.js";
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.js";
-import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.js";
+import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.probeDeleted.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";

@@ -24,7 +24,7 @@ export interface AttendanceDeliveryRuntime extends DeliveryRuntime {
 export const createAttendanceRuntime = (deps: {
   readonly clock: Clock;
   readonly runBatch: (isStopping: () => boolean) => Effect.Effect<{ readonly claimed: number }, AppError>;
-  readonly nextDispatchAt: (now: Date) => Effect.Effect<Date | null, AppError>;
+  readonly nextDispatchAt: () => Effect.Effect<Date | null, AppError>;
   readonly logger: Pick<Logger, "debug" | "error" | "info" | "warn">;
   readonly onWake: (reason: string) => void;
 }): AttendanceDeliveryRuntime => {
@@ -89,7 +89,7 @@ export const createAttendanceRuntime = (deps: {
   const continueLoop = Effect.fnUntraced(function* () {
     if (stopped) { return; }
     const now = clock.now();
-    const nextDispatchAt = yield* deps.nextDispatchAt(now);
+    const nextDispatchAt = yield* deps.nextDispatchAt();
     if (stopped) { return; }
     if (isDue(nextDispatchAt, now)) {
       scheduleLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);

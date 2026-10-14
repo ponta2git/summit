@@ -56,7 +56,7 @@ const customIdCodecSchema = z
   })
   .pipe(customIdSpecSchema);
 
-export type CustomIdSpec = z.infer<typeof customIdSpecSchema>;
+type CustomIdSpec = z.infer<typeof customIdSpecSchema>;
 export type AskCustomIdChoice = z.infer<typeof askCustomIdSpecSchema>["choice"];
 export type PostponeCustomIdChoice = z.infer<typeof postponeCustomIdSpecSchema>["choice"];
 
@@ -91,7 +91,7 @@ const cancelWeekCodecSchema = z
   })
   .pipe(cancelWeekCustomIdSpecSchema);
 
-export type CancelWeekCustomIdSpec = z.infer<typeof cancelWeekCustomIdSpecSchema>;
+type CancelWeekCustomIdSpec = z.infer<typeof cancelWeekCustomIdSpecSchema>;
 export type CancelWeekCustomIdChoice = CancelWeekCustomIdSpec["choice"];
 
 export const CANCEL_WEEK_CUSTOM_ID_PREFIX = "cancel_week:" as const;
@@ -128,7 +128,7 @@ const askAbsentCodecSchema = z
   })
   .pipe(askAbsentCustomIdSpecSchema);
 
-export type AbsentConfirmCustomIdSpec = z.infer<typeof askAbsentCustomIdSpecSchema>;
+type AbsentConfirmCustomIdSpec = z.infer<typeof askAbsentCustomIdSpecSchema>;
 export type AbsentConfirmCustomIdChoice = AbsentConfirmCustomIdSpec["choice"];
 
 export const ASK_ABSENT_CUSTOM_ID_PREFIX = "ask_absent:" as const;
@@ -165,7 +165,7 @@ const postponeNgCodecSchema = z
   })
   .pipe(postponeNgCustomIdSpecSchema);
 
-export type PostponeNgConfirmCustomIdSpec = z.infer<typeof postponeNgCustomIdSpecSchema>;
+type PostponeNgConfirmCustomIdSpec = z.infer<typeof postponeNgCustomIdSpecSchema>;
 export type PostponeNgConfirmCustomIdChoice = PostponeNgConfirmCustomIdSpec["choice"];
 
 export const POSTPONE_NG_CUSTOM_ID_PREFIX = "postpone_ng:" as const;

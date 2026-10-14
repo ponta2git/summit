@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getSchedulerSessionHints } from "../../src/db/repositories/sessions.ts";
 import { createIntegrationDb, isIntegration } from "./_support.ts";
 
@@ -13,8 +13,7 @@ interface PlanNode {
 const flatten = (plan: PlanNode): readonly PlanNode[] => [plan, ...(plan.Plans ?? []).flatMap(flatten)];
 
 (isIntegration ? describe : describe.skip)("scheduler discovery under retained history", () => {
-  const { db, client } = createIntegrationDb();
-  afterAll(() => client.end({ timeout: 5 }));
+  const { db } = createIntegrationDb();
 
   it("reads index heads without scanning ten thousand completed sessions", async () => {
     await db.execute(sql`INSERT INTO sessions

@@ -23,7 +23,7 @@ export const findStrandedOutboxEntries = async (
     status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status") }]);
 };
 
-export interface PruneOutboxResult {
+interface PruneOutboxResult {
   readonly deliveredPruned: number;
   readonly failedPruned: number;
   readonly cancelledPruned: number;
@@ -35,7 +35,7 @@ export const pruneOutbox = async (
   options: { readonly deliveredOlderThan: Date; readonly failedOlderThan: Date }
 ): Promise<PruneOutboxResult> => pruneNotificationBatches(db, "attendance", systemClock.now(), options);
 
-export interface OutboxMetricsResult {
+interface OutboxMetricsResult {
   readonly pending: number;
   readonly inFlight: number;
   readonly failed: number;
@@ -63,5 +63,5 @@ export const getOutboxMetrics = async (db: DbLike, now: Date): Promise<OutboxMet
   };
 };
 
-export const getNextOutboxDispatchAt = (db: DbLike, _now: Date): Promise<Date | null> =>
+export const getNextOutboxDispatchAt = (db: DbLike): Promise<Date | null> =>
   findNextNotificationDispatchAt(db, "attendance");

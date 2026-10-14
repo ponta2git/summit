@@ -31,21 +31,6 @@ export const createIntegrationDb = (options: { readonly maxConnections?: number 
 };
 
 /**
- * Assert that migrations have been applied by probing required tables.
- * Fail-fast if schema is missing so integration tests don't silently "pass".
- */
-export const assertSchemaReady = async (
-  db: ReturnType<typeof drizzle<typeof schema>>
-): Promise<void> => {
-  await db.execute(sql`SELECT 1 FROM sessions LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM members LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM responses LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM discord_notifications LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM held_events LIMIT 0`);
-  await db.execute(sql`SELECT 1 FROM held_event_participants LIMIT 0`);
-};
-
-/**
  * Seed the canonical 4-member fixture used across contract tests.
  * Idempotent via ON CONFLICT DO NOTHING so suites can call in beforeAll.
  */

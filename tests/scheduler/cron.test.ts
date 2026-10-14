@@ -1,16 +1,13 @@
 import * as Result from "effect/Result";
 import * as Effect from "effect/Effect";
-import { runEffect } from "../helpers/assertions.ts";
-import type { Client } from "discord.js";
-import type { ScheduledTask } from "node-cron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
-import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
 import { logger } from "../../src/logger.js";
-import { callArgs } from "../helpers/assertions.js";
+import { callArgs, runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.js";
+import { asDiscordClient, createDiscordTextFixture } from "../helpers/discord.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createTestAppContext } from "../testing/index.js";
 
@@ -31,59 +28,23 @@ describe("ask scheduler", () => {
     vi.useRealTimers();
   });
 
-  it("registers friday 08:00 JST ask cron with noOverlap", () => {
+  it("registers exactly the JST ask, retention and supervisor schedules with overlap protection", () => {
     const stop = vi.fn();
-    const schedule = vi.fn(
-      () =>
-        ({
-          stop
-        }) as unknown as ScheduledTask
-    );
-    const client = {} as Client;
-    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
-    const context = createTestAppContext();
-
+    const schedule = vi.fn(() => ({ stop }));
     const scheduler = createAskScheduler({
-      client,
-      context,
-      sendAsk,
+      client: asDiscordClient({}),
+      context: createTestAppContext(),
       cronAdapter: { schedule }
     });
 
+    expect(registeredSchedules(schedule)).toEqual(expect.arrayContaining([
+      { expression: "0 8 * * 5", options: { timezone: "Asia/Tokyo", noOverlap: true } },
+      { expression: "0 4 * * *", options: { timezone: "Asia/Tokyo", noOverlap: true } },
+      { expression: "*/30 * * * *", options: { timezone: "Asia/Tokyo", noOverlap: true } }
+    ]));
     expect(schedule).toHaveBeenCalledTimes(3);
-    const index = schedule.mock.calls.findIndex((_, i) => callArgs<ScheduleCall>(schedule, i)[0] === "0 8 * * 5");
-    expect(index).toBeGreaterThanOrEqual(0);
-    const [expression, tick, options] = callArgs<ScheduleCall>(schedule, index);
-    expect(expression).toBe("0 8 * * 5");
-    expect(tick).toBeTypeOf("function");
-    expect(options).toStrictEqual({ timezone: "Asia/Tokyo", noOverlap: true });
-    scheduler.stop();
-    expect(stop).toHaveBeenCalledTimes(3);
-  });
-
-  it("registers scheduler supervisor cron with noOverlap", () => {
-    const stop = vi.fn();
-    const schedule = vi.fn(
-      () =>
-        ({
-          stop
-        }) as unknown as ScheduledTask
-    );
-    const client = {} as Client;
-    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
-    const context = createTestAppContext();
-
-    const scheduler = createAskScheduler({
-      client,
-      context,
-      sendAsk,
-      cronAdapter: { schedule }
-    });
-
-    expect(schedule).toHaveBeenCalledTimes(3);
-    expect(registeredSchedules(schedule)).toContainEqual({
-      expression: CRON_SCHEDULER_SUPERVISOR_SCHEDULE,
-      options: { timezone: "Asia/Tokyo", noOverlap: true }
+    schedule.mock.calls.forEach((_call, index) => {
+      expect(callArgs<ScheduleCall>(schedule, index)[1]).toBeTypeOf("function");
     });
     scheduler.stop();
   });
@@ -109,7 +70,7 @@ describe("ask scheduler", () => {
     const capturedTicks: (() => void)[] = [];
     const schedule = vi.fn((_expr: string, tick: () => void) => {
       capturedTicks.push(tick);
-      return { stop } as unknown as ScheduledTask;
+      return { stop };
     });
     const context = createTestAppContext();
     vi.spyOn(context.ports.sessions, "getSchedulerSessionHints").mockRejectedValue(new Error("x"));
@@ -118,7 +79,7 @@ describe("ask scheduler", () => {
       throw new Error("x");
     });
 
-    const scheduler = createAskScheduler({ client: {} as Client, context, sendAsk, cronAdapter: { schedule } });
+    const scheduler = createAskScheduler({ client: asDiscordClient({}), context, sendAsk, cronAdapter: { schedule } });
 
     const wrappedIndices = [0, 1, 2];
     const terminalTicks = deferred<void>();
@@ -153,20 +114,6 @@ describe("ask scheduler", () => {
     scheduler.stop();
   });
 
-  it("does not register always-on reminder cron", () => {
-    const stop = vi.fn();
-    const schedule = vi.fn(() => ({ stop }) as unknown as ScheduledTask);
-    const scheduler = createAskScheduler({
-      client: {} as Client,
-      context: createTestAppContext(),
-      sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" })),
-      cronAdapter: { schedule }
-    });
-
-    expect(registeredSchedules(schedule).map((s) => s.expression)).not.toContain("* * * * *");
-    scheduler.stop();
-  });
-
   it("dispatches due DECIDED reminders, including legacy claim markers", async () => {
     const now = new Date("2026-04-24T12:45:00.000Z");
     const decidedStartAt = new Date("2026-04-24T13:00:00.000Z");
@@ -197,14 +144,7 @@ describe("ask scheduler", () => {
       now
     });
 
-    const send = vi.fn(async () => ({ id: "reminder-posted" }));
-    const channel = {
-      type: 0,
-      isSendable: () => true,
-      send,
-      messages: { fetch: vi.fn() }
-    };
-    const client = { channels: { fetch: vi.fn(async () => channel) } } as unknown as Client;
+    const { client, send } = createDiscordTextFixture(async () => ({ id: "reminder-posted" }));
 
     await runEffect(runReminderTick(client, ctx));
 

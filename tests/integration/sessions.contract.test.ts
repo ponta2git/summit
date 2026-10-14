@@ -1,45 +1,25 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  createAskSession,
   findDueStartupRecoverySessions,
   findMessageRecoveryCandidates,
-  findSessionByWeekKeyAndPostponeCount,
   getSchedulerSessionHints
 } from "../../src/db/repositories/sessions.js";
 import { loadCurrentWeekSnapshot } from "../../src/db/repositories/status.js";
-import { baseSession, createSessionsContractHarness } from "./_sessionsContract.js";
-import { isIntegration } from "./_support.js";
+import { createIntegrationDb, isIntegration, seedBaseMembers, truncatePerTestTables } from "./_support.js";
 
 const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("sessions repository contract (integration)", () => {
-  const harness = createSessionsContractHarness();
-  const { db } = harness;
+  const { db } = createIntegrationDb();
 
   beforeAll(async () => {
-    await harness.initialize();
+    await seedBaseMembers(db);
   });
 
   beforeEach(async () => {
-    await harness.reset();
-  });
-
-  afterAll(async () => {
-    await harness.close();
-  });
-
-  it("createAskSession deduplicates (weekKey, postponeCount)", async () => {
-    const first = await createAskSession(db, { id: "s1", ...baseSession });
-    const second = await createAskSession(db, { id: "s2", ...baseSession });
-    const persisted = await findSessionByWeekKeyAndPostponeCount(db, baseSession.weekKey, 0);
-
-    expect({ firstId: first?.id, second, persistedId: persisted?.id }).toStrictEqual({
-      firstId: "s1",
-      second: undefined,
-      persistedId: "s1"
-    });
+    await truncatePerTestTables(db);
   });
 
   it.each([

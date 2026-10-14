@@ -22,7 +22,7 @@ const TIME_CHOICES: ReadonlySet<ResponseChoice> = new Set([
 ]);
 
 // why: 参加メンバー一覧は responses の時刻選択から派生する。user config の members は「今の設定値」で
-//   開催スナップショットではない。DECIDED 到達時点で ABSENT は存在しない (ask-session/decide) ため
+//   開催スナップショットではない。DECIDED 到達時点で ABSENT は存在しない (domain/askDecision) ため
 //   TIME_CHOICES のみで十分 @see requirements/base.md §8.3
 const extractHeldParticipantMemberIds = (
   responses: readonly ResponseRow[]

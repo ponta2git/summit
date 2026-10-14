@@ -3,7 +3,7 @@ import { vi } from "vitest";
 import type {
   InteractionHandlerDeps,
   SendAsk
-} from "../../src/discord/shared/dispatcher.js";
+} from "../../src/discord/shared/interactionHandlerDeps.js";
 import type { SessionRow } from "../../src/db/rows.js";
 import { appConfig } from "../../src/userConfig.js";
 import { asDiscordClient } from "../helpers/discord.js";
