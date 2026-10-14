@@ -2,6 +2,30 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
+## 2026-10-14 通知定義と runtime 注入の分離
+
+配送 runtime へ取得元と配送 task factory を注入する構成に変え、出欠の業務確定・renderer と結果通知の種別・renderer版選択を通知定義へ寄せた。同期factory失敗と予約ID／byte数の変更の隔離を共通化した。出欠準備処理の遅延実行と、停止中にclaimが完了した後の新規task生成抑止も検証した。全変更のreviewと最終refactorを終えた凍結差分に対し、以下のgateと比較測定を実行した。
+
+変更前 `d6998b4`／image `b168a1aca060` と変更後 `a2ccce4`／image `64a3c91befc3` を比較した。変更前imageは以前の実装commitとruntime・build入力197ファイルが一致することを確認して再利用し、候補は固定snapshotの全495 tracked filesが実装commitと一致することを確認した。Node 24.21.0 / Linux arm64、Node base digest `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20`、momo-db `c6c32de`、新規の専用local PostgreSQL 18.4、256 MiB・swapなし・1 CPU、Discord代替送信を共通条件にした。計測器の変更はcompositionへのimport先1箇所だけで、負荷と観測方法は変えていない。
+
+5ケースを各3組、新旧の順序を組ごとに交替して実行した。各ケースの最初の順序も交替し、全runに新規DB・containerを使った。各呼出しは `--repetitions 1 --rounds 5`。表は各variantの3runの全完了時間の中央値［最小–最大］と、cgroup peakの最大値を示す。
+
+| ケース | 全完了の秒数：中央値［範囲］（変更前→変更後） | cgroup peak MiB：最大（変更前→変更後） |
+|---|---:|---:|
+| normal | 0.276［0.270–0.287］ → 0.290［0.270–0.309］ | 73.97 → 74.42 |
+| parts | 13.526［13.188–14.280］ → 13.980［13.567–14.114］ | 92.51 → 92.39 |
+| mixed | 5.808［5.693–6.453］ → 5.817［5.804–5.857］ | 92.55 → 89.44 |
+| stream | 1.929［1.893–1.932］ → 1.918［1.900–1.934］ | 82.13 → 82.43 |
+| legacyqueue | 99.002［97.264–107.814］ → 98.050［97.033–98.104］ | 141.09 → 147.87 |
+
+normalの全完了中央値は約5.0%、partsは約3.4%増えた。両ケースの測定範囲は重なり、mixed・streamの差も小さかったが、一様な高速化や統計的な非劣化は主張しない。normalの受付→完了p95は61.61→61.28 ms。このp95は各run10通知のp95を3runでまとめた中央値であり、JSONに別記した30通知をまとめたnearest-rank分位とは区別する。
+
+全30run・300通知・65,004 partsが完了し、投稿契約違反・予期しないアプリエラー・計測欠落はなかった。plan・begin・complete・yieldの回数は対応する新旧runで一致した。claimと次時刻照会には完了競合によるrun差があるため、全operation回数の一致とは扱わない。`mixed`・`stream`・`legacyqueue`は意図的な送信保留を含み、旧巨大通知の単独配送と先頭OCR→旧分析→後続OCRの順序も維持した。
+
+容量gateは新旧各1回を別に測定した。標準17通知・932 partsのcgroup peakは **144.00→140.17 MiB** で、双方192 MiBの必須目標を達成した。旧8 MiB通知の8,823 parts計画・先頭1 partと4競合受付は **172.11→169.81 MiB**。単回の結果からメモリ削減や同等性を主張しない。`pnpm run ci` は129 files／978 tests、実DB integrationは27 files／144 tests、image build・非root／read-only／本番依存検証も成功した。本番deployは行っていない。
+
+他agentのCI・DB検証を止めて比較したが、hostの背景負荷は完全には制御していない。DBと負荷clientはアプリcontainerの資源制限外で、実Discord／Neonの性能は未測定。全runの統計・実行順・raw SHA-256・環境・gate結果を[集計JSON](./performance/notification-composition-20261014.json)へ保存した。raw artifactとbuild snapshotは `/private/tmp/summit-delivery-composition-validation-20261014` に保持する。
+
 ## 2026-10-14 配送責務の分離
 
 出欠と結果通知の配送 runtime を同じ階層へ移し、容量の予約・完了待ち・Scope、取得方針、単発／連番 Strategy、通知定義を分離した。出欠の batch 全件待ち、結果通知の2枠・512 KiBと随時補充、claim fencing・nonce・heartbeat・譲渡・停止時の確定順序は維持する。構造上の変更範囲は [Architecture](./architecture.md#6-scheduler-と-lifecycle) に記録した。性能改善はこの変更の達成条件にしていない。
