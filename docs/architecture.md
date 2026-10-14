@@ -27,7 +27,16 @@ OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ pr
 
 feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
 
-出欠と A/B の配送は `notifications/delivery`、本文は各 feature が所有する。容量管理は通知種類を参照せず、枠の割当てと上限は `lanes.ts`、claim・次回時刻・公平性は `sources`、単発／再開可能な連番の手順は `strategies`、本文準備・業務確定は `definitions` に置く。枠 ID・通知種類・配送方式を同じ型にしない。OCR の独立枠への再配置には、claim・次回時刻・譲渡の DB 条件も揃える必要があり、設定変更だけで可能とは扱わない。
+出欠と A/B の配送は `notifications/delivery`、本文は各 feature が所有する。容量管理は通知種類を参照せず、既存 config の上限を枠へ割り当てるのは `lanes.ts`、claim・次回時刻・公平性は `sources`、単発／再開可能な連番の手順は `strategies`、本文準備・業務確定は `definitions` に置く。枠 ID・通知種類・配送方式を同じ型にしない。OCR の独立枠への再配置には、claim・次回時刻・譲渡の DB 条件も揃える必要があり、設定変更だけで可能とは扱わない。
+
+変更範囲の確認には次の契約を使う。構造上の分離を示すもので、保守工数や障害件数の削減を計測した結果ではない。
+
+| 変更 | 所有する場所と根拠 |
+|---|---|
+| 件数・byte 上限 | [出欠 config](../src/config.ts) / [結果通知 config](../src/notifications/config.ts) が正本。`lanes.ts` と DB の既定値・譲渡条件も同じ定数を参照する。[容量契約](../tests/notifications/delivery.capacity.test.ts)は通知種類なしで検証する |
+| 既存方式の本文・業務確定 | definition / renderer と必要な登録箇所。[単発 Strategy](../tests/notifications/delivery.singlePost.test.ts)は出欠 row や容量実装なしで異なる型の業務確定結果を扱う |
+| 連番の再開・譲渡手順 | [連番 Strategy](../src/notifications/delivery/strategies/resumable.ts)が所有。[再開契約](../tests/notifications/resumable.test.ts)は通知種類なしで順序と確定後の譲渡を検証する |
+| 結果通知の失敗分類 | 配送の外部 I/O adapter と同期準備の入力検証。Strategy・容量管理へ通知種類や retry の分岐を追加しない。[配送テスト](../tests/scheduler/resultNotifications.delivery.test.ts)と[準備テスト](../tests/notifications/resultDefinition.test.ts)で通常失敗と defect を区別する |
 
 HTTP の受付枠・本文予約・DB work の drain は [http.ts](../src/notifications/http.ts)、socket の header 待ち・再利用・pipeline の応答追跡は [http.connections.ts](../src/notifications/http.connections.ts) に集約する。未受付の接続を回収しても、受付済み DB work の所有を失わない境界とする。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
 

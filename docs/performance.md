@@ -2,6 +2,30 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
+## 2026-10-14 配送責務の分離
+
+出欠と結果通知の配送 runtime を同じ階層へ移し、容量の予約・完了待ち・Scope、取得方針、単発／連番 Strategy、通知定義を分離した。出欠の batch 全件待ち、結果通知の2枠・512 KiBと随時補充、claim fencing・nonce・heartbeat・譲渡・停止時の確定順序は維持する。構造上の変更範囲は [Architecture](./architecture.md#6-scheduler-と-lifecycle) に記録した。性能改善はこの変更の達成条件にしていない。
+
+変更前 `1ddfaef`／image `ee9249574efa` と変更後 `855fe17`／image `b168a1aca060` を比較した。runtime は固定した source snapshot から build し、候補snapshotの全488ファイルが実装commitと一致することを確認した。Node 24.21.0 / Linux arm64、Node base digest `sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20`、momo-db `c6c32de`、新規の専用local PostgreSQL 18.4、256 MiB・swapなし・1 CPU、Discord代替送信を共通条件とした。計測器の新旧差分は移動したmoduleのimport先だけ。各runに新規DB・containerを使い、`--repetitions 3 --rounds 5` で代表5ケースを実行した。
+
+| ケース | 全完了の秒数：中央値［範囲］（変更前→変更後） | cgroup peak MiB：最大（変更前→変更後） |
+|---|---:|---:|
+| normal | 0.269［0.268–0.273］ → 0.314［0.294–0.398］ | 73.77 → 74.80 |
+| parts | 13.922［13.337–14.287］ → 13.541［13.479–13.640］ | 88.57 → 92.20 |
+| mixed | 5.784［5.733–5.868］ → 5.903［5.787–6.027］ | 93.23 → 90.22 |
+| stream | 1.872［1.865–1.911］ → 1.915［1.895–1.976］ | 85.51 → 85.92 |
+| legacyqueue | 101.229［99.322–136.745］ → 97.261［96.605–99.738］ | 148.43 → 140.19 |
+
+初回normalは中央値が約17%増え、範囲も重ならなかったため、新旧を交互にした3組を追加した。追加分は **0.290［0.280–0.291］→0.282［0.273–0.296］秒**、CPU user＋systemの中央値は160.92→157.91 ms、受付→初回送信p95は51.09→51.72 ms、受付→完了p95は58.89→59.05 msだった。この段落のp95は、各run10通知のp95を3runでまとめた中央値であり、本文末の過去測定の集計定義とは分ける。順序を逆にした組も含め、候補だけが一貫して遅い傾向はなく、初回の遅延増は再現しなかった。初回は変更していないreceive・claim・plan等の時間も広く増加していたが、原因は確定していない。初回30runを除外せず、追加6runと分けて[集計JSON](./performance/notification-delivery-20261014.json)へ保存した。全36run・360通知・65,064 partsが完了し、投稿契約違反・予期しないアプリエラー・計測欠落はなかった。
+
+plan・begin・complete・yieldの回数は対応する新旧runで一致した。claimと次時刻照会の回数は完了競合によるrun差があるため、全operation回数が同一とは扱わない。`mixed`・`stream`・`legacyqueue`は意図的な送信保留を含み、旧巨大通知の単独配送と先頭OCR→旧分析→後続OCRの順序も確認した。
+
+最初の測定は変更前の全ケース、その後に変更後の全ケースを実行した。変更前は並行開発中のhost検証が重なり得る条件で、変更後と追加normalでは他のagentによるCPU・DB検証を止めた。DBと負荷clientはcontainerの資源制限外であり、外部負荷は完全には制御していない。速度向上・統計的な非劣化・本番Discord／Neonの性能を保証する比較ではない。raw SHA-256、run別の待ち時間・CPU・GC・operation統計と測定条件を集計に残した。raw artifactとbuild snapshotは `/private/tmp/summit-delivery-validation-20261014` に保持している。
+
+容量gateは新旧各1回を別に検証した。標準17通知・932 partsのcgroup peakは **139.42→136.32 MiB** で、双方192 MiBの必須目標を達成。旧8 MiB通知の8,823 parts計画・先頭1 partと4競合受付は **171.43→180.88 MiB** だった。旧容量のpeakは増えており、単回の結果からメモリ削減や同等性を主張しない。`pnpm run ci` は126 files／964 tests、実DB integrationは144 tests、Docker build・非root／read-only／本番依存検証が成功した。本番deployは行っていない。
+
+ローカルの既存`@momo/db`配布物にnested schema fileが欠落していたため、変更前snapshotでも745行の型エラーを再現した。frozen installによる生成済み依存の再同期後に変更前・変更後の型検査が成功し、manifest・lockfileは変更していない。再同期中に最初のlegacyqueue起動がmodule importで失敗したが、負荷開始前で測定artifactも未作成だった。失敗logのhashと理由を残し、復旧後の3runを採用した。
+
 ## 2026-10-12 保守性リファクタの検証
 
 配送 Promise と予約 byte 数、timer と期限をそれぞれ一つの状態にまとめ、HTTP の接続管理と受付済み DB work の所有を分離した。DB の候補検索は共通 projection と family 固有の条件を整理し、SQL 数・lock 順序・公平配送の規則を維持した。計測の単回・複数回集計も共通化し、投稿 decile の分類を反復走査から一度の走査へ変更した。既存10ケース・30実行の再集計 JSON は変更前後で byte 単位に一致している。
