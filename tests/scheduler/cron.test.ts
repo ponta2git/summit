@@ -6,7 +6,7 @@ import type { ScheduledTask } from "node-cron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";
-import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.js";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.js";
 import { CRON_SCHEDULER_SUPERVISOR_SCHEDULE } from "../../src/config.js";
 import { logger } from "../../src/logger.js";
 import { callArgs } from "../helpers/assertions.js";

@@ -5,7 +5,7 @@ import * as Exit from "effect/Exit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { settledCall } from "../../src/runtime/effect.ts";
-import { withClaimHeartbeat } from "../../src/scheduler/claimHeartbeat.ts";
+import { withClaimHeartbeat } from "../../src/notifications/delivery/claimHeartbeat.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
 

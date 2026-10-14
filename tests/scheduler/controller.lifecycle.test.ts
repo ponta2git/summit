@@ -3,12 +3,12 @@ import { setImmediate } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSchedulerController } from "../../src/scheduler/controller.ts";
 import type { SchedulerEffect } from "../../src/scheduler/scheduler.types.ts";
-import { OUTBOX_WORKER_BATCH_LIMIT, SCHEDULER_MIN_TIMER_DELAY_MS } from "../../src/config.ts";
+import { OUTBOX_WORKER_BATCH_LIMIT, SCHEDULER_MIN_TIMER_DELAY_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { deferred } from "../helpers/deferred.ts";
-import { stubClient } from "./outboxWorker.harness.ts";
+import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 const okTask = (): SchedulerEffect<void> => Effect.succeed(undefined);
@@ -105,5 +105,41 @@ describe("scheduler work ownership", () => {
     sent.resolve({ id: "accepted" }); await drain;
     expect(ctx.ports.outbox.listEntries().filter(entry => entry.status === "DELIVERED")).toHaveLength(OUTBOX_WORKER_BATCH_LIMIT);
     expect(ctx.ports.outbox.listEntries().filter(entry => entry.status === "PENDING")).toHaveLength(1);
+  });
+
+  it("re-reads a wake that races the completed batch's stale idle query", async () => {
+    vi.useFakeTimers();
+    const sessions = [buildSessionRow({ id: "first", status: "SKIPPED", cancelReason: "manual_skip" }),
+      buildSessionRow({ id: "second", status: "SKIPPED", cancelReason: "manual_skip", candidateDateIso: "2026-05-01" })];
+    const ctx = createTestAppContext({ seed: { sessions }, now: () => new Date() });
+    const enqueue = async (index: number) => {
+      const session = sessions[index];
+      if (!session) { throw new Error("Missing fixture session."); }
+      await ctx.ports.outbox.enqueue({ kind: "send_message", sessionId: session.id, dedupeKey: `notice-${session.id}`,
+        aggregateRevision: 0, ordinal: 0, payload: { kind: "send_message", channelId: session.channelId,
+          renderer: "settle_notice", extra: { reason: "absent" } } });
+    };
+    const readingIdle = deferred<void>(); const idle = deferred<Date | null>();
+    const readNext = ctx.ports.outbox.getNextDispatchAt;
+    let calls = 0;
+    ctx.ports.outbox.getNextDispatchAt = async now => {
+      if (++calls === 2) { readingIdle.resolve(); return idle.promise; }
+      return readNext(now);
+    };
+    const { channel } = stubChannel();
+    const controller = createSchedulerController({ ...options(ctx), client: stubClient(channel) });
+    stopWork = () => controller.stop(); drainWork = () => controller.drain(); releaseWork = () => idle.resolve(null);
+    await enqueue(0);
+    await controller.recompute("first");
+    await vi.advanceTimersByTimeAsync(SCHEDULER_MIN_TIMER_DELAY_MS);
+    await readingIdle.promise;
+    expect(channel.send).toHaveBeenCalledOnce();
+    await enqueue(1);
+    await controller.recompute("second_intent");
+    idle.resolve(null);
+    await controller.drain();
+    await vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS + SCHEDULER_MIN_TIMER_DELAY_MS);
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(ctx.ports.outbox.listEntries().map(entry => entry.status)).toEqual(["DELIVERED", "DELIVERED"]);
   });
 });

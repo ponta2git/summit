@@ -1,15 +1,75 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageFlags } from "discord.js";
-import { deliverResultNotification } from "../../src/scheduler/resultNotifications.delivery.ts";
-import { notificationNonce } from "../../src/scheduler/deliveryNonce.ts";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import { deliverPreparedResultNotification } from "../../src/notifications/delivery/resultDelivery.ts";
+import { prepareResultDelivery } from "../../src/notifications/delivery/definitions/result.ts";
+import { notificationNonce } from "../../src/notifications/delivery/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
+import { runEffect } from "../helpers/assertions.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
 
 describe("result notification delivery", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(notificationNow); });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  it("prepares detached data synchronously and defers delivery I/O until the Effect runs", async () => {
+    const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
+    const context = { ...h.context };
+    const prepared = prepareResultDelivery(entry, context);
+    const plan = vi.spyOn(h.port, "plan");
+    const delivery = deliverPreparedResultNotification(h, prepared);
+    context.channelId = "changed-after-preparation";
+    expect(plan).not.toHaveBeenCalled();
+    expect(h.client.channels.fetch).not.toHaveBeenCalled();
+    await runEffect(delivery);
+    expect(h.client.channels.fetch).toHaveBeenCalledWith("channel-1");
+    expect(prepared).not.toHaveProperty("payload");
+  });
+
+  it("propagates a rendering defect without converting it into a retryable delivery failure", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
+    const prepared = prepareResultDelivery(entry, h.context);
+    if (prepared.strategy !== "resumable") { throw new Error("Expected a valid plan"); }
+    const defect = new Error("renderer invariant failed");
+    const fail = vi.spyOn(h.port, "fail");
+    const exit = await runEffect(Effect.exit(deliverPreparedResultNotification(h, {
+      ...prepared, notification: { ...prepared.notification, parts() { throw defect; } }
+    })));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) { throw new Error("Expected a rendering defect"); }
+    expect(Cause.hasDies(exit.cause)).toBe(true);
+    expect(Cause.squash(exit.cause)).toBe(defect);
+    expect(fail).not.toHaveBeenCalled();
+    expect(await h.port.inspect(id)).toMatchObject({ status: "IN_FLIGHT", lastError: null });
+    expect(h.channel.send).not.toHaveBeenCalled();
+  });
+
+  it("preserves a Discord failure combined with a heartbeat defect without normal retry finalization", async () => {
+    const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
+    const started = deferred<void>(); const sending = deferred<{ id: string }>();
+    const defect = new Error("heartbeat diagnostic invariant");
+    h.channel.send.mockImplementationOnce(() => { started.resolve(); return sending.promise; });
+    h.port.renew = async () => false;
+    h.logger.warn.mockImplementation(() => { throw defect; });
+    const fail = vi.spyOn(h.port, "fail");
+    const pending = runEffect(Effect.exit(deliverPreparedResultNotification(h, prepareResultDelivery(entry, h.context))));
+    try {
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS);
+    } finally { sending.reject(new Error("Discord unavailable")); }
+    const exit = await pending;
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) { throw new Error("Expected both failures"); }
+    expect(Cause.hasFails(exit.cause)).toBe(true);
+    expect(Cause.hasDies(exit.cause)).toBe(true);
+    expect(exit.cause.reasons.filter(Cause.isDieReason).map(reason => reason.defect)).toContain(defect);
+    expect(fail).not.toHaveBeenCalled();
+    expect(h.channel.send).toHaveBeenCalledOnce();
+  });
 
   it("reuses each part's nonce and persisted context, skips delivered parts, and disables mentions", async () => {
     const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
@@ -22,7 +82,8 @@ describe("result notification delivery", () => {
       allowedMentions: { parse: [], users: [], roles: [], repliedUser: false }, flags: MessageFlags.SuppressEmbeds });
     await vi.advanceTimersByTimeAsync(1_000);
     const retry = await h.claim();
-    await deliverResultNotification({ ...h, context: { channelId: "changed", webOrigin: "https://changed.example.com" } }, retry);
+    await runEffect(deliverPreparedResultNotification(h, prepareResultDelivery(retry,
+      { channelId: "changed", webOrigin: "https://changed.example.com" })));
     expect(h.channel.send.mock.calls[2]?.[0]).toEqual(uncertainPayload);
     expect(h.channel.send.mock.calls.filter(([body]) => body.nonce === firstPayload?.nonce)).toHaveLength(1);
     expect(h.client.channels.fetch).toHaveBeenLastCalledWith("channel-1");

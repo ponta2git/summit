@@ -3,7 +3,10 @@ import { vi } from "vitest";
 import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifications.ts";
 import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
-import { deliverResultNotification } from "../../src/scheduler/resultNotifications.delivery.ts";
+import { deliverPreparedResultNotification } from "../../src/notifications/delivery/resultDelivery.ts";
+import * as Effect from "effect/Effect";
+import { runEffect } from "../helpers/assertions.ts";
+import { prepareResultDelivery } from "../../src/notifications/delivery/definitions/result.ts";
 import type { ClaimedResultNotification } from "../../src/db/ports.resultNotifications.ts";
 
 export const resultWorkerHarness = () => {
@@ -41,6 +44,6 @@ export const resultWorkerHarness = () => {
       if (!entry) { throw new Error("Expected claim"); }
       return entry;
     },
-    deliver: (entry: ClaimedResultNotification) => deliverResultNotification(deps, entry)
+    deliver: (entry: ClaimedResultNotification) => runEffect(Effect.suspend(() => deliverPreparedResultNotification(deps, prepareResultDelivery(entry, context))))
   };
 };

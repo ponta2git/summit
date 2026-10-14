@@ -78,7 +78,10 @@ describe("scheduler transient-failure recovery", () => {
     const sent = phase === "claim" ? 0 : 1;
     expect(channel.send).toHaveBeenCalledTimes(sent);
     if (phase === "next_dispatch") { await enqueue(next); }
-    await vi.advanceTimersByTimeAsync(SCHEDULER_RECOVERY_BACKOFF_MS[0] - 1);
+    controller.wake("new_intent_during_backoff");
+    await vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
+    expect(channel.send).toHaveBeenCalledTimes(sent);
+    await vi.advanceTimersByTimeAsync(SCHEDULER_RECOVERY_BACKOFF_MS[0] - SCHEDULER_WAKE_DEBOUNCE_MS - 1);
     expect(channel.send).toHaveBeenCalledTimes(sent);
     await vi.advanceTimersByTimeAsync(1);
     expect(context.ports.outbox.listEntries().map(entry => entry.status)).toStrictEqual(

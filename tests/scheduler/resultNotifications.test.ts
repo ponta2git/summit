@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createResultNotificationDispatcher, type ResultNotificationDispatcher } from "../../src/scheduler/resultNotifications.ts";
-import { notificationNonce } from "../../src/scheduler/deliveryNonce.ts";
+import { createResultNotificationDispatcher, type ResultNotificationDispatcher } from "../../src/notifications/delivery/resultRuntime.ts";
+import { notificationNonce } from "../../src/notifications/delivery/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
@@ -216,6 +216,25 @@ describe("result notification dispatcher", () => {
     expect(reclaimed).toHaveLength(1);
     expect(reclaimed[0]).toMatchObject({ id, attemptCount: 2 });
     expect(reclaimed[0]?.payloadBytes).toBeGreaterThan(0);
+  });
+
+  it("stops between entries in one claimed batch without treating the unstarted entry as a defect", async () => {
+    const h = resultWorkerHarness();
+    const first = await h.enqueue("a-stop-during-start", "Short summary");
+    const second = await h.enqueue("b-unstarted", "Short summary");
+    const plan = h.port.plan;
+    h.port.plan = vi.fn((...args: Parameters<typeof plan>) => { dispatcher?.stop(); return plan(...args); });
+    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    await tick(); await dispatcher.drain();
+    expect(h.port.plan).toHaveBeenCalledOnce();
+    expect(h.channel.send).not.toHaveBeenCalled();
+    expect(h.logger.error).not.toHaveBeenCalled();
+    expect(await h.port.inspect(first)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await h.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1, partCount: 0 });
+    const reclaimed = await h.port.claim({ limit: 2, now: new Date(notificationNow.getTime() + 300_000), claimDurationMs: 30_000 });
+    expect(reclaimed.map(entry => ({ id: entry.id, attempt: entry.attemptCount }))).toEqual([
+      { id: first, attempt: 2 }, { id: second, attempt: 2 }
+    ]);
   });
 
   it("coalesces wakes during a failed pump without bypassing database recovery backoff", async () => {

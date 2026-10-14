@@ -39,6 +39,7 @@
 | 信頼性・高 | 出欠の hint / tick / 次時刻取得を一度だけ失敗させる | 有限 backoff、成功 reset、supervisor による再開。[controller recovery](../tests/scheduler/controller.recovery.test.ts) |
 | 信頼性・高 | Discord の rate-limit 待機で出欠 claim の期限を超える | 両 family の共通 heartbeat、期限切れ owner の復活禁止、renew の settlement。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts)、[real / fake 契約](../tests/contracts/attendance.ts) |
 | 信頼性・中 | Discord 受理後の DB 失敗で短時間再送する | 通知 / part の安定 nonce、begin / finalize fencing。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts) |
+| 信頼性・保守性・高 | claim 待機中の停止、準備の同期失敗、配送終了と枠補充を競合させる | 共通容量台帳で予約と完了待ちを持ち、Scope が実行を所有して settlement 後に解放。出欠 batch と A/B の随時補充は別方針。[容量](../tests/notifications/delivery.capacity.test.ts)、[claim と停止](../tests/scheduler/resultNotifications.test.ts) |
 | 信頼性・高 | stop / drain の先頭で同期 throw、destroy を遅延・reject させる | 全 owner を呼び、非同期 destroy 完了を待つ。[lifecycle](../tests/runtime/lifecycle.test.ts)、[shutdown](../tests/shutdown.test.ts) |
 | 信頼性・中 | metrics を失敗させる、cron 登録を途中で失敗させる | 観測と回復の失敗分離、登録済み task の回収。[cron lifecycle](../tests/scheduler/cron.lifecycle.test.ts) |
 | 信頼性・高 | Session row / advisory lock を保持して出欠 transaction を待たせる | transaction-local の SQL / lock deadline、rollback 完了後の再利用。[実 DB 期限](../tests/integration/transactionLimits.test.ts) |
@@ -74,13 +75,13 @@
 | 性能効率性 | 応答遅延、保持資源、容量・公平性 | index の実行計画、入口と保守の上限、連続 wake 下の開始保証。[通知性能レポート](./performance.md)でlocal DB・本番imageの上限負荷を計測。実 Discord / Neon の p95・p99 は未計測で、速度改善率を推定しない |
 | 信頼性 | 通常動作、可用性、故障隔離、復旧 | state / intent の原子性、lease、backoff、再起動回復、stop / drain の障害注入。単一 instance と外部停止の限界は残る |
 | セキュリティ | 秘匿、完全性、真正性、追跡可能性、攻撃への耐性 | actor / token 分離、parameter SQL、ログ非出力、資源制限、least privilege。共有 token の操作履歴は個人の否認防止署名ではない |
-| 保守性 | module 境界、再利用、原因分析、変更容易性、テスト可能性 | parser / heartbeat / lifecycle の責務集約、real / fake 共通契約、決定論的 race、検証器と実行 image の検証 |
+| 保守性 | module 境界、再利用、原因分析、変更容易性、テスト可能性 | parser / heartbeat / lifecycle と配送の容量・source・Strategy・definition の責務分離、real / fake 共通契約、決定論的 race、検証器と実行 image の検証 |
 
 負荷上限の正本は [config](../src/config.ts)・[notification config](../src/notifications/config.ts)、JSON の構造と schema は [payload parser](../src/domain/resultNotificationPayload.ts)。有限であることだけを理由に、すべての最大 payload の組合せが任意の process メモリ容量に収まるとは扱わない。
 
 ### 実行メモリの容量契約
 
-標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。譲渡した配送も heartbeat を含む settlement まで予約し、参照と予約を解放してから補充する。再開待ちの payload を別枠で保持しない。設定の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を途中譲渡せず単独配送する。
+標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。譲渡した配送も heartbeat を含む settlement まで予約し、参照と予約を解放してから補充する。再開待ちの payload を別枠で保持しない。配送枠への割当ては [lanes](../src/notifications/delivery/lanes.ts)、上限値の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を途中譲渡せず単独配送する。
 
 合格条件は Node 24 / Debian の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
 

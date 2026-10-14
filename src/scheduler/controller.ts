@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 
 import type { AppContext } from "../appContext.ts";
 import {
-  OUTBOX_WORKER_ACTIVE_INTERVAL_MS,
   SCHEDULER_MIN_TIMER_DELAY_MS,
   SCHEDULER_RECOVERY_BACKOFF_MS,
   SCHEDULER_WAKE_DEBOUNCE_MS
@@ -14,7 +13,8 @@ import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger as defaultLogger } from "../logger.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
-import { runOutboxWorkerTick } from "./outboxWorker.ts";
+import { createAttendanceDeliveryRuntime } from "../notifications/delivery/attendanceRuntime.ts";
+import { readAttendanceDispatchAt } from "../notifications/delivery/sources/attendance.ts";
 import { runEffectTickSafely } from "./tickRunner.ts";
 import type { SchedulerEffect } from "./scheduler.types.ts";
 
@@ -50,9 +50,6 @@ const delayUntil = (now: Date, at: Date): number =>
     Math.min(MAX_TIMER_DELAY_MS, at.getTime() - now.getTime())
   );
 
-const readDatabase = <T>(call: () => Promise<T>, message: string): Promise<T> =>
-  runPromiseBoundary(fromDatabaseCall(call, message));
-
 export const createSchedulerController = (
   deps: SchedulerControllerDeps
 ): SchedulerController => {
@@ -64,39 +61,21 @@ export const createSchedulerController = (
   let recoveryTimer: TimeoutHandle | undefined;
   let recomputeRecoveryAttempt = 0;
   let stopped = false;
-  let outboxTimer: TimeoutHandle | undefined;
-  let outboxActive = false;
-  const running = new Map<TimerKind | "outbox_worker", Promise<boolean>>();
-  let outboxWakeQueued = false;
-  let outboxRecoveryAttempt = 0;
+  const running = new Map<TimerKind, Promise<boolean>>();
+  const attendance = createAttendanceDeliveryRuntime({ client, context, logger,
+    onWake: reason => controller.wake(reason) });
 
   const runOwnedTick = (
-    kind: TimerKind | "outbox_worker",
-    run: () => SchedulerEffect<unknown>,
-    onSuccess?: () => Promise<void>
+    kind: TimerKind,
+    run: () => SchedulerEffect<unknown>
   ): Promise<boolean> => {
     if (stopped) { return Promise.resolve(false); }
     const current = running.get(kind);
     if (current) { return current; }
     let succeeded = false;
-    const pending = runEffectTickSafely({ name: kind, logger }, run, async () => {
-      await onSuccess?.();
+    const pending = runEffectTickSafely({ name: kind, logger }, run, () => {
       succeeded = true;
-    }).then(() => succeeded).finally(() => {
-      running.delete(kind);
-      if (kind === "outbox_worker") {
-        if (succeeded) { outboxRecoveryAttempt = 0; }
-        else {
-          const delay = SCHEDULER_RECOVERY_BACKOFF_MS[outboxRecoveryAttempt];
-          outboxRecoveryAttempt = Math.min(outboxRecoveryAttempt + 1, SCHEDULER_RECOVERY_BACKOFF_MS.length);
-          if (delay !== undefined) { scheduleOutboxLoop(delay); }
-        }
-      }
-      if (kind === "outbox_worker" && outboxWakeQueued && !stopped) {
-        outboxWakeQueued = false;
-        controller.wake("outbox_work_queued");
-      }
-    });
+    }).then(() => succeeded).finally(() => { running.delete(kind); });
     running.set(kind, pending);
     return pending;
   };
@@ -113,19 +92,6 @@ export const createSchedulerController = (
     for (const kind of [...timers.keys()]) {
       clearTimer(kind);
     }
-  };
-
-  const clearOutboxTimer = (): void => {
-    if (!outboxTimer) {return;}
-    clearTimeout(outboxTimer);
-    outboxTimer = undefined;
-  };
-
-  const stopOutboxWorker = (reason: string): void => {
-    clearOutboxTimer();
-    if (!outboxActive) {return;}
-    outboxActive = false;
-    logger.info({ event: "scheduler.worker_stopped", worker: "outbox_worker", reason });
   };
 
   const scheduleTimer = (
@@ -152,70 +118,6 @@ export const createSchedulerController = (
     });
   };
 
-  const scheduleOutboxLoop = (delayMs: number): void => {
-    clearOutboxTimer();
-    if (stopped) {return;}
-    outboxTimer = setTimeout(() => {
-      outboxTimer = undefined;
-      void runOwnedTick(
-        "outbox_worker",
-        () => runOutboxWorkerTick(client, context, () => stopped),
-        continueOutboxLoop
-      );
-    }, delayMs);
-  };
-
-  const continueOutboxLoop = async (): Promise<void> => {
-    if (stopped) { return; }
-    const now = context.clock.now();
-    const nextDispatchAt = await readDatabase(
-      () => context.ports.outbox.getNextDispatchAt(now),
-      "Failed to read next outbox dispatch time."
-    );
-    if (stopped) { return; }
-    if (isDue(nextDispatchAt, now)) {
-      scheduleOutboxLoop(OUTBOX_WORKER_ACTIVE_INTERVAL_MS);
-      return;
-    }
-    stopOutboxWorker("idle");
-    scheduleOutbox(nextDispatchAt, now);
-  };
-
-  const scheduleOutbox = (nextDispatchAt: Date | null, now: Date): void => {
-    if (stopped) { return; }
-    if (nextDispatchAt === null) {
-      stopOutboxWorker("no_work");
-      return;
-    }
-
-    if (isDue(nextDispatchAt, now)) {
-      if (!outboxActive) {
-        outboxActive = true;
-        logger.info({
-          event: "scheduler.worker_started",
-          worker: "outbox_worker",
-          reason: "work_available"
-        });
-      }
-      scheduleOutboxLoop(SCHEDULER_MIN_TIMER_DELAY_MS);
-      return;
-    }
-
-    stopOutboxWorker("waiting_for_next_attempt");
-    clearOutboxTimer();
-    const delayMs = delayUntil(now, nextDispatchAt);
-    outboxTimer = setTimeout(() => {
-      outboxTimer = undefined;
-      controller.wake("outbox_timer_fired");
-    }, delayMs);
-    logger.info({
-      event: "scheduler.timer_scheduled",
-      timer: "outbox_worker",
-      targetAt: nextDispatchAt.toISOString(),
-      delayMs
-    });
-  };
-
   const runDueSessionWork = async (): Promise<{ readonly didRun: boolean; readonly failed: boolean }> => {
     // A due reminder remains due until the outbox worker successfully delivers it and
     // completes the Session. Do not wake the controller after every attempted tick, or
@@ -233,10 +135,7 @@ export const createSchedulerController = (
           () => context.ports.sessions.getSchedulerSessionHints(now),
           "Failed to read scheduler session hints."
         ),
-        fromDatabaseCall(
-          () => context.ports.outbox.getNextDispatchAt(now),
-          "Failed to read next outbox dispatch time."
-        )
+        readAttendanceDispatchAt(context, now)
       ], { concurrency: 2 }));
       if (stopped) { return { didRun, failed }; }
       let ranThisPass = false;
@@ -274,12 +173,7 @@ export const createSchedulerController = (
       if (!ranThisPass) {
         // Re-read after due work so an intent enqueued by the tick is visible to the
         // outbox scheduler in the same recompute.
-        if (running.has("outbox_worker")) {
-          // race: 配送後のidle queryと交差したwakeを、batch完了後に再読込する。
-          outboxWakeQueued = true;
-        } else {
-          scheduleOutbox(nextOutboxDispatchAt, now);
-        }
+        attendance.schedule(nextOutboxDispatchAt, now);
         return { didRun, failed };
       }
       didRun = true;
@@ -362,9 +256,9 @@ export const createSchedulerController = (
         wakeTimer = undefined;
       }
       clearAllTimers();
-      stopOutboxWorker("shutdown");
+      attendance.stop();
     },
-    drain: async () => { await Promise.allSettled([recomputeInFlight, ...running.values()]); },
+    drain: async () => { await Promise.allSettled([recomputeInFlight, ...running.values(), attendance.drain()]); },
     recompute
   };
 

@@ -11,7 +11,7 @@ const adapters = vi.hoisted(() => ({
   dispatcher: { wake: vi.fn(), stop: vi.fn(), drain: vi.fn<() => Promise<void>>() }
 }));
 vi.mock("../../src/notifications/http.ts", () => ({ createNotificationReceiver: () => adapters.receiver }));
-vi.mock("../../src/scheduler/resultNotifications.ts", () => ({ createResultNotificationDispatcher: () => adapters.dispatcher }));
+vi.mock("../../src/notifications/delivery/resultRuntime.ts", () => ({ createResultNotificationDispatcher: () => adapters.dispatcher }));
 
 const createRuntime = () => createResultNotificationRuntime({
   client: stubClient(undefined), context: createTestAppContext(), host: "127.0.0.1", port: 0,

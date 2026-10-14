@@ -4,7 +4,7 @@ import {
   sendReminderForSession,
   skipReminderAndComplete
 } from "../../../src/features/reminder/send.js";
-import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
+import { runOutboxWorkerTick } from "../../../src/notifications/delivery/attendanceBatch.js";
 import { runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {

@@ -19,14 +19,17 @@ OCR・分析通知（A/B）の private HTTP receiver と dispatcher も同じ pr
 | `src/orchestration/` | 複数 feature をまたぐ send・settle・messageEditor 等の副作用の順序 |
 | `src/domain/` | ASKING / POSTPONE_VOTING 等の pure な集約判断。I/O と global clock を持たない |
 | `src/db/`、`src/time/`、`src/members/` | DB consumer、時刻計算、member identity の横断契約 |
-| `src/scheduler/` | clock / DB に基づく起動時刻と配送の所有 |
+| `src/scheduler/` | clock / DB に基づく業務処理の起動時刻、復旧、supervisor |
 | `src/runtime/` | Promise / Effect の実行・settlement、process lifecycle |
-| `src/notifications/` | A/B の HTTP 認証・入力制限・運用 CLI・receiver lifecycle |
+| `src/notifications/` | A/B の HTTP 認証・入力制限・運用 CLI・receiver lifecycle、配送 runtime の組立て |
+| `src/notifications/delivery/` | 出欠と A/B の配送 runtime、容量、取得方針、配送方式、通知定義 |
 | `scripts/dev/`、`scripts/verify/` | local tool と決定論的な検証。production runtime は `src/` に置く |
 
 feature 間では pure な型・builder・constant を参照できる。副作用を横断させるときは orchestration に置き、feature から orchestration へ逆依存させない。所有者が分かるものを汎用 `utils` / `types` に隠さない。
 
-A/B の本文は `features/result-notifications`、配送は `scheduler/resultNotifications*` が所有する。HTTP の受付枠・本文予約・DB work の drain は [http.ts](../src/notifications/http.ts)、socket の header 待ち・再利用・pipeline の応答追跡は [http.connections.ts](../src/notifications/http.connections.ts) に集約する。未受付の接続を回収しても、受付済み DB work の所有を失わない境界とする。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
+出欠と A/B の配送は `notifications/delivery`、本文は各 feature が所有する。容量管理は通知種類を参照せず、枠の割当てと上限は `lanes.ts`、claim・次回時刻・公平性は `sources`、単発／再開可能な連番の手順は `strategies`、本文準備・業務確定は `definitions` に置く。枠 ID・通知種類・配送方式を同じ型にしない。OCR の独立枠への再配置には、claim・次回時刻・譲渡の DB 条件も揃える必要があり、設定変更だけで可能とは扱わない。
+
+HTTP の受付枠・本文予約・DB work の drain は [http.ts](../src/notifications/http.ts)、socket の header 待ち・再利用・pipeline の応答追跡は [http.connections.ts](../src/notifications/http.connections.ts) に集約する。未受付の接続を回収しても、受付済み DB work の所有を失わない境界とする。route と slash command definition の構成は [Discord 規約 §3](./discord-rule.md#3-route-と-definition)、standalone 同期の process 境界は [同 §7](./discord-rule.md#7-slash-command-同期) を使う。
 
 ## 3. Composition root
 
@@ -54,7 +57,7 @@ batch の item failure は集計して次へ進み、同期 throw と非同期 r
 
 出欠 outbox は明示した上限で並列配送し、全配送の settlement 後に入力順で最初の確定失敗を返す。render から配送までを同じ Effect の Context と中断管理下で合成し、defect / interruption を通常の retry 記録へ変換しない。
 
-env / config 不正、`assertNever`、成立しない起動前提は fail-fast にする。callback と fire-and-forget の最外周は失敗を必ず受け取り、裸の Promise を残さない。result dispatcher の公開境界は `Promise<void>` とし、内部で最終 DB 状態と安全な log に収束させる。送信前の DB failure は `delivery_failed`、送信後の確定失敗は `delivery_uncertain` と区別する。
+env / config 不正、`assertNever`、成立しない起動前提は fail-fast にする。callback と fire-and-forget の最外周は失敗を必ず受け取り、裸の Promise を残さない。配送 runtime の公開境界は `wake / stop / drain` とし、drain は `Promise<void>` で所有処理の終了を待つ。配送内の typed failure は durable retry と安全な log に収束させ、defect / interruption は通常の retry に変換せず owner へ返す。送信前の DB failure は `delivery_failed`、送信後の確定失敗は `delivery_uncertain` と区別する。
 
 ### 実行と所有権
 
@@ -73,7 +76,7 @@ timeout は待機の限界であり、Discord send や DB commit が取り消さ
 
 message 再作成は channel 取得後の send と message ID 保存までを中断から保護する。取得待機中の interruption 後に新しい send を始めない。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-出欠と A/B の delivery scope は共通の [heartbeat](../src/scheduler/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。claim loss は通知 callback より先に記録し、heartbeat 自体の予期しない失敗も配送の settlement 後に owner へ返す。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
+出欠と A/B の delivery scope は共通の [heartbeat](../src/notifications/delivery/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。claim loss は通知 callback より先に記録し、heartbeat 自体の予期しない失敗も配送の settlement 後に owner へ返す。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
 
 複数 resource の stop / drain は [lifecycle](../src/runtime/lifecycle.ts) に thunk を渡す。先行 owner の同期 throw で後続 owner を省略せず、非同期の Discord destroy も await する。失敗は settlement 後に元の原因で返す。
 
@@ -81,7 +84,7 @@ message 再作成は channel 取得後の send と message ID 保存までを中
 
 ### 起動時刻
 
-calendar cron は ask・retention・supervisor に限定し、実行値は設定を参照する。通常の出欠処理は `SessionsPort.getSchedulerSessionHints` と `OutboxPort.getNextDispatchAt` から one-shot timer を再構築し、due work は `runEffectTickSafely` で実行する。outbox は work がある間だけ burst 配送し、idle で停止する。
+calendar cron は ask・retention・supervisor に限定し、実行値は設定を参照する。通常の出欠処理は `SessionsPort.getSchedulerSessionHints` と `OutboxPort.getNextDispatchAt` から one-shot timer を再構築し、due work は `runEffectTickSafely` で実行する。出欠配送 runtime は work がある間だけ burst 配送し、idle で停止する。scheduler は共有した次回時刻を出欠 runtime に渡し、配送 timer・batch・stop / drain の所有は [attendanceRuntime](../src/notifications/delivery/attendanceRuntime.ts) に置く。
 
 due work を処理した後に DB を再読込し、新たに due になった種類と生成済み intent を同じ再計算で拾う。一回の再計算では同種 work を一度だけ実行し、未完了 reminder を即時 loop させない。同種 timer / 再計算は一つの owned Promise にまとめ、配送・確定・次時刻取得まで待つ。実行中の wake は pending として保持し、完了時に取りこぼさない。cron callback も処理全体の Promise を返し、`noOverlap` と drain の範囲を揃える。
 
@@ -106,13 +109,17 @@ receiver は DB commit 後にだけ 2xx と wake を返す。request deadline �
 
 dispatcher は出欠とは独立した上限付き slot と、実行中 payload の byte 予算を持つ。DB で本文サイズを確認してから claim し、予算待ちは配送完了で wake する。新規受付・枠補充の wake は次の timer turn で起動し、重複要求だけをまとめる。実行中・idle 移行中の wake を保持し、連続 wake で開始時刻を延期しない。出欠の debounce は変更しない。
 
-配送 Promise と予約 byte 数は同じ実行中 Map で所有し、残り予算はそこから導出する。timer と起動期限も一つの状態として保持し、別 counter や別変数の同期を前提にしない。
+[DeliveryCapacity](../src/notifications/delivery/capacity.ts) は予約 byte 数と完了待ちを一つの Map に登録し、実行 fiber はその Scope が所有する。別の fiber 一覧を重ねず、残り件数・byte 数を台帳から導出する。予約・実行登録・解放は runtime が所有し、配送方式へ渡す context に容量の増減権限を持たせない。登録前に fiber を開始せず、同期準備失敗でも予約を解放する。claim は直列化し、件数・byte 条件を本文取得前に source へ渡す。stop と claim 完了の競合でも取得済み work を管理下に置く。timer と起動期限も一つの状態で保持する。
+
+出欠の [attendanceBatch](../src/notifications/delivery/attendanceBatch.ts) は最大10件の batch を全件 settlement してから次へ進み、A/B は最大2件・512 KiBの枠を空き次第補充する。容量所有の共通化でこの駆動方針を統一しない。runtime の実行範囲は pump・配送・heartbeat の終了まで追跡し、新規 claim を止めてから開始済み I/O と確定処理を drain する。
+
+単発 Strategy は送信→開催履歴等の業務確定→message ID 保存→配送完了を維持する。連番 Strategy は配送済み part を飛ばし、begin→send→complete の後だけ譲渡を判断する。通知固有の判断は definition と source に置き、Strategy に通知種類の分岐を加えない。
 
 次 retry / claim expiry は one-shot で起動する。DB failure の有限 backoff 中は、処理中に受けた wake や新規受付でも回復期限を早めない。claim と必要な次時刻取得がともに成功したときに reset し、有限 retry を使い切った後も新しい wake / supervisor で再開できる。
 
 claim は OCR と分析の優先種別を交互に切り替え、一方だけなら空き slot を使う。種別内は既存の予定時刻・ID 順を保ち、残りの byte 予算に収まらない最古通知は追い越さず、実行中配送を排出してから扱う。別種別の due 通知が待つ場合、長文配送は投稿の complete 後・次の begin 前に claim を譲れる。開始済み投稿がないことを DB で確認し、失敗の試行予算を消費せず再取得する。既受理の本文・renderer・宛先・配送済み番号を再開時も使い、完了済み投稿を繰り返さない。予算超過の旧通知は単独配送を続け、途中で譲らない。譲渡のDB確認は配送開始後と外部wakeの世代が変わった時に限り、各投稿で繰り返さない。全slot使用中に未来のretryがdueになった場合は、次のwake・slot解放・supervisorで検知する。
 
-claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別 Promise の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。譲渡時も配送と heartbeat の settlement まで slot・byte 予算を保持し、plan の参照を手放してから補充する。再開用 payload をメモリに退避して予算外へ増やさない。
+claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別配送の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。譲渡時も配送と heartbeat の settlement まで slot・byte 予算を保持し、plan の参照を手放してから補充する。再開用 payload をメモリに退避して予算外へ増やさない。
 
 結果投稿の SDK cache は送信成功時にその message だけを解放し、DB 確定には message ID を渡す。送信 timeout は SDK 内の実 I/O を中止しないため、待機期限後の成功でも cache 解放を行う。dispatcher の論理 slot 上限を SDK 内の未完了 request 数の上限とは扱わない。
 

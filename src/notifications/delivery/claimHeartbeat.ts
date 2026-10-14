@@ -1,7 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import { settledCall } from "../runtime/effect.ts";
+import { settledCall } from "../../runtime/effect.ts";
 
 /** Own lease renewal until delivery and every started renewal have settled. */
 export const withClaimHeartbeat = <T, E>(options: {

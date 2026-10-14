@@ -3,7 +3,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { describe, expect, it, vi } from "vitest";
-import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.ts";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";

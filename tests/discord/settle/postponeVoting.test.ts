@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { settlePostponeVotingSession } from "../../../src/orchestration/index.js";
-import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
+import { runOutboxWorkerTick } from "../../../src/notifications/delivery/attendanceBatch.js";
 import { callArg, runEffect } from "../../helpers/assertions.js";
 import { createTestAppContext } from "../../testing/index.js";
 import {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { sendReminderForSession } from "../../../src/features/reminder/send.js";
-import { runOutboxWorkerTick } from "../../../src/scheduler/outboxWorker.js";
+import { runOutboxWorkerTick } from "../../../src/notifications/delivery/attendanceBatch.js";
 import { appConfig } from "../../../src/userConfig.js";
 import { sentPayload } from "../../helpers/discord.js";
 import { runEffect } from "../../helpers/assertions.js";

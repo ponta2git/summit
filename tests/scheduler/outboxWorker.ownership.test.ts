@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OUTBOX_CLAIM_DURATION_MS, OUTBOX_HEARTBEAT_MS } from "../../src/config.ts";
-import { runOutboxWorkerTick } from "../../src/scheduler/outboxWorker.ts";
+import { runOutboxWorkerTick } from "../../src/notifications/delivery/attendanceBatch.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";

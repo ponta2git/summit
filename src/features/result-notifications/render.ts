@@ -147,7 +147,9 @@ export const planResultNotification = (
     } };
   }
   const partCount = countParts(splitNotificationTextParts(renderAnalysis(notification, links)), 10_000);
-  if (partCount === 0 || partCount > 10_000) { throw new Error("Notification has an invalid part count."); }
+  if (partCount === 0 || partCount > 10_000) {
+    throw new NotificationInputError(partCount === 0 ? "invalid_input" : "payload_too_large");
+  }
   return {
     rendererVersion, partCount,
     *parts() {
