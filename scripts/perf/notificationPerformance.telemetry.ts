@@ -176,7 +176,7 @@ const createPerformanceTelemetry = async () => {
     clearInterval(timer); await sampling; await immediate();
     checkpoints.end = await checkpoint();
     const result = await metrics(true); finishAt = result.window.endMonotonicMs;
-    active = false; delay.disable(); consumeGc(observer.takeRecords()); observer.disconnect();
+    active = false; delay.disable(); observer.disconnect();
     // Workload metrics freeze before diagnostic GC, profiler stop, or serialization.
     let cpuProfile, heapProfile;
     if (profileSession) {

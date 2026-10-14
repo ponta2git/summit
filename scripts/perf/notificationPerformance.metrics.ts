@@ -48,7 +48,7 @@ export const performanceMetrics = z.object({
     claimToFirstSendMs: number.nullable(), claimToCompleteMs: number.nullable(), firstSendToCompleteMs: number.nullable() })),
   finalization: z.object({ postGc: checkpoint, gcWallMs: number, gcCpuUserMicros: number, gcCpuSystemMicros: number,
     postGcIncludesProfileObjects: z.boolean(), postSerialization: checkpoint }),
-  received: count, sentParts: count, sendCount: count, sendAttempts: count, deliveredNotifications: count,
+  received: count, sentParts: count, sendAttempts: count, deliveredNotifications: count,
   pendingSends: z.literal(0), pendingReceipts: z.literal(0), inflightOperations: z.literal(0), activeNotifications: z.literal(0),
   maxPendingSends: count, maxPendingReceipts: count, maxInflightOperations: count,
   maxClaimBatchBytes: count, maxClaimBatchCount: count, maxActivePayloadBytes: count,

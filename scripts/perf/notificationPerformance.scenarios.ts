@@ -7,7 +7,8 @@ import { capacityAnalysis, capacityNamePoints, canonicalCapacityBytes, seedLegac
 import { capacityMetrics } from "../verify/notificationCapacity.contract.ts";
 import type { CapacitySession } from "../verify/notificationCapacity.scenarios.ts";
 import { performanceControl, performancePost, type PerformanceHttpSample } from "./notificationPerformance.http.ts";
-import { performanceStage, type PerformanceScenario } from "./notificationPerformance.contract.ts";
+import type { PerformanceScenario } from "./notificationPerformance.contract.ts";
+import { performanceStage } from "./notificationPerformance.diagnostics.ts";
 import { capacityPartAnalysis } from "./notificationPerformance.parts.ts";
 import { assertLegacyQueueOrder, runFairnessScenario } from "./notificationPerformance.fairness.ts";
 

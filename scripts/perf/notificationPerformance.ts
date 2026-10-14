@@ -2,14 +2,14 @@ import { readFile } from "node:fs/promises";
 import { requireLocalTestUrl } from "../../tests/integration/databaseLifecycle.ts";
 import { withCapacityContainer } from "../verify/notificationCapacity.container.ts";
 import { seedLegacyCapacityNotification } from "../verify/notificationCapacity.fixtures.ts";
-import { performanceOptions, performanceStage, type PerformanceScenario } from "./notificationPerformance.contract.ts";
+import { performanceOptions, type PerformanceScenario } from "./notificationPerformance.contract.ts";
 import { notificationPerformanceProbe } from "./notificationPerformance.probe.ts";
 import { runPerformanceScenario } from "./notificationPerformance.scenarios.ts";
 import { createPerformanceOutput, performanceProvenance, performanceRoot,
   withPerformanceDatabase, writePerformanceArtifact } from "./notificationPerformance.storage.ts";
 import { savePerformanceResult } from "./notificationPerformance.result.ts";
 import { seedCapacityPartSources } from "./notificationPerformance.parts.ts";
-import { performanceFailure } from "./notificationPerformance.diagnostics.ts";
+import { performanceFailure, performanceStage } from "./notificationPerformance.diagnostics.ts";
 import { withPerformanceCancellation } from "./notificationPerformance.cancellation.ts";
 
 let output: string | undefined;

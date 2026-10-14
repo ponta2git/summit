@@ -173,7 +173,7 @@ const proxy = createProxy(socket => {
 });
 await new Promise(resolve => proxy.listen(8000, '0.0.0.0', resolve));
 telemetry = await createPerformanceTelemetry();
-const counters = () => ({ received, sentParts, sendCount: sentParts, sendAttempts, deliveredNotifications,
+const counters = () => ({ received, sentParts, sendAttempts, deliveredNotifications,
   pendingSends, pendingReceipts, inflightOperations, activeNotifications: traces.size,
   maxPendingSends, maxPendingReceipts, maxInflightOperations, maxClaimBatchBytes, maxClaimBatchCount, maxActivePayloadBytes,
   protocolFailures, applicationWarnings, applicationErrors, receiptDispositions, sentPartsByKind,

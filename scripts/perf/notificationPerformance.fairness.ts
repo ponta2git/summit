@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 
-export type FairnessScenario = "mixed" | "stream" | "legacyqueue";
+type FairnessScenario = "mixed" | "stream" | "legacyqueue";
 
 /** Synthetic send barriers make arrival order repeatable without real Discord traffic. */
 export const runFairnessScenario = async (options: {

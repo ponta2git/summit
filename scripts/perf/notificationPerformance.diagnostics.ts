@@ -15,7 +15,7 @@ const pathWords = new Set(("runtime versions platform arch profileMode enabled c
   + "notificationLatencyMs receiptToFirstSend receiptToComplete claimToFirstSend claimToComplete firstSendToComplete "
   + "completedNotifications parts payloadBytes origin receiptToFirstSendMs receiptToCompleteMs claimToFirstSendMs "
   + "claimToCompleteMs firstSendToCompleteMs finalization gcWallMs gcCpuUserMicros gcCpuSystemMicros postGcIncludesProfileObjects "
-  + "postSerialization received sentParts sendCount sendAttempts deliveredNotifications pendingSends pendingReceipts "
+  + "postSerialization received sentParts sendAttempts deliveredNotifications pendingSends pendingReceipts "
   + "inflightOperations activeNotifications maxPendingSends maxPendingReceipts maxInflightOperations maxClaimBatchBytes "
   + "maxClaimBatchCount maxActivePayloadBytes protocolFailures applicationWarnings applicationErrors receiptDispositions "
   + "cpuProfile heapProfile startTime endTime nodes id callFrame functionName scriptId url lineNumber columnNumber hitCount "

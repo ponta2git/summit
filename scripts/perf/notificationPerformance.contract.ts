@@ -1,10 +1,9 @@
 import { resolve } from "node:path";
 import { CapacityError } from "../verify/notificationCapacity.contract.ts";
-export { performanceStage } from "./notificationPerformance.diagnostics.ts";
 
 export const performanceScenarios = ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"] as const;
 export type PerformanceScenario = typeof performanceScenarios[number];
-export interface PerformanceOptions {
+interface PerformanceOptions {
   readonly image: string;
   readonly output: string;
   readonly repetitions: number;

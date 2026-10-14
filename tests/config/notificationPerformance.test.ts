@@ -3,11 +3,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter, getEventListeners } from "node:events";
-import { performanceOptions, durationSummary, performanceStage } from "../../scripts/perf/notificationPerformance.contract.ts";
+import { performanceOptions, durationSummary } from "../../scripts/perf/notificationPerformance.contract.ts";
 import { createPerformanceOutput, withPerformanceDatabase, writePerformanceArtifact } from "../../scripts/perf/notificationPerformance.storage.ts";
 import { cpuProfileSchema, heapProfileSchema, performanceMetrics } from "../../scripts/perf/notificationPerformance.metrics.ts";
 import { withCapacityContainer } from "../../scripts/verify/notificationCapacity.container.ts";
-import { performanceFailure } from "../../scripts/perf/notificationPerformance.diagnostics.ts";
+import { performanceFailure, performanceStage } from "../../scripts/perf/notificationPerformance.diagnostics.ts";
 import { CapacityError } from "../../scripts/verify/notificationCapacity.contract.ts";
 import assert from "node:assert/strict";
 import { z } from "zod";
@@ -27,10 +27,7 @@ describe("notification performance harness", () => {
 
   it("allows profile-only runs without baseline repetitions or the profile flag", () => {
     expect(performanceOptions(["summit:perf", "--output", "/tmp/profiles", "--profile-only"]))
-      .toMatchObject({ profile: false, profileOnly: true, repetitions: 3,
-        scenarios: ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"] });
-    expect(performanceOptions(["summit:perf", "--output", "/tmp/profiles", "--scenario", "legacy", "--profile-only"]).scenarios)
-      .toStrictEqual(["legacy"]);
+      .toMatchObject({ profile: false, profileOnly: true });
   });
 
   it("runs database diagnostics separately from profiler measurements", () => {

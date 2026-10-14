@@ -49,7 +49,6 @@ run_rule "no-drizzle-kit-push" "drizzle-kit\\s+push" \
   -g "*.ts" -g "*.mjs" -g "*.cjs" -g "*.js" -g "*.json" -g "*.yml" -g "*.yaml" -g "*.sh" \
   -g "!node_modules/**" \
   -g "!dist/**" \
-  -g "!drizzle/**" \
   -g "!.git/**" \
   -g "!pnpm-lock.yaml" \
   -g "!scripts/verify/forbidden-patterns.sh"

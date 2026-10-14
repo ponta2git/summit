@@ -6,7 +6,7 @@ import type postgres from "postgres";
 import { z } from "zod";
 import { requireLocalTestUrl } from "../../tests/integration/databaseLifecycle.ts";
 import { CapacityError } from "../verify/notificationCapacity.contract.ts";
-import { performanceStage } from "./notificationPerformance.contract.ts";
+import { performanceStage } from "./notificationPerformance.diagnostics.ts";
 import { createPerformanceOutput, performanceRoot, withPerformanceDatabase, writePerformanceArtifact } from "./notificationPerformance.storage.ts";
 
 type Operation = "begin" | "complete";

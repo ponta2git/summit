@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { durationSummary, performanceStage, type PerformanceScenario } from "./notificationPerformance.contract.ts";
+import { durationSummary, type PerformanceScenario } from "./notificationPerformance.contract.ts";
+import { performanceStage } from "./notificationPerformance.diagnostics.ts";
 import { cpuProfileSchema, heapProfileSchema, performanceMetrics } from "./notificationPerformance.metrics.ts";
 import { writePerformanceArtifact } from "./notificationPerformance.storage.ts";
 import type { runPerformanceScenario } from "./notificationPerformance.scenarios.ts";
