@@ -15,4 +15,7 @@ describe("development database target guard", () => {
     expect(String(failure)).not.toContain(value);
     expect(String(failure)).not.toContain("dummy-private-value");
   });
+  it.each(["frozen", "unexpected-private-value"])("rejects local writes when maintenance mode is %s", mode => {
+    expect(() => assertLocalDatabase("postgres://test:test@localhost:5432/dev", mode)).toThrow("blocked by maintenance mode");
+  });
 });

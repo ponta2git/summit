@@ -8,6 +8,7 @@ import type { Clock } from "../time/index.ts";
 import { readNotificationBody, NotificationHttpError } from "./http.body.ts";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES } from "../config.ts";
 import { parseNotificationJson } from "../domain/resultNotificationPayload.ts";
+import type { MaintenanceDrain } from "../startup/maintenanceDrain.ts";
 
 interface NotificationHttpResult { readonly status: number; readonly body: unknown; }
 export interface NotificationHttpDeps {
@@ -18,6 +19,7 @@ export interface NotificationHttpDeps {
   readonly canAccept: () => boolean;
   readonly wake: (reason: string) => void;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
+  readonly maintenance?: MaintenanceDrain;
 }
 
 const authenticated = (header: string | undefined, secret: string): boolean => {

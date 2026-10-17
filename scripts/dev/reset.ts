@@ -19,7 +19,7 @@ const parseFlags = (argv: readonly string[]): { includeMembers: boolean } => {
 };
 
 const run = async (): Promise<void> => {
-  assertLocalDatabase(env.DATABASE_URL);
+  assertLocalDatabase(env.DATABASE_URL, env.MOMO_MAINTENANCE_MODE);
 
   const { includeMembers } = parseFlags(process.argv.slice(2));
 

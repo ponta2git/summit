@@ -16,6 +16,9 @@ export interface ShutdownDeps {
   closeDb: () => Promise<void>;
   destroyClient: () => void | Promise<void>;
 }
+export interface ShutdownResult {
+  readonly status: "completed" | "timed_out" | "failed" | "already_in_progress";
+}
 
 export const isShuttingDown = (): boolean => shuttingDown;
 
@@ -33,17 +36,20 @@ const beginShutdown = (): boolean => {
  * @remarks
  * SIGINT / SIGTERM の連続受信でも 1 度だけ実行される（idempotent）。停止順序を逆にすると
  * 待機中の cron tick が in-flight を積み増すため、必ず scheduler を先に止めること。
- * @returns `true` if this invocation performed the shutdown, `false` if already in progress.
+ * @returns A deadline or failed finalizer is never reported as completed.
  */
-export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> => {
+export const shutdownGracefully = async (deps: ShutdownDeps): Promise<ShutdownResult> => {
   if (!beginShutdown()) {
     logger.info({ signal: deps.signal }, "Shutdown already in progress.");
-    return false;
+    return { status: "already_in_progress" };
   }
 
   logger.info({ signal: deps.signal }, "Shutdown started.");
+  let failed = false;
+  let timedOut = false;
   const attempt = <T, E>(effect: Effect.Effect<T, E>, message: string): Effect.Effect<void> =>
     Effect.asVoid(Effect.catchCause(effect, cause => Effect.sync(() => {
+      failed = true;
       logger.error({ error: errorFromCause(cause), signal: deps.signal }, message);
     })));
 
@@ -60,14 +66,16 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
       Effect.timeoutOption(SHUTDOWN_DRAIN_TIMEOUT_MS),
       Effect.tap(result => Effect.sync(() => {
         if (Option.isNone(result)) {
+          timedOut = true;
           logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB.");
         }
       }))
     ), "Waiting in-flight send failed during shutdown.");
   }).pipe(Effect.ensuring(closeResources)));
 
-  logger.info({ signal: deps.signal }, "Shutdown completed.");
-  return true;
+  const status = failed ? "failed" : timedOut ? "timed_out" : "completed";
+  logger.info({ signal: deps.signal, status }, "Shutdown finished.");
+  return { status };
 };
 
 export const resetShutdownStateForTest = (): void => {

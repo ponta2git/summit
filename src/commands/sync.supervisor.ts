@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { allowsMaintenanceOperation } from "../startup/maintenanceMode.ts";
 import { getSyncExitCode, isFlyEnvironment, parseSyncOptions, parseSyncReport,
   SYNC_DEADLINE_MS, SYNC_EXIT_GRACE_MS, type SyncReport } from "./sync.protocol.ts";
 
@@ -15,10 +16,13 @@ export const superviseCommandSync = async (
   if (isFlyEnvironment(environment)) { return { status: "failed", reason: "fly_environment" }; }
   const command = parseSyncOptions(args);
   if (!command) { return { status: "failed", reason: "usage" }; }
+  if (!allowsMaintenanceOperation(environment["MOMO_MAINTENANCE_MODE"], command.check)) {
+    return { status: "failed", reason: "maintenance" };
+  }
   if (options.signal?.aborted) { return { status: "failed", reason: "cancelled" }; }
   const worker = options.worker ?? new URL(import.meta.url.endsWith(".ts") ? "./sync.worker.ts" : "./sync.worker.js", import.meta.url);
   const childEnv: NodeJS.ProcessEnv = { NODE_ENV: "production" };
-  for (const key of ["DISCORD_TOKEN", "DISCORD_APPLICATION_ID", "DISCORD_GUILD_ID", ...(command.production ? [] : ["SUMMIT_CONFIG_YAML"])]) {
+  for (const key of ["DISCORD_TOKEN", "DISCORD_APPLICATION_ID", "DISCORD_GUILD_ID", "MOMO_MAINTENANCE_MODE", ...(command.production ? [] : ["SUMMIT_CONFIG_YAML"])]) {
     if (environment[key] !== undefined) { childEnv[key] = environment[key]; }
   }
   return new Promise(resolve => {

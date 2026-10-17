@@ -19,31 +19,38 @@ import { createAppReadiness, registerReconnectReplayHandlers } from "./appReadin
 import { createBootPhaseLogger } from "./bootLogging.ts";
 import { attachRateLimitLogging } from "./rateLimitLogging.ts";
 import { createResultNotificationRuntime } from "../notifications/runtime.ts";
+import { createMaintenanceDrain } from "./maintenanceDrain.ts";
 
 const appContext = createAppContext();
 const client = createDiscordClient();
 const readiness = createAppReadiness();
 let startupCompleted = false;
+// race: node-cron starts during schedule(); create the scheduler only after startup recovery.
+let scheduler: AppScheduler | undefined;
+const maintenance = createMaintenanceDrain([
+  { name: "startup", stage: "admission", stop: () => readiness.markNotReady("maintenance"), drain: () => startupInFlight },
+  { name: "discord_interactions", stage: "admission", stop: () => interactions.stop(), drain: () => interactions.drain() },
+  { name: "reconnect_recovery", stage: "admission", stop: () => reconnect.stop(), drain: () => reconnect.drain() },
+  { name: "scheduler", stage: "admission", stop: () => scheduler?.stop(), drain: () => scheduler?.drain() },
+  { name: "ask_sends", stage: "admission", stop: () => undefined, drain: waitForInFlightSend },
+  { name: "notification_operations", stage: "admission", stop: () => undefined, drain: () => resultNotifications?.drainOperations() },
+  { name: "result_notifications", stage: "all", stop: () => resultNotifications?.stopBusiness(), drain: () => resultNotifications?.drainBusiness() }
+]);
 const resultNotifications = env.RESULT_NOTIFICATION_TOKEN && env.RESULT_NOTIFICATION_OPERATIONS_TOKEN && env.RESULT_NOTIFICATION_WEB_ORIGIN
   ? createResultNotificationRuntime({ client, context: appContext,
     host: env.RESULT_NOTIFICATION_BIND_HOST, port: env.RESULT_NOTIFICATION_PORT,
     token: env.RESULT_NOTIFICATION_TOKEN, operationsToken: env.RESULT_NOTIFICATION_OPERATIONS_TOKEN,
     webOrigin: env.RESULT_NOTIFICATION_WEB_ORIGIN, channelId: appConfig.discord.channelId,
-    canAccept: () => startupCompleted }) : undefined;
+    canAccept: () => startupCompleted, maintenance }) : undefined;
 const wakeSchedulers = (reason: string): void => {
   scheduler?.wake(reason);
   resultNotifications?.wake(reason);
 };
 
 const interactions = registerInteractionHandlers(client, appContext, {
-  getReadyState: () => readiness.state,
+  getReadyState: () => maintenance.admissionOpen ? readiness.state : { ready: false, reason: "maintenance" },
   wakeScheduler: wakeSchedulers
 });
-
-// race: scheduler は runStartupRecovery 完了後に生成する。node-cron は schedule() 時点で
-//   auto-start するため、top-level 生成すると startup recovery と reminder tick が並行し
-//   recovery と scheduler の重複 enqueue を増やす。
-let scheduler: AppScheduler | undefined;
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   void shutdownGracefully({
@@ -66,9 +73,9 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
     closeDb,
     destroyClient: () => client.destroy()
   })
-    .then((didStart) => {
-      if (didStart) {
-        process.exit(0);
+    .then((result) => {
+      if (result.status !== "already_in_progress") {
+        process.exit(result.status === "completed" ? 0 : 1);
       }
       return undefined;
     })
@@ -107,13 +114,14 @@ const run = async (): Promise<void> => {
     buildMemberReconcileInputs(appConfig.memberUserIds, appConfig.memberDisplayNames),
     db
   );
-  if (isShuttingDown()) { return; }
+  if (isShuttingDown() || !maintenance.admissionOpen) { return; }
   logBootPhase("db_connect");
   await resultNotifications?.start();
   if (isShuttingDown()) { resultNotifications?.stop(); return; }
+  if (!maintenance.admissionOpen) { return; }
 
   await client.login(env.DISCORD_TOKEN);
-  if (isShuttingDown()) { return; }
+  if (isShuttingDown() || !maintenance.admissionOpen) { return; }
   logBootPhase("login");
 
   attachRateLimitLogging(client);
@@ -128,7 +136,7 @@ const run = async (): Promise<void> => {
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
   const report = await runPromiseBoundary(runReconciler(client, appContext, { scope: "startup" }));
-  if (isShuttingDown()) { return; }
+  if (isShuttingDown() || !maintenance.admissionOpen) { return; }
   logBootPhase("reconcile", {
     cancelledPromoted: report.cancelledPromoted,
     askCreated: report.askCreated,
@@ -141,7 +149,7 @@ const run = async (): Promise<void> => {
   // source-of-truth: cron tick 取りこぼし (プロセス落ち / 再起動) を DB から回復する。
   // race: scheduler は本呼び出しの完了**後**に生成し、startup recovery との重複処理を避ける。
   await runPromiseBoundary(runStartupRecovery(client, appContext));
-  if (isShuttingDown()) { return; }
+  if (isShuttingDown() || !maintenance.admissionOpen) { return; }
   startupCompleted = true;
   reconnect.completeStartup();
 

@@ -48,9 +48,40 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 - 解消方法を momo-db の正規文書に従う別 migration としてレビューする。
 - preflight 失敗時は application deploy を進めない。
 
+## 稼働中の drain と writer 確認
+
+通常 mode の A/B receiver を構成した process は、同じ private bind / port で `POST` / `GET /internal/maintenance/drain` を公開する。どちらも単一の `Authorization: Bearer <operations-token>` が必須。通知受付 token は使用できない。control は業務 readiness に依存しないが、receiver の起動前には利用できない。
+
+POST は `Content-Type: application/json`、本文512 byte以内で、次の3項目だけを渡す。cutoverId は先頭が英数字、以後は英数字・`_`・`-` の1〜64文字、stopEpoch は正の JavaScript safe integer、stage は `admission` または `all`。秘匿値・接続値を識別子に使わない。
+
+```json
+{"cutoverId":"migration-example","stopEpoch":1,"stage":"admission"}
+```
+
+1. 共通 control で同一 cutover / epoch と再起動時の frozen 維持を管理し、`admission` を要求する。202 は受付だけを示す。GET で同じ識別子・stage と `phase: drained` を確認する。
+2. 上流 producer を drain し、最終 receipt を Summit が commit したことを確認する。この間 Summit の receipt / 結果配送は継続する。通知を OFF に切り替えない。
+3. 同じ識別子で `all` を要求し、GET の `phase: drained` と全 writer の `status: drained` を確認する。業務 endpoint は503になっても control listener は状態取得を続ける。
+4. 共通 control に証跡を保存し、外部 writer と DB の未終端 work / claim を別途確認する。通常の SIGTERM で resource を閉じ、永続した frozen 設定で再起動して専用 readiness を確認する。
+
+応答は `consumer: summit`、`scope: process`、cutoverId / stopEpoch / stage、phase と固定 writer 一覧。要求前は識別子 / stage が null、phase が `running`。開始後は `draining` / `drained` / `timed_out` / `failed` を返す。writer は `active` / `draining` / `drained` / `timed_out` / `failed` と、失敗時だけ `stop_failed` / `drain_failed` / `drain_timeout` を返す。実例外・DB 行・credential は含めない。
+
+同じ要求は冪等だが、別 cutover / epoch と `all` から `admission` への後退は409。stop / drain の失敗や期限超過は完了扱いにせず、遅れて I/O が終わっても timeout を成功に変更しない。重複要求は期限や失敗をリセットしない。状態は process 内だけに存在し、再起動後の成功証跡として再生成しない。正常終了 code だけで移行 gate を満たした扱いにせず、通常 shutdown の timeout / cleanup failure は exit 1 として扱う。
+
+| process 内 writer | 止める段階 / 完了の範囲 |
+|---|---|
+| `startup` | admission。member reconcile・startup reconcile / recovery の実行中 phase を待ち、次を開始しない |
+| `discord_interactions` | admission。新規 handler を除去し、受付済み Interaction と応答 I/O を待つ |
+| `reconnect_recovery` | admission。event / replay を止め、実行中 replay を待つ |
+| `scheduler` | admission。ASK・retention・supervisor cron、期限 / reminder timer、出欠配送の実行中 work を待つ |
+| `ask_sends` | admission。開始済み ASK 送信処理を待つ |
+| `notification_operations` | admission。新規設定変更 / retry を拒否し、受付済みの更新を待つ |
+| `result_notifications` | all。新規 receipt / 配送 claim を止め、commit・配送・確定の実 I/O を待つ |
+
+外部 writer はこの応答の範囲外。`commands:sync` の apply、`notifications` の設定変更 / retry、`db:seed` / `db:reset` / `dev:scenario`、他 consumer、CI / 手動 SQL を共通 inventory で確認する。提供 CLI は `MOMO_MAINTENANCE_MODE=frozen` で新規 write を拒否し、未知値は read を含め拒否する。read-only command sync / notification inspect は frozen でも起動できるが、対象 server 側の凍結制約は維持される。CLI の環境未設定や既に稼働中の外部 process は、Summit process 内 drain から停止できない。移行の共通 control で起動設定と停止証跡を揃える。
+
 ## 凍結したままの起動と接続確認
 
-`MOMO_MAINTENANCE_MODE=frozen` を対象環境の永続した起動設定に指定する。未指定 / `normal` は通常起動、未知値は起動失敗。変更には再起動が必要であり、実行中 process に新しい値を与えても drain は始まらない。凍結対応版を先行導入した後、通常 shutdown で新規受付と scheduler を止め、処理中 work を drain してから frozen で再起動する。停止途中で timeout / 異常終了があれば未完了 work と claim を確認し、完全な drain の成功扱いにしない。
+`MOMO_MAINTENANCE_MODE=frozen` を対象環境の永続した起動設定に指定する。未指定 / `normal` は通常起動、未知値は起動失敗。変更には再起動が必要であり、実行中 process に新しい値を与えても drain は始まらない。凍結対応版を先行導入した後、[live drain](#稼働中の-drain-と-writer-確認) で処理中 work の完了を確認してから frozen で再起動する。停止途中で timeout / 異常終了があれば未完了 work と claim を確認し、完全な drain の成功扱いにしない。
 
 frozen は Discord login・member 同期・startup / reconnect 回復・通知受付 / 配送・scheduler を開始しない。通知の OFF 操作は generation や取消状態を変えるため、移行の凍結の代わりに使わない。再起動・deploy 時も frozen 設定を保持し、migration / 検証中に通常 mode へ戻さない。
 

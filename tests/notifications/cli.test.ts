@@ -19,6 +19,17 @@ describe("notification operations CLI", () => {
         RESULT_NOTIFICATION_URL: url })).rejects.toThrow("private HTTP service origin");
     }
   });
+  it("blocks mutations during frozen maintenance before sending HTTP and rejects unknown mode", async () => {
+    const fetchRequest = vi.spyOn(globalThis, "fetch");
+    try {
+      for (const args of [["settings", "ocr_completed", "off"], ["retry", "result:ocr_completed:job-1"]]) {
+        await expect(runNotificationCli(args, { MOMO_MAINTENANCE_MODE: "frozen" })).rejects.toThrow("blocked by maintenance mode");
+      }
+      await expect(runNotificationCli(["settings", "ocr_completed"], { MOMO_MAINTENANCE_MODE: "invalid" }))
+        .rejects.toThrow("blocked by maintenance mode");
+      expect(fetchRequest).not.toHaveBeenCalled();
+    } finally { fetchRequest.mockRestore(); }
+  });
   it("inspects and explicitly retries the same retained failure through the receiver", async () => {
     harness = await createHttpHarness(); const payload = ocrReceiptPayload();
     await harness.port.receive(JSON.stringify(payload), notificationNow);

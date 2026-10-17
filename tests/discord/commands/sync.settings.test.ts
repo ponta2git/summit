@@ -22,6 +22,11 @@ describe("command sync settings", () => {
       SUMMIT_CONFIG_YAML: "discord: {guildId: '100000000000000002'}" }))
       .toStrictEqual({ production: false, check: false, token, applicationId: environment.DISCORD_APPLICATION_ID, guildId: environment.DISCORD_GUILD_ID });
   });
+  it("allows only a read-only command during frozen maintenance and rejects unknown modes", async () => {
+    expect(await readSyncSettings(production, { ...environment, MOMO_MAINTENANCE_MODE: "frozen" })).toBeDefined();
+    expect(await readSyncSettings({ ...production, check: false }, { ...environment, MOMO_MAINTENANCE_MODE: "frozen" })).toBeUndefined();
+    expect(await readSyncSettings(production, { ...environment, MOMO_MAINTENANCE_MODE: "unknown" })).toBeUndefined();
+  });
   it("rejects malformed legacy YAML and whitespace in a token", async () => {
     expect(await readSyncSettings({ production: false, check: false }, { DISCORD_TOKEN: "dummy", SUMMIT_CONFIG_YAML: "invalid: [" })).toBeUndefined();
     expect(await readSyncSettings(production, { ...environment, DISCORD_TOKEN: "PRIVATE\nVALUE" })).toBeUndefined();
