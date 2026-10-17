@@ -122,6 +122,14 @@ hint 取得・tick・配送後の次時刻取得が失敗したら、有限 back
 
 active message の存在 probe と出欠の FAILED chain 再投入は startup だけで行う。reconnect / tick に poison retry を持ち込まない。通常 edit の `UnknownMessage` は [Discord 規約 §5](./discord-rule.md#5-永続化後の表示更新) で回復する。shutdown と競合した HTTP listen は完了を待って close する。残った claim は次回起動で回復する。
 
+### 移行中の凍結起動
+
+`MOMO_MAINTENANCE_MODE` は未指定 / `normal` を通常起動、`frozen` を業務処理の凍結として起動時に検証する。未知値は失敗し、稼働中の mode 切替は行わない。[index](../src/index.ts) が通常 bootstrap の import より前に分岐するため、frozen は AppContext・通常 DB pool・Discord client・member reconcile・Interaction・reconnect・通知受付 / 配送・scheduler・startup recovery を生成も実行もしない。通知の enabled / generation と保存済み claim・payload・part は変更しない。
+
+frozen は [専用 readiness](../src/startup/maintenanceReadiness.ts) だけを private listener へ公開する。単一の operations token による認証後、[DB probe](../src/startup/maintenanceDatabase.ts) が read-only transaction と期限付きの `LIMIT 0` で同梱 schema の主要 consumer table / column の参照可能性を確認する。readiness は固定状態と接続先の opaque fingerprint を返し、DB 行・接続値・例外本文を含めない。制約・値の互換性、migration ledger、書込み権限、外部到達性はこの probe の検証対象に含めず、移行 gate で確認する。
+
+probe は同時に一つだけ所有し、応答期限や切断後も完了を追跡する。停止後は成功 readiness を返さず、listen の完了後に listener を閉じ、probe の settlement と DB pool の期限付き close を待つ。通常運転からの停止は既存 shutdown の drain を使い、永続した frozen 設定で再起動してから DB の停止点を確定する。操作手順は [migration runbook](./operations/migration.md#凍結したままの起動と接続確認) を参照する。
+
 ### A/B の独立した受付と配送
 
 receiver は DB commit 後にだけ 2xx と wake を返す。request deadline で実行中 command の slot を先に解放せず、commit 後の切断を受付失敗に戻さない。初回 startup 完了前は 503、その後の一時的な Discord 切断中は DB 受付を続ける。
@@ -160,7 +168,7 @@ runtime は parse 済み export を使い、個別 module で環境変数を読�
 
 member は固定 4 人・ID 重複なしを検証する。起動時 reconcile は identity と表示名を一 transaction で整合し、設定から消えた row を削除したり、配列順で過去の ID を再利用したりしない。
 
-A/B は受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。運用は [A/B runbook](./operations/result-notifications.md)。
+A/B は通常起動で受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。frozen は ops token を必須とし、A/B を有効にしないため残る二つの設定は必須にしない。運用は [A/B runbook](./operations/result-notifications.md)。
 
 YAML は Bot と同期 CLI の共通 [parser](../src/userConfig.yaml.ts) で byte / alias 上限を適用し、warning を含む曖昧入力を拒否する。parser の入力断片を stderr に出さない。A/B token は Bearer 構文を検証し、HTTP は単一 Authorization だけを受理する。運用 CLI も本文読取まで deadline を維持し、実 byte 上限・UTF-8 / JSON を検証して失敗時の stream を回収する。
 

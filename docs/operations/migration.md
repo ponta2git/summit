@@ -48,6 +48,24 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 - 解消方法を momo-db の正規文書に従う別 migration としてレビューする。
 - preflight 失敗時は application deploy を進めない。
 
+## 凍結したままの起動と接続確認
+
+`MOMO_MAINTENANCE_MODE=frozen` を対象環境の永続した起動設定に指定する。未指定 / `normal` は通常起動、未知値は起動失敗。変更には再起動が必要であり、実行中 process に新しい値を与えても drain は始まらない。凍結対応版を先行導入した後、通常 shutdown で新規受付と scheduler を止め、処理中 work を drain してから frozen で再起動する。停止途中で timeout / 異常終了があれば未完了 work と claim を確認し、完全な drain の成功扱いにしない。
+
+frozen は Discord login・member 同期・startup / reconnect 回復・通知受付 / 配送・scheduler を開始しない。通知の OFF 操作は generation や取消状態を変えるため、移行の凍結の代わりに使わない。再起動・deploy 時も frozen 設定を保持し、migration / 検証中に通常 mode へ戻さない。
+
+readiness は `RESULT_NOTIFICATION_BIND_HOST` / `RESULT_NOTIFICATION_PORT` の private listener を再利用する。`RESULT_NOTIFICATION_OPERATIONS_TOKEN` が必須で、通常の env 必須項目も引き続き指定する。受付 token と Web Origin は frozen だけなら不要。token をコマンド引数・記録・公開資料へ転記しない。
+
+| request / response | 意味 |
+|---|---|
+| `GET /internal/maintenance/readiness` + 単一 `Authorization: Bearer <operations-token>` | 認証後だけ DB の読み取り専用 probe を行う |
+| `200`、`service: summit`、`mode: frozen`、`ready: true`、`contract: summit-read-schema-v1` | 主要 consumer table / column が同梱 schema から参照可能。業務処理は凍結中 |
+| `targetFingerprint` | 設定された host / port と、接続した database / role の opaque hash。同じ接続先の比較補助。対象環境の真正性や完全な schema 一致の証明ではない |
+| `401` | operations 認証失敗。DB probe は実行しない |
+| `503` | DB 不可、probe 実行中、停止中、または凍結中の業務 endpoint。通常処理を始めて回復しない |
+
+readiness の成功だけで migration ledger、DB 制約・値の互換性、書込み権限、Discord 到達性や全 writer の停止を確認した扱いにしない。共通 runbook で他 consumer と外部処理の停止、未終端 work、接続先・revision、DB gate を別々に確認する。全 consumer の frozen 検証と再開判断が揃った後に、永続設定を `normal` へ戻して再起動する。以後の startup recovery は通常の業務書込み / Discord 送信を伴う。
+
 ## 本番への適用
 
 > **注意**: Fly.toml の `release_command` は削除済み。migration は Summit deploy とは独立して先行適用する。

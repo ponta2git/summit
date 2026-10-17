@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 import { readFileSync } from "node:fs";
 
 for (const key of Object.keys(process.env)) {
-  if (key.startsWith("RESULT_NOTIFICATION_") || key === "FLY_IMAGE_REF" || key === "GIT_SHA") {
+  if (key.startsWith("RESULT_NOTIFICATION_") || key === "MOMO_MAINTENANCE_MODE" || key === "FLY_IMAGE_REF" || key === "GIT_SHA") {
     delete process.env[key];
   }
 }
