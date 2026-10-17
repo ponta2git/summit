@@ -19,7 +19,7 @@ export const notificationBodyReservation = (request: IncomingMessage): number =>
 };
 
 /** Stop retaining bytes at the limit without destroying a pending error response. */
-export const readNotificationBody = (request: IncomingMessage): Promise<string> => new Promise((resolve, reject) => {
+export const readNotificationBody = (request: IncomingMessage, maxBytes = RESULT_NOTIFICATION_MAX_BODY_BYTES): Promise<string> => new Promise((resolve, reject) => {
   let received = Buffer.alloc(0);
   let bytes = 0;
   let finished = false;
@@ -32,11 +32,11 @@ export const readNotificationBody = (request: IncomingMessage): Promise<string> 
     if (error) { received = Buffer.alloc(0); request.resume(); reject(error); }
   };
   const onData = (chunk: Buffer): void => {
-    if (chunk.length > RESULT_NOTIFICATION_MAX_BODY_BYTES - bytes) { finish(new NotificationHttpError(413, "payload_too_large")); return; }
+    if (chunk.length > maxBytes - bytes) { finish(new NotificationHttpError(413, "payload_too_large")); return; }
     const size = bytes + chunk.length;
     if (size > received.length) {
       // why: chunk 数や backing buffer の大きさに比例する保持を避ける。小さい本文には小さい領域だけ確保する。
-      const capacity = Math.min(RESULT_NOTIFICATION_MAX_BODY_BYTES, Math.max(size, received.length * 2, 65_536));
+      const capacity = Math.min(maxBytes, Math.max(size, received.length * 2, 65_536));
       const expanded = Buffer.alloc(capacity);
       received.copy(expanded, 0, 0, bytes);
       received = expanded;

@@ -4,6 +4,7 @@ import { isNotificationToken, isNotificationWebOrigin, isPrivateNotificationBind
 export const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
   DATABASE_URL: z.string().url(),
+  MOMO_MAINTENANCE_MODE: z.enum(["normal", "frozen"]).default("normal"),
   SUMMIT_CONFIG_YAML: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().min(1)
@@ -20,12 +21,16 @@ export const envSchema = z.object({
   RESULT_NOTIFICATION_PORT: z.coerce.number().int().min(1).max(65_535).default(RESULT_NOTIFICATION_DEFAULT_PORT)
 }).superRefine((value, ctx) => {
   const fields = ["RESULT_NOTIFICATION_TOKEN", "RESULT_NOTIFICATION_OPERATIONS_TOKEN", "RESULT_NOTIFICATION_WEB_ORIGIN"] as const;
-  if (fields.some(field => value[field] !== undefined)) {
+  if (value.MOMO_MAINTENANCE_MODE === "frozen") {
+    if (value.RESULT_NOTIFICATION_OPERATIONS_TOKEN === undefined) {
+      ctx.addIssue({ code: "custom", path: ["RESULT_NOTIFICATION_OPERATIONS_TOKEN"], message: "Required for frozen readiness" });
+    }
+  } else if (fields.some(field => value[field] !== undefined)) {
     for (const field of fields) {
       if (value[field] === undefined) { ctx.addIssue({ code: "custom", path: [field], message: "Required when result notifications are configured" }); }
     }
-    if (value.RESULT_NOTIFICATION_TOKEN === value.RESULT_NOTIFICATION_OPERATIONS_TOKEN) {
-      ctx.addIssue({ code: "custom", path: ["RESULT_NOTIFICATION_OPERATIONS_TOKEN"], message: "Use a separate operations token" });
-    }
+  }
+  if (value.RESULT_NOTIFICATION_TOKEN !== undefined && value.RESULT_NOTIFICATION_TOKEN === value.RESULT_NOTIFICATION_OPERATIONS_TOKEN) {
+    ctx.addIssue({ code: "custom", path: ["RESULT_NOTIFICATION_OPERATIONS_TOKEN"], message: "Use a separate operations token" });
   }
 });

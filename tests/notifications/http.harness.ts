@@ -4,19 +4,22 @@ import type { ResultNotificationsPort } from "../../src/db/ports.resultNotificat
 import { createNotificationReceiver } from "../../src/notifications/http.ts";
 import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifications.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
+import type { MaintenanceDrain } from "../../src/startup/maintenanceDrain.ts";
 
 export const receiverToken = "fixture-receiver-token-000000000000000000";
 export const operationsToken = "fixture-operations-token-0000000000000000";
 export const createHttpHarness = async (options: {
   readonly port?: ResultNotificationsPort;
   readonly canAccept?: () => boolean;
+  readonly maintenance?: MaintenanceDrain;
 } = {}) => {
   const port = options.port ?? createFakeResultNotificationsPort({ now: () => notificationNow });
   if ("setTargetAvailable" in port && typeof port.setTargetAvailable === "function") { port.setTargetAvailable("match_draft", "draft-1", true); }
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const wake = vi.fn();
   const receiver = createNotificationReceiver({ port, clock: { now: () => notificationNow }, token: receiverToken,
-    operationsToken, canAccept: options.canAccept ?? (() => true), wake, logger });
+    operationsToken, canAccept: options.canAccept ?? (() => true), wake, logger,
+    ...(options.maintenance ? { maintenance: options.maintenance } : {}) });
   await receiver.start("127.0.0.1", 0);
   const address = receiver.server.address();
   if (!address || typeof address === "string") { throw new Error("Expected a loopback HTTP listener"); }

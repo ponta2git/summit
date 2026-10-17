@@ -116,7 +116,7 @@ Workflow:
 };
 
 const run = async (): Promise<void> => {
-  assertLocalDatabase(env.DATABASE_URL);
+  assertLocalDatabase(env.DATABASE_URL, env.MOMO_MAINTENANCE_MODE);
   const [command, ...rest] = process.argv.slice(2);
   switch (command) {
     case "status":

@@ -23,6 +23,7 @@ import {
 import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.ts";
 import { sendReminderForSession } from "../features/reminder/send.ts";
 import { logger } from "../logger.ts";
+import { drainResources, stopResources } from "../runtime/lifecycle.ts";
 import { runOutboxMetricsTick } from "./outboxMetrics.ts";
 import { runOutboxRetentionTick } from "./outboxRetention.ts";
 import {
@@ -253,16 +254,16 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     return pending;
   };
   const tasks: Array<Pick<ScheduledTask, "stop">> = [];
+  const stopFailures: unknown[] = [];
   const stop = (): void => {
     if (stopped) { return; }
     stopped = true;
-    controller.stop();
-    for (const task of tasks) {
+    stopResources([() => controller.stop(), ...tasks.map(task => () => {
       void track(async () => {
         try { await task.stop(); }
-        catch (error: unknown) { logger.error({ error }, "Failed to stop cron task."); }
+        catch (error: unknown) { stopFailures.push(error); logger.error({ error }, "Failed to stop cron task."); }
       });
-    }
+    })]);
   };
   try {
     for (const def of taskDefs) {
@@ -280,7 +281,10 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
   return {
     controller,
     stop,
-    drain: async () => { await Promise.allSettled([controller.drain(), ...running]); },
+    drain: async () => {
+      await drainResources([() => controller.drain(), ...[...running].map(pending => () => pending)]);
+      if (stopFailures.length > 0) { throw stopFailures[0]; }
+    },
     wake: (reason) => controller.wake(reason)
   };
 };
