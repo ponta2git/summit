@@ -10,6 +10,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { closeDb, db } from "../../src/db/client.ts";
 import { responses, sessions } from "../../src/db/schema.ts";
+import { identityLayout, nativeId, wireId } from "../../src/db/identities.ts";
+import { responseColumns, sessionColumns } from "../../src/db/identityColumns.ts";
 import { env } from "../../src/env.ts";
 import { logger } from "../../src/logger.ts";
 
@@ -20,7 +22,7 @@ const ACTIVE_STATUSES = ["ASKING", "POSTPONE_VOTING"] as const;
 
 const findActiveSession = async () => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(inArray(sessions.status, [...ACTIVE_STATUSES]))
     .orderBy(desc(sessions.createdAt))
@@ -29,16 +31,16 @@ const findActiveSession = async () => {
 };
 
 const cmdStatus = async (): Promise<void> => {
-  const all = await db.select().from(sessions).orderBy(desc(sessions.createdAt)).limit(10);
+  const all = await db.select(sessionColumns(await identityLayout(db))).from(sessions).orderBy(desc(sessions.createdAt)).limit(10);
   if (all.length === 0) {
     console.log("(no sessions)");
     return;
   }
   for (const s of all) {
     const rs = await db
-      .select()
+      .select(responseColumns(await identityLayout(db)))
       .from(responses)
-      .where(eq(responses.sessionId, s.id));
+      .where(eq(responses.sessionId, nativeId(await identityLayout(db), sessions, s.id)));
     console.log(
       `${s.createdAt.toISOString()}  ${s.status.padEnd(16)} ` +
         `week=${s.weekKey} postponeCount=${s.postponeCount} ` +
@@ -67,7 +69,7 @@ const cmdShorten = async (seconds: number): Promise<void> => {
   await db
     .update(sessions)
     .set({ deadlineAt: newDeadline, updatedAt: new Date() })
-    .where(and(eq(sessions.id, active.id), eq(sessions.status, active.status)));
+    .where(and(eq(wireId(await identityLayout(db), sessions), active.id), eq(sessions.status, active.status)));
   console.log(
     `Shortened deadline of session ${active.id} (status=${active.status}) ` +
       `to ${newDeadline.toISOString()} (+${seconds}s).`
@@ -87,7 +89,7 @@ const cmdExpire = async (): Promise<void> => {
   await db
     .update(sessions)
     .set({ deadlineAt: past, updatedAt: new Date() })
-    .where(and(eq(sessions.id, active.id), eq(sessions.status, active.status)));
+    .where(and(eq(wireId(await identityLayout(db), sessions), active.id), eq(sessions.status, active.status)));
   console.log(
     `Expired session ${active.id} (status=${active.status}) — deadlineAt set to ${past.toISOString()}.`
   );

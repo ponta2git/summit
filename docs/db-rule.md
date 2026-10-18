@@ -10,6 +10,16 @@ schema / migration を作成・変更するときは、**着手前に [momo-db �
 
 runtime は pooled `DATABASE_URL` を使い、migration 用の unpooled `DIRECT_URL` は momo-db の経路に限定する。本番 migration は app deploy と独立して先に適用し、Fly release command へ組み込まない。sibling の配置と build 順序は現在の package 構成に合わせる。consumer が増えて配置が制約になったときに package 配布を再評価する。
 
+### 内部 UUID と保存済み ID
+
+Summit の port、Discord button、通知 payload / dedupe / target は従来の完全一致する文字列 ID を維持する。canonical schema の内部 UUID は [identity adapter](../src/db/identities.ts) で解決し、repository の明示 projection が `legacy_id` と親の保存済み alias を返す。未知の参照を hash 化して entity を作らず、UUID の別表記を旧 alias の別名として扱わない。
+
+通常起動は member reconciliation の最初の transaction より前に、全 mutable entity、参照型、typed anchor、旧 replay table を一度検査する。完全な旧 text schema と完成済み canonical UUID schema だけを受け入れ、`canonical_*` が残る expand 中の状態・混在型・欠落 alias は拒否する。判定と失敗は DB handle 単位で固定し、同じ process のまま schema を切り替えない。frozen 起動は業務処理を開始せず、既存の接続先・ledger 証拠の取得だけを行う。
+
+新しい Session、Response、HeldEvent、member は一度生成した UUID を保存し、その文字列表記を新しい alias とする。過去の ID は変更しない。Session lock、回答の snowflake 順序、開催履歴・参加者と状態更新の一括 commit は従来の transaction 内に保つ。出欠通知の nullable `session_id` は text のまま親の `legacy_id` を参照し、結果通知の target も元の文字列から source row を照合する。
+
+旧 schema の integration suite と [canonical adapter 契約](../tests/integration/canonicalIdentities.contract.test.ts) は別々に検証する。後者の部分 fixture は projection・参照解決・rollback の試験であり、momo-db の実 migration、本番 copy、全 consumer の切替 gate の代わりにはしない。旧 schema への先行導入と、停止下での canonical schema 切替は [migration runbook](./operations/migration.md) の順序に従う。
+
 ## 2. DB に残す不変条件
 
 Session、Response、HeldEvent、notification intent が状態の正本。Discord の失敗で確定済み DB を巻き戻さず、再実行時は現在の DB から回復する。process 内 lock や事前 read だけで、次の制約を代替しない。

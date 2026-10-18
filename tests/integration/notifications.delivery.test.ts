@@ -1,5 +1,6 @@
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { identityLayout } from "../../src/db/identities.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "../../src/db/schema.ts";
 import { discordNotifications as notifications, discordNotificationParts as parts,
@@ -128,9 +129,15 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
   it("delivers one part within twelve application statements without rereading its payload", async () => {
     const { id, claimToken } = await prepare(1);
     const queries: string[] = [];
-    const measured = makeResultNotificationsPort(drizzle(h.client, { schema, casing: "snake_case",
+    const measuredDb = drizzle(h.client, { schema, casing: "snake_case",
       logger: { logQuery: query => { queries.push(query); } }
-    }), checkNotificationAdmission);
+    });
+    // Normal startup verifies this once before reconciliation or notification dispatch.
+    await identityLayout(measuredDb);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain("information_schema.columns");
+    queries.length = 0;
+    const measured = makeResultNotificationsPort(measuredDb, checkNotificationAdmission);
     expect(await measured.begin(id, 0, claimToken, now)).toBe(true);
     expect(await measured.complete(id, 0, claimToken, "message", at(1))).toBe(true);
     // why: postgres.js の BEGIN / COMMIT 各2回は別に発行され、合計16 SQL・2 transactionsとなる。
