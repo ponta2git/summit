@@ -8,6 +8,7 @@ import {
   discordNotificationTargets as targets, matchDrafts, matches
 } from "../schema.ts";
 import { resultCancellationReason, type ResultCancellationReason } from "../../domain/notification.ts";
+import { identityLayout, wireId } from "../identities.ts";
 
 export type NotificationFamily = "attendance" | "result";
 export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "delete" | "execute">;
@@ -92,15 +93,16 @@ export const cancelLockedNotifications = async (
 export const loadResultCancellationReason = async (
   tx: NotificationDb, id: string
 ): Promise<ResultCancellationReason | null> => {
+  const layout = await identityLayout(tx);
   const [context] = await tx.select({
     enabled: settings.enabled, currentGeneration: settings.generation, receivedGeneration: results.settingsGeneration,
     unavailableDraft: sql<boolean>`EXISTS (SELECT 1 FROM ${targets}
-      LEFT JOIN ${matchDrafts} ON ${matchDrafts.id} = ${targets.targetId}
+      LEFT JOIN ${matchDrafts} ON ${wireId(layout, matchDrafts)} = ${targets.targetId}
       WHERE ${targets.notificationId} = ${results.notificationId} AND ${targets.targetKind} = 'match_draft'
         AND (${matchDrafts.id} IS NULL OR ${matchDrafts.status} IN ('confirmed', 'cancelled')
           OR ${matchDrafts.confirmedMatchId} IS NOT NULL))`,
     deletedMatch: sql<boolean>`EXISTS (SELECT 1 FROM ${targets}
-      LEFT JOIN ${matches} ON ${matches.id} = ${targets.targetId}
+      LEFT JOIN ${matches} ON ${wireId(layout, matches)} = ${targets.targetId}
       WHERE ${targets.notificationId} = ${results.notificationId} AND ${targets.targetKind} = 'match'
         AND ${matches.id} IS NULL)`
   }).from(results).innerJoin(settings, eq(settings.kind, results.kind)).where(eq(results.notificationId, id));

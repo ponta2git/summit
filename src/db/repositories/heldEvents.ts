@@ -11,6 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   heldEventParticipants,
   heldEvents,
+  members,
   sessions
 } from "../schema.ts";
 import type {
@@ -20,6 +21,9 @@ import type {
   SessionRow
 } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
+import { identityLayout, nativeId, wireId } from "../identities.ts";
+import { heldEventColumns, participantColumns, sessionColumns } from "../identityColumns.ts";
+import { insertIdentity } from "../identityInsert.ts";
 
 export interface CompleteDecidedSessionAsHeldInput {
   readonly sessionId: string;
@@ -49,6 +53,7 @@ export const completeDecidedSessionAsHeld = async (
   input: CompleteDecidedSessionAsHeldInput
 ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {
   return runTransaction(db, async (tx) => {
+    const layout = await identityLayout(tx);
     // race: CAS primitive。WHERE status = 'DECIDED' 一致のみ遷移成功。
     const updated = await tx
       .update(sessions)
@@ -59,9 +64,9 @@ export const completeDecidedSessionAsHeld = async (
         updatedAt: sql`now()`
       })
       .where(
-        and(eq(sessions.id, input.sessionId), eq(sessions.status, "DECIDED"))
+        and(eq(wireId(layout, sessions), input.sessionId), eq(sessions.status, "DECIDED"))
       )
-      .returning();
+      .returning(sessionColumns(layout));
     const sessionRow = updated[0];
     if (!sessionRow) {
       return undefined;
@@ -75,25 +80,17 @@ export const completeDecidedSessionAsHeld = async (
     }
 
     const heldEventId = randomUUID();
-    const insertedHeldEvent = await tx
-      .insert(heldEvents)
-      .values({
+    await insertIdentity(tx, layout, heldEvents, {
         id: heldEventId,
-        sessionId: input.sessionId,
+        sessionId: nativeId(layout, sessions, input.sessionId),
         heldDateIso: sessionRow.candidateDateIso,
         startAt: sessionRow.decidedStartAt
-      })
-      // idempotent: session_id unique 衝突時は既存を尊重。保険的な冪等性。
-      .onConflictDoNothing({ target: heldEvents.sessionId })
-      .returning();
-
-    const heldEventRow =
-      insertedHeldEvent[0] ??
-      (await tx
-        .select()
+      }, sql`ON CONFLICT (session_id) DO NOTHING`);
+    const [heldEventRow] = await tx
+        .select(heldEventColumns(layout))
         .from(heldEvents)
-        .where(eq(heldEvents.sessionId, input.sessionId))
-        .limit(1))[0];
+        .where(eq(heldEvents.sessionId, nativeId(layout, sessions, input.sessionId)))
+        .limit(1);
 
     if (!heldEventRow) {
       // invariant: tx 内で insert も select も空は自己矛盾。
@@ -106,8 +103,8 @@ export const completeDecidedSessionAsHeld = async (
         .insert(heldEventParticipants)
         .values(
           input.memberIds.map((memberId) => ({
-            heldEventId: heldEventRow.id,
-            memberId
+            heldEventId: nativeId(layout, heldEvents, heldEventRow.id),
+            memberId: nativeId(layout, members, memberId)
           }))
         )
         .onConflictDoNothing({
@@ -116,7 +113,7 @@ export const completeDecidedSessionAsHeld = async (
             heldEventParticipants.memberId
           ]
         })
-        .returning();
+        .returning(participantColumns(layout));
       participants.push(...rows);
     }
 
@@ -132,10 +129,11 @@ export const findHeldEventBySessionId = async (
   db: DbLike,
   sessionId: string
 ): Promise<HeldEventRow | undefined> => {
+  const layout = await identityLayout(db);
   const rows = await db
-    .select()
+    .select(heldEventColumns(layout))
     .from(heldEvents)
-    .where(eq(heldEvents.sessionId, sessionId))
+    .where(eq(heldEvents.sessionId, nativeId(layout, sessions, sessionId)))
     .limit(1);
   return rows[0];
 };

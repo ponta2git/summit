@@ -12,6 +12,8 @@ import type { DbLike } from "../rows.ts";
 import { heldEvents, responses, sessions } from "../schema.ts";
 import { mapResponse } from "./responses.ts";
 import { mapSession } from "./sessions.internal.ts";
+import { identityLayout, nativeIds } from "../identities.ts";
+import { heldEventColumns, responseColumns, sessionColumns } from "../identityColumns.ts";
 
 const STATUS_VISIBLE_STATUSES = [
   "ASKING",
@@ -60,8 +62,9 @@ export const loadCurrentWeekSnapshot = async (
   db: DbLike,
   weekKey: string
 ): Promise<CurrentWeekStatusSnapshot> => {
+  const layout = await identityLayout(db);
   const visibleRows = await db
-    .select()
+    .select(sessionColumns(layout))
     .from(sessions)
     .where(
       and(
@@ -82,16 +85,16 @@ export const loadCurrentWeekSnapshot = async (
     detailSessionIds.length === 0
       ? Promise.resolve([] as ResponseRow[])
       : db
-        .select()
+        .select(responseColumns(layout))
         .from(responses)
-        .where(inArray(responses.sessionId, detailSessionIds))
+        .where(inArray(responses.sessionId, nativeIds(layout, sessions, detailSessionIds)))
         .then((rows) => rows.map(mapResponse)),
     decidedSessionIds.length === 0
       ? Promise.resolve([] as HeldEventRow[])
       : db
-        .select()
+        .select(heldEventColumns(layout))
         .from(heldEvents)
-        .where(inArray(heldEvents.sessionId, decidedSessionIds))
+        .where(inArray(heldEvents.sessionId, nativeIds(layout, sessions, decidedSessionIds)))
   ]);
   // Ownership of the snapshot read includes both queries, including the failure path.
   if (responseResult.status === "rejected") { throw responseResult.reason; }

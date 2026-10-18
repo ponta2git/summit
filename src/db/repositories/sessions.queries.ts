@@ -3,6 +3,8 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.ts";
+import { identityLayout, wireId } from "../identities.ts";
+import { sessionColumns } from "../identityColumns.ts";
 import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.ts";
 import type { SchedulerSessionHints } from "../ports.ts";
 import { mapSession, MESSAGE_RECOVERY_STATUSES } from "./sessions.internal.ts";
@@ -13,7 +15,7 @@ export const findSessionByWeekKeyAndPostponeCount = async (
   postponeCount: number
 ): Promise<SessionRow | undefined> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(
       and(
@@ -31,9 +33,9 @@ export const findSessionById = async (
   id: string
 ): Promise<SessionRow | undefined> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
-    .where(eq(sessions.id, id))
+    .where(eq(wireId(await identityLayout(db), sessions), id))
     .limit(1);
   const row = rows[0];
   return row ? mapSession(row) : undefined;
@@ -44,7 +46,7 @@ export const findDueAskingSessions = async (
   now: Date
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(and(eq(sessions.status, "ASKING"), lte(sessions.deadlineAt, now)));
   return rows.map(mapSession);
@@ -55,7 +57,7 @@ export const findDuePostponeVotingSessions = async (
   now: Date
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(and(eq(sessions.status, "POSTPONE_VOTING"), lte(sessions.deadlineAt, now)));
   return rows.map(mapSession);
@@ -76,7 +78,7 @@ export const findDueReminderSessions = async (
   now: Date
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(
       and(
@@ -100,7 +102,7 @@ export const findDueStartupRecoverySessions = async (
   now: Date
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(
       or(
@@ -155,7 +157,7 @@ export const findMessageRecoveryCandidates = async (
   db: DbLike
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(inArray(sessions.status, [...MESSAGE_RECOVERY_STATUSES]));
   return rows.map(mapSession);
@@ -171,7 +173,7 @@ export const findStrandedCancelledSessions = async (
   db: DbLike
 ): Promise<SessionRow[]> => {
   const rows = await db
-    .select()
+    .select(sessionColumns(await identityLayout(db)))
     .from(sessions)
     .where(eq(sessions.status, "CANCELLED"));
   return rows.map(mapSession);

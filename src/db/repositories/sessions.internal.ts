@@ -15,7 +15,7 @@ export const MESSAGE_RECOVERY_STATUSES: readonly SessionStatus[] = [
   "CANCELLED"
 ];
 
-export const mapSession = (row: typeof sessions.$inferSelect): SessionRow => ({
+export const mapSession = (row: Omit<typeof sessions.$inferSelect, "legacyId">): SessionRow => ({
   id: row.id,
   weekKey: row.weekKey,
   postponeCount: row.postponeCount,

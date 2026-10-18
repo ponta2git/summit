@@ -20,6 +20,9 @@ import type {
   CancelWeekInput,
   CancelWeekResult
 } from "./sessionCommands.types.ts";
+import { identityLayout, wireId } from "../identities.ts";
+import { sessionColumns } from "../identityColumns.ts";
+import { insertIdentity } from "../identityInsert.ts";
 
 const CANCELLABLE_WEEK_STATUSES = [
   "ASKING",
@@ -41,20 +44,19 @@ export const cancelWeekAtomically = async (
   input: CancelWeekInput
 ): Promise<CancelWeekResult> =>
   runTransaction(db, async (tx) => {
+    const layout = await identityLayout(tx);
     const lockedRows = await tx
-      .select()
+      .select(sessionColumns(layout))
       .from(sessions)
       .where(eq(sessions.weekKey, input.weekKey))
-      .orderBy(asc(sessions.postponeCount), asc(sessions.id))
+      .orderBy(asc(sessions.postponeCount), asc(wireId(layout, sessions)))
       .for("update");
     let lockedSessions = lockedRows.map(mapSession);
     let sentinelCreated = false;
     let skippedSessions: SessionRow[] = [];
 
     if (lockedSessions.length === 0) {
-      const inserted = await tx
-        .insert(sessions)
-        .values({
+      const inserted = await insertIdentity(tx, layout, sessions, {
           id: input.sentinelSessionId,
           weekKey: input.weekKey,
           postponeCount: 0,
@@ -66,13 +68,12 @@ export const cancelWeekAtomically = async (
           revision: 1,
           createdAt: input.now,
           updatedAt: input.now
-        })
-        .onConflictDoNothing({
-          target: [sessions.weekKey, sessions.postponeCount]
-        })
-        .returning();
-      if (inserted[0]) {
-        const sentinel = mapSession(inserted[0]);
+        }, sql`ON CONFLICT (week_key, postpone_count) DO NOTHING`);
+      if (inserted) {
+        const [row] = await tx.select(sessionColumns(layout)).from(sessions)
+          .where(eq(wireId(layout, sessions), input.sentinelSessionId));
+        if (!row) { throw new Error("Inserted cancellation sentinel could not be reloaded"); }
+        const sentinel = mapSession(row);
         lockedSessions = [sentinel];
         skippedSessions = [sentinel];
         sentinelCreated = true;
@@ -80,10 +81,10 @@ export const cancelWeekAtomically = async (
         // race: initial Session creation won after the empty SELECT. Re-lock the winner
         // and continue the same cancellation transaction instead of surfacing unique failure.
         const racedRows = await tx
-          .select()
+          .select(sessionColumns(layout))
           .from(sessions)
           .where(eq(sessions.weekKey, input.weekKey))
-          .orderBy(asc(sessions.postponeCount), asc(sessions.id))
+          .orderBy(asc(sessions.postponeCount), asc(wireId(layout, sessions)))
           .for("update");
         lockedSessions = racedRows.map(mapSession);
         if (lockedSessions.length === 0) {
@@ -96,14 +97,14 @@ export const cancelWeekAtomically = async (
       // race: 最初のSELECTが金曜lockを待つ間に、順延txが土曜を作成してcommitし得る。
       // 金曜を保持した後の新snapshotで週全体を再読込し、同時作成された土曜も取消対象にする。
       const currentRows = await tx
-        .select()
+        .select(sessionColumns(layout))
         .from(sessions)
         .where(eq(sessions.weekKey, input.weekKey))
-        .orderBy(asc(sessions.postponeCount), asc(sessions.id))
+        .orderBy(asc(sessions.postponeCount), asc(wireId(layout, sessions)))
         .for("update");
       lockedSessions = currentRows.map(mapSession);
       const held = await tx
-        .select({ sessionId: heldEvents.sessionId })
+        .select({ sessionId: wireId(layout, sessions) })
         .from(heldEvents)
         .innerJoin(sessions, eq(heldEvents.sessionId, sessions.id))
         .where(eq(sessions.weekKey, input.weekKey))
@@ -135,8 +136,8 @@ export const cancelWeekAtomically = async (
             revision: sql`${sessions.revision} + 1`,
             updatedAt: input.now
           })
-          .where(inArray(sessions.id, cancellableIds))
-          .returning();
+          .where(inArray(wireId(layout, sessions), cancellableIds))
+          .returning(sessionColumns(layout));
         skippedSessions = updated
           .map(mapSession)
           .sort(

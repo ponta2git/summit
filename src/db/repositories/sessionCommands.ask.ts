@@ -2,6 +2,8 @@ import { runTransaction } from "../transaction.ts";
 import { eq, sql } from "drizzle-orm";
 
 import { sessions } from "../schema.ts";
+import { identityLayout, wireId } from "../identities.ts";
+import { sessionColumns } from "../identityColumns.ts";
 import type { DbLike, SessionRow } from "../rows.ts";
 import { evaluateDeadline } from "../../domain/askDecision.ts";
 import {
@@ -61,8 +63,8 @@ const applyAskCancellation = async (
         revision: sql`${sessions.revision} + 1`,
         updatedAt: now
       })
-      .where(eq(sessions.id, current.id))
-      .returning();
+      .where(eq(wireId(await identityLayout(tx), sessions), current.id))
+      .returning(sessionColumns(await identityLayout(tx)));
     if (!rows[0]) {throw new Error("locked ask session disappeared");}
     cancelled = mapSession(rows[0]);
   } else if (current.status !== "CANCELLED") {
@@ -83,8 +85,8 @@ const applyAskCancellation = async (
       revision: sql`${sessions.revision} + 1`,
       updatedAt: now
     })
-    .where(eq(sessions.id, cancelled.id))
-    .returning();
+    .where(eq(wireId(await identityLayout(tx), sessions), cancelled.id))
+    .returning(sessionColumns(await identityLayout(tx)));
   if (!finalRows[0]) {throw new Error("locked cancelled session disappeared");}
   const settled = mapSession(finalRows[0]);
   const intents = [
@@ -197,8 +199,8 @@ export const settleAskingDeadline = async (
         revision: sql`${sessions.revision} + 1`,
         updatedAt: input.now
       })
-      .where(eq(sessions.id, current.id))
-      .returning();
+      .where(eq(wireId(await identityLayout(tx), sessions), current.id))
+      .returning(sessionColumns(await identityLayout(tx)));
     if (!rows[0]) {throw new Error("locked ask session disappeared");}
     const decided = mapSession(rows[0]);
     await enqueueSessionIntents(tx, [

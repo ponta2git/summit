@@ -8,6 +8,9 @@ import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type { DbLike, SessionRow } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
 import type { CreateAskSessionInput } from "./sessions.types.ts";
+import { identityLayout, wireId } from "../identities.ts";
+import { sessionColumns } from "../identityColumns.ts";
+import { insertIdentity } from "../identityInsert.ts";
 
 /**
  * Create an ASKING session for the given `(weekKey, postponeCount)`.
@@ -21,9 +24,8 @@ export const createAskSession = async (
   input: CreateAskSessionInput
 ): Promise<SessionRow | undefined> =>
   runTransaction(db, async (tx) => {
-    const rows = await tx
-      .insert(sessions)
-      .values({
+    const layout = await identityLayout(tx);
+    const inserted = await insertIdentity(tx, layout, sessions, {
         id: input.id,
         weekKey: input.weekKey,
         postponeCount: input.postponeCount,
@@ -31,13 +33,11 @@ export const createAskSession = async (
         status: "ASKING",
         channelId: input.channelId,
         deadlineAt: input.deadlineAt
-      })
-      .onConflictDoNothing({
-        target: [sessions.weekKey, sessions.postponeCount]
-      })
-      .returning();
-    const row = rows[0];
-    if (!row) {return undefined;}
+      }, sql`ON CONFLICT (week_key, postpone_count) DO NOTHING`);
+    if (!inserted) {return undefined;}
+    const [row] = await tx.select(sessionColumns(layout)).from(sessions)
+      .where(eq(wireId(layout, sessions), input.id));
+    if (!row) { throw new Error("Inserted session could not be reloaded"); }
     for (const entry of input.outbox ?? []) {
       await enqueueOutboxInTransaction(tx, entry);
     }
@@ -52,7 +52,7 @@ export const updateAskMessageId = async (
   await db
     .update(sessions)
     .set({ askMessageId: messageId, updatedAt: sql`now()` })
-    .where(eq(sessions.id, id));
+    .where(eq(wireId(await identityLayout(db), sessions), id));
 };
 
 export const updatePostponeMessageId = async (
@@ -63,7 +63,7 @@ export const updatePostponeMessageId = async (
   await db
     .update(sessions)
     .set({ postponeMessageId: messageId, updatedAt: sql`now()` })
-    .where(eq(sessions.id, id));
+    .where(eq(wireId(await identityLayout(db), sessions), id));
 };
 
 /**
@@ -81,7 +81,7 @@ export const backfillAskMessageId = async (
   const rows = await db
     .update(sessions)
     .set({ askMessageId: messageId, updatedAt: sql`now()` })
-    .where(and(eq(sessions.id, id), isNull(sessions.askMessageId)))
+    .where(and(eq(wireId(await identityLayout(db), sessions), id), isNull(sessions.askMessageId)))
     .returning({ id: sessions.id });
   return rows.length > 0;
 };
@@ -100,7 +100,7 @@ export const backfillPostponeMessageId = async (
   const rows = await db
     .update(sessions)
     .set({ postponeMessageId: messageId, updatedAt: sql`now()` })
-    .where(and(eq(sessions.id, id), isNull(sessions.postponeMessageId)))
+    .where(and(eq(wireId(await identityLayout(db), sessions), id), isNull(sessions.postponeMessageId)))
     .returning({ id: sessions.id });
   return rows.length > 0;
 };

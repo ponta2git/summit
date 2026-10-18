@@ -18,15 +18,18 @@ import { buildAskBodyIntent } from "./sessionOutboxIntents.ts";
 import type { PostponeDecisionResult } from "../../domain/postponeDecision.ts";
 import type { DbTransaction } from "../transaction.ts";
 export type { DbTransaction } from "../transaction.ts";
+import { identityLayout, nativeId, wireId } from "../identities.ts";
+import { responseColumns, sessionColumns } from "../identityColumns.ts";
+import { insertIdentity } from "../identityInsert.ts";
 
 export const lockSession = async (
   tx: DbTransaction,
   sessionId: string
 ): Promise<SessionRow | undefined> => {
   const rows = await tx
-    .select()
+    .select(sessionColumns(await identityLayout(tx)))
     .from(sessions)
-    .where(eq(sessions.id, sessionId))
+    .where(eq(wireId(await identityLayout(tx), sessions), sessionId))
     .for("update");
   return rows[0] ? mapSession(rows[0]) : undefined;
 };
@@ -38,7 +41,7 @@ export const memberExists = async (
   const rows = await tx
     .select({ id: members.id })
     .from(members)
-    .where(eq(members.id, memberId))
+    .where(eq(wireId(await identityLayout(tx), members), memberId))
     .limit(1);
   return rows.length > 0;
 };
@@ -48,9 +51,9 @@ export const listLockedResponses = async (
   sessionId: string
 ): Promise<readonly ResponseRow[]> => {
   const rows = await tx
-    .select()
+    .select(responseColumns(await identityLayout(tx)))
     .from(responses)
-    .where(eq(responses.sessionId, sessionId));
+    .where(eq(responses.sessionId, nativeId(await identityLayout(tx), sessions, sessionId)));
   return rows.map(mapResponse);
 };
 
@@ -72,45 +75,33 @@ export const upsertInteractionResponse = async (
     throw new Error("sourceInteractionId must be a numeric Discord snowflake");
   }
 
-  const rows = await tx
-    .insert(responses)
-    .values({
+  const layout = await identityLayout(tx);
+  const accepted = await insertIdentity(tx, layout, responses, {
       id: input.id,
-      sessionId: input.sessionId,
-      memberId: input.memberId,
+      sessionId: nativeId(layout, sessions, input.sessionId),
+      memberId: nativeId(layout, members, input.memberId),
       choice: input.choice,
       answeredAt: input.answeredAt,
       sourceInteractionId: input.sourceInteractionId
-    })
-    .onConflictDoUpdate({
-      target: [responses.sessionId, responses.memberId],
-      set: {
-        choice: input.choice,
-        answeredAt: input.answeredAt,
-        sourceInteractionId: input.sourceInteractionId
-      },
-      setWhere: sql`${responses.sourceInteractionId} IS NULL
-        OR ${responses.sourceInteractionId} < ${input.sourceInteractionId}`
-    })
-    .returning();
-
-  if (rows[0]) {
-    return { kind: "accepted", response: mapResponse(rows[0]) };
-  }
+    }, sql`ON CONFLICT (session_id, member_id) DO UPDATE SET
+      choice = EXCLUDED.choice, answered_at = EXCLUDED.answered_at,
+      source_interaction_id = EXCLUDED.source_interaction_id
+      WHERE ${responses.sourceInteractionId} IS NULL
+        OR ${responses.sourceInteractionId} < EXCLUDED.source_interaction_id`);
   const existing = await tx
-    .select()
+    .select(responseColumns(layout))
     .from(responses)
     .where(
       and(
-        eq(responses.sessionId, input.sessionId),
-        eq(responses.memberId, input.memberId)
+        eq(responses.sessionId, nativeId(layout, sessions, input.sessionId)),
+        eq(responses.memberId, nativeId(layout, members, input.memberId))
       )
     )
     .limit(1);
   if (!existing[0]) {
-    throw new Error("stale response conflict had no persisted row");
+    throw new Error("response upsert had no persisted row");
   }
-  return { kind: "stale", response: mapResponse(existing[0]) };
+  return { kind: accepted ? "accepted" : "stale", response: mapResponse(existing[0]) };
 };
 
 export const bumpSessionRevision = async (
@@ -124,8 +115,8 @@ export const bumpSessionRevision = async (
       revision: sql`${sessions.revision} + 1`,
       updatedAt: now
     })
-    .where(eq(sessions.id, current.id))
-    .returning();
+    .where(eq(wireId(await identityLayout(tx), sessions), current.id))
+    .returning(sessionColumns(await identityLayout(tx)));
   if (!rows[0]) {throw new Error("locked session disappeared while bumping revision");}
   return mapSession(rows[0]);
 };
@@ -155,15 +146,14 @@ export const applyPostponeDecision = async (
         revision: sql`${sessions.revision} + 1`,
         updatedAt: now
       })
-      .where(eq(sessions.id, current.id))
-      .returning();
+      .where(eq(wireId(await identityLayout(tx), sessions), current.id))
+      .returning(sessionColumns(await identityLayout(tx)));
     if (!rows[0]) {throw new Error("locked postpone session disappeared");}
     return { outcome: "cancelled", session: mapSession(rows[0]) };
   }
 
-  const inserted = await tx
-    .insert(sessions)
-    .values({
+  const layout = await identityLayout(tx);
+  await insertIdentity(tx, layout, sessions, {
       id: saturday.id,
       weekKey: current.weekKey,
       postponeCount: 1,
@@ -171,16 +161,9 @@ export const applyPostponeDecision = async (
       status: "ASKING",
       channelId: current.channelId,
       deadlineAt: saturday.deadlineAt
-    })
-    .onConflictDoNothing({
-      target: [sessions.weekKey, sessions.postponeCount]
-    })
-    .returning();
-  const existing = inserted[0]
-    ? undefined
-    : (
-        await tx
-          .select()
+    }, sql`ON CONFLICT (week_key, postpone_count) DO NOTHING`);
+  const [saturdayRow] = await tx
+          .select(sessionColumns(layout))
           .from(sessions)
           .where(
             and(
@@ -188,9 +171,7 @@ export const applyPostponeDecision = async (
               eq(sessions.postponeCount, 1)
             )
           )
-          .limit(1)
-      )[0];
-  const saturdayRow = inserted[0] ?? existing;
+          .limit(1);
   if (!saturdayRow) {throw new Error("Saturday session insert returned no row");}
   const saturdaySession = mapSession(saturdayRow);
   await enqueueSessionIntents(tx, [
@@ -204,8 +185,8 @@ export const applyPostponeDecision = async (
       revision: sql`${sessions.revision} + 1`,
       updatedAt: now
     })
-    .where(eq(sessions.id, current.id))
-    .returning();
+    .where(eq(wireId(layout, sessions), current.id))
+    .returning(sessionColumns(layout));
   if (!parentRows[0]) {throw new Error("locked postpone session disappeared");}
   return {
     outcome: "all_ok",

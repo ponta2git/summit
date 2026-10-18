@@ -1,11 +1,13 @@
 import { runTransaction } from "../db/transaction.ts";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { DbLike } from "../db/rows.ts";
 import { members } from "../db/schema.ts";
 import { logger } from "../logger.ts";
 import type { MemberReconcileInput } from "./inputs.ts";
+import { identityLayout, wireId } from "../db/identities.ts";
+import { insertIdentity } from "../db/identityInsert.ts";
 
 interface ExistingMemberRow {
   readonly id: string;
@@ -75,9 +77,10 @@ export const reconcileMembers = async (
   db: DbLike
 ): Promise<void> => {
   const plan = await runTransaction(db, async tx => {
+    const layout = await identityLayout(tx);
     const existing = await tx
       .select({
-        id: members.id,
+        id: wireId(layout, members),
         userId: members.userId,
         displayName: members.displayName
       })
@@ -94,11 +97,11 @@ export const reconcileMembers = async (
 
     if (changes.rowsToInsert.length > 0) {
       // idempotent: userId unique + onConflictDoNothing で race / 再実行を吸収。
-      await tx
-        .insert(members)
-        // invariant: positionからIDを作らず、設定から外れた過去memberのidentityを再利用しない。
-        .values(changes.rowsToInsert.map(row => ({ id: randomUUID(), ...row })))
-        .onConflictDoNothing({ target: members.userId });
+      for (const row of changes.rowsToInsert) {
+        // invariant: generate once; names/positions never identify a member.
+        await insertIdentity(tx, layout, members, { id: randomUUID(), ...row },
+          sql`ON CONFLICT (user_id) DO NOTHING`);
+      }
     }
     return changes;
   });

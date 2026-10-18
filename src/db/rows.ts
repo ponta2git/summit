@@ -12,15 +12,15 @@ import { parseTimestamp } from "../time/index.ts";
 
 export type DbLike = typeof defaultDb;
 
-export type SessionRow = Omit<typeof sessions.$inferSelect, "status"> & {
+export type SessionRow = Omit<typeof sessions.$inferSelect, "status" | "legacyId"> & {
   status: SessionStatus;
 };
 
-export type ResponseRow = Omit<typeof responses.$inferSelect, "choice"> & {
+export type ResponseRow = Omit<typeof responses.$inferSelect, "choice" | "legacyId"> & {
   choice: ResponseChoice;
 };
 
-export type HeldEventRow = typeof heldEvents.$inferSelect;
+export type HeldEventRow = Omit<typeof heldEvents.$inferSelect, "legacyId" | "publicId">;
 export type HeldEventParticipantRow = typeof heldEventParticipants.$inferSelect;
 
 // why: listMembers は 3 列のみ select するため、port / fixtures が見る shape を
