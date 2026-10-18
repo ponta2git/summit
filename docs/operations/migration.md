@@ -67,6 +67,8 @@ POST は `Content-Type: application/json`、本文512 byte以内で、次の3項
 
 同じ要求は冪等だが、別 cutover / epoch と `all` から `admission` への後退は409。stop / drain の失敗や期限超過は完了扱いにせず、遅れて I/O が終わっても timeout を成功に変更しない。重複要求は期限や失敗をリセットしない。状態は process 内だけに存在し、再起動後の成功証跡として再生成しない。正常終了 code だけで移行 gate を満たした扱いにせず、通常 shutdown の timeout / cleanup failure は exit 1 として扱う。
 
+対象 machine 内の `node dist/startup/maintenanceCli.js drain <cutover-id> <stop-epoch> admission` / `all` で要求し、`status` で同じ稼働 process を確認できる。frozen 再起動後は `readiness` を使う。開発時の入口は `pnpm maintenance`。CLI はその process の private bind / port 設定と operations token を環境から読み、token を引数へ含めない。応答の識別子・固定 writer 一覧・上限を検証し、別の process の設定だけから停止を証明しない。
+
 | process 内 writer | 止める段階 / 完了の範囲 |
 |---|---|
 | `startup` | admission。member reconcile・startup reconcile / recovery の実行中 phase を待ち、次を開始しない |
@@ -91,7 +93,7 @@ readiness は `RESULT_NOTIFICATION_BIND_HOST` / `RESULT_NOTIFICATION_PORT` の p
 |---|---|
 | `GET /internal/maintenance/readiness` + 単一 `Authorization: Bearer <operations-token>` | 認証後だけ DB の読み取り専用 probe を行う |
 | `200`、`service: summit`、`mode: frozen`、`ready: true`、`contract: summit-read-schema-v1` | 主要 consumer table / column が同梱 schema から参照可能。業務処理は凍結中 |
-| `targetFingerprint` | 設定された host / port と、接続した database / role の opaque hash。同じ接続先の比較補助。対象環境の真正性や完全な schema 一致の証明ではない |
+| `database` | v1 の `targetFingerprint` と `ledgerFingerprint`。実接続先と全 ledger の opaque hash。role 権限や完全な schema 一致の証明ではない |
 | `401` | operations 認証失敗。DB probe は実行しない |
 | `503` | DB 不可、probe 実行中、停止中、または凍結中の業務 endpoint。通常処理を始めて回復しない |
 
