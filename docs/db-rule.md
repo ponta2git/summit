@@ -18,7 +18,9 @@ Summit の port、Discord button、通知 payload / dedupe / target は従来の
 
 新しい Session、Response、HeldEvent、member は一度生成した UUID を保存し、その文字列表記を新しい alias とする。過去の ID は変更しない。Session lock、回答の snowflake 順序、開催履歴・参加者と状態更新の一括 commit は従来の transaction 内に保つ。出欠通知の nullable `session_id` は text のまま親の `legacy_id` を参照し、結果通知の target も元の文字列から source row を照合する。
 
-旧 schema の integration suite と [canonical adapter 契約](../tests/integration/canonicalIdentities.contract.test.ts) は別々に検証する。後者の部分 fixture は projection・参照解決・rollback の試験であり、momo-db の実 migration、本番 copy、全 consumer の切替 gate の代わりにはしない。旧 schema への先行導入と、停止下での canonical schema 切替は [migration runbook](./operations/migration.md) の順序に従う。
+旧 schema の integration suite と [canonical adapter 契約](../tests/integration/canonicalIdentities.contract.test.ts) は別々に検証する。旧 DB 上の部分 fixture は projection・参照解決・rollback の試験であり、実 migration の代わりにはしない。CI の `canonical-database` は別の固定 DB commit から新しい公開型を build し、全 production code・検証 tool・canonical 契約を型検査する。全 migration で作成した DB の型・制約を改変せずに契約 test を実行し、同じ公開型で build した本番 image の隔離・通知容量も検証する。`SUMMIT_TEST_CANONICAL_SCHEMA=1` では部分 fixture への fallback を拒否する。
+
+旧 fixture suite は旧公開型と旧 schema の組で引き続き実行する。新旧いずれの CI も、本番 copy と全 consumer の切替 gate の代わりにはしない。旧 schema への先行導入と、停止下での canonical schema 切替は [migration runbook](./operations/migration.md) の順序に従う。
 
 ## 2. DB に残す不変条件
 

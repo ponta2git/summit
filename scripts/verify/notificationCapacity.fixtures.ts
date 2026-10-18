@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AnalysisCompletedNotification, Four, RankComparison } from "@momo/db/notifications";
 import type postgres from "postgres";
 import { analysisNotification, rankComparisons } from "../../tests/features/result-notifications/fixtures.ts";
@@ -71,27 +72,46 @@ export const capacityNamePoints = async (client: postgres.Sql, maximumBytes: num
 
 export const seedCapacitySources = async (client: postgres.Sql): Promise<void> => {
   const value = capacityAnalysis("capacity-seed", "normal");
-  await client`INSERT INTO momo_login_accounts (id, discord_user_id, display_name)
-    VALUES ('capacity-account', 'capacity-user', 'Capacity')`;
+  const [column] = await client<{ udt_name: string }[]>`SELECT udt_name FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='members' AND column_name='id'`;
+  if (column?.udt_name !== "text" && column?.udt_name !== "uuid") { throw new Error("Unsupported capacity fixture schema"); }
+  const canonical = column.udt_name === "uuid";
+  const assigned = new Map<string, string>();
+  const stored = (table: string, alias: string): string => {
+    if (!canonical) { return alias; }
+    const key = `${table}:${alias}`;
+    const nativeId = assigned.get(key) ?? randomUUID();
+    assigned.set(key, nativeId);
+    return nativeId;
+  };
+  const insert = async (table: string, alias: string, fields: Record<string, string | number>): Promise<void> => {
+    const row = { id: stored(table, alias), ...(canonical ? { legacy_id: alias } : {}), ...fields };
+    await client`INSERT INTO ${client(table)} ${client(row)}`;
+  };
+  await insert("momo_login_accounts", "capacity-account", { discord_user_id: "capacity-user", display_name: "Capacity" });
   for (let index = 0; index < 4; index++) {
-    await client`INSERT INTO members (id, user_id, display_name) VALUES
-      (${capacityId("member", index)}, ${`capacity-user-${index}`}, ${`Player ${index}`})`;
+    await insert("members", capacityId("member", index), { user_id: `capacity-user-${index}`, display_name: `Player ${index}` });
   }
-  await client`INSERT INTO game_titles (id, name, layout_family) VALUES (${value.data.gameTitleId}, 'Capacity', 'momotetsu_2')`;
-  await client`INSERT INTO map_masters (id, game_title_id, name) VALUES ('capacity-map', ${value.data.gameTitleId}, 'Capacity')`;
+  const title = stored("game_titles", value.data.gameTitleId);
+  await insert("game_titles", value.data.gameTitleId, { name: "Capacity", layout_family: "momotetsu_2" });
+  await insert("map_masters", "capacity-map", { game_title_id: title, name: "Capacity" });
   for (let index = 0; index < 16; index++) {
-    await client`INSERT INTO season_masters (id, game_title_id, name)
-      VALUES (${capacityId("season", index)}, ${value.data.gameTitleId}, ${`Season ${index}`})`;
+    await insert("season_masters", capacityId("season", index), { game_title_id: title, name: `Season ${index}` });
   }
-  await client`INSERT INTO held_events (id, held_date_iso, start_at)
-    VALUES (${capacityId("held")}, '2026-09-08', '2026-09-08T15:30:00Z')`;
+  await insert("held_events", capacityId("held"), { held_date_iso: "2026-09-08", start_at: "2026-09-08T15:30:00Z" });
   for (let index = 0; index < 50; index++) {
-    await client`INSERT INTO matches (id, held_event_id, match_no_in_event, game_title_id, layout_family,
-      map_master_id, season_master_id, owner_member_id, played_at, created_by_account_id)
-      VALUES (${capacityId("match", index)}, ${capacityId("held")}, ${index + 1}, ${value.data.gameTitleId}, 'momotetsu_2',
-        'capacity-map', ${capacityId("season", index % 16)}, ${capacityId("member")}, '2026-09-08T15:30:00Z', 'capacity-account')`;
+    await insert("matches", capacityId("match", index), {
+      held_event_id: stored("held_events", capacityId("held")), match_no_in_event: index + 1,
+      ...(canonical ? { legacy_held_event_id: capacityId("held") } : {}),
+      game_title_id: title, layout_family: "momotetsu_2", map_master_id: stored("map_masters", "capacity-map"),
+      season_master_id: stored("season_masters", capacityId("season", index % 16)),
+      owner_member_id: stored("members", capacityId("member")), played_at: "2026-09-08T15:30:00Z",
+      created_by_account_id: stored("momo_login_accounts", "capacity-account")
+    });
   }
-  await client`INSERT INTO match_drafts (id, created_by_account_id, status) VALUES ('draft-1', 'capacity-account', 'draft_ready')`;
+  await insert("match_drafts", "draft-1", {
+    created_by_account_id: stored("momo_login_accounts", "capacity-account"), status: "draft_ready"
+  });
 };
 
 export const seedLegacyCapacityNotification = async (client: postgres.Sql): Promise<number> => {
