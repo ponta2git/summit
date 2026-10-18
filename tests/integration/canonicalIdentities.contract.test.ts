@@ -14,8 +14,11 @@ import { reconcileMembers } from "../../src/members/reconcile.ts";
 import { loadResultCancellationReason } from "../../src/db/repositories/notifications.storage.ts";
 import { makeResultNotificationsPort } from "../../src/db/repositories/resultNotifications.ts";
 import { discordNotificationSettings, matchDrafts } from "../../src/db/schema.ts";
-import { checkNotificationAdmission } from "./_resultNotifications.ts";
+import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { notificationNow, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
+
+const checkNotificationAdmission = (payload: Parameters<typeof assertNewNotificationPartLimit>[0]): void =>
+  assertNewNotificationPartLimit(payload, "https://example.test");
 
 const storedMember = "11111111-1111-4111-8111-111111111111";
 const storedSession = "22222222-2222-4222-8222-222222222222";

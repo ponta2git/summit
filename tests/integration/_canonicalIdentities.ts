@@ -10,6 +10,9 @@ export const prepareCanonicalAdapterFixture = async ({ db, client }: Integration
   // Remove historical migration seed data only inside this test's owned database.
   await client`TRUNCATE members CASCADE`;
   if (await identityLayout(db) === "canonical_uuid") { return; }
+  if (process.env["SUMMIT_TEST_CANONICAL_SCHEMA"] === "1") {
+    throw new Error("Canonical gate requires the complete migration schema");
+  }
   const entities = ["members", "sessions", "responses", "held_events", "match_drafts", "matches", "momo_login_accounts"];
   const tables = [...entities, "held_event_participants"];
   for (const table of tables) {
