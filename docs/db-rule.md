@@ -14,7 +14,7 @@ runtime は pooled `DATABASE_URL` を使い、migration 用の unpooled `DIRECT_
 
 Summit の port、Discord button、通知 payload / dedupe / target は従来の完全一致する文字列 ID を維持する。canonical schema の内部 UUID は [identity adapter](../src/db/identities.ts) で解決し、repository の明示 projection が `legacy_id` と親の保存済み alias を返す。未知の参照を hash 化して entity を作らず、UUID の別表記を旧 alias の別名として扱わない。
 
-通常起動は member reconciliation の最初の transaction より前に、全 mutable entity、参照型、typed anchor、旧 replay table を一度検査する。完全な旧 text schema と完成済み canonical UUID schema だけを受け入れ、`canonical_*` が残る expand 中の状態・混在型・欠落 alias は拒否する。判定と失敗は DB handle 単位で固定し、同じ process のまま schema を切り替えない。frozen 起動は業務処理を開始せず、既存の接続先・ledger 証拠の取得だけを行う。
+通常起動は member reconciliation の最初の transaction より前に、entity、参照型、typed anchor、旧 replay table を一度検査する。旧 text schema は Summit が使う全 entity と参照を必須とし、存在する共有 entity も全て text であることを確認する。旧版にまだ存在しない Result 専用 table は要求しない。canonical schema は全 mutable entity・alias・typed anchor・replay table が完成した形を要求する。`canonical_*` が残る expand 中の状態・混在型・欠落 alias は拒否する。判定と失敗は DB handle 単位で固定し、同じ process のまま schema を切り替えない。frozen 起動は業務処理を開始せず、既存の接続先・ledger 証拠の取得だけを行う。
 
 新しい Session、Response、HeldEvent、member は一度生成した UUID を保存し、その文字列表記を新しい alias とする。過去の ID は変更しない。Session lock、回答の snowflake 順序、開催履歴・参加者と状態更新の一括 commit は従来の transaction 内に保つ。出欠通知の nullable `session_id` は text のまま親の `legacy_id` を参照し、結果通知の target も元の文字列から source row を照合する。
 

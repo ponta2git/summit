@@ -18,6 +18,9 @@ const REFERENCES = [
   ["held_event_participants", "held_event_id"], ["held_event_participants", "member_id"]
 ] as const;
 const ANCHORS = ["series_analysis_artifact_identities", "series_radar_basis_identities"] as const;
+// Older supported DB revisions predate result-only radar/campaign tables.
+// They still need every entity Summit reads and no partially converted entity.
+const LEGACY_REQUIRED = ["held_events", "match_drafts", "matches", "members", "momo_login_accounts", "responses", "sessions"] as const;
 
 export type IdentityColumn = {
   readonly table_name: string;
@@ -32,15 +35,17 @@ export const detectIdentityLayout = (rows: readonly IdentityColumn[]): IdentityL
     throw new Error("Unsupported or incomplete database identity layout");
   }
   const columns = new Map(rows.map(row => [`${row.table_name}.${row.column_name}`, row]));
+  const tables = new Set(rows.map(row => row.table_name));
   const has = (table: string, column: string, type: string, required = false): boolean => {
     const actual = columns.get(`${table}.${column}`);
     return actual?.udt_name === type && (!required || actual.is_nullable === "NO");
   };
-  const legacy = ENTITIES.every(table => has(table, "id", "text", true)
-    && !columns.has(`${table}.legacy_id`))
+  const legacy = LEGACY_REQUIRED.every(table => has(table, "id", "text", true))
+    && ENTITIES.every(table => !tables.has(table) || (has(table, "id", "text", true)
+      && !columns.has(`${table}.legacy_id`)))
     && REFERENCES.every(([table, column]) => has(table, column, "text"))
-    && ANCHORS.every(table => !columns.has(`${table}.id`))
-    && !columns.has("idempotency_keys_legacy.key")
+    && ANCHORS.every(table => !tables.has(table))
+    && !tables.has("idempotency_keys_legacy")
     && has("idempotency_keys", "key", "text", true);
   const canonical = ENTITIES.every(table => has(table, "id", "uuid", true)
     && has(table, "legacy_id", "text", true))

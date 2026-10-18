@@ -32,10 +32,24 @@ describe("database identity layout admission", () => {
     expect(detectIdentityLayout(fixture(true))).toBe("canonical_uuid");
   });
 
-  it.each([false, true])("rejects every missing contract column (canonical=%s)", canonical => {
-    const rows = fixture(canonical);
+  it("rejects every missing canonical contract column", () => {
+    const rows = fixture(true);
     for (let index = 0; index < rows.length; index += 1) {
       expect(() => detectIdentityLayout(rows.filter((_, candidate) => candidate !== index))).toThrow("identity layout");
+    }
+  });
+
+  it("accepts an older legacy schema while requiring consumed tables and rejecting partial conversion", () => {
+    const required = new Set(["held_events", "match_drafts", "matches", "members", "momo_login_accounts", "responses", "sessions",
+      "held_event_participants", "discord_notification_attendance", "idempotency_keys"]);
+    const rows = fixture(false).filter(row => required.has(row.table_name));
+    expect(detectIdentityLayout(rows)).toBe("legacy_text");
+    for (let index = 0; index < rows.length; index += 1) {
+      expect(() => detectIdentityLayout(rows.filter((_, candidate) => candidate !== index))).toThrow("identity layout");
+    }
+    for (const extra of [column("series_radar_candidates", "id", "uuid"), column("series_radar_candidates", "other", "text"),
+      column("series_analysis_artifact_identities", "legacy_id", "text")]) {
+      expect(() => detectIdentityLayout([...rows, extra])).toThrow("identity layout");
     }
   });
 
