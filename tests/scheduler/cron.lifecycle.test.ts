@@ -55,6 +55,24 @@ describe("cron callback lifetime", () => {
     expect(stop).toHaveBeenCalledTimes(3);
   });
 
+  it("reports a failed cron stop after all stop operations settle and still blocks later callbacks", async () => {
+    const failure = new Error("cron stop failed"); const lastStop = deferred<void>();
+    const stops = [vi.fn(async () => { throw failure; }), vi.fn(), vi.fn(() => lastStop.promise)];
+    const callbacks: Array<() => void | Promise<void>> = [];
+    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
+    const scheduler = createAskScheduler({ client: stubClient(undefined), context: createTestAppContext(), sendAsk,
+      cronAdapter: { schedule: (_expression, callback) => {
+        const stop = stops[callbacks.length]; if (!stop) { throw new Error("Unexpected cron registration"); }
+        callbacks.push(callback); return { stop };
+      } } });
+    scheduler.stop(); let settled = false;
+    const pending = scheduler.drain().catch(error => error).finally(() => { settled = true; });
+    await setImmediate(); expect(settled).toBe(false);
+    await Promise.all(callbacks.map(callback => callback())); expect(sendAsk).not.toHaveBeenCalled();
+    lastStop.resolve(); expect(await pending).toBe(failure);
+    for (const stop of stops) { expect(stop).toHaveBeenCalledOnce(); }
+  });
+
   it("retries an item failure reported by a reminder batch instead of treating the report as success", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-24T12:45:00Z");

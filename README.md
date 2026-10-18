@@ -80,6 +80,7 @@ Summit は secret とユーザー向け設定を分離します。
 | `summit.config.yml` | ローカルの非 secret 設定 | commit しない |
 | `summit.config.production.yml` | 実運用 ID を含む本番用ユーザー設定ソース | 非公開・Git 管理外（`.gitignore` 対象） |
 | `SUMMIT_CONFIG_YAML` | アプリが読む YAML 本文 | 本番では Fly secret |
+| `MOMO_MAINTENANCE_MODE` | 未指定 / `normal` は通常起動、`frozen` は[移行用の凍結起動](docs/operations/migration.md#凍結したままの起動と接続確認) | 対象環境の永続した起動設定 |
 
 ローカルの package script は `summit.config.yml` を `SUMMIT_CONFIG_YAML` に詰めて起動します。本番では deploy 前に production config の本文を `SUMMIT_CONFIG_YAML` Fly secret として stage します。
 

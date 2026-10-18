@@ -1,7 +1,12 @@
+import { allowsMaintenanceOperation } from "../../src/startup/maintenanceMode.ts";
+
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "postgres"]);
 
 /** Reject non-local targets before a development command issues any DB query. */
-export const assertLocalDatabase = (value: string): void => {
+export const assertLocalDatabase = (value: string, maintenanceMode?: string): void => {
+  if (!allowsMaintenanceOperation(maintenanceMode, false)) {
+    throw new Error("Development database writes are blocked by maintenance mode");
+  }
   let url: URL;
   try { url = new URL(value); }
   catch { throw new Error("A local PostgreSQL DATABASE_URL is required"); }

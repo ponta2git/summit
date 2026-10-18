@@ -11,7 +11,7 @@ import { env } from "../../src/env.ts";
 import { assertLocalDatabase } from "./localDatabase.ts";
 
 const run = async (): Promise<void> => {
-  assertLocalDatabase(env.DATABASE_URL);
+  assertLocalDatabase(env.DATABASE_URL, env.MOMO_MAINTENANCE_MODE);
   const inputs = buildMemberReconcileInputs(appConfig.memberUserIds, appConfig.memberDisplayNames);
   await reconcileMembers(inputs, db);
 

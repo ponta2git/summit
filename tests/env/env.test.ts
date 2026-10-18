@@ -15,6 +15,17 @@ describe("envSchema", () => {
 
     expect(parsed.SUMMIT_CONFIG_YAML).toBe("discord: {}");
     expect(parsed).not.toHaveProperty("DIRECT_URL");
+    expect(parsed.MOMO_MAINTENANCE_MODE).toBe("normal");
+  });
+
+  it("requires an operations token for frozen mode and rejects unknown maintenance values", () => {
+    expect(envSchema.parse({ ...validEnvInput, MOMO_MAINTENANCE_MODE: "normal" }).MOMO_MAINTENANCE_MODE).toBe("normal");
+    expect(envSchema.parse({ ...validEnvInput, MOMO_MAINTENANCE_MODE: "frozen",
+      RESULT_NOTIFICATION_OPERATIONS_TOKEN: "o".repeat(32) }).MOMO_MAINTENANCE_MODE).toBe("frozen");
+    expect(envSchema.safeParse({ ...validEnvInput, MOMO_MAINTENANCE_MODE: "frozen" }).success).toBe(false);
+    for (const mode of ["", "FROZEN", "drain", "false", "normal "]) {
+      expect(envSchema.safeParse({ ...validEnvInput, MOMO_MAINTENANCE_MODE: mode }).success).toBe(false);
+    }
   });
 
   it("rejects invalid inputs", () => {

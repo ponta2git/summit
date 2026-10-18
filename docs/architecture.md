@@ -115,12 +115,28 @@ hint 取得・tick・配送後の次時刻取得が失敗したら、有限 back
 
 | phase | 完了・回復の境界 |
 |---|---|
-| startup | readiness を閉じ、期限切れ claim、dead-letter chain、取り残された遷移、欠落 intent / message、期限超過を DB から回復する。各 phase 後に shutdown を確認する |
+| startup | readiness を閉じ、期限切れ claim、dead-letter chain、取り残された遷移、欠落 intent / message、期限超過を DB から回復する。各 phase 後に shutdown と maintenance admission を確認する |
 | ready 判定 | startup phase 完了と接続中を別に判定する。回復中の切断を見落とさず、ready と理由を log する。未 ready の Interaction は ephemeral で拒否する |
 | reconnect | `shardReady` / `shardResume` の接続世代を追跡する。開始前に in-flight lock を取り、成功完了から debounce する。失敗は次の再接続で再試行し、回復中の新世代要求を保持する。同期 / Effect の失敗でも lock を解放する |
-| shutdown | 新規受付と readiness を止め、startup・Interaction・reconnect・scheduler・outbox・A/B の処理中 work を上限付きで drain してから DB / Discord を閉じる。片方の失敗で他方の実 I/O の追跡を捨てない |
+| shutdown | 新規受付と readiness を止め、startup・Interaction・reconnect・scheduler・outbox・A/B の処理中 work を上限付きで drain してから DB / Discord を閉じる。片方の失敗で他方の実 I/O の追跡を捨てない。timeout / cleanup failure は成功と区別して exit 1 を返す |
 
 active message の存在 probe と出欠の FAILED chain 再投入は startup だけで行う。reconnect / tick に poison retry を持ち込まない。通常 edit の `UnknownMessage` は [Discord 規約 §5](./discord-rule.md#5-永続化後の表示更新) で回復する。shutdown と競合した HTTP listen は完了を待って close する。残った claim は次回起動で回復する。
+
+### 稼働中の移行 drain
+
+[maintenance controller](../src/startup/maintenanceDrain.ts) は通常 process 内の受付状態を readiness と独立して所有する。`admission` は新しい Interaction・reconnect・scheduler を止め、startup の次 phase を開始せず、通知設定 / retry を拒否する。受理済みの操作は実 I/O が settle するまで待つ。この段階では上流 producer からの receipt と結果通知配送を続ける。`all` はその receipt と dispatcher の新規 claim も止め、開始済みの受付・配送・確定を drain する。どちらの段階も通知設定の enabled / generation を変更しない。
+
+[運用 HTTP](../src/startup/maintenanceHttp.ts) は単一の operations token を要求し、通常の業務 readiness や command slot とは独立した枠で受付 / 状態取得を行う。POST の 202 は停止要求の受付であり、完了は GET の同じ cutoverId / stopEpoch / stage と writer 状態で確認する。control request は自身が待つ business drain の集合に入れず、listener を残して完了を観測できるようにする。本文512 byte・control同時2件・既存の本文 / 接続期限で制限する。
+
+同一 process では同一 cutover の段階前進だけを許し、他 cutover・異なる epoch・段階後退を拒否する。duplicate は処理を再起動せず現在値を返す。writer ごとの期限は通常 shutdown と同じで、期限後も実 I/O を追跡するが `timed_out` を遅延完了で `drained` に戻さない。stop / drain の失敗は固定分類で示し、他 writer の所有を維持する。`drained` は選択した process 内 writer の settlement であり、DB に未終端 work がないことや外部 writer の停止を意味しない。
+
+### 移行中の凍結起動
+
+`MOMO_MAINTENANCE_MODE` は未指定 / `normal` を通常起動、`frozen` を業務処理の凍結として起動時に検証する。未知値は失敗し、稼働中の mode 切替は行わない。[index](../src/index.ts) が通常 bootstrap の import より前に分岐するため、frozen は AppContext・通常 DB pool・Discord client・member reconcile・Interaction・reconnect・通知受付 / 配送・scheduler・startup recovery を生成も実行もしない。通知の enabled / generation と保存済み claim・payload・part は変更しない。
+
+frozen は [専用 readiness](../src/startup/maintenanceReadiness.ts) だけを private listener へ公開する。単一の operations token による認証後、[DB probe](../src/startup/maintenanceDatabase.ts) が read-only transaction と期限付きの `LIMIT 0` で同梱 schema の主要 consumer table / column の参照可能性を確認する。readiness は固定状態と接続先の opaque fingerprint を返し、DB 行・接続値・例外本文を含めない。制約・値の互換性、migration ledger、書込み権限、外部到達性はこの probe の検証対象に含めず、移行 gate で確認する。
+
+probe は同時に一つだけ所有し、応答期限や切断後も完了を追跡する。停止後は成功 readiness を返さず、listen の完了後に listener を閉じ、probe の settlement と DB pool の期限付き close を待つ。通常運転からは live drain の完了を確認し、永続した frozen 設定で再起動してから DB の停止点を確定する。live drain は process 内の状態なので、cutover 証跡と再起動時の frozen 維持は外部の共通 control が所有する。操作手順は [migration runbook](./operations/migration.md#凍結したままの起動と接続確認) を参照する。
 
 ### A/B の独立した受付と配送
 
@@ -160,7 +176,7 @@ runtime は parse 済み export を使い、個別 module で環境変数を読�
 
 member は固定 4 人・ID 重複なしを検証する。起動時 reconcile は identity と表示名を一 transaction で整合し、設定から消えた row を削除したり、配列順で過去の ID を再利用したりしない。
 
-A/B は受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。運用は [A/B runbook](./operations/result-notifications.md)。
+A/B は通常起動で受付 token、別の ops token、Web Origin の三つを揃えたときだけ有効にする。部分指定と同一 token を拒否する。frozen は ops token を必須とし、A/B を有効にしないため残る二つの設定は必須にしない。運用は [A/B runbook](./operations/result-notifications.md)。
 
 YAML は Bot と同期 CLI の共通 [parser](../src/userConfig.yaml.ts) で byte / alias 上限を適用し、warning を含む曖昧入力を拒否する。parser の入力断片を stderr に出さない。A/B token は Bearer 構文を検証し、HTTP は単一 Authorization だけを受理する。運用 CLI も本文読取まで deadline を維持し、実 byte 上限・UTF-8 / JSON を検証して失敗時の stream を回収する。
 

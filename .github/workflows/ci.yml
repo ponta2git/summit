@@ -190,3 +190,14 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
         working-directory: summit
+
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs: [static-baseline, runtime-image, integration-db]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every quality job to succeed
+        env:
+          QUALITY_JOBS_SUCCEEDED: ${{ needs.static-baseline.result == 'success' && needs.runtime-image.result == 'success' && needs.integration-db.result == 'success' }}
+        run: test "$QUALITY_JOBS_SUCCEEDED" = true
