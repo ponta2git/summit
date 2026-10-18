@@ -98,7 +98,8 @@ describe("frozen maintenance against real PostgreSQL", () => {
         expect(response.status).toBe(200);
         const body: unknown = await response.json();
         expect(body).toStrictEqual({ service: "summit", mode: "frozen", contract: "summit-read-schema-v1", ready: true,
-          targetFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+          database: { formatVersion: 1, targetFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+            ledgerFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) } });
         readinessReports.push(body);
         const refused = await fetch(`${process.origin}/internal/discord-notifications`, {
           method: "POST", headers: { authorization: `Bearer ${operationsToken}`, "content-type": "application/json" },
@@ -118,7 +119,25 @@ describe("frozen maintenance against real PostgreSQL", () => {
       await h.client`ALTER TABLE members RENAME COLUMN display_name TO unavailable_display_name`;
       try { await expect(database.probe()).rejects.toMatchObject({ cause: { code: "42703" } }); }
       finally { await h.client`ALTER TABLE members RENAME COLUMN unavailable_display_name TO display_name`; }
-      expect(await database.probe()).toBe(expected);
+      expect(await database.probe()).toStrictEqual(expected);
     } finally { await database.close(); }
+  });
+
+  it("detects a changed complete ledger and rejects invalid history without changing business rows", async () => {
+    const database = createMaintenanceDatabase(disposableDatabaseUrl());
+    const before = await snapshot();
+    const [lastMigration] = await h.client<{ id: number; hash: string }[]>`SELECT id, hash FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1`;
+    if (!lastMigration) { throw new Error("Expected applied migration history"); }
+    try {
+      const proof = await database.probe();
+      await h.client`UPDATE drizzle.__drizzle_migrations SET hash = ${"f".repeat(64)} WHERE id = ${lastMigration.id}`;
+      expect((await database.probe()).ledgerFingerprint).not.toBe(proof.ledgerFingerprint);
+      await h.client`UPDATE drizzle.__drizzle_migrations SET hash = 'invalid' WHERE id = ${lastMigration.id}`;
+      await expect(database.probe()).rejects.toThrow("proof is unavailable");
+      expect(await snapshot()).toStrictEqual(before);
+    } finally {
+      await h.client`UPDATE drizzle.__drizzle_migrations SET hash = ${lastMigration.hash} WHERE id = ${lastMigration.id}`;
+      await database.close();
+    }
   });
 });

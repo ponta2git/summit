@@ -95,7 +95,9 @@ readiness は `RESULT_NOTIFICATION_BIND_HOST` / `RESULT_NOTIFICATION_PORT` の p
 | `401` | operations 認証失敗。DB probe は実行しない |
 | `503` | DB 不可、probe 実行中、停止中、または凍結中の業務 endpoint。通常処理を始めて回復しない |
 
-readiness の成功だけで migration ledger、DB 制約・値の互換性、書込み権限、Discord 到達性や全 writer の停止を確認した扱いにしない。共通 runbook で他 consumer と外部処理の停止、未終端 work、接続先・revision、DB gate を別々に確認する。全 consumer の frozen 検証と再開判断が揃った後に、永続設定を `normal` へ戻して再起動する。以後の startup recovery は通常の業務書込み / Discord 送信を伴う。
+readiness の `database` は、実接続の database 名と接続先から作る `targetFingerprint`、全 migration ledger の `ledgerFingerprint`、`formatVersion: 1` を返す。raw な接続情報は返さない。API / worker / migration 接続と同じ v1 契約で比較し、復旧先の一部だけが切り替わった状態を拒否する。ledger が空・不正・読取り不可なら readiness は失敗する。接続 role は target digest に含めず、権限は別に検証する。
+
+readiness の成功だけで DB 制約・値の互換性、書込み権限、Discord 到達性や全 writer の停止を確認した扱いにしない。共通 runbook で他 consumer と外部処理の停止、未終端 work、期待する接続先・全 ledger、DB gate を別々に照合する。全 consumer の frozen 検証と再開判断が揃った後に、永続設定を `normal` へ戻して再起動する。以後の startup recovery は通常の業務書込み / Discord 送信を伴う。
 
 ## 本番への適用
 

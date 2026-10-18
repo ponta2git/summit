@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { Server, ServerResponse } from "node:http";
 import { createNotificationHttpServer } from "../notifications/http.connections.ts";
 import { isNotificationToken, isPrivateNotificationBind, RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS } from "../notifications/config.ts";
+import type { MaintenanceConnectionProof } from "./maintenanceConnectionProof.ts";
 
 interface MaintenanceReadiness {
   readonly server: Server;
@@ -18,7 +19,7 @@ const respond = (response: ServerResponse, status: number, body: unknown): void 
 
 /** Frozen exposes only an authenticated, bounded read probe; business endpoints cannot execute. */
 export const createMaintenanceReadiness = (
-  operationsToken: string, probe: () => Promise<string>
+  operationsToken: string, probe: () => Promise<MaintenanceConnectionProof>
 ): MaintenanceReadiness => {
   if (!isNotificationToken(operationsToken)) { throw new Error("Maintenance readiness requires an operations token"); }
   const digest = (value: string): Buffer => createHash("sha256").update(value).digest();
@@ -43,8 +44,8 @@ export const createMaintenanceReadiness = (
     if (stopped || active) { respond(response, 503, { ...state, ready: false }); return; }
     const deadline = setTimeout(() => respond(response, 503, { ...state, ready: false }), RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS);
     // Keep ownership even after the response deadline or caller disconnects.
-    active = Promise.resolve().then(probe).then(targetFingerprint => {
-      respond(response, stopped ? 503 : 200, { ...state, ready: !stopped, targetFingerprint });
+    active = Promise.resolve().then(probe).then(database => {
+      respond(response, stopped ? 503 : 200, { ...state, ready: !stopped, database });
       return undefined;
     }, () => { respond(response, 503, { ...state, ready: false }); return undefined; })
       .finally(() => { clearTimeout(deadline); active = undefined; });

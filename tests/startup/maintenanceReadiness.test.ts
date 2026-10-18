@@ -2,16 +2,17 @@ import { request } from "node:http";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMaintenanceReadiness } from "../../src/startup/maintenanceReadiness.ts";
+import type { MaintenanceConnectionProof } from "../../src/startup/maintenanceConnectionProof.ts";
 import { deferred } from "../helpers/deferred.ts";
 
 const token = "operations-test-token-".repeat(3);
-const fingerprint = "a".repeat(64);
-const expected = { service: "summit", mode: "frozen", contract: "summit-read-schema-v1", ready: true, targetFingerprint: fingerprint };
+const fingerprint = { formatVersion: 1, targetFingerprint: "a".repeat(64), ledgerFingerprint: "b".repeat(64) } as const;
+const expected = { service: "summit", mode: "frozen", contract: "summit-read-schema-v1", ready: true, database: fingerprint };
 
 describe("frozen maintenance readiness", () => {
   let runtime: ReturnType<typeof createMaintenanceReadiness> | undefined;
   let release: (() => void) | undefined;
-  const start = async (probe: () => Promise<string> = async () => fingerprint): Promise<string> => {
+  const start = async (probe: () => Promise<MaintenanceConnectionProof> = async () => fingerprint): Promise<string> => {
     runtime = createMaintenanceReadiness(token, probe);
     await runtime.start("127.0.0.1", 0);
     const address = runtime.server.address();
