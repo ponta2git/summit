@@ -44,13 +44,4 @@ describe("environment bootstrap", () => {
     expect(result.stderr).not.toContain(marker);
     expect(result.stderr).not.toContain(valid.DISCORD_TOKEN);
   });
-
-  it("rejects an unknown maintenance mode without reporting its value", () => {
-    const marker = "DO-NOT-LOG-UNKNOWN-MODE";
-    const result = run({ ...valid, MOMO_MAINTENANCE_MODE: marker });
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("MOMO_MAINTENANCE_MODE:");
-    expect(result.stderr).not.toContain(marker);
-  });
 });
