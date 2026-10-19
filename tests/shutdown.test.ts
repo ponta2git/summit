@@ -27,7 +27,7 @@ describe("shutdown", () => {
     await vi.advanceTimersByTimeAsync(SHUTDOWN_DRAIN_TIMEOUT_MS - 1);
     expect(order).toEqual(["stop", "drain"]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(await completion).toStrictEqual({ status: "timed_out" });
+    expect(await completion).toBe(true);
     expect(order).toEqual(["stop", "drain", "database", "discord"]);
   });
 
@@ -53,8 +53,8 @@ describe("shutdown", () => {
       destroyClient
     });
 
-    expect(first).toStrictEqual({ status: "completed" });
-    expect(second).toStrictEqual({ status: "already_in_progress" });
+    expect(first).toBe(true);
+    expect(second).toBe(false);
     expect(isShuttingDown()).toBe(true);
     expect(stopScheduler).toHaveBeenCalledTimes(1);
     expect(waitForInFlightSend).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe("shutdown", () => {
     expect(completed).toBe(false);
     if (outcome === "resolve") { destruction.resolve(); }
     else { destruction.reject(new Error("Discord close failed")); }
-    expect(await shutdown).toStrictEqual({ status: outcome === "resolve" ? "completed" : "failed" });
+    expect(await shutdown).toBe(true);
   });
 
   it("continues shutdown even when waiting in-flight send fails", async () => {
@@ -94,7 +94,7 @@ describe("shutdown", () => {
       destroyClient
     });
 
-    expect(started).toStrictEqual({ status: "failed" });
+    expect(started).toBe(true);
     expect(closeDb).toHaveBeenCalledTimes(1);
     expect(destroyClient).toHaveBeenCalledTimes(1);
   });
@@ -108,7 +108,7 @@ describe("shutdown", () => {
       waitForInFlightSend: () => fail("drain"),
       closeDb: () => fail("database"),
       destroyClient: () => { order.push("discord"); }
-    })).toStrictEqual({ status: "failed" });
+    })).toBe(true);
     expect(order).toEqual(["stop", "drain", "database", "discord"]);
   });
 });

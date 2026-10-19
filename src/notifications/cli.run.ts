@@ -1,7 +1,6 @@
 import { isNotificationToken, isPrivateNotificationBind, RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS, RESULT_NOTIFICATION_DEFAULT_PORT } from "./config.ts";
 import { parseDiscordNotificationId } from "@momo/db/notifications";
 import { NotificationResponseError, readNotificationResponse } from "./cli.response.ts";
-import { allowsMaintenanceOperation } from "../startup/maintenanceMode.ts";
 
 const usage = "Usage: notifications inspect <notification-id> | retry <notification-id> | settings <ocr_completed|analysis_completed> [on|off]";
 
@@ -26,9 +25,6 @@ export const runNotificationCli = async (
 ): Promise<void> => {
   if (args.length === 0 || args[0] === "--help") { output(usage); return; }
   const operation = buildNotificationOperation(args);
-  if (!allowsMaintenanceOperation(environment["MOMO_MAINTENANCE_MODE"], operation.method === "GET")) {
-    throw new Error("Notification operation is blocked by maintenance mode");
-  }
   const token = environment["RESULT_NOTIFICATION_OPERATIONS_TOKEN"];
   if (!token || !isNotificationToken(token)) { throw new Error("A valid RESULT_NOTIFICATION_OPERATIONS_TOKEN is required"); }
   const host = environment["RESULT_NOTIFICATION_BIND_HOST"] ?? "fly-local-6pn";

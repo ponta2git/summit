@@ -45,21 +45,6 @@ describe("command sync process ownership", () => {
     expect(await superviseCommandSync(["--token=PRIVATE"], {})).toStrictEqual({ status: "failed", reason: "usage" });
     expect(spawn).not.toHaveBeenCalled();
   });
-  it("rejects apply during frozen maintenance and all commands in unknown mode before spawning", async () => {
-    expect(await superviseCommandSync(["--production"], { ...environment, MOMO_MAINTENANCE_MODE: "frozen" }))
-      .toStrictEqual({ status: "failed", reason: "maintenance" });
-    expect(await superviseCommandSync(["--production", "--check"], { ...environment, MOMO_MAINTENANCE_MODE: "invalid" }))
-      .toStrictEqual({ status: "failed", reason: "maintenance" });
-    expect(spawn).not.toHaveBeenCalled();
-  });
-  it("propagates frozen mode to the read-only worker", async () => {
-    const worker = fixture(`
-      const safe = process.env.MOMO_MAINTENANCE_MODE === 'frozen' && process.argv.includes('--check');
-      process.send({ status: safe ? 'matched' : 'failed' }, () => process.exit(safe ? 0 : 1));
-    `);
-    expect(await superviseCommandSync(["--production", "--check"], { ...environment, MOMO_MAINTENANCE_MODE: "frozen" }, { worker }))
-      .toStrictEqual({ status: "matched" });
-  });
   it("projects IPC output, passes only required credentials and excludes shell/Node options", async () => {
     const worker = fixture(`
       const safe = process.env.DISCORD_TOKEN === 'PRIVATE' && !process.env.DATABASE_URL && !process.env.SUMMIT_CONFIG_YAML && !process.env.NODE_OPTIONS && !process.argv.includes('PRIVATE');

@@ -5,7 +5,7 @@ export const SYNC_RESPONSE_MAX_BYTES = 1_048_576;
 
 const completedStatuses = ["matched", "synced", "different"] as const;
 const failureReasons = ["usage", "fly_environment", "invalid_settings", "request_failed", "response_too_large",
-  "invalid_response", "verification_failed", "deadline_exceeded", "cancelled", "worker_failed", "maintenance"] as const;
+  "invalid_response", "verification_failed", "deadline_exceeded", "cancelled", "worker_failed"] as const;
 
 /** A confirmed outcome has no failure details; an unconfirmed outcome always explains why. */
 export type SyncReport =

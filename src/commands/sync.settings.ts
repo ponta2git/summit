@@ -1,6 +1,5 @@
 import type { SyncOptions } from "./sync.protocol.ts";
 import { parseUserConfigYaml } from "../userConfig.yaml.ts";
-import { allowsMaintenanceOperation } from "../startup/maintenanceMode.ts";
 
 export interface SyncSettings extends SyncOptions {
   readonly token: string;
@@ -14,7 +13,6 @@ const validId = (value: unknown): value is string => typeof value === "string" &
 export const readSyncSettings = async (
   options: SyncOptions, environment: Readonly<NodeJS.ProcessEnv>
 ): Promise<SyncSettings | undefined> => {
-  if (!allowsMaintenanceOperation(environment["MOMO_MAINTENANCE_MODE"], options.check)) { return undefined; }
   const token = environment["DISCORD_TOKEN"];
   if (!token || token.trim() !== token || /\s/.test(token)) { return undefined; }
   let applicationId = environment["DISCORD_APPLICATION_ID"];
