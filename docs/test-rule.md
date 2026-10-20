@@ -103,7 +103,7 @@ global setup が momo-db migration を一度適用し、setupFiles が file ご�
 
 TRUNCATE はその file 所有 DB だけに限定する。終了時に pool を閉じ、所有 prefix を確認して DB を削除する。setup 失敗・worker 異常終了時も global teardown が所有 DB を回収する。
 
-real DB は repository・constraint・transaction・migration consumer 契約を扱い、fake で十分な Discord flow を複製しない。CI は [workflow](../.github/workflows/ci.yml) の単一 `MOMO_DB_REF` で両 job の schema を固定し、更新時は ref と consumer を同時に検証する。
+real DB は repository・constraint・transaction・migration consumer 契約を扱い、fake で十分な Discord flow を複製しない。CI は [workflow](../.github/workflows/ci.yml) の `MOMO_DB_REF` で旧 schema、`MOMO_CANONICAL_DB_REF` で canonical schema を固定し、更新時は各 ref と対応する consumer を同時に検証する。
 
 ## 8. Quality gate
 

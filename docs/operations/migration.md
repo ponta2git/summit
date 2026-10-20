@@ -31,7 +31,7 @@ Summit consumer から見た schema migration の連携・適用・復旧手順�
    pnpm build
    ```
 
-4. 対象の momo-db migration を適用した disposable PostgreSQL に接続し、real DB consumer contract を検証する。local 実行できない場合も、同じ migration を適用する Summit CI の `integration-db` 完了を必須とする。
+4. 対象の momo-db migration を適用した disposable PostgreSQL に接続し、real DB consumer contract を検証する。local 実行の可否にかかわらず、対象 ref の migration を適用する Summit CI job の成功を確認する。今回の canonical 移行では `canonical-database` が対象であり、旧 ref の `integration-db` は代用しない。
 
    ```bash
    pnpm test:integration
@@ -125,6 +125,7 @@ rollback / recovery の DB authoring と data protection は `../momo-db/docs/de
 
 - `momo-db` CI: `db:check` で migration 履歴の整合性検証
 - `momo-db` CI: `drizzle/` 変更時に production approval 後だけ migration 実行
-- `summit` CI `integration-db` ジョブ: 実 postgres service に `momo-db` の `pnpm db:migrate` を流して integration テスト実行
+- `summit` CI `integration-db` ジョブ: `MOMO_DB_REF` の旧 schema を適用した PostgreSQL で integration テスト実行
+- `summit` CI `canonical-database` ジョブ: `MOMO_CANONICAL_DB_REF` の migration を適用した PostgreSQL で canonical consumer 契約と本番 image を検証
 
-これらが全 green になってから本番 deploy する。
+対象 gate の成功を本番適用の証拠とせず、適用済み履歴と対応 commit を照合してから本番 deploy する。

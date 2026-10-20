@@ -130,8 +130,8 @@ deploy 前に、対象環境の Fly アプリ名を `FLY_APP` に設定し、`fl
 1. Fly secrets に `DISCORD_TOKEN` / `DATABASE_URL` を設定する。
 2. ユーザー設定を変えた場合は `summit.config.production.yml` を更新する。
 3. `summit.config.production.yml` を変更した場合（初回を含む）は `fly secrets set --stage SUMMIT_CONFIG_YAML="$(cat summit.config.production.yml)" -a "${FLY_APP:?}"` を実行する。
-4. スキーマ変更を伴う場合は `momo-db` リポジトリで migration を先行適用する（`pnpm db:migrate` with 本番 `DIRECT_URL`）。
-5. デプロイ禁止窓外で、リポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only -a "${FLY_APP:?}"` を実行する。
+4. スキーマ変更を伴う場合は [momo-db の適用手順](../momo-db/docs/development.md#6-適用と-release-順序) に従い、対象 migration の本番適用と履歴確認を済ませる。
+5. Summit と親ディレクトリの momo-db が検証済みの対応 commit であることを確認し、デプロイ禁止窓外でリポジトリの親ディレクトリから `fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only -a "${FLY_APP:?}"` を実行する。
 6. slash command 定義を変えた場合だけ、[本番同期手順](./docs/operations/README.md#本番discordコマンド同期) に従い、運用 PC で `pnpm commands:sync:production --check` → 必要な場合のみ適用する。Fly 内や Bot 起動時には実行しない。
 
 本番 migration は deploy とは独立したオペレーションです（`release_command` なし）。スキーマ変更を伴う deploy は必ず migration を先行適用してください。
