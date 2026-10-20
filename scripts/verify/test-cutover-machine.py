@@ -27,7 +27,7 @@ def fixture():
 
 class FakeMachines:
     def __init__(self, plan):
-        self.state = {"id": plan["machineId"], "state": "started", "instance_id": "v1", "image_ref": {"digest": plan["sourceConfig"]["image"].split("@", 1)[1]}, "config": copy.deepcopy(plan["sourceConfig"]), "events": [{"type": "start", "status": "started", "timestamp": 1000}]}
+        self.state = {"id": plan["machineId"], "state": "started", "instance_id": "v1", "image_ref": {"digest": plan.get("sourceImage", plan["sourceConfig"]["image"]).split("@", 1)[1]}, "config": copy.deepcopy(plan["sourceConfig"]), "events": [{"type": "start", "status": "started", "timestamp": 1000}]}
         self.calls = []
         self.fail_update = False
         self.async_update = False
@@ -112,6 +112,51 @@ class CutoverTests(unittest.TestCase):
         cutover.operate(api, plan, "stage")
         self.assertEqual(api.state["config"], plan["maintenanceConfig"])
         self.assertEqual(api.state["state"], "stopped")
+
+    def test_tagged_source_is_verified_then_pinned_before_stage_and_restore(self):
+        plan = fixture()
+        plan["sourceImage"] = plan["sourceConfig"]["image"]
+        plan["sourceConfig"]["image"] = "registry.example/app:approved-old"
+        original = copy.deepcopy(plan["sourceConfig"])
+        api = FakeMachines(plan)
+        cutover.operate(api, plan, "stop")
+        expected = cutover.stopped_config(original)
+        expected["image"] = plan["sourceImage"]
+        self.assertEqual(api.state["config"], expected)
+        self.assertEqual(plan["sourceConfig"], original)
+        for action in ("stage", "observe", "restore-source"):
+            cutover.operate(api, plan, action)
+        self.assertEqual(api.state["config"], expected)
+        self.assertEqual(api.state["state"], "stopped")
+        api.calls.clear()
+        cutover.operate(api, plan, "stop")
+        self.assertFalse(any(method == "POST" for method, _, _ in api.calls))
+
+    def test_tagged_source_rejects_resolved_digest_or_tag_drift_before_mutation(self):
+        plan = fixture()
+        plan["sourceImage"] = plan["sourceConfig"]["image"]
+        plan["sourceConfig"]["image"] = "registry.example/app:approved-old"
+        for change in (
+            lambda state: state["image_ref"].update(digest="sha256:" + "c" * 64),
+            lambda state: state["config"].update(image="registry.example/app:other"),
+        ):
+            for action in ("stop", "restore-source"):
+                api = FakeMachines(plan)
+                change(api.state)
+                with self.assertRaises(cutover.Refused):
+                    cutover.operate(api, plan, action)
+                self.assertEqual([call[0] for call in api.calls], ["GET"])
+
+    def test_tagged_source_requires_immutable_separate_image_before_provider(self):
+        for source_image in (None, "registry.example/app:latest"):
+            plan = fixture()
+            api = FakeMachines(plan)
+            plan["sourceConfig"]["image"] = "registry.example/app:approved-old"
+            if source_image is not None:
+                plan["sourceImage"] = source_image
+            with self.assertRaises(cutover.Refused):
+                cutover.operate(api, plan, "stop")
+            self.assertEqual(api.calls, [])
 
     def test_restore_source_unknown_update_result_requires_reconciliation(self):
         plan = fixture()

@@ -92,7 +92,14 @@ def validate_plan(plan):
     for key in ("sourceConfig", "maintenanceConfig", "activeConfig"):
         config = plan[key]
         require(isinstance(config, dict) and config.get("guest"), "complete Machine config required")
-        require(re.fullmatch(r"[^\s]+@sha256:[a-f0-9]{64}", config.get("image", "")), "immutable image required")
+        image = config.get("image", "")
+        require(isinstance(image, str) and re.fullmatch(r"[^\s]+", image), "image reference required")
+        if key == "sourceConfig":
+            source_image = plan.get("sourceImage", image)
+            require(isinstance(source_image, str) and re.fullmatch(r"[^\s]+@sha256:[a-f0-9]{64}", source_image), "immutable sourceImage required for tagged source")
+            require("@" not in image or image == source_image, "source image expectation mismatch")
+        else:
+            require(re.fullmatch(r"[^\s]+@sha256:[a-f0-9]{64}", image), "immutable image required")
     maintenance = plan["maintenanceConfig"]
     require(maintenance == stopped_config(maintenance), "maintenance must disable restart and autostart")
     require(not maintenance.get("services"), "maintenance must remove public services")
@@ -175,8 +182,8 @@ def wait_active_logs(api, plan, machine):
         time.sleep(2)
 
 
-def config_matches(machine, config):
-    expected = config.get("image", "").split("@")[-1]
+def config_matches(machine, config, image=None):
+    expected = (image or config.get("image", "")).split("@")[-1]
     resolved = machine.get("image_ref", {}).get("digest")
     return digest(machine.get("config")) == digest(config) and resolved == expected
 
@@ -199,11 +206,13 @@ def operate(api, plan, action):
         return state
     require(state.get("state") in ("started", "stopped"), "Machine transition or unknown state; inspect first")
     source = plan["sourceConfig"]
+    source_image = plan.get("sourceImage", source["image"])
     stopped = stopped_config(source)
+    stopped["image"] = source_image
     maintenance = plan["maintenanceConfig"]
     active = plan["activeConfig"]
     stopped_active = stopped_config(active)
-    known = any(config_matches(state, config) for config in (source, stopped, maintenance, active, stopped_active))
+    known = config_matches(state, source, source_image) or any(config_matches(state, config) for config in (stopped, maintenance, active, stopped_active))
     require(known, "Machine configuration drift")
 
     def reload(expected, status):
@@ -217,7 +226,8 @@ def operate(api, plan, action):
             api.request("POST", "/stop", {"signal": "SIGTERM", "timeout": "60s"})
             api.request("GET", "/wait?state=stopped&timeout=60")
         result = api.request("GET")
-        require(result["state"] == "stopped" and config_matches(result, current["config"]), "stop result unknown")
+        current_image = source_image if current["config"] == source else current["config"]["image"]
+        require(result["state"] == "stopped" and config_matches(result, current["config"], current_image), "stop result unknown")
         return result
 
     def update(current, config):
@@ -227,7 +237,7 @@ def operate(api, plan, action):
         return reload(config, "stopped")
 
     if action == "stop":
-        guarded = stopped_config(state["config"])
+        guarded = stopped if config_matches(state, source, source_image) else stopped_config(state["config"])
         state = stop(state)
         return update(state, guarded) if not config_matches(state, guarded) else state
     if action == "restore-source":
