@@ -32,7 +32,7 @@ const baseSession = {
 } as const;
 
 const cancelInput = {
-  sentinelSessionId: "cancel-sentinel",
+  sentinelSessionId: "10000000-0000-4000-a000-000000000020",
   weekKey: baseSession.weekKey,
   candidateDateIso: baseSession.candidateDateIso,
   channelId: baseSession.channelId,
@@ -55,10 +55,10 @@ describeDb("session aggregate command contract (integration)", () => {
   });
 
   it("keeps the highest Discord interaction snowflake under delayed delivery", async () => {
-    await createAskSession(primary.db, { id: "interaction-session", ...baseSession });
+    await createAskSession(primary.db, { id: "10000000-0000-4000-a000-000000000021", ...baseSession });
     const common = {
-      responseId: "response-new",
-      sessionId: "interaction-session",
+      responseId: "10000000-0000-4000-a000-000000000022",
+      sessionId: "10000000-0000-4000-a000-000000000021",
       memberId: "m1",
       now: new Date("2026-04-24T12:29:00.000Z"),
       memberCountExpected: 4
@@ -71,7 +71,7 @@ describeDb("session aggregate command contract (integration)", () => {
     });
     const delayedOlder = await submitAskResponse(primary.db, {
       ...common,
-      responseId: "response-old",
+      responseId: "10000000-0000-4000-a000-000000000023",
       choice: "T2200",
       sourceInteractionId: "200"
     });
@@ -81,16 +81,16 @@ describeDb("session aggregate command contract (integration)", () => {
       kind: "stale_interaction",
       response: { choice: "T2330", sourceInteractionId: "300" }
     });
-    expect(await findSessionById(primary.db, "interaction-session"))
+    expect(await findSessionById(primary.db, "10000000-0000-4000-a000-000000000021"))
       .toMatchObject({ status: "ASKING", revision: 1 });
   });
 
   it("persists ABSENT, final state, and ordered notices in one command", async () => {
-    await createAskSession(primary.db, { id: "absent-session", ...baseSession });
+    await createAskSession(primary.db, { id: "10000000-0000-4000-a000-000000000024", ...baseSession });
 
     const result = await submitAskResponse(primary.db, {
-      responseId: "response-absent",
-      sessionId: "absent-session",
+      responseId: "10000000-0000-4000-a000-000000000025",
+      sessionId: "10000000-0000-4000-a000-000000000024",
       memberId: "m1",
       choice: "ABSENT",
       sourceInteractionId: "400",
@@ -125,7 +125,7 @@ describeDb("session aggregate command contract (integration)", () => {
   it("concurrent first-session creation and cancel_week converge to SKIPPED", async () => {
     const [cancelled] = await Promise.all([
       cancelWeekAtomically(primary.db, cancelInput),
-      createAskSession(contender.db, { id: "racing-ask", ...baseSession })
+      createAskSession(contender.db, { id: "10000000-0000-4000-a000-000000000026", ...baseSession })
     ]);
 
     expect(cancelled.kind).toMatch(/applied|already_skipped/);
@@ -139,7 +139,7 @@ describeDb("session aggregate command contract (integration)", () => {
   });
 
   it("cancel_week and HeldEvent completion never produce SKIPPED plus HeldEvent", async () => {
-    await createAskSession(primary.db, { id: "held-race", ...baseSession });
+    await createAskSession(primary.db, { id: "10000000-0000-4000-a000-000000000027", ...baseSession });
     const decidedStartAt = new Date("2026-04-24T14:00:00.000Z");
     await primary.db
       .update(sessions)
@@ -149,22 +149,22 @@ describeDb("session aggregate command contract (integration)", () => {
         reminderAt: new Date("2026-04-24T13:45:00.000Z"),
         revision: 1
       })
-      .where(eq(sessions.id, "held-race"));
+      .where(eq(sessions.legacyId, "10000000-0000-4000-a000-000000000027"));
 
     await Promise.all([
       cancelWeekAtomically(primary.db, {
         ...cancelInput,
-        sentinelSessionId: "unused-sentinel"
+        sentinelSessionId: "10000000-0000-4000-a000-000000000028"
       }),
       completeDecidedSessionAsHeld(contender.db, {
-        sessionId: "held-race",
+        sessionId: "10000000-0000-4000-a000-000000000027",
         reminderSentAt: new Date("2026-04-24T13:45:01.000Z"),
         memberIds: ["m1"]
       })
     ]);
 
-    const persisted = await findSessionById(primary.db, "held-race");
-    const held = await findHeldEventBySessionId(primary.db, "held-race");
+    const persisted = await findSessionById(primary.db, "10000000-0000-4000-a000-000000000027");
+    const held = await findHeldEventBySessionId(primary.db, "10000000-0000-4000-a000-000000000027");
     expect(
       (persisted?.status === "SKIPPED" && held === undefined) ||
       (persisted?.status === "COMPLETED" && held !== undefined)

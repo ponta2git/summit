@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  MOMO_DB_REF: 87d18c6159e6cb046d6bdc13e9802cc0d93df8a1
+  MOMO_DB_REF: 2559053f0684c60d344296f3171ca792f4e8e763
   MOMO_CANONICAL_DB_REF: 2559053f0684c60d344296f3171ca792f4e8e763
 
 jobs:
@@ -134,6 +134,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+        working-directory: summit
+
+      - name: Cutover operator failure contracts
+        run: python3 scripts/verify/test-cutover-machine.py
         working-directory: summit
 
       - name: Documentation topology

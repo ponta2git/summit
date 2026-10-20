@@ -23,11 +23,11 @@ const describeDb = isIntegration ? describe : describe.skip;
 
 describeDb("heldEvents repository contract (integration)", () => {
   const { db, client } = createIntegrationDb({ maxConnections: 4 });
-  const listParticipants = (heldEventId: string) => db.select().from(heldEventParticipants)
+  const listParticipants = (heldEventId: string) => db.select({ memberId: sql<string>`(SELECT legacy_id FROM members WHERE id = ${heldEventParticipants.memberId})` }).from(heldEventParticipants)
     .where(eq(heldEventParticipants.heldEventId, heldEventId));
 
   const baseSession = {
-    id: "sess-held",
+    id: "10000000-0000-4000-a000-000000000002",
     weekKey: "2026-W17",
     postponeCount: 0,
     candidateDateIso: "2026-04-24",
@@ -54,7 +54,7 @@ describeDb("heldEvents repository contract (integration)", () => {
         revision: 1,
         updatedAt: new Date("2026-04-24T12:31:00.000Z")
       })
-      .where(eq(sessions.id, baseSession.id));
+      .where(eq(sessions.legacyId, baseSession.id));
   };
 
   // tx: DECIDED→COMPLETED と held_events / held_event_participants 挿入を 1 tx で束ねる。
@@ -116,7 +116,7 @@ describeDb("heldEvents repository contract (integration)", () => {
     await decide();
     const locked = deferred<number>(); const release = deferred<void>();
     const blocker = db.transaction(async tx => {
-      await tx.select().from(sessions).where(eq(sessions.id, baseSession.id)).for("update");
+      await tx.select().from(sessions).where(eq(sessions.legacyId, baseSession.id)).for("update");
       const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);
       locked.resolve(backend!.pid); await release.promise;
     });
@@ -157,7 +157,7 @@ describeDb("heldEvents repository contract (integration)", () => {
     const [row] = await db
       .select()
       .from(sessions)
-      .where(eq(sessions.id, baseSession.id));
+      .where(eq(sessions.legacyId, baseSession.id));
     expect({ status: row?.status, reminderSentAt: row?.reminderSentAt }).toStrictEqual({
       status: "COMPLETED",
       reminderSentAt: new Date("2026-04-24T13:45:01.000Z")

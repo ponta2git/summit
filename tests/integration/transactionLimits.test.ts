@@ -1,3 +1,4 @@
+import { fixtureSession } from "./canonicalFixture.ts";
 import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { runTransaction } from "../../src/db/transaction.ts";
@@ -26,11 +27,11 @@ import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_su
 
   it("rolls back prior writes after a real SQL deadline and leaves the connection reusable", async () => {
     await expect(runTransaction(db, async tx => {
-      await tx.insert(sessions).values(makeSession());
+      await tx.insert(sessions).values(fixtureSession(makeSession()));
       await tx.execute(sql`SELECT pg_sleep(10)`);
     }, { lockTimeoutMs: 50, statementTimeoutMs: 150 })).rejects.toMatchObject({ cause: { code: "57014" } });
     expect(await db.select().from(sessions)).toEqual([]);
-    expect(await runTransaction(db, tx => tx.insert(sessions).values(makeSession()).returning({ id: sessions.id })))
+    expect(await runTransaction(db, tx => tx.insert(sessions).values(fixtureSession(makeSession())).returning({ id: sessions.legacyId })))
       .toEqual([{ id: "session-1" }]);
   });
 
@@ -45,7 +46,7 @@ import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_su
     await locked.promise;
     try {
       await expect(runTransaction(db, async tx => {
-        await tx.insert(sessions).values(makeSession());
+        await tx.insert(sessions).values(fixtureSession(makeSession()));
         await tx.execute(sql`SELECT pg_advisory_xact_lock(25010, 1)`);
       }, { lockTimeoutMs: 100, statementTimeoutMs: 1_000 })).rejects.toMatchObject({ cause: { code: "55P03" } });
       expect(await db.select().from(sessions)).toEqual([]);

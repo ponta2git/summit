@@ -46,16 +46,16 @@ describeDb("sessions repository contract (integration)", () => {
       if (column === "postpone_count") {
         await db.execute(sql`
           INSERT INTO sessions
-            (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at)
+            (id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at)
           VALUES
-            (${id}, '2026-W17', ${value}, '2026-04-24', 'ASKING', 'c1', now())
+            (gen_random_uuid(), ${id}, '2026-W17', ${value}, '2026-04-24', 'ASKING', 'c1', now())
         `);
       } else {
         await db.execute(sql`
           INSERT INTO sessions
-            (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at, revision)
+            (id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at, revision)
           VALUES
-            (${id}, '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', now(), ${value})
+            (gen_random_uuid(), ${id}, '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', now(), ${value})
         `);
       }
     } catch (error: unknown) {
@@ -69,28 +69,28 @@ describeDb("sessions repository contract (integration)", () => {
         (caught as Error).message
     );
     expect(causeMessage).toContain(constraint);
-    expect(await db.execute(sql`SELECT id FROM sessions WHERE id = ${id}`)).toHaveLength(0);
+    expect(await db.execute(sql`SELECT id FROM sessions WHERE legacy_id = ${id}`)).toHaveLength(0);
   });
 
   it("loads current-week status details in one read model and excludes terminal POSTPONED rows", async () => {
     await db.execute(sql`
       INSERT INTO sessions
-        (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at,
+        (id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at,
          decided_start_at, reminder_at)
       VALUES
-        ('status-asking', '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', '2026-04-24T12:30:00Z', NULL, NULL),
-        ('status-decided', '2026-W17', 1, '2026-04-25', 'DECIDED', 'c1', '2026-04-25T12:30:00Z', '2026-04-25T14:00:00Z', '2026-04-25T13:45:00Z'),
-        ('status-cancelled', '2026-W18', 1, '2026-05-02', 'CANCELLED', 'c1', '2026-05-02T12:30:00Z', NULL, NULL),
-        ('status-postponed', '2026-W18', 0, '2026-05-01', 'POSTPONED', 'c1', '2026-05-01T12:30:00Z', NULL, NULL),
-        ('status-old', '2026-W16', 0, '2026-04-17', 'ASKING', 'c1', '2026-04-17T12:30:00Z', NULL, NULL)
+        (gen_random_uuid(), 'status-asking', '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', '2026-04-24T12:30:00Z', NULL, NULL),
+        (gen_random_uuid(), 'status-decided', '2026-W17', 1, '2026-04-25', 'DECIDED', 'c1', '2026-04-25T12:30:00Z', '2026-04-25T14:00:00Z', '2026-04-25T13:45:00Z'),
+        (gen_random_uuid(), 'status-cancelled', '2026-W18', 1, '2026-05-02', 'CANCELLED', 'c1', '2026-05-02T12:30:00Z', NULL, NULL),
+        (gen_random_uuid(), 'status-postponed', '2026-W18', 0, '2026-05-01', 'POSTPONED', 'c1', '2026-05-01T12:30:00Z', NULL, NULL),
+        (gen_random_uuid(), 'status-old', '2026-W16', 0, '2026-04-17', 'ASKING', 'c1', '2026-04-17T12:30:00Z', NULL, NULL)
     `);
     await db.execute(sql`
-      INSERT INTO responses (id, session_id, member_id, choice)
-      VALUES ('status-response', 'status-asking', 'm1', 'T2200')
+      INSERT INTO responses (id, legacy_id, session_id, member_id, choice)
+      VALUES (gen_random_uuid(), 'status-response', (SELECT id FROM sessions WHERE legacy_id='status-asking'), (SELECT id FROM members WHERE legacy_id='m1'), 'T2200')
     `);
     await db.execute(sql`
-      INSERT INTO held_events (id, session_id, held_date_iso, start_at)
-      VALUES ('status-held', 'status-decided', '2026-04-25', '2026-04-25T14:00:00Z')
+      INSERT INTO held_events (id, legacy_id, session_id, held_date_iso, start_at)
+      VALUES (gen_random_uuid(), 'status-held', (SELECT id FROM sessions WHERE legacy_id='status-decided'), '2026-04-25', '2026-04-25T14:00:00Z')
     `);
 
     const snapshot = await loadCurrentWeekSnapshot(db, "2026-W17");
@@ -115,13 +115,13 @@ describeDb("sessions repository contract (integration)", () => {
     const now = new Date("2026-04-24T12:30:00.000Z");
     await db.execute(sql`
       INSERT INTO sessions
-        (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at,
+        (id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at,
          reminder_at, reminder_sent_at)
       VALUES
-        ('due-asking', '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', '2026-04-24T12:29:00Z', NULL, NULL),
-        ('due-postpone', '2026-W17', 1, '2026-04-25', 'POSTPONE_VOTING', 'c1', '2026-04-24T12:29:00Z', NULL, NULL),
-        ('due-legacy-reminder', '2026-W18', 0, '2026-05-01', 'DECIDED', 'c1', '2026-05-01T12:00:00Z', '2026-04-24T12:29:00Z', '2026-04-24T12:00:00Z'),
-        ('future-reminder', '2026-W19', 0, '2026-05-08', 'DECIDED', 'c1', '2026-05-08T12:00:00Z', '2026-04-24T12:31:00Z', NULL)
+        (gen_random_uuid(), 'due-asking', '2026-W17', 0, '2026-04-24', 'ASKING', 'c1', '2026-04-24T12:29:00Z', NULL, NULL),
+        (gen_random_uuid(), 'due-postpone', '2026-W17', 1, '2026-04-25', 'POSTPONE_VOTING', 'c1', '2026-04-24T12:29:00Z', NULL, NULL),
+        (gen_random_uuid(), 'due-legacy-reminder', '2026-W18', 0, '2026-05-01', 'DECIDED', 'c1', '2026-05-01T12:00:00Z', '2026-04-24T12:29:00Z', '2026-04-24T12:00:00Z'),
+        (gen_random_uuid(), 'future-reminder', '2026-W19', 0, '2026-05-08', 'DECIDED', 'c1', '2026-05-08T12:00:00Z', '2026-04-24T12:31:00Z', NULL)
     `);
 
     expect((await findDueStartupRecoverySessions(db, now)).map((session) => session.id))
@@ -136,10 +136,10 @@ describeDb("sessions repository contract (integration)", () => {
   it("keeps POSTPONED rows available to message recovery while excluding terminal rows", async () => {
     await db.execute(sql`
       INSERT INTO sessions
-        (id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at)
+        (id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id, deadline_at)
       VALUES
-        ('message-postponed', '2026-W17', 0, '2026-04-24', 'POSTPONED', 'c1', '2026-04-24T12:30:00Z'),
-        ('message-completed', '2026-W18', 0, '2026-05-01', 'COMPLETED', 'c1', '2026-05-01T12:30:00Z')
+        (gen_random_uuid(), 'message-postponed', '2026-W17', 0, '2026-04-24', 'POSTPONED', 'c1', '2026-04-24T12:30:00Z'),
+        (gen_random_uuid(), 'message-completed', '2026-W18', 0, '2026-05-01', 'COMPLETED', 'c1', '2026-05-01T12:30:00Z')
     `);
 
     expect((await findMessageRecoveryCandidates(db)).map((session) => session.id))

@@ -17,14 +17,14 @@ const flatten = (plan: PlanNode): readonly PlanNode[] => [plan, ...(plan.Plans ?
 
   it("reads index heads without scanning ten thousand completed sessions", async () => {
     await db.execute(sql`INSERT INTO sessions
-      (id, week_key, candidate_date_iso, status, channel_id, deadline_at)
-      SELECT 'history-' || n, 'history-' || n, '2026-04-24', 'COMPLETED', 'channel', '2026-04-24T12:30:00Z'
+      (id, legacy_id, week_key, candidate_date_iso, status, channel_id, deadline_at)
+      SELECT gen_random_uuid(), 'history-' || n, 'history-' || n, '2026-04-24', 'COMPLETED', 'channel', '2026-04-24T12:30:00Z'
       FROM generate_series(1, 10000) AS n`);
     await db.execute(sql`INSERT INTO sessions
-      (id, week_key, candidate_date_iso, status, channel_id, deadline_at, reminder_at)
-      VALUES ('asking', 'asking', '2026-04-24', 'ASKING', 'channel', '2026-04-24T12:30:00Z', NULL),
-        ('postpone', 'postpone', '2026-04-24', 'POSTPONE_VOTING', 'channel', '2026-04-24T15:00:00Z', NULL),
-        ('decided', 'decided', '2026-04-24', 'DECIDED', 'channel', '2026-04-24T12:30:00Z', '2026-04-24T13:45:00Z')`);
+      (id, legacy_id, week_key, candidate_date_iso, status, channel_id, deadline_at, reminder_at)
+      VALUES (gen_random_uuid(), 'asking', 'asking', '2026-04-24', 'ASKING', 'channel', '2026-04-24T12:30:00Z', NULL),
+        (gen_random_uuid(), 'postpone', 'postpone', '2026-04-24', 'POSTPONE_VOTING', 'channel', '2026-04-24T15:00:00Z', NULL),
+        (gen_random_uuid(), 'decided', 'decided', '2026-04-24', 'DECIDED', 'channel', '2026-04-24T12:30:00Z', '2026-04-24T13:45:00Z')`);
     await db.execute(sql`ANALYZE sessions`);
 
     const execute = vi.spyOn(db, "execute");

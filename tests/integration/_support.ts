@@ -1,3 +1,4 @@
+import { fixtureMember } from "./canonicalFixture.ts";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -37,14 +38,12 @@ export const createIntegrationDb = (options: { readonly maxConnections?: number 
 export const seedBaseMembers = async (
   db: ReturnType<typeof drizzle<typeof schema>>
 ): Promise<void> => {
-  await db.execute(sql`
-    INSERT INTO members (id, user_id, display_name) VALUES
-      ('m1','333333333333333333','Member1'),
-      ('m2','444444444444444444','Member2'),
-      ('m3','555555555555555555','Member3'),
-      ('m4','666666666666666666','Member4')
-    ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, display_name = EXCLUDED.display_name
-  `);
+  await db.insert(schema.members).values([
+    { id: "m1", userId: "333333333333333333", displayName: "Member1" },
+    { id: "m2", userId: "444444444444444444", displayName: "Member2" },
+    { id: "m3", userId: "555555555555555555", displayName: "Member3" },
+    { id: "m4", userId: "666666666666666666", displayName: "Member4" }
+  ].map(fixtureMember)).onConflictDoNothing();
 };
 
 /**

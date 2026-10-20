@@ -31,7 +31,7 @@ Summit consumer から見た schema migration の連携・適用・復旧手順�
    pnpm build
    ```
 
-4. 対象の momo-db migration を適用した disposable PostgreSQL に接続し、real DB consumer contract を検証する。local 実行の可否にかかわらず、対象 ref の migration を適用する Summit CI job の成功を確認する。今回の canonical 移行では `canonical-database` が対象であり、旧 ref の `integration-db` は代用しない。
+4. 対象の momo-db migration を適用した disposable PostgreSQL に接続し、real DB consumer contract を検証する。local 実行の可否にかかわらず、対象 ref の migration を適用する Summit CI job の成功を確認する。今回の canonical 移行では `canonical-database` が対象であり、`integration-db` の成功だけでは代用しない。
 
    ```bash
    pnpm test:integration
@@ -73,6 +73,16 @@ Session aggregate / ordered outbox migration は、重複 dedupe key と未対�
 A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。旧計画のdelivery contextが不明な場合は推測せず[通知運用](result-notifications.md#移行とrendererの保持)に従う。
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
+
+### Canonical 切替候補の公開と Machine 操作
+
+`deploy/production-mode.json` が `cutover` の期間は、専用 workflow の固定候補を使う。`cutover-image.yml` は master の対象 SHA と同じ CI 成功を確認し、AMD64 image の build、runtime 検証、脆弱性 scan 後に registry へ公開する。Machine は起動・更新しない。公開 artifact の image は Fly が報告する platform manifest digest に固定する。
+
+`cutover.yml` は同じ SHA の公開 artifact、private plan の hash、現在の master、production environment の承認を確認する。`stop`、`stage`、`observe`、`verify`、`resume` を別操作に分け、単一 Machine・image・設定・今回の boot を再照合する。保守起動は DB の読み取り専用自己報告を行い、Discord・scheduler・配送を開始しない。`resume` の readiness が得られない場合は停止し、自動再起動も無効にする。DB の適用・全件比較の成功は別の必須条件であり、保守 readiness で代用しない。
+
+`restore-source` は既知の構成を停止し、承認済み旧 image・設定を復元して停止状態を維持する。旧アプリの起動、readiness、DB 復元・互換性の確認は P3/P4 の承認済み復旧手順で別途行う。未確定の provider 結果は状態を読み直して分類し、未知の設定や部分更新を上書きしない。操作の出力は暗号化して保存する。
+
+GitHub environment の承認者・master 制限、Fly app 限定 token、証拠暗号化用公開鍵、固定候補に対応する private plan が必要である。workflow の追加や一時 fixture の合格だけで本番切替を開始しない。禁止窓と DB 側の最終 gate は引き続き適用する。
 
 ## ローカル開発 (setup 経由)
 
@@ -125,7 +135,7 @@ rollback / recovery の DB authoring と data protection は `../momo-db/docs/de
 
 - `momo-db` CI: `db:check` で migration 履歴の整合性検証
 - `momo-db` CI: `drizzle/` 変更時に production approval 後だけ migration 実行
-- `summit` CI `integration-db` ジョブ: `MOMO_DB_REF` の旧 schema を適用した PostgreSQL で integration テスト実行
+- `summit` CI `integration-db` ジョブ: `MOMO_DB_REF` の canonical schema を適用した PostgreSQL で integration テスト実行（切替候補の UUID fixture と一致させる）
 - `summit` CI `canonical-database` ジョブ: `MOMO_CANONICAL_DB_REF` の migration を適用した PostgreSQL で canonical consumer 契約と本番 image を検証
 
 対象 gate の成功を本番適用の証拠とせず、適用済み履歴と対応 commit を照合してから本番 deploy する。

@@ -1,3 +1,4 @@
+import { fixtureMember } from "./canonicalFixture.ts";
 import { inArray } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -15,10 +16,10 @@ const existingMembers = [
 describe("member identity reconciliation (integration)", () => {
   const { db } = createIntegrationDb();
   const userIds = [...existingMembers.map(member => member.userId), "777777777777777777"];
-  const findFixtureMembers = () => db.select().from(members).where(inArray(members.userId, userIds));
+  const findFixtureMembers = () => db.select({ id: members.legacyId, userId: members.userId, displayName: members.displayName, createdAt: members.createdAt }).from(members).where(inArray(members.userId, userIds));
   beforeEach(async () => {
     await db.delete(members).where(inArray(members.userId, userIds));
-    await db.insert(members).values(existingMembers);
+    await db.insert(members).values(existingMembers.map(fixtureMember));
   });
 
   it("adds a replacement without reusing the retained member's identity", async () => {

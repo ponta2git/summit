@@ -15,7 +15,7 @@ const describeDb = isIntegration ? describe : describe.skip;
 describeDb("responses read repository and schema contract (integration)", () => {
   const { db } = createIntegrationDb();
   const session = {
-    id: "sess-responses",
+    id: "10000000-0000-4000-a000-000000000003",
     weekKey: "2026-W17",
     postponeCount: 0,
     candidateDateIso: "2026-04-24",
@@ -38,8 +38,8 @@ describeDb("responses read repository and schema contract (integration)", () => 
 
   it("rejects an invalid choice at the database boundary", async () => {
     await expect(db.execute(sql`
-        INSERT INTO responses (id, session_id, member_id, choice, answered_at)
-        VALUES ('r-bad', ${session.id}, 'm1', 'INVALID_CHOICE', now())
+        INSERT INTO responses (id, legacy_id, session_id, member_id, choice, answered_at)
+        VALUES (gen_random_uuid(), 'r-bad', ${session.id}, (SELECT id FROM members WHERE legacy_id='m1'), 'INVALID_CHOICE', now())
       `)).rejects.toMatchObject({ cause: { code: "23514", constraint_name: "responses_choice_check" } });
   });
 });
