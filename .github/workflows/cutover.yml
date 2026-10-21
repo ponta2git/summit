@@ -54,7 +54,7 @@ jobs:
           [[ "$PRODUCER" =~ ^[0-9]+$ && "$ATTEMPT" =~ ^[0-9]+$ ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER/attempts/$ATTEMPT" > producer.json
           jq -e --arg sha "$CANDIDATE" '.head_sha == $sha and .conclusion == "success" and .path == ".github/workflows/cutover-image.yml" and .event == "workflow_dispatch"' producer.json
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.producer_run_id }}
