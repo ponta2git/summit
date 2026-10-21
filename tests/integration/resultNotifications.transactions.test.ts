@@ -1,3 +1,4 @@
+import { fixtureId } from "./canonicalFixture.ts";
 import { readFileSync } from "node:fs";
 import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -82,7 +83,7 @@ const barrier = () => {
     const changed = barrier(); const finish = barrier();
     const payload = ocrReceiptPayload();
     const source = h.db.transaction(async tx => {
-      await tx.update(matchDrafts).set({ status: "cancelled" }).where(eq(matchDrafts.id, payload.data.matchDraftId));
+      await tx.update(matchDrafts).set({ status: "cancelled" }).where(eq(matchDrafts.legacyId, payload.data.matchDraftId));
       changed.release(); await finish.promise;
       await lockNotificationFamily(tx, "result");
       await cancelNotification(tx, payload.notificationId, "draft_unavailable", now);
@@ -100,7 +101,7 @@ const barrier = () => {
     const payload = analysisNotification();
     await h.port.receive(JSON.stringify(payload), now);
     await h.db.update(matches).set({ noteBody: "Edited after receipt", noteVersion: 1n,
-      noteUpdatedAt: now, noteUpdatedByAccountId: "result-account" }).where(eq(matches.id, "match-1"));
+      noteUpdatedAt: now, noteUpdatedByAccountId: fixtureId("momo_login_accounts", "result-account") }).where(eq(matches.legacyId, "match-1"));
     const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
     expect(entry?.payload).toEqual(payload);
   });

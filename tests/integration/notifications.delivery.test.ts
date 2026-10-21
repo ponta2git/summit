@@ -1,3 +1,4 @@
+import { fixtureId } from "./canonicalFixture.ts";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { identityLayout } from "../../src/db/identities.ts";
@@ -99,12 +100,12 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     const { id, claimToken } = await prepare(2, kind);
     const locked = deferred<number>(); const release = deferred<void>();
     const source = h.db.transaction(async tx => {
-      if (change === "deleted match") { await tx.delete(matches).where(eq(matches.id, "match-1")); }
-      else if (change === "deleted draft") { await tx.delete(matchDrafts).where(eq(matchDrafts.id, "draft-1")); }
+      if (change === "deleted match") { await tx.delete(matches).where(eq(matches.legacyId, "match-1")); }
+      else if (change === "deleted draft") { await tx.delete(matchDrafts).where(eq(matchDrafts.legacyId, "draft-1")); }
       else {
         await tx.update(matchDrafts).set(change === "confirmed draft"
-          ? { status: "confirmed", confirmedMatchId: "match-1" } : { status: "cancelled" })
-          .where(eq(matchDrafts.id, "draft-1"));
+          ? { status: "confirmed", confirmedMatchId: fixtureId("matches", "match-1") } : { status: "cancelled" })
+          .where(eq(matchDrafts.legacyId, "draft-1"));
       }
       await lockNotificationFamily(tx, "result");
       // regression: retain setting/generation precedence even when source cancellation is also visible.

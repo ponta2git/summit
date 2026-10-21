@@ -1,3 +1,4 @@
+import { fixtureId } from "./canonicalFixture.ts";
 import { eq, sql } from "drizzle-orm";
 import type { DiscordResultNotification } from "@momo/db/notifications";
 import { discordNotificationSettings, matchDrafts, matches, momoLoginAccounts, gameTitles, mapMasters, seasonMasters, heldEvents } from "../../src/db/schema.ts";
@@ -16,14 +17,14 @@ export const createResultNotificationHarness = async () => {
   await truncatePerTestTables(db);
   await seedBaseMembers(db);
   await db.update(discordNotificationSettings).set({ enabled: true, generation: 0n });
-  await db.insert(momoLoginAccounts).values({ id: "result-account", discordUserId: "result-user", displayName: "Test account" }).onConflictDoNothing();
-  await db.insert(gameTitles).values({ id: "title-1", name: "Title", layoutFamily: "momotetsu_2" }).onConflictDoNothing();
-  await db.insert(mapMasters).values({ id: "map-1", gameTitleId: "title-1", name: "Map" }).onConflictDoNothing();
-  await db.insert(seasonMasters).values({ id: "season-1", gameTitleId: "title-1", name: "Season" }).onConflictDoNothing();
-  await db.insert(heldEvents).values({ id: "held-1", heldDateIso: "2026-09-08", startAt: notificationNow });
-  await db.insert(matchDrafts).values({ id: "draft-1", createdByAccountId: "result-account", status: "draft_ready" });
-  await db.insert(matches).values({ id: "match-1", heldEventId: "held-1", matchNoInEvent: 1, gameTitleId: "title-1", layoutFamily: "momotetsu_2",
-    mapMasterId: "map-1", seasonMasterId: "season-1", ownerMemberId: "m1", playedAt: notificationNow, createdByAccountId: "result-account" });
+  await db.insert(momoLoginAccounts).values({ id: fixtureId("momo_login_accounts", "result-account"), legacyId: "result-account", discordUserId: "result-user", displayName: "Test account" }).onConflictDoNothing();
+  await db.insert(gameTitles).values({ id: fixtureId("game_titles", "title-1"), legacyId: "title-1", name: "Title", layoutFamily: "momotetsu_2" }).onConflictDoNothing();
+  await db.insert(mapMasters).values({ id: fixtureId("map_masters", "map-1"), legacyId: "map-1", gameTitleId: fixtureId("game_titles", "title-1"), name: "Map" }).onConflictDoNothing();
+  await db.insert(seasonMasters).values({ id: fixtureId("season_masters", "season-1"), legacyId: "season-1", gameTitleId: fixtureId("game_titles", "title-1"), name: "Season" }).onConflictDoNothing();
+  await db.insert(heldEvents).values({ id: fixtureId("held_events", "held-1"), legacyId: "held-1", heldDateIso: "2026-09-08", startAt: notificationNow });
+  await db.insert(matchDrafts).values({ id: fixtureId("match_drafts", "draft-1"), legacyId: "draft-1", createdByAccountId: fixtureId("momo_login_accounts", "result-account"), status: "draft_ready" });
+  await db.insert(matches).values({ id: fixtureId("matches", "match-1"), legacyId: "match-1", legacyHeldEventId: "held-1", heldEventId: fixtureId("held_events", "held-1"), matchNoInEvent: 1, gameTitleId: fixtureId("game_titles", "title-1"), layoutFamily: "momotetsu_2",
+    mapMasterId: fixtureId("map_masters", "map-1"), seasonMasterId: fixtureId("season_masters", "season-1"), ownerMemberId: fixtureId("members", "m1"), playedAt: notificationNow, createdByAccountId: fixtureId("momo_login_accounts", "result-account") });
   return { db, client, port: makeResultNotificationsPort(db, checkNotificationAdmission),
     // Seed an already accepted snapshot without applying today's admission policy.
     seedStoredNotification: async (payload: DiscordResultNotification): Promise<void> => {
@@ -43,7 +44,7 @@ export const createResultNotificationHarness = async () => {
         }
       });
     },
-    deleteMatch: async () => { await db.delete(matches).where(eq(matches.id, "match-1")); },
+    deleteMatch: async () => { await db.delete(matches).where(eq(matches.legacyId, "match-1")); },
     countReceipts: async () => Number((await db.execute<{ count: number }>(sql`SELECT count(*)::int AS count FROM discord_notifications`))[0]?.count)
   };
 };

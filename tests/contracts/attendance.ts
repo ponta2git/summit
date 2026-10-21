@@ -13,10 +13,10 @@ export type AttendanceSeed = { sessions?: readonly SessionRow[]; responses?: rea
 export const attendanceMembers = ["m1", "m2", "m3", "m4"].map((id, i) => ({ id, userId: `user-${i}`, displayName: `Member ${i}` }));
 export const attendanceNow = new Date("2026-04-24T12:00:00.000Z");
 export const attendanceInput = {
-  responseId: "response-new", sessionId: "session-1", memberId: "m1", sourceInteractionId: "200",
+  responseId: "20000000-0000-4000-a000-000000000001", sessionId: "session-1", memberId: "m1", sourceInteractionId: "200",
   now: attendanceNow, memberCountExpected: 4
 };
-export const saturdayInput = { id: "saturday", candidateDateIso: "2026-04-25", deadlineAt: new Date("2026-04-25T12:30:00.000Z") };
+export const saturdayInput = { id: "10000000-0000-4000-a000-000000000004", candidateDateIso: "2026-04-25", deadlineAt: new Date("2026-04-25T12:30:00.000Z") };
 export const attendanceResponses = (choice: ResponseRow["choice"], ids = ["m1", "m2", "m3", "m4"]): ResponseRow[] =>
   ids.map((memberId, i) => makeResponse({ id: `response-${memberId}`, memberId, choice, sourceInteractionId: String(100 + i) }));
 export const attendanceIntent = (sessionId: string, revision = 0, ordinal = 0): EnqueueOutboxInput => ({
@@ -142,10 +142,10 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     });
 
     it("creates a unique session, elects one canonical message and returns independent values", async () => {
-      const h = await create(); const row = makeSession();
+      const h = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" });
       const created = await h.ports.sessions.createAskSession(row);
       expect(created).toMatchObject({ id: row.id, status: "ASKING", revision: 0 });
-      expect(await h.ports.sessions.createAskSession({ ...row, id: "duplicate" })).toBeUndefined();
+      expect(await h.ports.sessions.createAskSession({ ...row, id: "10000000-0000-4000-a000-000000000006" })).toBeUndefined();
       expect(await h.ports.sessions.findSessionByWeekKeyAndPostponeCount(row.weekKey, row.postponeCount))
         .toMatchObject({ id: row.id });
       expect(await h.ports.sessions.backfillAskMessageId(row.id, "first")).toBe(true);
@@ -155,7 +155,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     });
 
     it("rolls back session and all intents when the second ordered intent conflicts", async () => {
-      const h = await create(); const row = makeSession(); const before = await h.snapshot();
+      const h = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" }); const before = await h.snapshot();
       const first = attendanceIntent(row.id);
       await expect(h.ports.sessions.createAskSession({ ...row, outbox: [first, { ...first, dedupeKey: "different-key" }] })).rejects.toThrow(/./);
       expect(await h.snapshot()).toStrictEqual(before);
@@ -214,9 +214,9 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
         ? await h.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_OK" })
         : await h.ports.sessionCommands.settlePostponeVoting(input);
       expect(result).toMatchObject({ kind: "transitioned", outcome: "all_ok", session: { status: "POSTPONED", revision: 1 },
-        saturdaySession: { id: "saturday", status: "ASKING", weekKey: "2026-W17", postponeCount: 1, deadlineAt: saturdayInput.deadlineAt } });
-      expect(await h.ports.sessions.findSessionById("saturday")).toMatchObject({ status: "ASKING", revision: 0 });
-      expect(await h.intents()).toStrictEqual([{ sessionId: "saturday", dedupeKey: "ask-body-saturday", aggregateRevision: 0, ordinal: 0,
+        saturdaySession: { id: "10000000-0000-4000-a000-000000000004", status: "ASKING", weekKey: "2026-W17", postponeCount: 1, deadlineAt: saturdayInput.deadlineAt } });
+      expect(await h.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toMatchObject({ status: "ASKING", revision: 0 });
+      expect(await h.intents()).toStrictEqual([{ sessionId: "10000000-0000-4000-a000-000000000004", dedupeKey: "ask-body-10000000-0000-4000-a000-000000000004", aggregateRevision: 0, ordinal: 0,
         payload: { kind: "send_message", channelId: row.channelId, renderer: "ask_body", target: "askMessageId", extra: {} } }]);
       const before = await h.snapshot();
       expect(await h.ports.sessionCommands.settlePostponeVoting(input)).toMatchObject({ kind: "closed" });
@@ -231,7 +231,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       expect(result).toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "COMPLETED", revision: 1,
         cancelReason: reason === "ng" ? "postpone_ng" : "postpone_unanswered", deadlineAt: row.deadlineAt,
         updatedAt: reason === "ng" ? attendanceNow : row.deadlineAt } });
-      expect(await h.ports.sessions.findSessionById("saturday")).toBeUndefined();
+      expect(await h.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toBeUndefined();
       expect(await h.intents()).toStrictEqual([]);
     });
 

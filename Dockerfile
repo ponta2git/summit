@@ -39,6 +39,12 @@ RUN pnpm install --prod --frozen-lockfile
 
 # ── runtime ────────────────────────────────────────────────────────────────────
 FROM node:24-bookworm-slim AS runtime
+# Runtime needs Node only. Remove the bundled package manager and apply the
+# available Debian security update before switching to the application user.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --only-upgrade perl-base \
+ && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm \
+ && rm -f /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 ENV NODE_ENV=production
 

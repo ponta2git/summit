@@ -6,11 +6,11 @@ import { createAttendanceHarness } from "./_attendance.ts";
 
 const { create } = createAttendanceHarness();
 describe("attendance transaction failure boundaries", () => {
-  it("rolls back Session and HeldEvent if inserting a participant violates its member FK", async () => {
+  it("rolls back Session and HeldEvent when a participant refers to an unknown member", async () => {
     const h = await create({ sessions: [makeSession({ status: "DECIDED", decidedStartAt: new Date("2026-04-24T14:00:00Z") })] });
     const before = await h.snapshot();
     await expect(h.ports.heldEvents.completeDecidedSessionAsHeld({ sessionId: "session-1", reminderSentAt: new Date("2026-04-24T13:45:00Z"), memberIds: ["m1", "missing"] }))
-      .rejects.toMatchObject({ cause: { code: "23503" } });
+      .rejects.toMatchObject({ cause: { code: "23502", column_name: "member_id" } });
     expect(await h.snapshot()).toStrictEqual(before);
   });
 

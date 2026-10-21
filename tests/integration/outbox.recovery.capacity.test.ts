@@ -9,8 +9,8 @@ import { createIntegrationDb, isIntegration } from "./_support.ts";
 
   it("recovers chains across Session pages while preserving delivered parts and manual cancellation", async () => {
     const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE + 1;
-    await db.execute(sql`INSERT INTO sessions (id, week_key, candidate_date_iso, status, channel_id, deadline_at)
-      SELECT 'session-' || n, 'week-' || n, '2026-04-24', 'COMPLETED', 'channel', '2026-04-24T12:30:00Z'
+    await db.execute(sql`INSERT INTO sessions (id, legacy_id, week_key, candidate_date_iso, status, channel_id, deadline_at)
+      SELECT gen_random_uuid(), 'session-' || n, 'week-' || n, '2026-04-24', 'COMPLETED', 'channel', '2026-04-24T12:30:00Z'
       FROM generate_series(1, ${count}) n`);
     await db.execute(sql`INSERT INTO discord_notifications
       (id, family, kind, dedupe_key, payload, payload_hash, status, cancel_reason, terminal_at, part_count, renderer_version)

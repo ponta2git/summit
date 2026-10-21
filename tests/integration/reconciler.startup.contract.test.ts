@@ -50,12 +50,12 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     const decidedStartAt = new Date(bootNow.getTime() + 60 * 60 * 1000);
     await integrationDb.db.execute(sql`
       INSERT INTO sessions (
-        id, week_key, postpone_count, candidate_date_iso, status, channel_id,
+        id, legacy_id, week_key, postpone_count, candidate_date_iso, status, channel_id,
         ask_message_id, postpone_message_id,
         deadline_at, decided_start_at, reminder_at, reminder_sent_at,
         created_at, updated_at
       ) VALUES (
-        'sess-outbox-parent',
+        gen_random_uuid(), 'sess-outbox-parent',
         '2026-W17', 0, '2026-04-24', 'DECIDED', '999000000000000001',
         NULL, NULL,
         ${new Date(bootNow.getTime() - 24 * 60 * 60 * 1000).toISOString()},
@@ -123,7 +123,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
     const session = await integrationDb.db.execute<{
       reminder_sent_at: Date | null;
       status: string;
-    }>(sql`SELECT status, reminder_sent_at FROM sessions WHERE id='sess-outbox-parent'`);
+    }>(sql`SELECT status, reminder_sent_at FROM sessions WHERE legacy_id='sess-outbox-parent'`);
     expect(session[0]?.status).toBe("DECIDED");
     expect(session[0]?.reminder_sent_at).toBeNull();
 

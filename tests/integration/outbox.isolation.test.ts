@@ -1,3 +1,4 @@
+import { fixtureSession } from "./canonicalFixture.ts";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -22,7 +23,7 @@ describeDb("attendance outbox failure isolation (integration)", () => {
 
   beforeEach(async () => {
     await truncatePerTestTables(db);
-    await db.insert(sessions).values([first, second]);
+    await db.insert(sessions).values([first, second].map(fixtureSession));
   });
 
   it("dead-letters a malformed payload while claiming unrelated work and retaining diagnostics", async () => {

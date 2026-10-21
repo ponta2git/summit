@@ -13,7 +13,7 @@ import {
 } from "./_support.js";
 
 const baseSession = {
-  id: "sess-outbox",
+  id: "10000000-0000-4000-a000-000000000001",
   weekKey: "2026-W17",
   postponeCount: 0,
   candidateDateIso: "2026-04-24",
