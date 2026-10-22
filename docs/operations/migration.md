@@ -74,17 +74,11 @@ A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。
 
 **禁止**: `fly ssh` 経由で生 SQL (`DROP` / `TRUNCATE` / 手動 `UPDATE`) を流すこと (`docs/db-rule.md`)。
 
-### Canonical 切替候補の公開と Machine 操作
+### Canonical 切替後の運用
 
-`deploy/production-mode.json` が `cutover` の期間は、専用 workflow の固定候補を使う。`cutover-image.yml` は master の対象 SHA と同じ CI 成功を確認し、AMD64 image の build、runtime 検証、脆弱性 scan 後に registry へ公開する。Machine は起動・更新しない。公開 artifact の image は Fly が報告する platform manifest digest に固定する。
+停止切替と通常運用への復帰は完了し、切替専用の `cutover-image.yml` と `cutover.yml` は撤去した。今後の配備は[通常のデプロイ手順](README.md)と DB 側の release 順序に従う。旧 schema 向け image を現在の DB に戻さない。
 
-`cutover.yml` は同じ SHA の公開 artifact、private plan の hash、現在の master、production environment の承認を確認する。`stop`、`stage`、`observe`、`verify`、`resume` を別操作に分け、単一 Machine・image・設定・今回の boot を再照合する。保守起動は DB の読み取り専用自己報告を行い、Discord・scheduler・配送を開始しない。`resume` の readiness が得られない場合は停止し、自動再起動も無効にする。DB の適用・全件比較の成功は別の必須条件であり、保守 readiness で代用しない。
-
-現行 Machine が tag 指定なら、private plan の `sourceConfig` は取得した設定のまま保存し、別の `sourceImage` に観測済み digest の完全な参照を指定する。設定原文と実 digest の両方を確認し、`stop` 後にその digest へ固定する。
-
-`restore-source` は既知の構成を停止し、承認済み旧 image・設定を復元して停止状態を維持する。旧アプリの起動、readiness、DB 復元・互換性の確認は P3/P4 の承認済み復旧手順で別途行う。未確定の provider 結果は状態を読み直して分類し、未知の設定や部分更新を上書きしない。操作の出力は暗号化して保存する。
-
-GitHub environment の承認者・master 制限、Fly app 限定 token、証拠暗号化用公開鍵、固定候補に対応する private plan が必要である。workflow の追加や一時 fixture の合格だけで本番切替を開始しない。禁止窓と DB 側の最終 gate は引き続き適用する。
+保守起動、残留した切替設定による通常起動の拒否、Machine 操作 script とそのテストは保持する。過去の固定候補・private plan を現在の本番操作に流用せず、再度の停止切替が必要なら現在の DB・consumer・backup を確認し、新しい手順と承認を用意する。保存した backup と暗号化証拠は workflow の撤去とは別に保持する。
 
 ## ローカル開発 (setup 経由)
 
