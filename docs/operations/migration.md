@@ -76,7 +76,7 @@ A/Bのrenderer・宛先・部分計画も保存済み通知と対応させる。
 
 ### Canonical 切替後の運用
 
-停止切替と通常運用への復帰は完了し、切替専用の `cutover-image.yml` と `cutover.yml` は撤去した。今後の配備は[通常のデプロイ手順](README.md)と DB 側の release 順序に従う。旧 schema 向け image を現在の DB に戻さない。
+停止切替と通常運用への復帰は完了し、切替専用の `cutover-image.yml` と `cutover.yml` は撤去した。今後の配備は[通常のデプロイ手順](../../README.md)と DB 側の release 順序に従う。旧 schema 向け image を現在の DB に戻さない。
 
 保守起動、残留した切替設定による通常起動の拒否、Machine 操作 script とそのテストは保持する。過去の固定候補・private plan を現在の本番操作に流用せず、再度の停止切替が必要なら現在の DB・consumer・backup を確認し、新しい手順と承認を用意する。保存した backup と暗号化証拠は workflow の撤去とは別に保持する。
 
