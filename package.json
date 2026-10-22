@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Discord Bot for weekly Momotetsu attendance automation",
   "engines": {
-    "node": "24.x"
+    "node": ">=24.22.1 <25"
   },
   "packageManager": "pnpm@11.20.0",
   "scripts": {

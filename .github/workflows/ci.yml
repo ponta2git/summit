@@ -52,6 +52,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.x
+          check-latest: true
           cache: pnpm
           cache-dependency-path: summit/pnpm-lock.yaml
       - name: Build canonical public database types
@@ -70,7 +71,7 @@ jobs:
         run: pnpm test:integration tests/integration/canonicalIdentities.contract.test.ts
         working-directory: summit
       - name: Build canonical production image
-        run: docker build --file summit/Dockerfile --tag summit-canonical-runtime-check .
+        run: docker build --pull --file summit/Dockerfile --tag summit-canonical-runtime-check .
       - name: Verify isolated canonical runtime
         run: pnpm verify:runtime-image summit-canonical-runtime-check
         working-directory: summit
@@ -102,6 +103,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 24.x
+          check-latest: true
           cache: pnpm
           cache-dependency-path: summit/pnpm-lock.yaml
 
@@ -189,6 +191,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 24.x
+          check-latest: true
           cache: pnpm
           cache-dependency-path: summit/pnpm-lock.yaml
       - name: Install verification schema dependencies
@@ -198,7 +201,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: summit
       - name: Build production image
-        run: docker build --file summit/Dockerfile --tag summit-runtime-check .
+        run: docker build --pull --file summit/Dockerfile --tag summit-runtime-check .
       - name: Verify isolated runtime
         run: node summit/scripts/verify/runtimeImage.ts summit-runtime-check
       - name: Verify notification capacity at 256 MiB with 192 MiB target
@@ -245,6 +248,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 24.x
+          check-latest: true
           cache: pnpm
           cache-dependency-path: summit/pnpm-lock.yaml
 

@@ -2,6 +2,9 @@
 # Usage: cd .. && fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only
 
 FROM node:24-bookworm-slim AS base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV PNPM_HOME="/pnpm"
 ENV PATH="${PNPM_HOME}:${PATH}"
@@ -42,6 +45,7 @@ FROM node:24-bookworm-slim AS runtime
 # Runtime needs Node only. Remove the bundled package manager and apply the
 # available Debian security update before switching to the application user.
 RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
  && apt-get install -y --no-install-recommends --only-upgrade perl-base \
  && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm \
  && rm -f /usr/local/bin/npm /usr/local/bin/npx
