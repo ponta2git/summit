@@ -83,9 +83,7 @@ pnpm notifications settings ocr_completed on
 
 ## 移行とrendererの保持
 
-[migration.md](migration.md#共有通知への停止切替)に従い、全writer・配送停止、復元確認済みbackup、対応するmomo-db・Summit・momo-result APIを揃える。
-
-0044でdelivery contextを追加し、0045で通知の業務関数・triggerを撤去する。旧関数を呼ぶconsumerと、triggerに取消を依存するwriterを稼働させない。停止中に戻す場合はDBと全consumerを対応した組合せで戻し、再開後は新規データを守るforward fixを原則とする。
+[migration.md](migration.md#共有通知の互換性)に従い、対応する momo-db・Summit・momo-result API を揃える。通知取消は各 writer の業務 transaction が担い、撤去済みの通知業務関数・trigger に依存しない。復旧は現在の DB と互換な consumer を使い、再開後のデータを守る forward fix を原則とする。
 
 保持中のresultで `partCount>0` なのに旧宛先contextがない場合、`unsupported_renderer`へ収束する。現在の宛先で続きを送ることはしない。旧renderer・分割・宛先を確認できる回復版を別途検証する。単純retryでは原因は解消しない。
 
