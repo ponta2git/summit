@@ -122,7 +122,7 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
         if (scenario === "normal") {
           await Promise.all([post(fixture(index++, "normal"), "analysis"), post(ocr(index++), "ocr")]);
         } else {
-          const secondMode = scenario === "soak" ? "markdown" : scenario;
+          const secondMode: string = scenario === "soak" ? "markdown" : scenario;
           assert.ok(secondMode === "unicode" || secondMode === "markdown" || secondMode === "parts");
           const firstMode = scenario === "soak" ? "unicode" : secondMode;
           await Promise.all([post(fixture(index++, firstMode), "analysis"), post(fixture(index++, secondMode), "analysis")]);

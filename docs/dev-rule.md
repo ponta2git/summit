@@ -6,7 +6,7 @@ toolchain、command、外部資料、source の書き方、local DB、Git / PR �
 
 Node.js / pnpm は `package.json` と mise の固定 version を使う。package manager を切り替えず、lockfile を手編集しない。optional peer を含め必要な tool を manifest に明示し、peer の自動 install を有効へ戻さない。
 
-開発 entrypoint / script は Node.js 24 の native TypeScript、production は build 後の JavaScript を実行する。ESM と relative import の `.ts` を正規形とし、build が `.js` へ rewrite する。CommonJS・暗黙の extension 解決・erase できない syntax を追加しない。native 実行は型検査ではないため、code gate で typecheck / build も通す。
+開発 entrypoint / script は Node.js 26 の native TypeScript、production は build 後の JavaScript を実行する。ESM と relative import の `.ts` を正規形とし、build が `.js` へ rewrite する。CommonJS・暗黙の extension 解決・erase できない syntax を追加しない。native 実行は型検査ではないため、code gate で typecheck / build も通す。
 
 別の TypeScript runtime は、現在の ESM / import を扱えなくなった場合や non-erasable syntax が実要件になった場合に再評価する。
 
