@@ -49,7 +49,7 @@ describe("notification HTTP connection ownership", () => {
     harness = await createHttpHarness();
     const client = await open();
     const reply: Buffer[] = [];
-    client.on("data", chunk => reply.push(chunk));
+    client.on("data", chunk => reply.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk));
     const closed = waitForClose(client);
     client.end(["GET /internal/discord-notifications/settings/ocr_completed HTTP/1.1", "Host: localhost",
       `Authorization: Bearer ${operationsToken}`, `Authorization: Bearer ${receiverToken}`, "Connection: close", "", ""].join("\r\n"));
@@ -63,7 +63,7 @@ describe("notification HTTP connection ownership", () => {
       harness = await createHttpHarness();
       const client = await open();
       const reply: Buffer[] = [];
-      client.on("data", chunk => reply.push(chunk));
+      client.on("data", chunk => reply.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk));
       const closed = waitForClose(client);
       client.end([`GET ${path} HTTP/1.1`, "Host: localhost", `Authorization: Bearer ${operationsToken}`,
         "Connection: close", "", ""].join("\r\n"));
