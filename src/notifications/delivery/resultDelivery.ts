@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import * as Effect from "effect/Effect";
 import type { ResultNotificationsPort } from "../../db/ports.resultNotifications.ts";
 import { OUTBOX_BACKOFF_MS_SEQUENCE, OUTBOX_CLAIM_DURATION_MS, RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../config.ts";
-import { DatabaseError } from "../../errors/index.ts";
+import { DatabaseError, InvariantViolationError } from "../../errors/index.ts";
 import { fromDatabaseCall } from "../../errors/effect.ts";
 import { getTextChannel } from "../../discord/shared/channels.ts";
 import { sendResultMessage } from "../../discord/shared/sendResultMessage.ts";
@@ -29,7 +29,8 @@ type DeliveryFailure = DatabaseError | DiscordDeliveryFailure;
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
 const boundedSend = <T>(io: ResultIoLedger, owner: ResultIoOwner, operation: "channel" | "send", partNo: number | null,
   canStart: () => boolean, send: () => Promise<T>): Effect.Effect<T | undefined, DiscordDeliveryFailure> =>
-  promiseCall(() => canStart() ? io.run(owner, operation, partNo, send) : Promise.resolve(undefined)).pipe(Effect.mapError(cause => new DiscordDeliveryFailure(cause)), Effect.timeoutOrElse({
+  promiseCall(() => canStart() ? io.run(owner, operation, partNo, send) : Promise.resolve(undefined)).pipe(
+    Effect.catch(cause => cause instanceof InvariantViolationError ? Effect.die(cause) : Effect.fail(new DiscordDeliveryFailure(cause))), Effect.timeoutOrElse({
     duration: RESULT_NOTIFICATION_SEND_TIMEOUT_MS,
     orElse: () => Effect.fail(new DiscordDeliveryFailure())
   }), Effect.ensuring(Effect.sync(() => io.detach(owner.id))));

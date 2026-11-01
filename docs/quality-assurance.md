@@ -43,6 +43,7 @@
 | 信頼性・性能・高 | SDK の送信・channel 取得が45秒を超え、20分未完了になる | 論理配送と実未完了 I/O の owner 和集合で2件・元本文512 KiBを予約。旧巨大通知の単独予約、遅延成功、stop / drain、警告数と実完了後の再開を[障害注入](../tests/scheduler/resultNotifications.pendingIo.test.ts)・[台帳](../tests/notifications/resultIo.test.ts)で検証 |
 | 信頼性・高 | renew の応答喪失・未応答、clock jump、同期処理によるtimer遅延 | 独立した期限監視と直前guard、uncertain中の新規停止、同じclaimの期限内回復、停止中のDB所有を[heartbeat](../tests/scheduler/claimHeartbeat.recovery.test.ts)と[実DB](../tests/integration/notifications.leaseClock.test.ts)で検証 |
 | 信頼性・性能・高 | 通知DB応答喪失、family gateの占有、待機中stop | family 2/全体3の実未settle上限とproducer 34件、期限優先/FIFO、未開始HTTP 5秒、stop時no-opを[待機列](../tests/notifications/databaseAdmission.test.ts)・[実DB](../tests/integration/notifications.admission.test.ts)で検証。通知以外のDB待ち全体が消える保証ではない |
+| 信頼性・性能・高 | 次時刻照会の応答喪失、空き枠がある状態で期日を跨ぐ | [pump進捗](../tests/notifications/resultRuntime.progress.test.ts)で20分の単一照会所有・警告上限・復帰と、期日を跨いだ候補のtimer再設定を検証 |
 | 信頼性・性能・高 | 受付待機で解析木を保持する、新規検証失敗が既存duplicateを壊す | 同期preparationから元JSON・最小DTO・固定結果だけを渡す。[DTO境界](../tests/notifications/receiptPreparation.test.ts)と[エラー優先順](../tests/integration/resultNotifications.preparation.test.ts)を検証。duplicateの追加CPUは性能比較の対象 |
 | 信頼性・高 | stop / drain の先頭で同期 throw、destroy を遅延・reject させる | 全 owner を呼び、非同期 destroy 完了を待つ。[lifecycle](../tests/runtime/lifecycle.test.ts)、[shutdown](../tests/shutdown.test.ts) |
 | 信頼性・中 | metrics を失敗させる、cron 登録を途中で失敗させる | 観測と回復の失敗分離、登録済み task の回収。[cron lifecycle](../tests/scheduler/cron.lifecycle.test.ts) |

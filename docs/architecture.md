@@ -93,7 +93,7 @@ env / config 不正、`assertNever`、成立しない起動前提は fail-fast �
 
 timeout は待機の限界であり、Discord send や DB commit が取り消された証拠ではない。中断できない I/O の完了待ちは timeout 後も続き得る。write を一般的な Effect retry で繰り返さず、durable claim・nonce・CAS による回復を使う。
 
-通知transactionはroot DB handle単位の有界待機列を通し、familyごと2件・全体3件の実未settle数を制限する。内部待機はclaim/pumpの同じPromise内に留め、poll・attempt・DB backoffを増やさない。未開始のstop/expiryはportでno-opへ変換し、漏れたNotStartedやproducerのinvariant違反はEffect境界で通常のDB failureへ変換しない。producer上限・優先順位・PG gateとの境界は[DB規約](./db-rule.md#配送の境界)に定める。shutdownはproducer停止後に待機列を止め、開始済みDB workのdrainを既存の全体期限へ含める。
+通知transactionはroot DB handle単位の有界待機列を通し、familyごと2件・全体3件の実未settle数を制限する。内部待機はclaim/pumpの同じPromise内に留め、poll・attempt・DB backoffを増やさない。未開始のstop/expiryはportでno-opへ変換し、漏れたNotStartedやproducerのinvariant違反はEffect境界で通常のDB failureへ変換しない。producer上限・優先順位・PG gateとの境界は[DB規約](./db-rule.md#配送の境界)に定める。次時刻照会が未settleの間も同じpumpが所有し、重複pumpを開始せず90秒以降は最大1分1件で監視する。claim開始後に期日を迎えた候補には最小timerを再設定し、残留SDK ownerがいても空き容量を使えるようにする。shutdownはproducer停止後に待機列を止め、開始済みDB workのdrainを既存の全体期限へ含める。
 
 message 再作成は channel 取得後の send と message ID 保存までを中断から保護する。取得待機中の interruption 後に新しい send を始めない。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 

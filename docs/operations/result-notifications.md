@@ -80,6 +80,7 @@ pnpm notifications settings ocr_completed on
 - DB一時障害では有限backoff後に待機する。既存supervisorか新しい受付・再接続wakeで再開する。idle時の常時pollingを増やして対処しない。
 - `lease_uncertain` は更新失敗または1 heartbeat周期未応答による新規送信の一時停止。確認済み期限内に更新を確認できれば同じclaimで再開する。期限切れや更新拒否は `claim_lost` となり、遅い成功でも旧配送を復活させない。開始済み送信の確定は引き続きCASで試みる。
 - `notification.database_pending` は実未完了DB workの最古age・family別件数・renew件数・待機件数を示す。最古90秒で警告し、最大1分に1回、全3枠が5分占有されたら調査対象とする。COMMIT後の応答喪失か、gate保持中かをDB側の接続/lockと照合する。枠を手動解放したり自動再起動したりせず、必要な本番復旧は既存の承認・runbookに従う。未開始HTTPは5秒で503となるが、開始済みcommandは実settlementまで所有する。
+- `result_notification.database_pending` はclaimまたは次時刻照会のpumpが90秒以上未完了であることを示す。`phase` と `elapsedMs` を確認する。未完了の照会は保持し、別pumpで迂回しない。最大1分1件で警告し、DB接続・通信を調査する。
 - `shutdown.drain_timeout` は未完了claimが残り得ることを示す。次の起動後に同じIDを確認する。
 - A/Bの長文・失敗と出欠通知の配送は独立する。出欠側の警告は別runbookで判断する。
 

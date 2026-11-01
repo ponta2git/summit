@@ -12,6 +12,7 @@ import { deferred } from "../helpers/deferred.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
 import type { ClaimLease } from "../../src/time/lease.ts";
+import { InvariantViolationError } from "../../src/errors/index.ts";
 
 describe("result notification delivery", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(notificationNow); });
@@ -47,6 +48,18 @@ describe("result notification delivery", () => {
     expect(fail).not.toHaveBeenCalled();
     expect(await h.port.inspect(id)).toMatchObject({ status: "IN_FLIGHT", lastError: null });
     expect(h.channel.send).not.toHaveBeenCalled();
+  });
+
+  it("preserves a ledger invariant as a defect instead of consuming a Discord retry", async () => {
+    const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
+    const failure = new InvariantViolationError("Invalid result I/O reservation");
+    vi.spyOn(h.io, "run").mockImplementation(() => { throw failure; });
+    const fail = vi.spyOn(h.port, "fail");
+    const exit = await runEffect(Effect.exit(deliverPreparedResultNotification(h, prepareResultDelivery(entry, h.context))));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) { throw new Error("Expected a ledger defect"); }
+    expect(Cause.hasDies(exit.cause)).toBe(true); expect(Cause.squash(exit.cause)).toBe(failure);
+    expect(fail).not.toHaveBeenCalled(); expect(h.channel.send).not.toHaveBeenCalled();
   });
 
   it("preserves a Discord failure combined with a heartbeat defect without normal retry finalization", async () => {
