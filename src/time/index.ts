@@ -18,10 +18,12 @@ import {
 
 export interface Clock {
   now(): Date;
+  readonly monotonicNow?: () => number;
 }
 
 export const systemClock: Clock = {
-  now: () => new Date()
+  now: () => new Date(),
+  monotonicNow: () => performance.now()
 };
 
 export const isUtcMillisecondTimestamp = (value: string): boolean => {

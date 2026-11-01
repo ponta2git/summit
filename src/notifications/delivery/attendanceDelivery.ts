@@ -17,7 +17,7 @@ import type { SinglePostInput, SinglePostStrategy } from "./strategies/singlePos
 import type { DeliveryExecution } from "./capacity.ts";
 import { addMs } from "../../time/index.ts";
 import { catchExpectedError, settledCall } from "../../runtime/effect.ts";
-import { withClaimHeartbeat } from "./claimHeartbeat.ts";
+import { withClaimHeartbeat, type ClaimOwnership } from "./claimHeartbeat.ts";
 
 /**
  * Compute next_attempt_at from the current attempt count via exponential backoff.
@@ -54,7 +54,8 @@ const prepareDelivery = Effect.fnUntraced(function* (
   entry: OutboxDeliveryMetadata,
   claimToken: string,
   notification: AttendanceNotification,
-  isStopping: () => boolean
+  isStopping: () => boolean,
+  ownership: ClaimOwnership
 ): Effect.fn.Return<PreparedDelivery | undefined, unknown> {
   if (isStopping()) { return; }
   if (notification === undefined) {
@@ -84,8 +85,9 @@ const prepareDelivery = Effect.fnUntraced(function* (
     return;
   }
 
-  const channel = yield* settledCall(() => getTextChannel(client, notification.channelId));
-  if (isStopping()) { return; }
+  if (!(yield* ownership.awaitOwnership())) { return; }
+  const channel = yield* settledCall(() => ownership.canStart() ? getTextChannel(client, notification.channelId) : Promise.resolve(undefined));
+  if (!channel || !(yield* ownership.awaitOwnership()) || isStopping()) { return; }
   const canSend = yield* settledCall(() => ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() }));
   if (!canSend) {
     logger.info(
@@ -149,19 +151,21 @@ const deliverClaimedEntry = (
   claimToken: string,
   render: Effect.Effect<AttendanceNotification, unknown>,
   isStopping: () => boolean,
+  ownership: ClaimOwnership,
   strategy: SinglePostStrategy
 ): Effect.Effect<void, unknown> => {
   const preparation = Effect.suspend(() => isStopping() ? Effect.succeed(undefined) : render).pipe(
-    Effect.flatMap(notification => prepareDelivery(client, ctx, entry, claimToken, notification, isStopping))
+    Effect.flatMap(notification => prepareDelivery(client, ctx, entry, claimToken, notification, isStopping, ownership))
   );
   return catchExpectedError(preparation,
     error => recordDeliveryFailure(ctx, entry, claimToken, error).pipe(Effect.as(undefined))).pipe(
-    Effect.flatMap(prepared => {
-      if (prepared === undefined || isStopping()) { return Effect.void; }
+    Effect.flatMap(prepared => Effect.gen(function* () {
+      if (prepared === undefined || isStopping()) { return; }
+      if (!(yield* ownership.awaitOwnership())) { return; }
       // invariant: send 開始後は中断要求があっても成功保存または失敗確定まで所有する。
-      return catchExpectedError(strategy(prepared, { isStopping }),
+      yield* catchExpectedError(strategy(prepared, { isStopping: () => isStopping() || !ownership.canStart() }),
         error => recordDeliveryFailure(ctx, entry, claimToken, error)).pipe(Effect.uninterruptible);
-    })
+    }))
   );
 };
 
@@ -176,9 +180,9 @@ export const deliverOutboxEntry = (
   const metadata: OutboxDeliveryMetadata = {
     id: entry.id, sessionId: entry.sessionId, dedupeKey: entry.dedupeKey, attemptCount: entry.attemptCount
   };
-  if (!claimToken) {
+  if (!claimToken || !entry.lease) {
     return Effect.sync(() => {
-      logger.error({ event: "outbox.missing_claim_token", outboxId: metadata.id, sessionId: metadata.sessionId },
+      logger.error({ event: !claimToken ? "outbox.missing_claim_token" : "outbox.missing_claim_lease", outboxId: metadata.id, sessionId: metadata.sessionId },
         "Outbox worker received an unfenced claim.");
     });
   }
@@ -186,6 +190,8 @@ export const deliverOutboxEntry = (
   const render = Effect.suspend(() => adapters.prepareNotification(ctx, entry, claimToken));
   return withClaimHeartbeat({
     intervalMs: OUTBOX_HEARTBEAT_MS,
+    lease: entry.lease, clock: ctx.clock, isStopping: execution.isStopping,
+    ...(execution.stopSignal ? { stopSignal: execution.stopSignal } : {}),
     renew: () => ctx.ports.outbox.renewClaim(metadata.id, {
       claimToken, now: ctx.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS
     }),
@@ -193,6 +199,6 @@ export const deliverOutboxEntry = (
       logger.warn({ event: reason === "uncertain" ? "outbox.lease_uncertain" : "outbox.claim_lost",
         outboxId: metadata.id, sessionId: metadata.sessionId });
     }
-  }, isClaimLost => deliverClaimedEntry(client, ctx, metadata, claimToken, render,
-    () => execution.isStopping() || isClaimLost(), adapters.strategy));
+  }, ownership => deliverClaimedEntry(client, ctx, metadata, claimToken, render,
+    () => execution.isStopping() || ownership.state() === "lost", ownership, adapters.strategy));
 };

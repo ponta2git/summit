@@ -94,6 +94,7 @@ export const SHUTDOWN_DRAIN_TIMEOUT_MS = 20_000;
 export const NOTIFICATION_PENDING_WARN_AFTER_MS = 90_000;
 export const NOTIFICATION_SATURATED_WARN_AFTER_MS = 300_000;
 export const NOTIFICATION_PENDING_WARNING_INTERVAL_MS = 60_000;
+export const NOTIFICATION_LEASE_RETRY_MS = [1_000, 2_000, 4_000] as const;
 // why: DB/Discord 障害中の連打でも業務処理と拒否応答の owned work を有限に保つ。
 export const INTERACTION_CONCURRENCY = 32;
 export const INTERACTION_REJECTION_CONCURRENCY = 4;

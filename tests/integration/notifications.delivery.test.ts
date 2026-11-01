@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import { fixtureId } from "./canonicalFixture.ts";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -138,7 +139,7 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(queries).toHaveLength(1);
     expect(queries[0]).toContain("information_schema.columns");
     queries.length = 0;
-    const measured = makeResultNotificationsPort(measuredDb, checkNotificationAdmission);
+    const measured = makeResultNotificationsPort(measuredDb, checkNotificationAdmission, repositoryClock);
     expect(await measured.begin(id, 0, claimToken, now)).toBe(true);
     expect(await measured.complete(id, 0, claimToken, "message", at(1))).toBe(true);
     // why: postgres.js の BEGIN / COMMIT 各2回は別に発行され、合計16 SQL・2 transactionsとなる。

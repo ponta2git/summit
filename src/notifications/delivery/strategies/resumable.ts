@@ -6,8 +6,9 @@ export interface ResumableDelivery<Part, E> {
   readonly partCount: number;
   readonly deliveredPartNos: readonly number[];
   readonly shouldStop: () => boolean;
+  readonly awaitOwnership?: () => Effect.Effect<boolean>;
   readonly begin: (partNo: number) => Effect.Effect<boolean, E>;
-  readonly send: (partNo: number, part: Part) => Effect.Effect<string, E>;
+  readonly send: (partNo: number, part: Part) => Effect.Effect<string | undefined, E>;
   readonly complete: (partNo: number, messageId: string) => Effect.Effect<boolean, E>;
   readonly consumeYieldRequest: () => boolean;
   readonly yield: (partNo: number) => Effect.Effect<boolean, E>;
@@ -31,9 +32,12 @@ export const deliverResumable: ResumableStrategy = <Part, E>(delivery: Resumable
       const partNo = nextPartNo++;
       if (delivery.deliveredPartNos[deliveredIndex] === partNo) { deliveredIndex += 1; continue; }
       if (delivery.shouldStop()) { return; }
+      if (delivery.awaitOwnership && !(yield* delivery.awaitOwnership())) { return; }
       if (!(yield* delivery.begin(partNo))) { return; }
+      if (delivery.awaitOwnership && !(yield* delivery.awaitOwnership())) { return; }
       if (delivery.shouldStop()) { return; }
       const messageId = yield* delivery.send(partNo, part);
+      if (messageId === undefined) { return; }
       // invariant: 送信開始後の停止・lease lostでも、既知のmessage IDの確定を必ず試みる。
       if (!(yield* delivery.complete(partNo, messageId))) { return; }
       if (nextPartNo < delivery.partCount && !delivery.shouldStop() && delivery.consumeYieldRequest()

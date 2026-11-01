@@ -26,10 +26,11 @@ export const resultWorkerHarness = () => {
   const client = stubClient(channel);
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   let stopping = false;
+  const stopController = new AbortController();
   const context = { channelId: "channel-1", webOrigin: "https://momo.example.com" };
   const io = createResultIoLedger({ logger });
-  const deps = { port, clock, client, logger, context, io, strategy: deliverResumable, isStopping: () => stopping };
-  return { ...deps, channel, stop: () => { stopping = true; },
+  const deps = { port, clock, client, logger, context, io, strategy: deliverResumable, isStopping: () => stopping, stopSignal: stopController.signal };
+  return { ...deps, channel, stop: () => { stopping = true; stopController.abort(); },
     enqueue: async (jobId = "job-1", summary = "長いメモ。".repeat(800)) => {
       const original = analysisNotification();
       const payload = { ...original, notificationId: `result:analysis_completed:${jobId}`, sourceJobId: jobId, data: { ...original.data, matches: original.data.matches.map(match => ({ ...match, note: summary })) } };

@@ -89,6 +89,8 @@ Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確�
 
 両 family とも通知 ID / part から安定 nonce を生成し、Discord の短時間の重複抑止を利用する。nonce の保持期間を越えた配送保証には使わない。時刻取得は状態を書き戻す境界でも行う。
 
+通知 repository は Clock を受け取り、family gate 取得後に現在時刻を読む。業務の発生時刻とは別に、claim / renew の期限は更新直前に採取した wall / monotonic の対を基準にする。時計補正で command の受付時刻より過去へ戻さず、その基準から保存する expiresAt とローカルの期間上限を同時に決める。返答受信時から新しく30秒を与えない。port の claim はこの観測を含み、renew は確認した観測または拒否の null を返す。begin・complete・fail・yield・plan の有効期限確認も gate 待機前の時刻だけに依存しない。[実DBのgate待ち・commit応答喪失](../tests/integration/notifications.leaseClock.test.ts)で検証する。
+
 reminder tick は enqueue までを行う。Discord 受理後に Session 完了と HeldEvent を原子的に確定し、その後 delivered を記録する。送信 skip の経路も同じ完了 command を使う。再送の可能性があっても、開催履歴を欠落させない。
 
 ### 回復

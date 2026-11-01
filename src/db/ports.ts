@@ -39,6 +39,7 @@ import type {
   SubmitPostponeVoteResult
 } from "./repositories/sessionCommands.ts";
 import type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
+import type { ClaimLease } from "../time/lease.ts";
 export type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
 
 export type {
@@ -214,7 +215,7 @@ export interface OutboxPort {
     readonly claimToken: string;
     readonly now: Date;
     readonly claimDurationMs: number;
-  }): Promise<boolean>;
+  }): Promise<ClaimLease | null>;
   markDelivered(
     id: string,
     options: {

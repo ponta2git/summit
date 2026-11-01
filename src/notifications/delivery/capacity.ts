@@ -14,6 +14,7 @@ export interface DeliveryBudget {
 
 export interface DeliveryExecution {
   readonly isStopping: () => boolean;
+  readonly stopSignal?: AbortSignal;
 }
 
 export interface DeliveryCapacity {
@@ -37,6 +38,8 @@ export const createDeliveryCapacity = (options: {
   const scope = Scope.makeUnsafe();
   const active = new Map<string, { readonly payloadBytes: number; readonly completed: Deferred.Deferred<void> }>();
   let stopped = false;
+  const stopController = new AbortController();
+  const stop = (): void => { stopped = true; stopController.abort(); };
   const snapshot = (): DeliveryBudget => {
     const owners = new Map([...active].map(([id, item]) => [id, item.payloadBytes]));
     for (const owner of options.retained?.() ?? []) {
@@ -52,7 +55,7 @@ export const createDeliveryCapacity = (options: {
   return {
     snapshot,
     isStopping: () => stopped,
-    stop: () => { stopped = true; },
+    stop,
     start: <E>(id: string, payloadBytes: number, work: (execution: DeliveryExecution) => Effect.Effect<void, E>): Effect.Effect<Fiber.Fiber<void, E>> =>
       Effect.uninterruptible(Effect.gen(function* () {
         const completed = yield* Effect.sync(() => {
@@ -65,7 +68,7 @@ export const createDeliveryCapacity = (options: {
           active.set(id, { payloadBytes, completed: settlement });
           return settlement;
         });
-        const execution: DeliveryExecution = { isStopping: () => stopped };
+        const execution: DeliveryExecution = { isStopping: () => stopped, stopSignal: stopController.signal };
         const owned = Effect.suspend(() => work(execution)).pipe(Effect.onExit(exit =>
           Effect.sync(() => { active.delete(id); options.onSettled?.(id, exit); })
             .pipe(Effect.ensuring(Deferred.succeed(completed, undefined)))));
@@ -73,6 +76,6 @@ export const createDeliveryCapacity = (options: {
         return yield* Effect.forkIn(owned, scope, { startImmediately: true, uninterruptible: false });
       })),
     drain: () => Effect.suspend(() => Effect.asVoid(Effect.forEach([...active.values()], item => Deferred.await(item.completed), { concurrency: "unbounded" }))),
-    close: () => Effect.suspend(() => { stopped = true; return Scope.close(scope, Exit.void); })
+    close: () => Effect.suspend(() => { stop(); return Scope.close(scope, Exit.void); })
   };
 };

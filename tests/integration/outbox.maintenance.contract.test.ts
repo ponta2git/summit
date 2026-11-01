@@ -1,15 +1,8 @@
+import { claimNextOutboxBatch, beginOutboxDelivery, markOutboxDelivered, markOutboxFailed } from "./_notificationClock.ts";
 import { isNull, sql } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  claimNextOutboxBatch,
-  beginOutboxDelivery,
-  enqueueOutbox,
-  getOutboxMetrics,
-  markOutboxDelivered,
-  markOutboxFailed,
-  pruneOutbox
-} from "../../src/db/repositories/outbox.js";
+import { enqueueOutbox, getOutboxMetrics, pruneOutbox } from "../../src/db/repositories/outbox.js";
 import { discordNotifications } from "../../src/db/schema.js";
 import { createOutboxContractHarness } from "./_outboxContract.js";
 import { isIntegration } from "./_support.js";

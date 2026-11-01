@@ -78,6 +78,7 @@ pnpm notifications settings ocr_completed on
 - 起動時と受付commit後にwakeする。Discord再接続中もstartup完了後なら永続受付できる。
 - 送信中のclaim失効は旧ownerの確定を拒否し、次回回収で未配送部分を再開する。送信上限を過ぎた不明な送達も保存済みnonceを使う。
 - DB一時障害では有限backoff後に待機する。既存supervisorか新しい受付・再接続wakeで再開する。idle時の常時pollingを増やして対処しない。
+- `lease_uncertain` は更新失敗または1 heartbeat周期未応答による新規送信の一時停止。確認済み期限内に更新を確認できれば同じclaimで再開する。期限切れや更新拒否は `claim_lost` となり、遅い成功でも旧配送を復活させない。開始済み送信の確定は引き続きCASで試みる。
 - `shutdown.drain_timeout` は未完了claimが残り得ることを示す。次の起動後に同じIDを確認する。
 - A/Bの長文・失敗と出欠通知の配送は独立する。出欠側の警告は別runbookで判断する。
 

@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import { beforeEach, describe, expect, it } from "vitest";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
 import { makeResultNotificationsPort } from "../../src/db/repositories/resultNotifications.ts";
@@ -80,7 +81,7 @@ import { isIntegration } from "./_support.ts";
 
   it("does not commit a receipt that fails the injected rendering budget", async () => {
     const base = analysisNotification();
-    const port = makeResultNotificationsPort(h.db, () => { throw new NotificationInputError("payload_too_large"); });
+    const port = makeResultNotificationsPort(h.db, () => { throw new NotificationInputError("payload_too_large"); }, repositoryClock);
     await expect(port.receive(JSON.stringify(base), now)).rejects.toMatchObject({ code: "payload_too_large" });
     expect(await h.countReceipts()).toBe(0);
     expect(await h.client`SELECT * FROM discord_notification_results`).toHaveLength(0);

@@ -26,8 +26,8 @@ type DeliveryFailure = DatabaseError | DiscordDeliveryFailure;
 
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
 const boundedSend = <T>(io: ResultIoLedger, owner: ResultIoOwner, operation: "channel" | "send", partNo: number | null,
-  send: () => Promise<T>): Effect.Effect<T, DiscordDeliveryFailure> =>
-  promiseCall(() => io.run(owner, operation, partNo, send)).pipe(Effect.mapError(cause => new DiscordDeliveryFailure(cause)), Effect.timeoutOrElse({
+  canStart: () => boolean, send: () => Promise<T>): Effect.Effect<T | undefined, DiscordDeliveryFailure> =>
+  promiseCall(() => canStart() ? io.run(owner, operation, partNo, send) : Promise.resolve(undefined)).pipe(Effect.mapError(cause => new DiscordDeliveryFailure(cause)), Effect.timeoutOrElse({
     duration: RESULT_NOTIFICATION_SEND_TIMEOUT_MS,
     orElse: () => Effect.fail(new DiscordDeliveryFailure())
   }), Effect.ensuring(Effect.sync(() => io.detach(owner.id))));
@@ -52,6 +52,7 @@ interface ResultDeliveryDeps {
   readonly clock: Clock;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
   readonly isStopping: () => boolean;
+  readonly stopSignal?: AbortSignal;
   readonly strategy: ResumableStrategy;
   readonly io: ResultIoLedger;
   /** Consume a coalesced request to check for waiting work, only after a part is persisted. */
@@ -82,24 +83,30 @@ export const deliverPreparedResultNotification = (
   let sending = false;
   return catchExpectedError(withClaimHeartbeat({
     intervalMs: RESULT_NOTIFICATION_HEARTBEAT_MS,
+    lease: entry.lease, clock, isStopping: deps.isStopping,
+    ...(deps.stopSignal ? { stopSignal: deps.stopSignal } : {}),
     renew: () => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS),
     onLost: reason => { logger.warn({
       event: reason === "uncertain" ? "result_notification.lease_uncertain" : "result_notification.claim_lost",
       notificationId: entry.id
     }); }
-  }, isClaimLost => Effect.gen(function* () {
+  }, ownership => Effect.gen(function* () {
+    if (!(yield* ownership.awaitOwnership())) { return; }
     if (!(yield* databaseCall(() => port.plan(entry.id, entry.claimToken, {
       count: notification.partCount, rendererVersion: notification.rendererVersion, context, now: clock.now()
     })))) { return; }
-    const shouldStop = (): boolean => isClaimLost() || deps.isStopping();
-    if (shouldStop()) { return; }
-    const channel = yield* boundedSend(deps.io, entry, "channel", null, () => getTextChannel(deps.client, context.channelId));
+    const shouldStop = (): boolean => ownership.state() === "lost" || deps.isStopping();
+    if (!(yield* ownership.awaitOwnership())) { return; }
+    const channel = yield* boundedSend(deps.io, entry, "channel", null, ownership.canStart, () => getTextChannel(deps.client, context.channelId));
+    if (!channel) { return; }
     yield* deps.strategy<MessageCreateOptions, DeliveryFailure>({
-      parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop,
+      parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop, awaitOwnership: ownership.awaitOwnership,
       begin: partNo => databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())),
       send: (partNo, body) => Effect.suspend(() => {
-        sending = true;
-        return boundedSend(deps.io, entry, "send", partNo, () => sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true }));
+        return boundedSend(deps.io, entry, "send", partNo, ownership.canStart, () => {
+          sending = true;
+          return sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true });
+        });
       }),
       complete: (partNo, messageId) => Effect.gen(function* () {
         const changed = yield* databaseCall(() => port.complete(entry.id, partNo, entry.claimToken, messageId, clock.now()));

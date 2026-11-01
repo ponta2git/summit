@@ -95,7 +95,9 @@ timeout は待機の限界であり、Discord send や DB commit が取り消さ
 
 message 再作成は channel 取得後の send と message ID 保存までを中断から保護する。取得待機中の interruption 後に新しい send を始めない。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-出欠と A/B の delivery scope は共通の [heartbeat](../src/notifications/delivery/claimHeartbeat.ts) を所有し、timer を止めた後に進行中の renew を待つ。claim loss は通知 callback より先に記録し、heartbeat 自体の予期しない失敗も配送の settlement 後に owner へ返す。render・plan 保存・begin の待機中に claim を失ったら新しい send を始めず、開始済み send は結果を CAS 保存する。DB transaction を Discord 待機へ持ち越さない。
+出欠と A/B の delivery scope は共通の [heartbeat](../src/notifications/delivery/claimHeartbeat.ts) と独立した期限監視を所有し、timer を止めた後も進行中の renew を実 settlement まで待つ。所有状態は owned / uncertain / lost。通信失敗または1 heartbeat周期未応答で uncertain とし、新しい begin・channel取得・send を待たせる。期限内の確認済み更新なら同じ claim で再開する。renew は一つだけを所有し、失敗が settle した場合にだけ1・2・4秒の有限再試行を行う。拒否・期限切れ・再試行終了は終端の lost とし、遅い成功応答では復活させない。
+
+claim / renew が返す期限と同時観測の単調時計を使い、SQL・本文取得・commit応答の待ち時間も残時間から差し引く。wall clock と単調時計の短い方で判定し、時計の巻戻りで所有時間を延ばさない。新規開始には1 heartbeat周期以上の残時間を要求し、不足時は即時更新を待つ。timerが遅れても begin前・channel取得前・send直前に現在時刻で再判定し、SDK台帳登録と呼出しの間には await を挟まない。stop は待機を解除するが、開始済み send の結果保存と開始済み renew の所有を捨てない。claim loss は通知 callback より先に記録し、監視自体の予期しない失敗も配送の settlement 後に owner へ返す。DB transaction を Discord 待機へ持ち越さない。
 
 複数 resource の stop / drain は [lifecycle](../src/runtime/lifecycle.ts) に thunk を渡す。先行 owner の同期 throw で後続 owner を省略せず、非同期の Discord destroy も await する。失敗は settlement 後に元の原因で返す。
 

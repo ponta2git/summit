@@ -35,7 +35,8 @@ const createResultTaskFactory = (deps: ResultComposition, io: ResultIoLedger): (
     const prepared = prepare(entry, deps.context);
     return { id, payloadBytes, run: execution => deliverPreparedResultNotification({
       client: deps.client, port: deps.port, clock: deps.clock, logger, strategy,
-      isStopping: execution.isStopping, consumeYieldRequest, io
+      isStopping: execution.isStopping, consumeYieldRequest, io,
+      ...(execution.stopSignal ? { stopSignal: execution.stopSignal } : {})
     }, prepared) };
   };
 };

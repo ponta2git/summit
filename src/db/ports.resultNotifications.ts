@@ -1,6 +1,7 @@
 import type { DiscordNotificationReceipt, DiscordResultNotification } from "@momo/db/notifications";
 import type { ResultNotificationKind } from "@momo/db";
 import type { NotificationStatus, ResultDeliveryError } from "../domain/notification.ts";
+import type { ClaimLease } from "../time/lease.ts";
 
 export interface ResultDeliveryContext {
   readonly webOrigin: string;
@@ -19,6 +20,7 @@ export interface ClaimedResultNotification {
   /** UTF-8 bytes of PostgreSQL's JSONB text, reserved before payload hydration. */
   readonly payloadBytes: number;
   readonly claimToken: string;
+  readonly lease: ClaimLease;
   readonly attemptCount: number;
   readonly maxAttempts: number;
   readonly partCount: number;
@@ -66,7 +68,7 @@ export interface ResultNotificationsPort {
   /** Release only between completed parts when the other kind is due; a handoff does not consume a retry. */
   yield(id: string, token: string, now: Date): Promise<boolean>;
   fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date): Promise<boolean>;
-  renew(id: string, token: string, now: Date, claimDurationMs: number): Promise<boolean>;
+  renew(id: string, token: string, now: Date, claimDurationMs: number): Promise<ClaimLease | null>;
   getNextDispatchAt(excludeIds?: readonly string[]): Promise<Date | null>;
   inspect(id: string): Promise<ResultNotificationState | null>;
   retry(id: string, now: Date): Promise<boolean>;
