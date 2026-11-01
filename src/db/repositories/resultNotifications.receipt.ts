@@ -1,20 +1,18 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { RESULT_NOTIFICATION_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES } from "../../notifications/config.ts";
 import type { DiscordNotificationReceipt } from "@momo/db/notifications";
-import { NotificationInputError, assertSupportedNotificationVersion, parseNotificationJson, readNotificationIdentity, validateNewNotification } from "../../domain/resultNotificationPayload.ts";
-import { parseTimestamp } from "../../time/index.ts";
+import { NotificationInputError } from "../../domain/resultNotificationPayload.ts";
 import { discordNotifications as notifications, discordNotificationResults as results, discordNotificationTargets as targets } from "../schema.ts";
 import { cancelNotification, loadResultCancellationReason, type NotificationDb } from "./notifications.storage.ts";
 import { normalizeNotificationJson } from "./notifications.hash.ts";
 import { assertEnum } from "../rows.ts";
-import type { ResultNotificationAdmissionCheck } from "../ports.resultNotifications.ts";
+import { preparedReceiptValue, type PreparedReceipt } from "./resultNotifications.prepare.ts";
 
 export const receiveResultNotification = async (
-  tx: NotificationDb, rawJson: string, now: Date, admissionCheck: ResultNotificationAdmissionCheck
+  tx: NotificationDb, prepared: PreparedReceipt, now: Date
 ): Promise<DiscordNotificationReceipt> => {
-  const value = parseNotificationJson(rawJson);
-  const identity = readNotificationIdentity(value);
-  assertSupportedNotificationVersion(value);
+  const { rawJson } = prepared;
+  const identity = preparedReceiptValue(prepared.identity);
   const [existing] = await tx.select({
     id: notifications.id, family: notifications.family, hash: notifications.payloadHash, status: notifications.status
   }).from(notifications).leftJoin(results, eq(results.notificationId, notifications.id))
@@ -30,12 +28,13 @@ export const receiveResultNotification = async (
     return { notificationId: existing.id, disposition: "duplicate",
       status: assertEnum(["PENDING", "IN_FLIGHT", "DELIVERED", "FAILED", "CANCELLED"] as const, existing.status, "notification status") };
   }
-  const payload = validateNewNotification(value);
-  admissionCheck(payload);
-  const maximumBytes = payload.kind === "ocr_completed" ? RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES : RESULT_NOTIFICATION_MAX_JSONB_BYTES;
+  if (!prepared.newAdmission) { throw new Error("Missing notification admission result"); }
+  if (prepared.newAdmission.outcome !== "ready" && prepared.newAdmission.stage === "admission") {
+    preparedReceiptValue(prepared.newAdmission);
+  }
+  const maximumBytes = identity.kind === "ocr_completed" ? RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES : RESULT_NOTIFICATION_MAX_JSONB_BYTES;
   const normalized = await normalizeNotificationJson(tx, rawJson, maximumBytes);
-  const occurredAt = parseTimestamp(payload.occurredAt);
-  if (!occurredAt) { throw new NotificationInputError("invalid_input"); }
+  const payload = preparedReceiptValue(prepared.newAdmission);
   await tx.insert(notifications).values({
     id: payload.notificationId, family: "result", kind: payload.kind, dedupeKey: payload.notificationId,
     payload: sql`${normalized.text}::jsonb`, payloadHash: normalized.hash, schemaVersion: payload.schemaVersion,
@@ -43,11 +42,9 @@ export const receiveResultNotification = async (
   });
   await tx.insert(results).values({
     notificationId: payload.notificationId, kind: payload.kind, sourceJobId: payload.sourceJobId,
-    occurredAt, settingsGeneration: BigInt(payload.settingsGeneration)
+    occurredAt: payload.occurredAt, settingsGeneration: payload.settingsGeneration
   });
-  const references = payload.kind === "ocr_completed"
-    ? [{ notificationId: payload.notificationId, targetKind: "match_draft", targetId: payload.data.matchDraftId }]
-    : payload.data.matches.map(match => ({ notificationId: payload.notificationId, targetKind: "match", targetId: match.matchId }));
+  const references = payload.targetIds.map(targetId => ({ notificationId: payload.notificationId, targetKind: payload.targetKind, targetId }));
   for (let offset = 0; offset < references.length; offset += 1_000) {
     await tx.insert(targets).values(references.slice(offset, offset + 1_000));
   }

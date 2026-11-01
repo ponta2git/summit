@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { matchDrafts, matches } from "../../src/db/schema.ts";
 import { notificationTransaction, cancelNotification, lockNotificationFamily } from "../../src/db/repositories/notifications.storage.ts";
 import { receiveResultNotification } from "../../src/db/repositories/resultNotifications.receipt.ts";
+import { prepareResultReceipt } from "../../src/db/repositories/resultNotifications.prepare.ts";
 import { setResultSetting } from "../../src/db/repositories/resultNotifications.state.ts";
 import { normalizeNotificationJson } from "../../src/db/repositories/notifications.hash.ts";
 import { RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES } from "../../src/notifications/config.ts";
@@ -38,7 +39,7 @@ const barrier = () => {
   it("rolls back receipt, targets and parts together when its command fails after insertion", async () => {
     const payload = ocrReceiptPayload();
     await expect(notificationTransaction(h.db, "result", async tx => {
-      await receiveResultNotification(tx, JSON.stringify(payload), now, checkNotificationAdmission);
+      await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(payload), checkNotificationAdmission), now);
       throw new Error("abort receipt command");
     })).rejects.toThrow("abort receipt command");
     expect(await h.countReceipts()).toBe(0);
@@ -53,7 +54,7 @@ const barrier = () => {
     const payload = ocrReceiptPayload();
     const receiving = notificationTransaction(h.db, "result", async tx => {
       pid = Number((await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`))[0]?.pid);
-      const result = await receiveResultNotification(tx, JSON.stringify(payload), now, checkNotificationAdmission);
+      const result = await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(payload), checkNotificationAdmission), now);
       inserted.release(); await commit.promise; return result;
     });
     await inserted.promise;
@@ -110,7 +111,7 @@ const barrier = () => {
     await notificationTransaction(h.db, "result", async tx => {
       for (let index = 0; index < 300; index += 1) {
         const submissionId = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
-        await receiveResultNotification(tx, JSON.stringify(ocrReceiptPayload(submissionId)), now, checkNotificationAdmission);
+        await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(ocrReceiptPayload(submissionId)), checkNotificationAdmission), now);
       }
     });
     const [sending, unstarted, failed] = await h.port.claim({ limit: 3, now, claimDurationMs: 30_000 });

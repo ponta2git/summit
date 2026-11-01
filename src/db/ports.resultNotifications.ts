@@ -52,6 +52,7 @@ export interface ResultNotificationSetting {
   readonly enabled: boolean;
   readonly generation: string;
 }
+/** Pure validation using fixed configuration; it runs synchronously before DB admission, including duplicates. */
 export type ResultNotificationAdmissionCheck = (payload: DiscordResultNotification) => void;
 
 /** Application commands own receipt, cancellation, delivery and retry aggregates. */

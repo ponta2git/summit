@@ -6,8 +6,11 @@ import { LimitedCollection } from 'discord.js';
 import { readFile } from 'node:fs/promises';
 import { createServer as createProxy, createConnection } from 'node:net';
 import { createServer } from 'node:http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createAppContext } from './dist/appContext.js';
-import { closeDb } from './dist/db/client.js';
+import { closeDb, db } from './dist/db/client.js';
+import { makeResultNotificationsPort } from './dist/db/repositories/resultNotifications.js';
+import { assertNewNotificationPartLimit } from './dist/features/result-notifications/render.js';
 import { createDiscordClient } from './dist/discord/client.js';
 import { createNotificationReceiver } from './dist/notifications/http.js';
 import { createResultNotificationDispatcher } from './dist/notifications/delivery/composition.result.js';
@@ -34,15 +37,25 @@ let maxClaimBatchBytes = 0;
 let maxClaimBatchCount = 0;
 let protocolFailures = 0;
 const plans = new Map();
-const original = context.ports.resultNotifications;
+const receiptScope = new AsyncLocalStorage();
+const transaction = db.transaction.bind(db);
+const delayedDb = new Proxy(db, { get(target, key, receiver) {
+  if (key !== 'transaction') return Reflect.get(target, key, receiver);
+  return async (...args) => {
+    if (receiptScope.getStore()) await waitFor(() => !holdReceipts);
+    return transaction(...args);
+  };
+} });
+const original = makeResultNotificationsPort(delayedDb,
+  payload => assertNewNotificationPartLimit(payload, 'https://results.example.com'));
 const port = {
   ...original,
   receive: async (...args) => {
     received++; pendingReceipts++;
     maxPendingReceipts = Math.max(maxPendingReceipts, pendingReceipts); changed();
-    // A stalled receipt keeps the real receiver's reservation alive, like a DB
-    // wait. The actual receipt transaction still runs after this barrier.
-    try { await waitFor(() => !holdReceipts); return await original.receive(...args); }
+    // Stall after synchronous preparation, inside admission. All four HTTP
+    // owners retain only raw JSON and projected metadata while waiting.
+    try { return await receiptScope.run(true, () => original.receive(...args)); }
     finally { pendingReceipts--; changed(); }
   },
   claim: async options => {
@@ -51,8 +64,8 @@ const port = {
     maxClaimBatchBytes = Math.max(maxClaimBatchBytes, rows.reduce((total, row) => total + row.payloadBytes, 0));
     return rows;
   },
-  plan: async (id, token, options) => {
-    const result = await original.plan(id, token, options);
+  plan: async (id, token, options, ...args) => {
+    const result = await original.plan(id, token, options, ...args);
     if (result) plans.set(id, options.count);
     return result;
   },

@@ -7,6 +7,7 @@ import { beginNotificationPart, completeNotificationPart, failNotification, rene
 import { pruneNotificationBatches } from "./notifications.retention.ts";
 import { findNextNotificationDispatchAt } from "./notifications.dispatch.ts";
 import { receiveResultNotification } from "./resultNotifications.receipt.ts";
+import { prepareResultReceipt } from "./resultNotifications.prepare.ts";
 import { yieldResultNotification } from "./resultNotifications.yield.ts";
 import { planResultNotification } from "./resultNotifications.plan.ts";
 import { findClaimedResultNotifications, getResultSetting, inspectResultNotification, retryResultNotification, setResultSetting } from "./resultNotifications.state.ts";
@@ -34,7 +35,10 @@ export const makeResultNotificationsPort = (db: DbLike, admissionCheck: ResultNo
     request: Omit<NotificationAdmissionRequest, "family"> = { key: Symbol("http"), operation: "http" }): Promise<T> =>
     notificationTransaction(db, "result", command, request).catch(sanitizeFailure);
   return {
-    receive: (rawJson, now) => run(tx => receiveResultNotification(tx, rawJson, now, admissionCheck)),
+    receive: (rawJson, now) => {
+      const prepared = prepareResultReceipt(rawJson, admissionCheck);
+      return run(tx => receiveResultNotification(tx, prepared, now));
+    },
     claim: options => notificationNotStarted(run(async tx => {
       const claims = await claimNotifications(tx, "result", { ...options, now: notificationCommandNow(clock, options.now) }, clock);
       const entries = await findClaimedResultNotifications(tx, claims.map(claim => claim.id));

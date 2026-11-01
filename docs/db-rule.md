@@ -115,6 +115,10 @@ message ID が null の候補は、Session lock 後に現在の状態と ID を�
 
 受付では parent、固定 payload、result relation、取消対象と PENDING / CANCELLED を一 command で確定する。OCR v2 / analysis v1 の version を**既存 ID との照合より先に**検証し、同一 ID でも旧 OCR の再受付を拒否する。受け取った schemaVersion を保存する。
 
+parse・identity/version・新規validation・描画予算・INSERT用metadataの投影は、awaitを挟まない[事前処理](../src/db/repositories/resultNotifications.prepare.ts)で一度だけ計算する。待機へ渡すのは元JSON、段階付きの固定結果、最小DTOだけ。解析木・renderer closure・全parts・元例外を保持せず、admission callbackはcompositionで固定したoriginだけを読むpureな検査にする。新規参照は最大50件×200 UTF-16 code unitsで、DTOのJSON表現は32 KiB未満、HTTP最大4件分でも128 KiB未満。これは保持heap全体の上限ではなく、実メモリは容量gateで検証する。
+
+事前計算したエラーはgate取得後の元の段階で適用する。identity/version→既存identity照合→既存なら旧hash、新規ならvalidation/admission→JSONB正規化/hash→metadata→INSERTの順を保つ。新規検証の未知例外も固定内部エラーとして記録し、既存duplicateでは無視する。DB障害の503と入力4xx、200/409の優先順を[実DB](../tests/integration/resultNotifications.preparation.test.ts)で検証する。同期計算の移動だけでevent-loop停止時間が短縮するとは扱わない。
+
 content hash は JSONB と互換な数値・文字列の扱いを維持する。JSON の decimal を JS number へ丸めてから同一性を判断しない。通知 ID の生成と ops path の検証は `@momo/db/notifications` に集約し、ID の形と version / content の受入可否を別々に判断する。
 
 JSONB text の hash は引用文字列を順次走査し、引用外の数値の末尾 scale だけを除いて逐次更新する。巨大メモ全体を正規表現の反復 alternation で保持しない。過去の hash vector と上限近傍の受付・重複判定で identity の互換性を検証する。
