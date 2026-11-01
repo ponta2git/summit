@@ -51,14 +51,96 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 
 ## runtimeのメモリ設定
 
-[Dockerfile](../../Dockerfile) の runtime stage が `MALLOC_ARENA_MAX=2` を既定値として持つ。build stage とホストの開発 process には適用しない。VM 容量や JS heap の上限を変える設定ではない。測定条件・採用理由・未確定の性能影響は [性能レポート](../performance.md) を参照する。
+[Dockerfile](../../Dockerfile) の runtime stage が `MALLOC_ARENA_MAX=2` を既定値として持つ。build / ホスト開発環境、JS heap 上限、256 MiB の VM 容量は変更しない。採用根拠と p95 の未確定範囲は [性能レポート](../performance.md) を参照する。以下は本書の権限・禁止窓・単一 instance の原則を満たす場合だけ実行する。
 
-1. 本書の権限・禁止窓・単一 instance の原則に従い、変更前の image revision、稼働日齢、通知件数・大きさ、待機時 Anonymous / RSS、heap、peak、処理当たり CPU、通常通知の受付から配送完了までの p95、受付・配送失敗を記録する。比較窓と負荷帯を変更前に決め、再起動直後と長期稼働後を直接比較しない。
-2. 通常の image deploy で適用し、新 process の当該環境変数だけを確認する。環境全体や secret を出力しない。runtime 環境の override と `GLIBC_TUNABLES` による allocator 指定も確認し、競合する指定があれば自動で上書きせず対象を整理する。256 MiB・単一 instance を維持し、同条件の観測を継続する。
-3. OOM・配送停止や欠落などの機能異常、同程度の負荷で受付失敗が増える場合は復旧する。CPU または p95 の10%超の悪化が複数の比較窓で再現する、peak の増加で容量の余裕を失う場合も切り戻す。待機時の便益が2 MiB未満で他の改善もなければ、設定を維持する理由を再評価する。ローカル試験の未帰属503を変更の成功・失敗の証拠へ流用しない。
-4. allocator だけを戻す場合は、許可された変更として runtime 環境へ `MALLOC_ARENA_MAX=0` を指定した構成を deploy し、新 process で反映と受付・配送の復旧を確認する。`0` は glibc の既定の上限決定に戻す値。環境指定を単に削除しても image 内の `2` に戻るため、解除にはならない。恒久的に戻すときは Dockerfile と runtime image 検証を同じ変更で更新し、一時 override を解消する。復旧 revision を使う場合も、業務・DB 契約との互換性を確認する。
+### 変更前後の観測
 
-根拠は [glibc の arena 設定](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html) と、使用する [glibc 2.36 の上限決定](https://github.com/bminor/glibc/blob/glibc-2.36/malloc/arena.c)。CPU 数・architecture・Node / libc・外部通信・負荷特性を変えた場合はローカル容量 gate と比較測定を再実行する。
+Node 更新・限定 import・allocator を同時に適用した前後差は **変更全体の効果** として記録する。allocator 単独の便益2 MiBを判断する場合は、同じ image digest / Node / VM / 設定で `0` と `2` だけを変える別の比較を行う。変更前の Node 版・image・稼働時間・通知件数と大きさを記録し、再起動直後と数日稼働後を混ぜない。
+
+運用 PC で次を実行し、Machine が1台だけであることと digest を確認する。`--json` の全出力には設定が含まれるため、必ずこのように必要な項目だけへ絞る。`image_ref` が欠ける、または digest が不明なら、mutable tagを代用せず image の同定を先に行う。識別子は非公開の作業記録へ保存する。
+
+```bash
+fly machines list --app "${FLY_APP:?}" --json | jq -e '
+  if length != 1 then error("expected one Machine") else .[0] end
+  | if (.image_ref.digest | test("^sha256:[0-9a-f]{64}$"))
+    then {id, state, image: (.image_ref.registry + "/" + .image_ref.repository + "@" + .image_ref.digest)}
+    else error("immutable image reference unavailable") end'
+fly ssh console --app "${FLY_APP:?}" --select --user node
+```
+
+SSH先の shell で、次の読取を行う。`ps` を仮定せず `/proc` から `node dist/index.js` を一意に特定する。出力は当該 process のメモリ・CPU と allocator 指定だけで、他の環境変数を表示しない。Node の別 process を起動して採取するため、その実行中の VM 全体のメモリは比較に使わない。
+
+```bash
+node --input-type=module <<'JS'
+import { readFileSync as read, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+const pids = readdirSync('/proc').filter(name => {
+  if (!/^\d+$/.test(name)) return false;
+  try {
+    const args = read(`/proc/${name}/cmdline`, 'utf8').split('\0');
+    return args[0]?.split('/').at(-1) === 'node'
+      && /^(?:.*\/)?dist\/index\.js$/.test(args[1] ?? '');
+  } catch { return false; }
+});
+if (pids.length !== 1) throw new Error('Expected one Summit process');
+const pid = pids[0];
+const stat = read(`/proc/${pid}/stat`, 'utf8').split(') ').at(-1).trim().split(/\s+/);
+const memory = read(`/proc/${pid}/smaps_rollup`, 'utf8');
+const status = read(`/proc/${pid}/status`, 'utf8');
+const kib = (text, key) => {
+  const match = text.match(new RegExp(`^${key}:\\s+(\\d+) kB$`, 'm'));
+  if (!match) throw new Error('Missing memory field');
+  return Number(match[1]);
+};
+const env = read(`/proc/${pid}/environ`, 'utf8').split('\0');
+const value = key => env.find(entry => entry.startsWith(`${key}=`))?.slice(key.length + 1);
+const numeric = text => text === undefined ? 'unset' : /^\d+$/.test(text) ? text : 'invalid';
+const arenaTunable = value('GLIBC_TUNABLES')?.split(':').find(entry => entry.startsWith('glibc.malloc.arena_max='))?.split('=')[1];
+const hz = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }));
+const startTicks = Number(stat[19]);
+console.log(JSON.stringify({ pid, sampledAt: new Date().toISOString(),
+  node: execFileSync(`/proc/${pid}/exe`, ['--version'], { encoding: 'utf8' }).trim(),
+  startTicks, uptimeSeconds: Number(read('/proc/uptime', 'utf8').split(' ')[0]) - startTicks / hz,
+  anonymousMiB: kib(memory, 'Anonymous') / 1024, rssMiB: kib(memory, 'Rss') / 1024,
+  processPeakRssMiB: kib(status, 'VmHWM') / 1024,
+  cpuSeconds: (Number(stat[11]) + Number(stat[12])) / hz,
+  mallocArenaMax: numeric(value('MALLOC_ARENA_MAX')), arenaTunable: numeric(arenaTunable) }));
+JS
+# Nodeによる採取が終了してから、VM全体の利用可能メモリを読む（単位KiB）。
+awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo
+```
+
+| 指標 | 取得元・扱い |
+|---|---|
+| Anonymous / RSS | 上記 process の `smaps_rollup`。MiB。2 MiBの便益判断は Anonymous で行う |
+| peak | `status` の `VmHWM` は process RSS高水位。ローカル cgroup peak や192 MiB容量gateとは別の指標 |
+| CPU | `stat` の累積 user＋system秒。PID / startTicks が同じ2点の差を使う。背景処理を含み、通知当たりCPUとは呼ばない |
+| メモリ余裕 | 採取 process 終了後の `MemAvailable`。KiBを1024で割りMiBへ換算する |
+| 機能異常 | [受付・配送の状態と安全なevent/code](./result-notifications.md)、[起動・OOM等の復旧](./recovery.md)を確認する |
+| heap、同一処理量CPU、受付から全配送完了までのp95 | 現行の本番監視では未観測。上記OS指標やログ間隔で代用せず、本番の10%非劣化を確認したとは扱わない。疑義が出たら同じimage・代表負荷のローカル対比較で調べる |
+
+環境の期待値は通常 `mallocArenaMax="2"`、切り戻し後は `"0"`。`arenaTunable` が設定されている場合や Fly secret に同名の設定がある場合、優先関係を解消するまでこの環境変数だけで制御できると判断しない。secret の一覧は名前だけを照合し、実値の表示・自動上書きをしない。
+
+観測期間は適用前後それぞれ7日を上限とし、通常の通知を処理した後の待機状態を記録する。1窓は未完了配送がなく新規通知も5分ない状態から1分間隔3点、窓の中央値を用いる。比較する通知件数・サイズ帯・稼働時間帯は開始前に揃え、採取中の新規通知や再起動で崩れた窓は無効として理由を残す。各設定について別日3窓以上を得られなければ便益は「未判定」で観測を閉じ、無期限に延長したり0 MiBとみなしたりしない。3窓は運用上の再現確認であり、統計的な非劣性や長期リークなしを証明する標本数ではない。
+
+同じimageの `0` / `2` 比較で、対応する3窓すべての便益が2 MiB未満かつ他の改善もなければ設定を再評価する。実通信を含む本番p95への10%基準は、専用計測系と十分な件数がない現状では適用しない。ローカル試験の未帰属503を本番の基準率や候補の安全性の証拠へ流用しない。
+
+### 切り戻し
+
+OOM、配送停止・欠落、変更前になかった受付失敗が再現する場合は、件数を平均して異常を隠さず復旧を判断する。メモリ余裕は、採取processがない状態で `MemAvailable < 32 MiB` が5分間隔で3回続く場合を要対応とする。これは256 MiB VMに32 MiBの余裕を残す運用基準で、標準容量gateの192 MiBを本番RSSへ流用した値ではない。禁止窓内は切り戻し目的でも deploy / restart を行わず、非公開の運用連絡先へ状況を共有し、[障害手順](./recovery.md)で可能な観測と自動復旧の確認を続ける。
+
+1. 稼働中の immutable image 参照を `RUNTIME_IMAGE`、そのdeployで使った設定fileの絶対パスを `ROLLBACK_CONFIG` に記録する。新しいcheckoutから再buildしない。設定fileが稼働構成と一致し、単一instance・256 MiB・終了signal/timeout等を維持することを確認する。不明ならallocatorだけの切り戻しとは扱わない。
+2. **この設定fileの `[env]` をoverrideの正本**とし、`MALLOC_ARENA_MAX = '0'` だけを追加・変更して差分を確認する。以降のdeployにも同じ設定を引き継ぎ、repositoryのfly.tomlにも対応する変更を記録する。`0` は glibc 2.36の既定の上限決定へ戻す値。環境指定の削除だけでは image 内の `2` が再び使われる。
+3. 操作権限と禁止窓外であることを確認して、運用PCから同じimageを再利用する。`--ha=false` で予備Machineを追加しない。既存が1台でなければ進めない。
+
+```bash
+fly deploy --app "${FLY_APP:?}" --config "${ROLLBACK_CONFIG:?}" \
+  --image "${RUNTIME_IMAGE:?}" --strategy immediate --ha=false
+```
+
+4. 再度Machine一覧で台数・digestを照合し、SSH先の読取で新processの `mallocArenaMax="0"` を確認する。readinessと受付・配送の復旧を確認し、結果不明なら盲目的に再deployしない。恒久的に解除する場合はDockerfileとruntime image検証を同じ変更で更新し、一時overrideを解消する。
+
+読取の根拠は [Linuxのproc指標](https://www.kernel.org/doc/html/latest/filesystems/proc.html)。設定・復旧の根拠は [glibc 2.36 の上限決定](https://github.com/bminor/glibc/blob/glibc-2.36/malloc/arena.c)、[Flyのimage再利用](https://docs.fly.io/blueprints/rollback-guide)、[deploy](https://docs.fly.io/flyctl/cmd/fly_deploy)、[envとsecretの優先順位](https://docs.fly.io/reference/configuration#the-env-variables-section)。CPU・architecture・Node / libc・外部通信・負荷特性を変えた場合は容量gateと比較測定を再評価する。
 
 ## 本番Discordコマンド同期
 
