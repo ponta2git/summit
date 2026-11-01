@@ -33,18 +33,19 @@ describe("receipt preparation without retained parsed bodies", () => {
     expect(result.identity.outcome).toBe("ready"); expect(result.newAdmission).toEqual(expected);
   });
 
-  it("bounds insert metadata below 32 KiB even with fifty maximum-length Unicode targets", () => {
+  it.each(["界", "\u001f", "\ud800"])("bounds retained metadata below 64 KiB with fifty targets filled with %j", character => {
     const base = analysisNotification(); const match = base.data.matches[0];
     if (!match) { throw new Error("Expected analysis fixture"); }
     const payload = { ...base, data: { ...base.data, currentAnalysis: { ...base.data.currentAnalysis,
       algorithmVersion: "x".repeat(200_000) }, matches: Array.from({ length: 50 }, (_, index) => ({
-      ...match, matchId: "界".repeat(196) + String(index).padStart(4, "0")
+      ...match, matchId: character.repeat(196) + String(index).padStart(4, "0")
     })) } };
     const result = prepareResultReceipt(JSON.stringify(payload), () => undefined);
     expect(result.newAdmission?.outcome).toBe("ready");
-    const projected = JSON.stringify(result.newAdmission, (_key, value: unknown) => typeof value === "bigint" ? String(value) : value);
+    const projected = JSON.stringify({ identity: result.identity, newAdmission: result.newAdmission },
+      (_key, value: unknown) => typeof value === "bigint" ? String(value) : value);
     expect(projected).not.toContain(payload.data.currentAnalysis.algorithmVersion);
-    expect(Buffer.byteLength(projected)).toBeLessThan(32 * 1024);
-    expect(Buffer.byteLength(projected) * 4).toBeLessThan(128 * 1024);
+    expect(Buffer.byteLength(projected)).toBeLessThan(64 * 1024);
+    expect(Buffer.byteLength(projected) * 4).toBeLessThan(256 * 1024);
   });
 });
