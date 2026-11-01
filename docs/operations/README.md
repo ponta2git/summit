@@ -55,7 +55,7 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 
 ### 変更前後の観測
 
-Node 更新・限定 import・allocator を同時に適用した前後差は **変更全体の効果** として記録する。allocator 単独の便益2 MiBを判断する場合は、同じ image digest / Node / VM / 設定で `0` と `2` だけを変える別の比較を行う。変更前の Node 版・image・稼働時間・通知件数と大きさを記録し、再起動直後と数日稼働後を混ぜない。
+Node 更新・限定 import・allocator を同時に適用した前後差は **変更全体の効果** として記録する。allocator 単独の便益2 MiBを判断する場合は、同じ image digest / Node / VM / 設定で `0` と `2` だけを変える別の比較を行う。適用前に変更前後のdeploy元commitと、各deployで使う設定fileの非公開の保存先・SHA-256を記録する。変更前の Node 版・image・稼働時間・通知件数と大きさも記録し、再起動直後と数日稼働後を混ぜない。
 
 運用 PC で次を実行し、Machine が1台だけであることと digest を確認する。`--json` の全出力には設定が含まれるため、必ずこのように必要な項目だけへ絞る。`image_ref` が欠ける、または digest が不明なら、mutable tagを代用せず image の同定を先に行う。識別子は非公開の作業記録へ保存する。
 
@@ -68,7 +68,13 @@ fly machines list --app "${FLY_APP:?}" --json | jq -e '
 fly ssh console --app "${FLY_APP:?}" --select --user node
 ```
 
-SSH先の shell で、次の読取を行う。`ps` を仮定せず `/proc` から `node dist/index.js` を一意に特定する。出力は当該 process のメモリ・CPU と allocator 指定だけで、他の環境変数を表示しない。Node の別 process を起動して採取するため、その実行中の VM 全体のメモリは比較に使わない。
+SSH先では、まず次の軽量な読取だけを行う。`MemAvailable` はKiB単位で、**65,536 KiB（64 MiB）未満、または読取不能なら、続くNode採取を行わない**。64 MiBは診断用processを追加するための保守的な開始条件であり、後述の32 MiBの要対応基準とは別にする。未取得の指標は未観測として残す。メモリ逼迫中・禁止窓中の余裕確認には、このawkだけを使う。
+
+```bash
+awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo
+```
+
+余裕を確認できた場合だけ、次のNode採取を行う。`ps` を仮定せず `/proc` から `node dist/index.js` を一意に特定する。出力は当該 process のメモリ・CPU と allocator 指定だけで、他の環境変数を表示しない。Node の別 process を起動して採取するため、その実行中の VM 全体のメモリは比較に使わない。
 
 ```bash
 node --input-type=module <<'JS'
@@ -106,9 +112,9 @@ console.log(JSON.stringify({ pid, sampledAt: new Date().toISOString(),
   cpuSeconds: (Number(stat[11]) + Number(stat[12])) / hz,
   mallocArenaMax: numeric(value('MALLOC_ARENA_MAX')), arenaTunable: numeric(arenaTunable) }));
 JS
-# Nodeによる採取が終了してから、VM全体の利用可能メモリを読む（単位KiB）。
-awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo
 ```
+
+Node採取が終了した後のVM全体の余裕も、上のawkだけで確認する。読取失敗やJSON出力なしを、成功・0として扱わない。
 
 | 指標 | 取得元・扱い |
 |---|---|
@@ -127,7 +133,7 @@ awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo
 
 ### 切り戻し
 
-OOM、配送停止・欠落、変更前になかった受付失敗が再現する場合は、件数を平均して異常を隠さず復旧を判断する。メモリ余裕は、採取processがない状態で `MemAvailable < 32 MiB` が5分間隔で3回続く場合を要対応とする。これは256 MiB VMに32 MiBの余裕を残す運用基準で、標準容量gateの192 MiBを本番RSSへ流用した値ではない。禁止窓内は切り戻し目的でも deploy / restart を行わず、非公開の運用連絡先へ状況を共有し、[障害手順](./recovery.md)で可能な観測と自動復旧の確認を続ける。
+OOM、配送停止・欠落、変更前になかった受付失敗が再現する場合は、件数を平均して異常を隠さず復旧を判断する。メモリ余裕は、Node採取を挟まず上のawkだけで `MemAvailable < 32 MiB` が5分間隔で3回続く場合を要対応とする。これは256 MiB VMに32 MiBの余裕を残す運用基準で、標準容量gateの192 MiBを本番RSSへ流用した値ではない。禁止窓内は切り戻し目的でも deploy / restart を行わず、非公開の運用連絡先へ状況を共有し、[障害手順](./recovery.md)で可能な観測と自動復旧の確認を続ける。
 
 1. 稼働中の immutable image 参照を `RUNTIME_IMAGE`、そのdeployで使った設定fileの絶対パスを `ROLLBACK_CONFIG` に記録する。新しいcheckoutから再buildしない。設定fileが稼働構成と一致し、単一instance・256 MiB・終了signal/timeout等を維持することを確認する。不明ならallocatorだけの切り戻しとは扱わない。
 2. **この設定fileの `[env]` をoverrideの正本**とし、`MALLOC_ARENA_MAX = '0'` だけを追加・変更して差分を確認する。以降のdeployにも同じ設定を引き継ぎ、repositoryのfly.tomlにも対応する変更を記録する。`0` は glibc 2.36の既定の上限決定へ戻す値。環境指定の削除だけでは image 内の `2` が再び使われる。
@@ -138,7 +144,7 @@ fly deploy --app "${FLY_APP:?}" --config "${ROLLBACK_CONFIG:?}" \
   --image "${RUNTIME_IMAGE:?}" --strategy immediate --ha=false
 ```
 
-4. 再度Machine一覧で台数・digestを照合し、SSH先の読取で新processの `mallocArenaMax="0"` を確認する。readinessと受付・配送の復旧を確認し、結果不明なら盲目的に再deployしない。恒久的に解除する場合はDockerfileとruntime image検証を同じ変更で更新し、一時overrideを解消する。
+4. 再度Machine一覧で台数・digestを照合し、SSH先の読取で新processの `mallocArenaMax="0"` を確認する。readinessと受付・配送の復旧を確認し、結果不明なら盲目的に再deployしない。メモリ起因の兆候がない場合や `0` でも回復しない場合は、allocatorの再起動を繰り返さず [recovery case 1の判断NGライン](./recovery.md#case-1-bot-再起動直後) に従い、互換な復旧imageと対応設定によるアプリrevisionの復旧へ移る。恒久的に解除する場合はDockerfileとruntime image検証を同じ変更で更新し、一時overrideを解消する。
 
 読取の根拠は [Linuxのproc指標](https://www.kernel.org/doc/html/latest/filesystems/proc.html)。設定・復旧の根拠は [glibc 2.36 の上限決定](https://github.com/bminor/glibc/blob/glibc-2.36/malloc/arena.c)、[Flyのimage再利用](https://docs.fly.io/blueprints/rollback-guide)、[deploy](https://docs.fly.io/flyctl/cmd/fly_deploy)、[envとsecretの優先順位](https://docs.fly.io/reference/configuration#the-env-variables-section)。CPU・architecture・Node / libc・外部通信・負荷特性を変えた場合は容量gateと比較測定を再評価する。
 
