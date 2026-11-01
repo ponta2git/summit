@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultDeliveryRuntime } from "../../src/notifications/delivery/resultRuntime.ts";
-import type { ResultDeliverySource } from "../../src/notifications/delivery/sources/result.ts";
+import { createResultDeliverySource, type ResultDeliverySource } from "../../src/notifications/delivery/sources/result.ts";
 import type { DeliveryRuntime } from "../../src/notifications/delivery/runtime.ts";
 import { fromDatabaseCall } from "../../src/errors/effect.ts";
 import { DatabaseError } from "../../src/errors/index.ts";
@@ -21,6 +21,25 @@ describe("result pump progress and observation", () => {
   });
   const source = (): ResultDeliverySource => ({ claim: () => Effect.succeed([]), nextDispatchAt: () => Effect.succeed(null),
     wake: () => undefined, claimed: () => () => false });
+
+  it("starts older fitting work despite a preferred large row and a never-settling retained SDK owner", async () => {
+    const h = resultWorkerHarness(); await h.enqueueOcr(); const previous = await h.claim(); await h.deliver(previous);
+    const selected = createResultDeliverySource(h.port, h.clock); selected.claimed(previous);
+    const held = deferred<void>(); releases.push(() => held.resolve());
+    void h.io.run({ id: "retained-sdk", payloadBytes: 200 * 1024 }, "send", 0, () => held.promise);
+    await vi.advanceTimersByTimeAsync(1);
+    const older = await h.enqueueOcr("22222222-2222-4222-8222-222222222222");
+    await vi.advanceTimersByTimeAsync(1);
+    const large = await h.enqueue("younger-preferred", "x".repeat(400 * 1024));
+    const started: string[] = [];
+    runtime = createResultDeliveryRuntime({ ...h, source: selected,
+      prepareTask: entry => ({ id: entry.id, payloadBytes: entry.payloadBytes,
+        run: () => Effect.sync(() => { started.push(entry.id); }) }) });
+    runtime.wake("receipt"); await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(started).toEqual([older]);
+    expect(await h.port.inspect(large)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect(h.io.snapshot().pending).toBe(1);
+  });
 
   it("schedules an item that becomes due during dispatch lookup while an SDK owner remains retained", async () => {
     const h = resultWorkerHarness(); await h.enqueue("due", "short"); const entry = await h.claim();
@@ -83,5 +102,26 @@ describe("result pump progress and observation", () => {
     await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[0]);
     expect(claim).toHaveBeenCalledTimes(2); await runtime.drain();
     expect(h.logger.error).toHaveBeenCalledWith({ event: "result_notification.dispatch_failed" });
+  });
+
+  it("retains a wake received during the last failed pump without starting indefinite retry polling", async () => {
+    const h = resultWorkerHarness(); const failed = deferred<void>(); releases.push(() => failed.resolve());
+    let attempts = 0;
+    const claim = vi.fn<ResultDeliverySource["claim"]>(() => {
+      attempts += 1;
+      if (attempts <= RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length) { return Effect.fail(new DatabaseError("Offline")); }
+      if (attempts === RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1) {
+        return fromDatabaseCall(async () => { await failed.promise; throw new Error("Delayed failure"); }, "Offline");
+      }
+      return Effect.succeed([]);
+    });
+    runtime = createResultDeliveryRuntime({ ...h, source: { ...source(), claim },
+      prepareTask: () => { throw new Error("No claimed rows"); } });
+    runtime.wake("startup"); await vi.advanceTimersByTimeAsync(0);
+    for (const delay of RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS) { await vi.advanceTimersByTimeAsync(delay); }
+    runtime.wake("receipt"); failed.resolve(); await vi.advanceTimersByTimeAsync(1);
+    expect(claim).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 2);
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(claim).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 2);
   });
 });

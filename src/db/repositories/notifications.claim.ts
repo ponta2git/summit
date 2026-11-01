@@ -111,7 +111,9 @@ export const claimNotifications = async (
     if (family === "result" && preferredKind && oldest && oldest.kind !== preferredKind
       && oldest.payloadBytes <= payloadBudget - claimedBytes) {
       const preferred = await selectClaimCandidates(tx, family, due, 1, preferredKind);
-      if (preferred.length > 0) { rows = preferred; }
+      const candidate = preferred[0];
+      if (candidate && (candidate.payloadBytes <= payloadBudget - claimedBytes
+        || (claimed.length === 0 && (options.allowOversizedPayload ?? true)))) { rows = preferred; }
     }
     if (rows.length === 0) { break; }
     scanned += rows.length;

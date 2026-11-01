@@ -89,10 +89,12 @@ export const deliverPreparedResultNotification = (
     lease: entry.lease, clock, isStopping: deps.isStopping,
     ...(deps.stopSignal ? { stopSignal: deps.stopSignal } : {}),
     renew: remaining => port.renew(entry.id, entry.claimToken, clock.now(), OUTBOX_CLAIM_DURATION_MS, remaining),
-    onLost: reason => { logger.warn({
-      event: reason === "uncertain" ? "result_notification.lease_uncertain" : "result_notification.claim_lost",
-      notificationId: entry.id
-    }); }
+    onLost: reason => {
+      try { logger.warn({
+        event: reason === "uncertain" ? "result_notification.lease_uncertain" : "result_notification.claim_lost",
+        notificationId: entry.id
+      }); } catch { /* Logging cannot turn recoverable uncertainty into ownership loss. */ }
+    }
   }, ownership => Effect.gen(function* () {
     remainingMs = ownership.remainingMs;
     if (!(yield* ownership.awaitOwnership())) { return; }

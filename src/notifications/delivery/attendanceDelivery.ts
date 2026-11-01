@@ -197,8 +197,9 @@ export const deliverOutboxEntry = (
       claimToken, now: ctx.clock.now(), claimDurationMs: OUTBOX_CLAIM_DURATION_MS
     }, remaining),
     onLost: reason => {
-      logger.warn({ event: reason === "uncertain" ? "outbox.lease_uncertain" : "outbox.claim_lost",
+      try { logger.warn({ event: reason === "uncertain" ? "outbox.lease_uncertain" : "outbox.claim_lost",
         outboxId: metadata.id, sessionId: metadata.sessionId });
+      } catch { /* Logging cannot turn recoverable uncertainty into ownership loss. */ }
     }
   }, ownership => deliverClaimedEntry(client, ctx, metadata, claimToken,
     Effect.suspend(() => adapters.prepareNotification(ctx, entry, claimToken, undefined, ownership.remainingMs)),

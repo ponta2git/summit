@@ -94,9 +94,9 @@ export const createResultDeliveryRuntime = <E>(deps: {
     const work = catchExpectedError(pumpWork, () => Effect.sync(() => {
       const attempt = recoveryAttempt;
       const delay = RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[recoveryAttempt++];
-      queued = false;
       recoveryDueAt = delay === undefined ? 0 : performance.now() + delay;
-      if (delay !== undefined) { schedule(delay); }
+      if (delay !== undefined) { queued = false; schedule(delay); }
+      // After backoff is exhausted, a wake received during this pump still owns one retry.
       observe(() => logger.warn({ event: "result_notification.dispatch_unavailable", recoveryAttempt: attempt }));
     }));
     // 外部timerの境界だけでPromiseへ変換。個別配送はcapacityのScope内に残す。

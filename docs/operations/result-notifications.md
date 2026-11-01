@@ -84,7 +84,11 @@ pnpm notifications settings ocr_completed on
 - `shutdown.drain_timeout` は未完了claimが残り得ることを示す。次の起動後に同じIDを確認する。
 - A/Bの長文・失敗と出欠通知の配送は独立する。出欠側の警告は別runbookで判断する。
 
+有限backoff後のsupervisor復帰は時間上限の保証ではない。先行tickが出欠のhint・次時刻照会の未応答を保持していると、`noOverlap` により次のsupervisorも起動しない。A/Bの新規受付や再接続wakeがなく配送が止まった場合は、[出欠の観測停止](outbox.md#観測値)も確認し、DB接続と未完了tickを調査する。
+
 `result_notification.io_pending` は待機期限後も SDK の実処理を所有している診断で、最古90秒から最大1分1件を出す。`pending`・`payloadBytes` は実未完了 owner 数と元本文の予約量、`oldestAgeMs` は最古の経過時間。全枠占有が5分続くと `investigate:true` になる。閾値の正本は [config](../../src/config.ts)。結果通知の投稿先は1チャンネルであり、2件の実未完了が残る間は新規配送を DB で待たせる。
+
+DB入場枠とSDK台帳の監視は、最古ageが閾値以上になった次回の監視で警告する。未完了workが入れ替わり続ける場合、初回警告は閾値から最大1監視周期遅れる。警告がまだないことを、未完了workがない根拠にしない。
 
 まず同時刻の Discord rate-limit 診断と接続状態を照合する。429による待機なら SDK の実完了後に枠が解放される。rate-limit の根拠がなく経過時間だけ伸びる場合は通信・Discord障害を調査する。`io_late_success` は遅れて成功した処理の観測であり、DBの配送完了を意味しない。該当通知を inspect して状態を確認し、残留中の手動 retry で回復を急がない。自動再起動は行わず、必要な再起動・deploy は[本番運用手順](README.md)の権限・禁止窓・単一instance条件に従う。再起動後も不明な送達は同じ nonce で再試行され得る。
 

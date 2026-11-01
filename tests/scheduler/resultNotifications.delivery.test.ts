@@ -12,7 +12,7 @@ import { deferred } from "../helpers/deferred.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
 import type { ClaimLease } from "../../src/time/lease.ts";
-import { InvariantViolationError } from "../../src/errors/index.ts";
+import { InvariantViolationError, NotificationAdmissionInvariantError } from "../../src/errors/index.ts";
 
 describe("result notification delivery", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(notificationNow); });
@@ -65,10 +65,9 @@ describe("result notification delivery", () => {
   it("preserves a Discord failure combined with a heartbeat defect without normal retry finalization", async () => {
     const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
     const started = deferred<void>(); const sending = deferred<{ id: string }>();
-    const defect = new Error("heartbeat diagnostic invariant");
+    const defect = new NotificationAdmissionInvariantError("heartbeat producer invariant");
     h.channel.send.mockImplementationOnce(() => { started.resolve(); return sending.promise; });
-    h.port.renew = async () => null;
-    h.logger.warn.mockImplementation(() => { throw defect; });
+    h.port.renew = async () => { throw defect; };
     const fail = vi.spyOn(h.port, "fail");
     const pending = runEffect(Effect.exit(deliverPreparedResultNotification(h, prepareResultDelivery(entry, h.context))));
     try {
@@ -83,6 +82,25 @@ describe("result notification delivery", () => {
     expect(exit.cause.reasons.filter(Cause.isDieReason).map(reason => reason.defect)).toContain(defect);
     expect(fail).not.toHaveBeenCalled();
     expect(h.channel.send).toHaveBeenCalledOnce();
+  });
+
+  it("recovers the same claim when the transient-lease warning logger throws", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
+    const started = deferred<void>(); const sending = deferred<{ id: string }>();
+    h.channel.send.mockImplementationOnce(() => { started.resolve(); return sending.promise; });
+    const renew = h.port.renew;
+    h.port.renew = vi.fn<typeof renew>().mockRejectedValueOnce(new Error("Temporary database failure")).mockImplementation(renew);
+    h.logger.warn.mockImplementationOnce(() => { throw new Error("Logging destination failed"); });
+    const pending = h.deliver(entry);
+    try {
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS + 1_000);
+      expect(h.port.renew).toHaveBeenCalledTimes(2);
+    } finally { sending.resolve({ id: "first" }); }
+    await pending;
+    expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(1);
+    expect(h.port.calls.some(call => call.name === "fail")).toBe(false);
   });
 
   it("reuses each part's nonce and persisted context, skips delivered parts, and disables mentions", async () => {

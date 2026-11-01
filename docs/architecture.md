@@ -97,7 +97,7 @@ timeout は待機の限界であり、Discord send や DB commit が取り消さ
 
 message 再作成は channel 取得後の send と message ID 保存までを中断から保護する。取得待機中の interruption 後に新しい send を始めない。同一 message の Effect mutex は、待機者の interruption で実行者の lock を解放しない。
 
-出欠と A/B の delivery scope は共通の [heartbeat](../src/notifications/delivery/claimHeartbeat.ts) と独立した期限監視を所有し、timer を止めた後も進行中の renew を実 settlement まで待つ。所有状態は owned / uncertain / lost。通信失敗または1 heartbeat周期未応答で uncertain とし、新しい begin・channel取得・send を待たせる。期限内の確認済み更新なら同じ claim で再開する。renew は一つだけを所有し、失敗が settle した場合にだけ1・2・4秒の有限再試行を行う。拒否・期限切れ・再試行終了は終端の lost とし、遅い成功応答では復活させない。
+出欠と A/B の delivery scope は共通の [heartbeat](../src/notifications/delivery/claimHeartbeat.ts) と独立した期限監視を所有し、timer を止めた後も進行中の renew を実 settlement まで待つ。所有状態は owned / uncertain / lost。通信失敗または1 heartbeat周期未応答で uncertain とし、新しい begin・channel取得・send を待たせる。期限内の確認済み更新なら同じ claim で再開する。状態変更を記録するloggerの例外でrenewや期限監視を止めない。renew は一つだけを所有し、失敗が settle した場合にだけ1・2・4秒の有限再試行を行う。拒否・期限切れ・再試行終了は終端の lost とし、遅い成功応答では復活させない。
 
 claim / renew が返す期限と同時観測の単調時計を使い、SQL・本文取得・commit応答の待ち時間も残時間から差し引く。wall clock と単調時計の短い方で判定し、時計の巻戻りで所有時間を延ばさない。新規開始には1 heartbeat周期以上の残時間を要求し、不足時は即時更新を待つ。timerが遅れても begin前・channel取得前・send直前に現在時刻で再判定し、SDK台帳登録と呼出しの間には await を挟まない。stop は待機を解除するが、開始済み send の結果保存と開始済み renew の所有を捨てない。claim loss は通知 callback より先に記録し、監視自体の予期しない失敗も配送の settlement 後に owner へ返す。DB transaction を Discord 待機へ持ち越さない。
 
@@ -138,9 +138,9 @@ dispatcher は出欠とは独立した上限付き slot と、実行中 payload 
 
 単発 Strategy は送信→開催履歴等の業務確定→message ID 保存→配送完了を維持する。連番 Strategy は配送済み part を飛ばし、begin→send→complete の後だけ譲渡を判断する。通知固有の判断は definition と source に置き、Strategy に通知種類の分岐を加えない。
 
-次 retry / claim expiry は one-shot で起動する。DB failure の有限 backoff 中は、処理中に受けた wake や新規受付でも回復期限を早めない。claim と必要な次時刻取得がともに成功したときに reset し、有限 retry を使い切った後も新しい wake / supervisor で再開できる。
+次 retry / claim expiry は one-shot で起動する。DB failure の有限 backoff 中は、処理中に受けた wake や新規受付でも回復期限を早めない。claim と必要な次時刻取得がともに成功したときに reset し、有限 retry を使い切った後も新しい wake / supervisor で再開できる。最後の失敗pump中に届いたwakeもsettlement後の1回に使い、新しいwakeなしにretryを繰り返さない。
 
-claim は OCR と分析の優先種別を交互に切り替え、一方だけなら空き slot を使う。種別内は既存の予定時刻・ID 順を保ち、残りの byte 予算に収まらない最古通知は追い越さず、実行中配送を排出してから扱う。別種別の due 通知が待つ場合、長文配送は投稿の complete 後・次の begin 前に claim を譲れる。開始済み投稿がないことを DB で確認し、失敗の試行予算を消費せず再取得する。既受理の本文・renderer・宛先・配送済み番号を再開時も使い、完了済み投稿を繰り返さない。予算超過の旧通知は単独配送を続け、途中で譲らない。譲渡のDB確認は配送開始後と外部wakeの世代が変わった時に限り、各投稿で繰り返さない。全slot使用中に未来のretryがdueになった場合は、次のwake・slot解放・supervisorで検知する。
+claim は OCR と分析の優先種別を交互に切り替え、一方だけなら空き slot を使う。優先種別への切替はその候補を現在の容量で取得できる場合だけ行い、後着の大きな候補で先着の小さい通知を止めない。種別内は既存の予定時刻・ID 順を保ち、残りの byte 予算に収まらない最古通知は追い越さず、実行中配送を排出してから扱う。別種別の due 通知が待つ場合、長文配送は投稿の complete 後・次の begin 前に claim を譲れる。開始済み投稿がないことを DB で確認し、失敗の試行予算を消費せず再取得する。既受理の本文・renderer・宛先・配送済み番号を再開時も使い、完了済み投稿を繰り返さない。予算超過の旧通知は単独配送を続け、途中で譲らない。譲渡のDB確認は配送開始後と外部wakeの世代が変わった時に限り、各投稿で繰り返さない。全slot使用中に未来のretryがdueになった場合は、次のwake・slot解放・supervisorで検知する。
 
 claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別配送の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。譲渡時も配送と heartbeat の settlement まで slot・byte 予算を保持し、plan の参照を手放してから補充する。再開用 payload をメモリに退避して予算外へ増やさない。
 

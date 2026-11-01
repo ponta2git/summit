@@ -111,7 +111,10 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         const oldest = candidates[0];
         const preferredIndex = preferredKind && oldest && oldest.payloadBytes <= payloadBudget - claimedBytes
           ? candidates.findIndex(n => n.kind === preferredKind) : -1;
-        const [n] = candidates.splice(Math.max(0, preferredIndex), 1);
+        const preferred = candidates[preferredIndex];
+        const selectedIndex = preferred && (preferred.payloadBytes <= payloadBudget - claimedBytes
+          || (result.length === 0 && (options.allowOversizedPayload ?? true))) ? preferredIndex : 0;
+        const [n] = candidates.splice(selectedIndex, 1);
         if (!n) { break; }
         if (n.attemptCount >= n.maxAttempts) { n.status = "FAILED"; n.lastError = "attempt_limit"; n.terminalAt = options.now; continue; }
         const why = reason(n); if (why) { cancel(n, why, options.now); continue; }
