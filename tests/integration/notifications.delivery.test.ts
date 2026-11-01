@@ -148,6 +148,7 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(queries).toHaveLength(12);
     expect(queries.filter(query => query.startsWith("set transaction"))).toHaveLength(2);
     expect(queries.every(query => !query.includes('"payload"'))).toBe(true);
+    expect(queries.every(query => !query.includes('"delivery_context"'))).toBe(true);
     expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", parts: [{ deliveredMessageId: "message" }] });
   });
 

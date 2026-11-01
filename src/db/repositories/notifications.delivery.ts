@@ -4,12 +4,12 @@ import { afterDeliveryFailure, ownsNotificationClaim, RESULT_DELIVERY_ERRORS } f
 import type { Clock } from "../../time/index.ts";
 import { observeClaimLease, type ClaimLease } from "../../time/lease.ts";
 import { cancelAttendanceSuccessors } from "./notifications.claim.ts";
-import { cancelNotification, loadResultCancellationReason, lockNotification, type NotificationDb, type NotificationFamily } from "./notifications.storage.ts";
+import { cancelNotification, loadResultCancellationReason, lockNotification, lockNotificationDelivery, type NotificationDb, type NotificationFamily } from "./notifications.storage.ts";
 
 export const beginNotificationPart = async (
   tx: NotificationDb, id: string, partNo: number, token: string, now: Date, family: NotificationFamily = "attendance"
 ): Promise<boolean> => {
-  const row = await lockNotification(tx, id);
+  const row = await lockNotificationDelivery(tx, id);
   if (!row || row.family !== family || !ownsNotificationClaim(row, token, now)) { return false; }
   if (row.family === "result") {
     const reason = await loadResultCancellationReason(tx, id);
@@ -28,7 +28,7 @@ export const beginNotificationPart = async (
 export const completeNotificationPart = async (
   tx: NotificationDb, id: string, partNo: number, token: string, messageId: string | null, now: Date, family: NotificationFamily = "attendance"
 ): Promise<boolean> => {
-  const row = await lockNotification(tx, id);
+  const row = await lockNotificationDelivery(tx, id);
   if (!row || row.family !== family || !ownsNotificationClaim(row, token, now, true)) { return false; }
   if (row.family === "result" && (!messageId || messageId.length > 200)) { throw new Error("Invalid delivered message ID"); }
   const changed = await tx.update(parts).set({

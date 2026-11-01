@@ -17,11 +17,15 @@ export type NotificationFamily = "attendance" | "result";
 export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "delete" | "execute">;
 
 // why: claim の制御や各 part の更新では、大きな immutable payload を読み直さない。
+const notificationDeliveryColumns = {
+  family: notifications.family, status: notifications.status,
+  claimToken: notifications.claimToken, claimExpiresAt: notifications.claimExpiresAt, partCount: notifications.partCount
+};
 export const notificationStateColumns = {
-  id: notifications.id, family: notifications.family, kind: notifications.kind, schemaVersion: notifications.schemaVersion, status: notifications.status,
-  claimToken: notifications.claimToken, claimExpiresAt: notifications.claimExpiresAt,
+  ...notificationDeliveryColumns,
+  id: notifications.id, kind: notifications.kind, schemaVersion: notifications.schemaVersion,
   attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts, retryCycle: notifications.retryCycle,
-  partCount: notifications.partCount, rendererVersion: notifications.rendererVersion,
+  rendererVersion: notifications.rendererVersion,
   deliveryContext: notifications.deliveryContext, purgedAt: notifications.purgedAt,
   terminalAt: notifications.terminalAt, lastError: notifications.lastError
 };
@@ -52,6 +56,13 @@ export const notificationTransaction = <T>(
 
 export const lockNotification = async (tx: NotificationDb, id: string): Promise<NotificationStateRow | undefined> => {
   const [row] = await tx.select(notificationStateColumns).from(notifications).where(eq(notifications.id, id)).for("update");
+  return row;
+};
+
+export const lockNotificationDelivery = async (
+  tx: NotificationDb, id: string
+): Promise<Pick<typeof notifications.$inferSelect, keyof typeof notificationDeliveryColumns> | undefined> => {
+  const [row] = await tx.select(notificationDeliveryColumns).from(notifications).where(eq(notifications.id, id)).for("update");
   return row;
 };
 

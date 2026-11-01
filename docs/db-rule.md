@@ -145,6 +145,8 @@ OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後
 
 取消条件の設定・世代・対象有無は gate 後の一 SELECT で取得し、理由の優先順位は domain の判定を維持する。正常な begin / complete は合計16 SQL・2 transactions（driver の BEGIN / COMMIT を含む）。claim・plan・renew・協調 yield は別計上する。plan と最初の begin の統合は、channel 取得失敗時にも renderer / 宛先を固定する現行境界が変わるため採用しない。再評価時は失敗・再開時の固定内容と削減効果を同時に検証する。
 
+begin / complete の親lockはfamily・status・token・期限・part数だけを取得し、固定deliveryContext等を読み直さない。transaction-local timeoutは範囲検証した設定整数だけをDrizzleのescapingでinline化し、`prepare:false`のparameter Describe待ちを避ける。request値は引き続きbindし、timeout設定とgate取得は別statement。SQL件数の減少とは扱わず、通信往復・転送量・処理時間を比較する。
+
 claim は payload 本文を取得する前に DB 内で正規化 byte 数を調べ、実行中の通知を含む byte 予算と配送 slot の両方に収める。予算より大きい既受理 payload は、他に実行中の通知がない場合だけ単独で取得する。配送中に保持する予算は実処理の settlement まで解放せず、予算待ちの due row を短周期で再取得しない。本文は part 数を先に数えてから一投稿ずつ生成し、全投稿の文字列配列を保持しない。
 
 claim の part 情報は昇順・重複なしの配送済み番号に限定する。番号の欠落を許し、連続した prefix と決めつけず再開する。inspect は status・試行回数・message ID を含む詳細を維持する。
