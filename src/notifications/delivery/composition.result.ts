@@ -11,6 +11,7 @@ import { createResultDeliveryRuntime } from "./resultRuntime.ts";
 import type { DeliveryRuntime } from "./runtime.ts";
 import { createResultDeliverySource } from "./sources/result.ts";
 import { deliverResumable, type ResumableStrategy } from "./strategies/resumable.ts";
+import { createResultIoLedger, type ResultIoLedger } from "./resultIo.ts";
 
 interface ResultComposition {
   readonly client: Client;
@@ -23,7 +24,7 @@ interface ResultComposition {
 }
 
 /** Synchronous preparation leaves only a retained plan and metadata in each asynchronous task. */
-const createResultTaskFactory = (deps: ResultComposition): ((
+const createResultTaskFactory = (deps: ResultComposition, io: ResultIoLedger): ((
   entry: ClaimedResultNotification, consumeYieldRequest: () => boolean
 ) => DeliveryTask<Effect.Error<ReturnType<typeof deliverPreparedResultNotification>>>) => {
   const logger = deps.logger ?? defaultLogger;
@@ -34,13 +35,18 @@ const createResultTaskFactory = (deps: ResultComposition): ((
     const prepared = prepare(entry, deps.context);
     return { id, payloadBytes, run: execution => deliverPreparedResultNotification({
       client: deps.client, port: deps.port, clock: deps.clock, logger, strategy,
-      isStopping: execution.isStopping, consumeYieldRequest
+      isStopping: execution.isStopping, consumeYieldRequest, io
     }, prepared) };
   };
 };
 
 /** Bind the result selection policy and replaceable delivery implementation at one composition root. */
-export const createResultNotificationDispatcher = (deps: ResultComposition): DeliveryRuntime => createResultDeliveryRuntime({
-  source: createResultDeliverySource(deps.port, deps.clock), clock: deps.clock,
-  prepareTask: createResultTaskFactory(deps), logger: deps.logger ?? defaultLogger
-});
+export const createResultNotificationDispatcher = (deps: ResultComposition): DeliveryRuntime => {
+  const logger = deps.logger ?? defaultLogger;
+  const io = createResultIoLedger({ logger, onSettled: () => runtime.wake("delivery_finished") });
+  const runtime = createResultDeliveryRuntime({
+    source: createResultDeliverySource(deps.port, deps.clock), clock: deps.clock, io,
+    prepareTask: createResultTaskFactory(deps, io), logger
+  });
+  return runtime;
+};

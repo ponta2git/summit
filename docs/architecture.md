@@ -140,7 +140,9 @@ claim は OCR と分析の優先種別を交互に切り替え、一方だけな
 
 claim は本文と再開に必要な配送済み part 番号だけを返し、監査用の part 詳細は inspect が取得する。同期の検証・描画準備後、非同期配送は検証済み plan と小さい metadata を保持し、元の claim batch / payload を完了 callback に閉じ込めない。不正 item も個別配送の settlement を通り、予約した byte 予算を必ず戻して後続 item を継続する。譲渡時も配送と heartbeat の settlement まで slot・byte 予算を保持し、plan の参照を手放してから補充する。再開用 payload をメモリに退避して予算外へ増やさない。
 
-結果投稿の SDK cache は送信成功時にその message だけを解放し、DB 確定には message ID を渡す。送信 timeout は SDK 内の実 I/O を中止しないため、待機期限後の成功でも cache 解放を行う。dispatcher の論理 slot 上限を SDK 内の未完了 request 数の上限とは扱わない。
+結果投稿の SDK cache は送信成功時にその message だけを解放し、DB 確定には message ID を渡す。送信 timeout は SDK 内の実 I/O を中止しないため、[result I/O 台帳](../src/notifications/delivery/resultIo.ts)が channel 取得・送信の実 Promise を登録前から完了まで所有する。論理配送と残留 I/O の owner の和集合を最大2件・元 payload 合計512 KiBで会計し、同じ owner を二重計上しない。旧巨大通知の予約も実完了まで残す。同じ owner の再 claim は実完了後の wake まで禁止し、待機中に poll や attempt 加算を行わない。
+
+台帳は ID・処理種別・part番号・開始時刻・予約 byte 数・終了通知だけを保持し、本文や全partを複製しない。待機期限後の成功でも cache を解放するが、古い token での完了保存は行わない。nonce / CAS の既存契約に従うため、実完了後や再起動後の再送が重複しない保証は加えない。上限はアプリから開始した SDK Promise の数であり、SDK内部の HTTP retry 回数ではない。stop は新規開始を止め、論理配送と残留 I/O を同じ全体 drain 期限で待つ。期限後の DB close・client destroy・process exit は既存の shutdown 経路に従う。
 
 HTTP は本文消費済みの成功応答で接続を再利用し、拒否・例外・未読本文がある応答は切断する。接続32・受付中 command 4を維持し、各接続は100要求、idle 5秒と Node の1秒 bufferで区切る。header は接続時と全応答完了時から20秒の固定期限を置き、先行応答中の pipeline も Node の header / request 期限20秒・検査周期1秒で保護する。本文期限10秒と byte 予算は各要求に適用し、断片数に比例する buffer 配列を保持しない。stop は idle・未完了 header の接続を回収し、drain は受付済み DB command と listener の終了を待つ。
 

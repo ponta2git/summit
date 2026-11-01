@@ -13,6 +13,7 @@ import { catchExpectedError, promiseCall, settledCall } from "../../runtime/effe
 import { addMs, type Clock } from "../../time/index.ts";
 import { withClaimHeartbeat } from "./claimHeartbeat.ts";
 import { notificationNonce } from "./deliveryNonce.ts";
+import type { ResultIoLedger, ResultIoOwner } from "./resultIo.ts";
 
 class DiscordDeliveryFailure extends Error {
   readonly status: unknown;
@@ -24,11 +25,12 @@ class DiscordDeliveryFailure extends Error {
 type DeliveryFailure = DatabaseError | DiscordDeliveryFailure;
 
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
-const boundedSend = <T>(send: () => Promise<T>): Effect.Effect<T, DiscordDeliveryFailure> =>
-  promiseCall(send).pipe(Effect.mapError(cause => new DiscordDeliveryFailure(cause)), Effect.timeoutOrElse({
+const boundedSend = <T>(io: ResultIoLedger, owner: ResultIoOwner, operation: "channel" | "send", partNo: number | null,
+  send: () => Promise<T>): Effect.Effect<T, DiscordDeliveryFailure> =>
+  promiseCall(() => io.run(owner, operation, partNo, send)).pipe(Effect.mapError(cause => new DiscordDeliveryFailure(cause)), Effect.timeoutOrElse({
     duration: RESULT_NOTIFICATION_SEND_TIMEOUT_MS,
     orElse: () => Effect.fail(new DiscordDeliveryFailure())
-  }));
+  }), Effect.ensuring(Effect.sync(() => io.detach(owner.id))));
 
 const databaseCall = <T>(call: () => Promise<T>): Effect.Effect<T, DatabaseError> =>
   settledCall(call).pipe(Effect.mapError(cause =>
@@ -51,6 +53,7 @@ interface ResultDeliveryDeps {
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
   readonly isStopping: () => boolean;
   readonly strategy: ResumableStrategy;
+  readonly io: ResultIoLedger;
   /** Consume a coalesced request to check for waiting work, only after a part is persisted. */
   readonly consumeYieldRequest?: () => boolean;
 }
@@ -90,13 +93,13 @@ export const deliverPreparedResultNotification = (
     })))) { return; }
     const shouldStop = (): boolean => isClaimLost() || deps.isStopping();
     if (shouldStop()) { return; }
-    const channel = yield* boundedSend(() => getTextChannel(deps.client, context.channelId));
+    const channel = yield* boundedSend(deps.io, entry, "channel", null, () => getTextChannel(deps.client, context.channelId));
     yield* deps.strategy<MessageCreateOptions, DeliveryFailure>({
       parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop,
       begin: partNo => databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now())),
       send: (partNo, body) => Effect.suspend(() => {
         sending = true;
-        return boundedSend(() => sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true }));
+        return boundedSend(deps.io, entry, "send", partNo, () => sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true }));
       }),
       complete: (partNo, messageId) => Effect.gen(function* () {
         const changed = yield* databaseCall(() => port.complete(entry.id, partNo, entry.claimToken, messageId, clock.now()));

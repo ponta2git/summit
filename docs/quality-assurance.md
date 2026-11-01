@@ -40,6 +40,7 @@
 | 信頼性・高 | Discord の rate-limit 待機で出欠 claim の期限を超える | 両 family の共通 heartbeat、期限切れ owner の復活禁止、renew の settlement。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts)、[real / fake 契約](../tests/contracts/attendance.ts) |
 | 信頼性・中 | Discord 受理後の DB 失敗で短時間再送する | 通知 / part の安定 nonce、begin / finalize fencing。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts) |
 | 信頼性・保守性・高 | claim 待機中の停止、準備の同期失敗、配送終了と枠補充を競合させる | 共通容量台帳で予約と完了待ちを持ち、Scope が実行を所有して settlement 後に解放。出欠 batch と A/B の随時補充は別方針。[容量](../tests/notifications/delivery.capacity.test.ts)、[claim と停止](../tests/scheduler/resultNotifications.test.ts) |
+| 信頼性・性能・高 | SDK の送信・channel 取得が45秒を超え、20分未完了になる | 論理配送と実未完了 I/O の owner 和集合で2件・元本文512 KiBを予約。旧巨大通知の単独予約、遅延成功、stop / drain、警告数と実完了後の再開を[障害注入](../tests/scheduler/resultNotifications.pendingIo.test.ts)・[台帳](../tests/notifications/resultIo.test.ts)で検証 |
 | 信頼性・高 | stop / drain の先頭で同期 throw、destroy を遅延・reject させる | 全 owner を呼び、非同期 destroy 完了を待つ。[lifecycle](../tests/runtime/lifecycle.test.ts)、[shutdown](../tests/shutdown.test.ts) |
 | 信頼性・中 | metrics を失敗させる、cron 登録を途中で失敗させる | 観測と回復の失敗分離、登録済み task の回収。[cron lifecycle](../tests/scheduler/cron.lifecycle.test.ts) |
 | 信頼性・高 | Session row / advisory lock を保持して出欠 transaction を待たせる | transaction-local の SQL / lock deadline、rollback 完了後の再利用。[実 DB 期限](../tests/integration/transactionLimits.test.ts) |

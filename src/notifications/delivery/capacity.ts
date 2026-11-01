@@ -30,17 +30,25 @@ export interface DeliveryCapacity {
 export const createDeliveryCapacity = (options: {
   readonly slots: number;
   readonly payloadBytes?: number;
+  /** Reservations retained by physical I/O after logical work finishes. */
+  readonly retained?: () => readonly { readonly id: string; readonly payloadBytes: number }[];
   readonly onSettled?: (id: string, exit: Exit.Exit<void, unknown>) => void;
 }): DeliveryCapacity => {
   const scope = Scope.makeUnsafe();
   const active = new Map<string, { readonly payloadBytes: number; readonly completed: Deferred.Deferred<void> }>();
   let stopped = false;
-  const snapshot = (): DeliveryBudget => ({
-    slots: options.slots - active.size,
-    payloadBytes: (options.payloadBytes ?? Infinity) - [...active.values()].reduce((sum, item) => sum + item.payloadBytes, 0),
-    activeIds: [...active.keys()],
-    allowOversized: active.size === 0
-  });
+  const snapshot = (): DeliveryBudget => {
+    const owners = new Map([...active].map(([id, item]) => [id, item.payloadBytes]));
+    for (const owner of options.retained?.() ?? []) {
+      owners.set(owner.id, Math.max(owners.get(owner.id) ?? 0, owner.payloadBytes));
+    }
+    return {
+      slots: options.slots - owners.size,
+      payloadBytes: (options.payloadBytes ?? Infinity) - [...owners.values()].reduce((sum, bytes) => sum + bytes, 0),
+      activeIds: [...owners.keys()],
+      allowOversized: owners.size === 0
+    };
+  };
   return {
     snapshot,
     isStopping: () => stopped,
@@ -49,7 +57,7 @@ export const createDeliveryCapacity = (options: {
       Effect.uninterruptible(Effect.gen(function* () {
         const completed = yield* Effect.sync(() => {
           const available = snapshot();
-          if (stopped || active.has(id) || available.slots <= 0 || payloadBytes < 0 || !Number.isFinite(payloadBytes)
+          if (stopped || available.activeIds.includes(id) || available.slots <= 0 || payloadBytes < 0 || !Number.isFinite(payloadBytes)
             || (payloadBytes > available.payloadBytes && !available.allowOversized)) {
             throw new InvariantViolationError("Invalid delivery capacity reservation.");
           }

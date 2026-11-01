@@ -54,7 +54,7 @@ describe("injected delivery ownership", () => {
     const held = new Map(ids.map(id => [id, deferred<void>()]));
     for (const item of held.values()) { releases.push(() => item.resolve()); }
     const started: string[] = []; const finished: string[] = [];
-    runtime = createResultDeliveryRuntime({ clock: h.clock, logger: h.logger,
+    runtime = createResultDeliveryRuntime({ clock: h.clock, logger: h.logger, io: h.io,
       source: createResultDeliverySource(h.port, h.clock),
       prepareTask: entry => ({ id: entry.id, payloadBytes: entry.payloadBytes,
         run: () => settledCall(async () => {
@@ -125,7 +125,7 @@ describe("injected delivery ownership", () => {
     const badId = await h.enqueue("a-invalid", "summary");
     const goodId = await h.enqueue("b-valid", "summary");
     const started: string[] = [];
-    runtime = createResultDeliveryRuntime({ clock: h.clock, logger: h.logger,
+    runtime = createResultDeliveryRuntime({ clock: h.clock, logger: h.logger, io: h.io,
       source: createResultDeliverySource(h.port, h.clock),
       prepareTask: entry => ({ id: entry.id, payloadBytes: entry.id === badId ? 0 : entry.payloadBytes,
         run: () => Effect.sync(() => { started.push(entry.id); }) })

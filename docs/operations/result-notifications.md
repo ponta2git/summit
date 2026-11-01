@@ -81,6 +81,10 @@ pnpm notifications settings ocr_completed on
 - `shutdown.drain_timeout` は未完了claimが残り得ることを示す。次の起動後に同じIDを確認する。
 - A/Bの長文・失敗と出欠通知の配送は独立する。出欠側の警告は別runbookで判断する。
 
+`result_notification.io_pending` は待機期限後も SDK の実処理を所有している診断で、最古90秒から最大1分1件を出す。`pending`・`payloadBytes` は実未完了 owner 数と元本文の予約量、`oldestAgeMs` は最古の経過時間。全枠占有が5分続くと `investigate:true` になる。閾値の正本は [config](../../src/config.ts)。結果通知の投稿先は1チャンネルであり、2件の実未完了が残る間は新規配送を DB で待たせる。
+
+まず同時刻の Discord rate-limit 診断と接続状態を照合する。429による待機なら SDK の実完了後に枠が解放される。rate-limit の根拠がなく経過時間だけ伸びる場合は通信・Discord障害を調査する。`io_late_success` は遅れて成功した処理の観測であり、DBの配送完了を意味しない。該当通知を inspect して状態を確認し、残留中の手動 retry で回復を急がない。自動再起動は行わず、必要な再起動・deploy は[本番運用手順](README.md)の権限・禁止窓・単一instance条件に従う。再起動後も不明な送達は同じ nonce で再試行され得る。
+
 ## 移行とrendererの保持
 
 [migration.md](migration.md#共有通知の互換性)に従い、対応する momo-db・Summit・momo-result API を揃える。通知取消は各 writer の業務 transaction が担い、撤去済みの通知業務関数・trigger に依存しない。復旧は現在の DB と互換な consumer を使い、再開後のデータを守る forward fix を原則とする。

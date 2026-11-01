@@ -10,6 +10,7 @@ import { deliveryLanes } from "./lanes.ts";
 import { prepareDeliveryTask, type DeliveryTask } from "./contracts.ts";
 import type { ResultDeliverySource } from "./sources/result.ts";
 import type { DeliveryRuntime } from "./runtime.ts";
+import type { ResultIoLedger } from "./resultIo.ts";
 
 /** Refill result deliveries on completion; capacity accounting never selects notification kinds. */
 export const createResultDeliveryRuntime = <E>(deps: {
@@ -17,12 +18,14 @@ export const createResultDeliveryRuntime = <E>(deps: {
   readonly clock: Clock;
   readonly prepareTask: (entry: ClaimedResultNotification, consumeYieldRequest: () => boolean) => DeliveryTask<E>;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
+  readonly io: ResultIoLedger;
 }): DeliveryRuntime => {
   const { source, logger } = deps;
   const capacity = createDeliveryCapacity({ ...deliveryLanes.results,
+    retained: deps.io.reservations,
     onSettled: (notificationId, exit) => {
-      if (Exit.isFailure(exit)) { logger.error({ event: "result_notification.dispatch_failed", notificationId }); }
-      dispatcher.wake("delivery_finished");
+      try { if (Exit.isFailure(exit)) { logger.error({ event: "result_notification.dispatch_failed", notificationId }); } }
+      finally { dispatcher.wake("delivery_finished"); }
     }
   });
   let timer: { readonly handle: ReturnType<typeof setTimeout>; readonly dueAt: number } | undefined;
@@ -90,13 +93,15 @@ export const createResultDeliveryRuntime = <E>(deps: {
       if (capacity.isStopping()) { return; }
       queued = true;
       source.wake(reason);
-      logger.info({ event: "result_notification.wake", reason });
-      if (!pumping) { schedule(0); }
+      try { logger.info({ event: "result_notification.wake", reason }); }
+      finally { if (!pumping) { schedule(0); } }
     },
-    stop: () => { capacity.stop(); clearTimeout(timer?.handle); timer = undefined; },
+    stop: () => { capacity.stop(); deps.io.stop(); clearTimeout(timer?.handle); timer = undefined; },
     drain: async () => {
-      await pumping;
-      await runPromiseBoundary(capacity.drain());
+      const deliveries = async (): Promise<void> => { await pumping; await runPromiseBoundary(capacity.drain()); };
+      await Promise.all([deliveries(), deps.io.drain()]);
+      // A delivery may have started a later SDK operation after the first drain snapshot.
+      await deps.io.drain();
       if (capacity.isStopping()) { await runPromiseBoundary(capacity.close()); }
     }
   };

@@ -24,7 +24,7 @@ const selectDefinition = <Kind extends keyof ResultNotificationPayloads>(
   definitions: ResultNotificationDefinitions, kind: Kind
 ): ResultNotificationDefinition<Kind> => definitions[kind];
 
-type ResultDeliveryMetadata = Pick<ClaimedResultNotification, "id" | "kind" | "claimToken" | "attemptCount" | "maxAttempts">;
+type ResultDeliveryMetadata = Pick<ClaimedResultNotification, "id" | "kind" | "payloadBytes" | "claimToken" | "attemptCount" | "maxAttempts">;
 export type PreparedResultDelivery = { readonly metadata: ResultDeliveryMetadata } & ({
   readonly strategy: "resumable";
   readonly notification: PlannedResultNotification;
@@ -38,7 +38,7 @@ export const prepareResultDelivery = (
   definitions: ResultNotificationDefinitions = resultNotificationDefinitions
 ): PreparedResultDelivery => {
   const metadata: ResultDeliveryMetadata = {
-    id: entry.id, kind: entry.kind, claimToken: entry.claimToken, attemptCount: entry.attemptCount, maxAttempts: entry.maxAttempts
+    id: entry.id, kind: entry.kind, payloadBytes: entry.payloadBytes, claimToken: entry.claimToken, attemptCount: entry.attemptCount, maxAttempts: entry.maxAttempts
   };
   const context = entry.partCount === 0 ? currentContext : entry.deliveryContext;
   const definition = selectDefinition(definitions, entry.kind);
