@@ -39,7 +39,13 @@
     "forcedGcDuringCycles": false,
     "minimumMemoryBenefitMiB": 2,
     "p95AndCpuNoninferiorityRatio": 1.1,
-    "peakIncreaseMarginMiB": 2
+    "peakIncreaseMarginMiB": 2,
+    "controlEnvironment": {
+      "MALLOC_ARENA_MAX": "0"
+    },
+    "candidateEnvironment": {
+      "MALLOC_ARENA_MAX": "2"
+    }
   },
   "analysis": {
     "completePairs": 11,
@@ -59,7 +65,12 @@
         "block": 4,
         "arena": 0,
         "detail": "assert_strictEqual_503_202",
-        "code": "setup_or_measurement"
+        "code": "setup_or_measurement",
+        "httpStatus": 503,
+        "cycle": 3,
+        "cause": "unknown",
+        "harnessCodeMeaning": "setup_or_measurement is the harness error category; it does not establish a setup cause.",
+        "cycleEvidence": "run.log records cycles 1 and 2 completed; the contemporaneous protocol amendment records the next receipt failure during cycle 3."
       }
     ],
     "limitations": [
@@ -368,13 +379,29 @@
       "block": 1,
       "anonDifferenceMiB": -2.90234375,
       "latencyRatio": 1.078466749360073,
-      "cpuRatio": 1.0908341164555846
+      "cpuRatio": 1.0908341164555846,
+      "runIdsInOrder": [
+        "calibration-b01-1",
+        "calibration-b01-2"
+      ],
+      "arenaValuesInOrder": [
+        0,
+        0
+      ]
     },
     {
       "block": 2,
       "anonDifferenceMiB": 0.8984375,
       "latencyRatio": 1.1123267627487052,
-      "cpuRatio": 0.9906675019554922
+      "cpuRatio": 0.9906675019554922,
+      "runIdsInOrder": [
+        "calibration-b02-1",
+        "calibration-b02-2"
+      ],
+      "arenaValuesInOrder": [
+        0,
+        0
+      ]
     }
   ],
   "arena1Reference": [
@@ -811,7 +838,10 @@
     "protocol-amendments.txt": "548ffd0bcd2f198f210925a6465aad1a5793e36a93f75efa2bf2c8a082215be9",
     "analysis-amendment-frozen.json": "4171c96b1254c1777ff7a1df3e80bd72cb40577b209cbc9a2c3baf8103cb625c",
     "analysis-summary.json": "2ba7cae9470881fd38b26d425197fd5c233fd0e16871e69ec2791367a40dcda6",
-    "artifact-manifest.json": "8c469052a82e8c938bcc3bec21db748ad415fa58a9d61b6ffa31b959e63a7977"
+    "artifact-manifest.json": "8c469052a82e8c938bcc3bec21db748ad415fa58a9d61b6ffa31b959e63a7977",
+    "runs/primary-b04-2-a0/result.json.failure.json": "71d8f9d9130cb664b302342884cd67e0ab24ff8d9b1d47ae32af33b15d4547d5",
+    "runs/primary-b04-2-a0/run.log": "73dce50b18eb6d71e57e11fc61d7bc6407c61f9aa9c3063606e529b88cfa9b77",
+    "runs/long-2-a0/result.json": "c8b412134676fbb859eeb7c2e9cf5cfd78a2d3dd7041fd16721954f39efba5f8"
   },
   "artifactScope": "Public aggregates only. Source artifact hashes identify the separately retained raw study; raw logs and scratch harness are not included in this repository.",
   "implementationValidation": {
@@ -915,6 +945,94 @@
         }
       }
     ],
-    "note": "Capacity validation of the production image, separate from the paired study; single run per scenario, not a measured before/after improvement."
+    "note": "Capacity validation of the production image, separate from the paired study; single run per scenario, not a measured before/after improvement.",
+    "runtimeInputsEquivalentToCommit": "f40407e974e04a86f96e26914ad1ace9c2b47473",
+    "sourceProvenanceNote": "Built before the runtime commit, with runtime input contents equivalent to that commit. Subsequent changes touch verification and documentation only.",
+    "runtimeInputComparison": {
+      "baseCommit": "f40407e",
+      "comparedCommit": "dd6b78d",
+      "paths": [
+        "Dockerfile",
+        "Dockerfile.dockerignore",
+        "src",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        ".npmrc",
+        "tsconfig*.json"
+      ],
+      "identical": true
+    },
+    "imageContentVerification": {
+      "filesMatched": 196,
+      "manifestSha256": "bbd879d60b31ada110ae8746ad37b699915cf3fa0e3aaefa42b7519ae19eed13"
+    },
+    "runtimeImageGate": {
+      "passed": true,
+      "logSha256": "babfc1ba6bca697c4a627adcd720ba6a266929171943b44799a9847f81d4d33b",
+      "defaultArenaNegativeControlRejected": true
+    },
+    "runbookReadOnlyProbe": [
+      {
+        "case": "image_default",
+        "passed": true
+      },
+      {
+        "case": "rollback_zero",
+        "passed": true
+      },
+      {
+        "case": "invalid_value_redacted",
+        "passed": true
+      },
+      {
+        "case": "multiple_targets",
+        "passed": true
+      },
+      {
+        "case": "no_target",
+        "passed": true
+      }
+    ]
+  },
+  "dataQualityChecks": {
+    "longDefaultIdenticalAnonymous": {
+      "verifiedAgainstRaw": true,
+      "samples": [
+        {
+          "phase": "natural1",
+          "atMs": 277106.299919,
+          "anonymousBytes": 78041088,
+          "cgroupAnonymousBytes": 78868480,
+          "heapUsedBytes": 39273568,
+          "heapTotalBytes": 54075392
+        },
+        {
+          "phase": "natural2",
+          "atMs": 278118.955836,
+          "anonymousBytes": 78041088,
+          "cgroupAnonymousBytes": 78041088,
+          "heapUsedBytes": 39374440,
+          "heapTotalBytes": 54075392
+        },
+        {
+          "phase": "natural3",
+          "atMs": 279128.299878,
+          "anonymousBytes": 78041088,
+          "cgroupAnonymousBytes": 78041088,
+          "heapUsedBytes": 39466680,
+          "heapTotalBytes": 54075392
+        },
+        {
+          "phase": "postGc",
+          "atMs": 279214.49592,
+          "anonymousBytes": 78041088,
+          "cgroupAnonymousBytes": 78041088,
+          "heapUsedBytes": 34278616,
+          "heapTotalBytes": 43851776
+        }
+      ],
+      "interpretation": "Distinct timestamps and changing V8 heap values confirm distinct snapshots; the last two natural and post-GC smaps Anonymous and cgroup anon agree. Physical-page accounting behind unchanged Anonymous after GC is unresolved; the long run remains descriptive."
+    }
   }
 }

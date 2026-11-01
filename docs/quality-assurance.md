@@ -100,7 +100,7 @@ fixture 生成と負荷 client は container 外に置き、計測には本番�
 
 速度・CPU・heap の診断、旧8,823投稿の全件確定、100通知の連続負荷は[性能レポート](./performance.md)で別に測定する。上表は容量gateの結果であり、追加のprofile採取やCPU quota付き計測の数値と混在させない。
 
-payload 上限、配送並列数、文字列処理、Node / allocator、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。allocator の採用根拠は [性能レポート](./performance.md)、適用後の観測と復旧は [運用手順](./operations/README.md#runtimeのメモリ設定) に従う。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
+payload 上限、配送並列数、文字列処理、Node / allocator、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行し、同じimageで `pnpm verify:runtime-image <local-image>` も通してallocator設定と実行環境を照合する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。allocator の採用根拠は [性能レポート](./performance.md)、適用後の観測と復旧は [運用手順](./operations/README.md#runtimeのメモリ設定) に従う。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
 
 ## 4. 残る運用上の境界
 

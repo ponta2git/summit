@@ -4,7 +4,7 @@
 
 ## 2026-11-01 runtime のメモリ削減
 
-date-fns の関数と日本語 locale を公開 subpath から import し、非 bundle 実行で不要な module の初期化を避ける。加えて [Dockerfile](../Dockerfile) の runtime stage に `MALLOC_ARENA_MAX=2` を設定する。build / 開発環境、JS heap 上限、256 MiB の VM 容量は変更しない。`verify:runtime-image` は image に埋め込まれた値と公開 subpath の import を検証する。
+date-fns の関数と日本語 locale を公開 subpath から import し、非 bundle 実行で不要な module の初期化を避ける。加えて [Dockerfile](../Dockerfile) の runtime stage に `MALLOC_ARENA_MAX=2` を設定する。build / 開発環境、JS heap 上限、256 MiB の VM 容量は変更しない。`verify:runtime-image` は image に埋め込まれた値と `date-fns/format`・`date-fns/locale/ja` の import を検証する。barrel import の再導入を検出する検査ではない。
 
 採用理由は、限定 import 後にも allocator 設定による待機メモリの削減があり、CPU と peak が事前の許容幅内だったこと。p95 の非劣化は未確定だが、便益と残る性能リスク、復旧可能性を比較して条件付きで採用する。不存在の証明や、信頼区間がゼロを含むことだけを採否の理由にしない。適用後の観測と切り戻しは [運用手順](./operations/README.md#runtimeのメモリ設定) に従う。
 
@@ -41,7 +41,7 @@ A/A 2組でも p95 比は+7.85 / +11.23%と揺れた。`=1` の参考2組はメ�
 
 診断 addon を含まない本実装 image `4e399e99e95a`（Linux ARM64、momo-db `0f102e4`）を新しく build し、専用 local PostgreSQL で標準・旧巨大通知を検証した。標準17通知・932 partsの cgroup peak は **123.21 MiB** で、必須目標192 MiB以下を達成。旧8 MiB近傍の通知は8,823 partsを計画し、先頭1 partの確定と4競合受付を **172.19 MiB** で完了した。旧ケースの全part配送を確認した結果とは区別する。
 
-容量 gate は各1回で、上の対比較とは image・計測方法が異なる。過去の単回値との差を改善量として扱わない。非 root・read-only・本番依存・公開 subpath・image 内の allocator 設定の検査も成功した。`pnpm run ci` の130 files / 963 tests、build、文書・禁止 pattern 検査が成功し、既存4ファイルの行数 advisory は残る。本番への deploy は実施していない。
+容量 gate は各1回で、上の対比較とは image・計測方法が異なる。過去の単回値との差を改善量として扱わない。非 root・read-only・本番依存・format / ja の公開 subpath・image 内の allocator 設定の検査も成功した。imageのruntime入力は実装commit `f40407e` と同一で、その後の差分は検証器・文書に限定される。`pnpm run ci` の130 files / 963 tests、build、文書・禁止 pattern 検査が成功し、既存4ファイルの行数 advisory は残る。本番への deploy は実施していない。
 
 ## 2026-10-14 通知定義と runtime 注入の分離
 
