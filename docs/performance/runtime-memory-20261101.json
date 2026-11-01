@@ -1,0 +1,920 @@
+{
+  "schemaVersion": 1,
+  "studyDate": "2026-11-01",
+  "sourceCommit": "22e99aa",
+  "comparison": "Identical Node 26 image with selective date-fns imports; only MALLOC_ARENA_MAX differs (0/default vs 2).",
+  "environment": {
+    "node": "26.13.0",
+    "architecture": "arm64",
+    "platform": "linux",
+    "glibc": "2.36",
+    "applicationCpu": "CPU 0 affinity, no quota",
+    "databaseCpu": "CPU 1 affinity",
+    "applicationMemoryMiB": 256,
+    "swap": false,
+    "realDiscord": false,
+    "realTls": false,
+    "freshApplicationAndDatabasePerRun": true,
+    "diagnosticAddonInStudyImageOnly": true
+  },
+  "images": {
+    "application": "sha256:455b88552a8dc23eef4a02828869fb574ec4b8ee77bebb9542f4f29809a4cd7c",
+    "postgresql": "sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+  },
+  "primaryPlan": {
+    "pairedRuns": 12,
+    "order": "6 default-2, 6 2-default; fixed randomized order",
+    "cyclesPerRun": 4,
+    "notificationsPerRun": 440,
+    "partsPerRun": 2980,
+    "normalNotificationsPerRun": 400,
+    "pairArrivalIntervalMs": 100,
+    "cycleIdleMs": 2000,
+    "finalIdleMs": 10000,
+    "memorySamplesAtSeconds": [
+      8,
+      9,
+      10
+    ],
+    "forcedGcDuringCycles": false,
+    "minimumMemoryBenefitMiB": 2,
+    "p95AndCpuNoninferiorityRatio": 1.1,
+    "peakIncreaseMarginMiB": 2
+  },
+  "analysis": {
+    "completePairs": 11,
+    "percentileMethod": "nearest rank within each independent run",
+    "statisticalUnit": "independent paired runs, not notifications or cycles",
+    "interval": "paired t, two-sided 90% (one-sided 95% limits), df=10 for 11 complete pairs; ratios on log scale",
+    "bootstrap": "20,000 resamples by block; sensitivity only",
+    "completeCaseAmendmentBeforeTreatmentEffectsInspected": true,
+    "timingOutlierExclusions": false,
+    "unpairedPrimaryRuns": [
+      "primary-b04-1-a2"
+    ],
+    "failedRuns": [
+      {
+        "id": "primary-b04-2-a0",
+        "group": "primary",
+        "block": 4,
+        "arena": 0,
+        "detail": "assert_strictEqual_503_202",
+        "code": "setup_or_measurement"
+      }
+    ],
+    "limitations": [
+      "One default-side HTTP 503 has unknown cause and missing phase diagnostics. No successful retry replaces it.",
+      "Intervals describe completed pairs and cannot eliminate missingness selection bias.",
+      "Natural idle, post-GC, RSS, cgroup and malloc arena accounting are distinct.",
+      "Each long condition has one run of about 4.6 minutes, not evidence of multi-day behavior.",
+      "No x64, real TLS or production deployment measurements."
+    ]
+  },
+  "primaryEffects": {
+    "memoryDifferenceMiB": {
+      "n": 11,
+      "estimate": -5.203598484848484,
+      "lower": -7.014095424630508,
+      "upper": -3.393101545066461,
+      "bootstrapLower": -6.722419507575757,
+      "bootstrapUpper": -3.585582386363635,
+      "classification": "useful_reduction_established"
+    },
+    "latencyRatio": {
+      "n": 11,
+      "estimate": 1.0297672010532308,
+      "lower": 0.9388911276484995,
+      "upper": 1.1294392471477308,
+      "bootstrapLower": 0.9520943549282981,
+      "bootstrapUpper": 1.1181303567296341,
+      "margin": 1.1,
+      "classification": "uncertain"
+    },
+    "cpuRatio": {
+      "n": 11,
+      "estimate": 0.9877910524077756,
+      "lower": 0.9705000558941982,
+      "upper": 1.0053901154264673,
+      "bootstrapLower": 0.9723771030811822,
+      "bootstrapUpper": 1.0029390734247348,
+      "margin": 1.1,
+      "classification": "noninferior_within_margin"
+    },
+    "peakDifferenceMiB": {
+      "n": 11,
+      "estimate": -4.599076704545454,
+      "lower": -6.4173017870375935,
+      "upper": -2.780851622053315,
+      "bootstrapLower": -6.169389204545454,
+      "bootstrapUpper": -3.0042613636363638,
+      "margin": 2,
+      "classification": "noninferior_within_margin"
+    }
+  },
+  "primaryGroups": {
+    "0": {
+      "naturalAnonMiB": {
+        "n": 11,
+        "mean": 74.31261837121212,
+        "median": 74.6328125,
+        "min": 71.40234375,
+        "max": 75.74739583333333,
+        "sd": 1.4050259254082413
+      },
+      "normalP95ms": {
+        "n": 11,
+        "mean": 35.785064545454674,
+        "median": 36.968041000000085,
+        "min": 27.772750000000087,
+        "max": 41.030833999999686,
+        "sd": 4.544782050612441
+      },
+      "cpuMs": {
+        "n": 11,
+        "mean": 7623.7127272727275,
+        "median": 7669.109,
+        "min": 7153.846,
+        "max": 8111.214999999999,
+        "sd": 275.3472365912143
+      },
+      "peakMiB": {
+        "n": 11,
+        "mean": 86.62961647727273,
+        "median": 87.19921875,
+        "min": 82.23828125,
+        "max": 91.44921875,
+        "sd": 2.621558743556244
+      },
+      "postGcHeapMiB": {
+        "n": 11,
+        "mean": 32.29065565629439,
+        "median": 32.294227600097656,
+        "min": 32.24005126953125,
+        "max": 32.32298278808594,
+        "sd": 0.024519813580702234
+      },
+      "postGcArenaSystemMiB": {
+        "n": 11,
+        "mean": 19.95596590909091,
+        "median": 19.95703125,
+        "min": 18.87109375,
+        "max": 21.4375,
+        "sd": 0.8406411383737287
+      },
+      "arenaCount": {
+        "n": 11,
+        "mean": 9,
+        "median": 9,
+        "min": 9,
+        "max": 9,
+        "sd": 0.0
+      }
+    },
+    "2": {
+      "naturalAnonMiB": {
+        "n": 11,
+        "mean": 69.10901988636364,
+        "median": 68.1875,
+        "min": 64.78515625,
+        "max": 75.26953125,
+        "sd": 3.1966719747748717
+      },
+      "normalP95ms": {
+        "n": 11,
+        "mean": 36.69360609090911,
+        "median": 37.0101250000007,
+        "min": 30.378124999999272,
+        "max": 40.57750000000033,
+        "sd": 3.166715603993089
+      },
+      "cpuMs": {
+        "n": 11,
+        "mean": 7532.079727272728,
+        "median": 7425.572,
+        "min": 7087.185,
+        "max": 8107.261,
+        "sd": 315.0255497089374
+      },
+      "peakMiB": {
+        "n": 11,
+        "mean": 82.03053977272727,
+        "median": 79.91796875,
+        "min": 77.06640625,
+        "max": 90.9921875,
+        "sd": 4.429625088495316
+      },
+      "postGcHeapMiB": {
+        "n": 11,
+        "mean": 32.28217246315696,
+        "median": 32.277618408203125,
+        "min": 32.256134033203125,
+        "max": 32.35064697265625,
+        "sd": 0.030970006860012715
+      },
+      "postGcArenaSystemMiB": {
+        "n": 11,
+        "mean": 14.605113636363637,
+        "median": 14.5,
+        "min": 12.859375,
+        "max": 17.6875,
+        "sd": 1.5626879325900747
+      },
+      "arenaCount": {
+        "n": 11,
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "sd": 0.0
+      }
+    }
+  },
+  "primaryPairs": [
+    {
+      "block": 1,
+      "order": "0-2",
+      "controlId": "primary-b01-1-a0",
+      "treatmentId": "primary-b01-2-a2",
+      "memoryDifferenceMiB": -3.0286458333333286,
+      "latencyRatio": 0.8761934755643517,
+      "cpuRatio": 1.0279378393104912,
+      "peakDifferenceMiB": -8.53515625
+    },
+    {
+      "block": 2,
+      "order": "0-2",
+      "controlId": "primary-b02-1-a0",
+      "treatmentId": "primary-b02-2-a2",
+      "memoryDifferenceMiB": -0.140625,
+      "latencyRatio": 1.3326057016320163,
+      "cpuRatio": 0.9241210419619802,
+      "peakDifferenceMiB": -4.859375
+    },
+    {
+      "block": 3,
+      "order": "0-2",
+      "controlId": "primary-b03-1-a0",
+      "treatmentId": "primary-b03-2-a2",
+      "memoryDifferenceMiB": -6.06640625,
+      "latencyRatio": 0.9417219671253823,
+      "cpuRatio": 0.9649865032550611,
+      "peakDifferenceMiB": -8.609375
+    },
+    {
+      "block": 5,
+      "order": "2-0",
+      "controlId": "primary-b05-2-a0",
+      "treatmentId": "primary-b05-1-a2",
+      "memoryDifferenceMiB": -7.37109375,
+      "latencyRatio": 1.087875700406168,
+      "cpuRatio": 0.9927238039776076,
+      "peakDifferenceMiB": -7.28125
+    },
+    {
+      "block": 6,
+      "order": "2-0",
+      "controlId": "primary-b06-2-a0",
+      "treatmentId": "primary-b06-1-a2",
+      "memoryDifferenceMiB": -9.875,
+      "latencyRatio": 1.0044039067332429,
+      "cpuRatio": 0.9886008516037056,
+      "peakDifferenceMiB": -8.0859375
+    },
+    {
+      "block": 7,
+      "order": "0-2",
+      "controlId": "primary-b07-1-a0",
+      "treatmentId": "primary-b07-2-a2",
+      "memoryDifferenceMiB": -6.07421875,
+      "latencyRatio": 0.9601448023211155,
+      "cpuRatio": 0.9915661278259295,
+      "peakDifferenceMiB": 0.83203125
+    },
+    {
+      "block": 8,
+      "order": "0-2",
+      "controlId": "primary-b08-1-a0",
+      "treatmentId": "primary-b08-2-a2",
+      "memoryDifferenceMiB": -5.29296875,
+      "latencyRatio": 0.8217401890459709,
+      "cpuRatio": 0.9894403163869815,
+      "peakDifferenceMiB": -2.76953125
+    },
+    {
+      "block": 9,
+      "order": "2-0",
+      "controlId": "primary-b09-2-a0",
+      "treatmentId": "primary-b09-1-a2",
+      "memoryDifferenceMiB": -6.7265625,
+      "latencyRatio": 0.872547983687603,
+      "cpuRatio": 1.0050203682100853,
+      "peakDifferenceMiB": -5.6875
+    },
+    {
+      "block": 10,
+      "order": "2-0",
+      "controlId": "primary-b10-2-a0",
+      "treatmentId": "primary-b10-1-a2",
+      "memoryDifferenceMiB": 0.796875,
+      "latencyRatio": 1.37226323283175,
+      "cpuRatio": 1.0367214162076783,
+      "peakDifferenceMiB": -2.19921875
+    },
+    {
+      "block": 11,
+      "order": "0-2",
+      "controlId": "primary-b11-1-a0",
+      "treatmentId": "primary-b11-2-a2",
+      "memoryDifferenceMiB": -4.68359375,
+      "latencyRatio": 1.0418118463103807,
+      "cpuRatio": 0.9947522141467202,
+      "peakDifferenceMiB": -0.45703125
+    },
+    {
+      "block": 12,
+      "order": "2-0",
+      "controlId": "primary-b12-2-a0",
+      "treatmentId": "primary-b12-1-a2",
+      "memoryDifferenceMiB": -8.77734375,
+      "latencyRatio": 1.1676972359271907,
+      "cpuRatio": 0.954962827207836,
+      "peakDifferenceMiB": -2.9375
+    }
+  ],
+  "balancedOrderSensitivity": {
+    "memoryDifferenceMiB": {
+      "estimate": -5.302517361111111,
+      "bootstrapLower": -6.733962673611111,
+      "bootstrapUpper": -3.6585069444444445
+    },
+    "latencyRatio": {
+      "estimate": 1.03453426189633,
+      "bootstrapLower": 0.9615515426073431,
+      "bootstrapUpper": 1.116882760879905
+    },
+    "cpuRatio": {
+      "estimate": 0.9884109412610351,
+      "bootstrapLower": 0.9738269242651538,
+      "bootstrapUpper": 1.0026341385627702
+    },
+    "peakDifferenceMiB": {
+      "estimate": -4.65234375,
+      "bootstrapLower": -6.155989583333334,
+      "bootstrapUpper": -3.1587890625
+    }
+  },
+  "calibration": [
+    {
+      "block": 1,
+      "anonDifferenceMiB": -2.90234375,
+      "latencyRatio": 1.078466749360073,
+      "cpuRatio": 1.0908341164555846
+    },
+    {
+      "block": 2,
+      "anonDifferenceMiB": 0.8984375,
+      "latencyRatio": 1.1123267627487052,
+      "cpuRatio": 0.9906675019554922
+    }
+  ],
+  "arena1Reference": [
+    {
+      "block": 1,
+      "order": "0-1",
+      "controlId": "reference-b01-1-a0",
+      "treatmentId": "reference-b01-2-a1",
+      "memoryDifferenceMiB": -8.22265625,
+      "latencyRatio": 1.0677537878647207,
+      "cpuRatio": 1.0066929623208618,
+      "peakDifferenceMiB": 5.42578125
+    },
+    {
+      "block": 2,
+      "order": "1-0",
+      "controlId": "reference-b02-2-a0",
+      "treatmentId": "reference-b02-1-a1",
+      "memoryDifferenceMiB": -9.7734375,
+      "latencyRatio": 1.0104825085735805,
+      "cpuRatio": 1.067591468310867,
+      "peakDifferenceMiB": -9.15234375
+    }
+  ],
+  "longRuns": [
+    {
+      "id": "long-1-a2",
+      "arena": 2,
+      "cycles": 30,
+      "notifications": 3300,
+      "parts": 22350,
+      "elapsedSeconds": 278.29475121,
+      "naturalAnonMiB": 71.47265625,
+      "normalP95ms": 36.9910830000008,
+      "cpuMs": 48396.557,
+      "peakMiB": 86.26171875,
+      "postGcHeapMiB": 32.70038604736328,
+      "postGcArenaSystemMiB": 14.94140625,
+      "arenaCount": 2,
+      "postGcAnonMiB": 68.59375,
+      "baselineAnonMiB": 65.1640625,
+      "cycleDetails": [
+        {
+          "cycle": 1,
+          "anonMiB": 67.27734375,
+          "heapMiB": 37.84190368652344,
+          "arenaSystemMiB": 13.87890625
+        },
+        {
+          "cycle": 2,
+          "anonMiB": 68.2421875,
+          "heapMiB": 35.69794464111328,
+          "arenaSystemMiB": 14.9765625
+        },
+        {
+          "cycle": 3,
+          "anonMiB": 71.5859375,
+          "heapMiB": 43.97167205810547,
+          "arenaSystemMiB": 14.9765625
+        },
+        {
+          "cycle": 4,
+          "anonMiB": 70.7109375,
+          "heapMiB": 41.615806579589844,
+          "arenaSystemMiB": 15.71875
+        },
+        {
+          "cycle": 5,
+          "anonMiB": 69.640625,
+          "heapMiB": 37.71464538574219,
+          "arenaSystemMiB": 14.8984375
+        },
+        {
+          "cycle": 6,
+          "anonMiB": 72.68359375,
+          "heapMiB": 43.76875305175781,
+          "arenaSystemMiB": 16.0
+        },
+        {
+          "cycle": 7,
+          "anonMiB": 70.28125,
+          "heapMiB": 36.75233459472656,
+          "arenaSystemMiB": 15.4765625
+        },
+        {
+          "cycle": 8,
+          "anonMiB": 75.24609375,
+          "heapMiB": 43.708106994628906,
+          "arenaSystemMiB": 16.2265625
+        },
+        {
+          "cycle": 9,
+          "anonMiB": 70.27734375,
+          "heapMiB": 36.823638916015625,
+          "arenaSystemMiB": 15.65625
+        },
+        {
+          "cycle": 10,
+          "anonMiB": 73.84375,
+          "heapMiB": 39.70222473144531,
+          "arenaSystemMiB": 15.65625
+        },
+        {
+          "cycle": 11,
+          "anonMiB": 76.4609375,
+          "heapMiB": 44.11016082763672,
+          "arenaSystemMiB": 14.04296875
+        },
+        {
+          "cycle": 12,
+          "anonMiB": 75.0,
+          "heapMiB": 35.51458740234375,
+          "arenaSystemMiB": 14.35546875
+        },
+        {
+          "cycle": 13,
+          "anonMiB": 71.421875,
+          "heapMiB": 38.2882080078125,
+          "arenaSystemMiB": 14.5390625
+        },
+        {
+          "cycle": 14,
+          "anonMiB": 75.23046875,
+          "heapMiB": 43.51439666748047,
+          "arenaSystemMiB": 15.0390625
+        },
+        {
+          "cycle": 15,
+          "anonMiB": 70.44140625,
+          "heapMiB": 34.140869140625,
+          "arenaSystemMiB": 14.5390625
+        },
+        {
+          "cycle": 16,
+          "anonMiB": 71.203125,
+          "heapMiB": 37.543251037597656,
+          "arenaSystemMiB": 15.0390625
+        },
+        {
+          "cycle": 17,
+          "anonMiB": 69.734375,
+          "heapMiB": 40.00128173828125,
+          "arenaSystemMiB": 15.27734375
+        },
+        {
+          "cycle": 18,
+          "anonMiB": 76.95703125,
+          "heapMiB": 42.763145446777344,
+          "arenaSystemMiB": 17.7890625
+        },
+        {
+          "cycle": 19,
+          "anonMiB": 75.8125,
+          "heapMiB": 45.688385009765625,
+          "arenaSystemMiB": 15.98828125
+        },
+        {
+          "cycle": 20,
+          "anonMiB": 70.921875,
+          "heapMiB": 35.63117218017578,
+          "arenaSystemMiB": 15.98828125
+        },
+        {
+          "cycle": 21,
+          "anonMiB": 71.109375,
+          "heapMiB": 40.86604309082031,
+          "arenaSystemMiB": 16.23828125
+        },
+        {
+          "cycle": 22,
+          "anonMiB": 74.25390625,
+          "heapMiB": 43.32349395751953,
+          "arenaSystemMiB": 18.265625
+        },
+        {
+          "cycle": 23,
+          "anonMiB": 69.50390625,
+          "heapMiB": 34.35454559326172,
+          "arenaSystemMiB": 14.4453125
+        },
+        {
+          "cycle": 24,
+          "anonMiB": 70.0078125,
+          "heapMiB": 37.974159240722656,
+          "arenaSystemMiB": 15.19140625
+        },
+        {
+          "cycle": 25,
+          "anonMiB": 73.71484375,
+          "heapMiB": 43.440208435058594,
+          "arenaSystemMiB": 16.96875
+        },
+        {
+          "cycle": 26,
+          "anonMiB": 73.0546875,
+          "heapMiB": 45.61253356933594,
+          "arenaSystemMiB": 14.94140625
+        },
+        {
+          "cycle": 27,
+          "anonMiB": 69.7265625,
+          "heapMiB": 36.140769958496094,
+          "arenaSystemMiB": 14.4453125
+        },
+        {
+          "cycle": 28,
+          "anonMiB": 71.51953125,
+          "heapMiB": 43.63481140136719,
+          "arenaSystemMiB": 14.6015625
+        },
+        {
+          "cycle": 29,
+          "anonMiB": 70.453125,
+          "heapMiB": 35.48956298828125,
+          "arenaSystemMiB": 14.4453125
+        },
+        {
+          "cycle": 30,
+          "anonMiB": 74.265625,
+          "heapMiB": 44.246620178222656,
+          "arenaSystemMiB": 14.94140625
+        }
+      ]
+    },
+    {
+      "id": "long-2-a0",
+      "arena": 0,
+      "cycles": 30,
+      "notifications": 3300,
+      "parts": 22350,
+      "elapsedSeconds": 279.128299878,
+      "naturalAnonMiB": 74.42578125,
+      "normalP95ms": 37.009625000006054,
+      "cpuMs": 48972.541,
+      "peakMiB": 96.609375,
+      "postGcHeapMiB": 32.690635681152344,
+      "postGcArenaSystemMiB": 19.50390625,
+      "arenaCount": 9,
+      "postGcAnonMiB": 74.42578125,
+      "baselineAnonMiB": 70.03515625,
+      "cycleDetails": [
+        {
+          "cycle": 1,
+          "anonMiB": 70.453125,
+          "heapMiB": 38.1324462890625,
+          "arenaSystemMiB": 19.46484375
+        },
+        {
+          "cycle": 2,
+          "anonMiB": 73.31640625,
+          "heapMiB": 37.043800354003906,
+          "arenaSystemMiB": 20.16796875
+        },
+        {
+          "cycle": 3,
+          "anonMiB": 78.93359375,
+          "heapMiB": 42.171234130859375,
+          "arenaSystemMiB": 21.9140625
+        },
+        {
+          "cycle": 4,
+          "anonMiB": 75.72265625,
+          "heapMiB": 37.57295227050781,
+          "arenaSystemMiB": 22.55078125
+        },
+        {
+          "cycle": 5,
+          "anonMiB": 77.6015625,
+          "heapMiB": 42.889137268066406,
+          "arenaSystemMiB": 22.80078125
+        },
+        {
+          "cycle": 6,
+          "anonMiB": 76.69921875,
+          "heapMiB": 41.34178161621094,
+          "arenaSystemMiB": 21.80078125
+        },
+        {
+          "cycle": 7,
+          "anonMiB": 76.44140625,
+          "heapMiB": 38.02479553222656,
+          "arenaSystemMiB": 21.70703125
+        },
+        {
+          "cycle": 8,
+          "anonMiB": 77.7578125,
+          "heapMiB": 44.12877655029297,
+          "arenaSystemMiB": 21.58203125
+        },
+        {
+          "cycle": 9,
+          "anonMiB": 79.37890625,
+          "heapMiB": 40.647850036621094,
+          "arenaSystemMiB": 19.9375
+        },
+        {
+          "cycle": 10,
+          "anonMiB": 83.3359375,
+          "heapMiB": 44.803672790527344,
+          "arenaSystemMiB": 22.83984375
+        },
+        {
+          "cycle": 11,
+          "anonMiB": 80.546875,
+          "heapMiB": 34.42784881591797,
+          "arenaSystemMiB": 23.26953125
+        },
+        {
+          "cycle": 12,
+          "anonMiB": 79.78515625,
+          "heapMiB": 38.10845947265625,
+          "arenaSystemMiB": 22.2265625
+        },
+        {
+          "cycle": 13,
+          "anonMiB": 83.0625,
+          "heapMiB": 42.35930633544922,
+          "arenaSystemMiB": 22.78515625
+        },
+        {
+          "cycle": 14,
+          "anonMiB": 79.8984375,
+          "heapMiB": 38.03446960449219,
+          "arenaSystemMiB": 22.2890625
+        },
+        {
+          "cycle": 15,
+          "anonMiB": 82.66796875,
+          "heapMiB": 41.48963165283203,
+          "arenaSystemMiB": 24.5625
+        },
+        {
+          "cycle": 16,
+          "anonMiB": 81.2734375,
+          "heapMiB": 43.22840118408203,
+          "arenaSystemMiB": 23.33984375
+        },
+        {
+          "cycle": 17,
+          "anonMiB": 79.1015625,
+          "heapMiB": 35.186973571777344,
+          "arenaSystemMiB": 23.46875
+        },
+        {
+          "cycle": 18,
+          "anonMiB": 80.578125,
+          "heapMiB": 40.387184143066406,
+          "arenaSystemMiB": 22.35546875
+        },
+        {
+          "cycle": 19,
+          "anonMiB": 82.14453125,
+          "heapMiB": 42.7691650390625,
+          "arenaSystemMiB": 23.6484375
+        },
+        {
+          "cycle": 20,
+          "anonMiB": 78.86328125,
+          "heapMiB": 45.4744873046875,
+          "arenaSystemMiB": 21.546875
+        },
+        {
+          "cycle": 21,
+          "anonMiB": 81.7109375,
+          "heapMiB": 44.710052490234375,
+          "arenaSystemMiB": 24.234375
+        },
+        {
+          "cycle": 22,
+          "anonMiB": 80.3515625,
+          "heapMiB": 45.72752380371094,
+          "arenaSystemMiB": 23.2578125
+        },
+        {
+          "cycle": 23,
+          "anonMiB": 76.921875,
+          "heapMiB": 34.303733825683594,
+          "arenaSystemMiB": 21.86328125
+        },
+        {
+          "cycle": 24,
+          "anonMiB": 78.9453125,
+          "heapMiB": 42.906822204589844,
+          "arenaSystemMiB": 20.37890625
+        },
+        {
+          "cycle": 25,
+          "anonMiB": 79.60546875,
+          "heapMiB": 44.773033142089844,
+          "arenaSystemMiB": 20.5703125
+        },
+        {
+          "cycle": 26,
+          "anonMiB": 77.6015625,
+          "heapMiB": 44.27886962890625,
+          "arenaSystemMiB": 21.33984375
+        },
+        {
+          "cycle": 27,
+          "anonMiB": 75.25390625,
+          "heapMiB": 35.497520446777344,
+          "arenaSystemMiB": 20.0703125
+        },
+        {
+          "cycle": 28,
+          "anonMiB": 79.45703125,
+          "heapMiB": 41.85527801513672,
+          "arenaSystemMiB": 20.484375
+        },
+        {
+          "cycle": 29,
+          "anonMiB": 80.7890625,
+          "heapMiB": 44.839210510253906,
+          "arenaSystemMiB": 20.80078125
+        },
+        {
+          "cycle": 30,
+          "anonMiB": 75.21484375,
+          "heapMiB": 37.335655212402344,
+          "arenaSystemMiB": 19.50390625
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "plannedRuns": 34,
+    "completedRuns": 33,
+    "failedRuns": 1,
+    "notifications": 20240,
+    "parts": 137080
+  },
+  "sourceArtifacts": {
+    "plan.json": "b6c593a4c2de7f4f651031894e6c696539c7b84597fa60cd612718962cc3a7b0",
+    "protocol-amendments.txt": "548ffd0bcd2f198f210925a6465aad1a5793e36a93f75efa2bf2c8a082215be9",
+    "analysis-amendment-frozen.json": "4171c96b1254c1777ff7a1df3e80bd72cb40577b209cbc9a2c3baf8103cb625c",
+    "analysis-summary.json": "2ba7cae9470881fd38b26d425197fd5c233fd0e16871e69ec2791367a40dcda6",
+    "artifact-manifest.json": "8c469052a82e8c938bcc3bec21db748ad415fa58a9d61b6ffa31b959e63a7977"
+  },
+  "artifactScope": "Public aggregates only. Source artifact hashes identify the separately retained raw study; raw logs and scratch harness are not included in this repository.",
+  "implementationValidation": {
+    "runtimeImage": "sha256:4e399e99e95a4bb57f96e8e9930e3a8a3cb0e79b29bc5d02cecaa3589fd746e7",
+    "momoDbCommit": "0f102e4",
+    "architecture": "arm64",
+    "dateFnsImportsCommit": "729bcb3",
+    "runtimeImageIncludesDiagnosticAddon": false,
+    "capacity": [
+      {
+        "event": "notification_capacity.measured",
+        "scenario": "standard",
+        "memoryMiB": 256,
+        "targetMiB": 192,
+        "targetMet": true,
+        "workload": {
+          "notifications": 17,
+          "completedParts": 932,
+          "burstRounds": 5,
+          "nearJsonbBytes": 261691,
+          "wireBytes": 524288,
+          "rejectedCases": 9,
+          "conflictJsonbBytes": 8006627,
+          "overlappingConflicts": 4,
+          "maxMatches": 50,
+          "maxSeasons": 16,
+          "phases": [
+            {
+              "phase": "normal_delivered",
+              "cgroupPeakMiB": 61.32421875
+            },
+            {
+              "phase": "two_deliveries_held",
+              "cgroupPeakMiB": 68.1953125
+            },
+            {
+              "phase": "two_deliveries_and_two_receipts_held",
+              "cgroupPeakMiB": 71.546875
+            },
+            {
+              "phase": "two_deliveries_with_expanded_identity_conflicts",
+              "cgroupPeakMiB": 123.21484375
+            },
+            {
+              "phase": "overlap_drained",
+              "cgroupPeakMiB": 123.21484375
+            },
+            {
+              "phase": "five_bursts_drained",
+              "cgroupPeakMiB": 123.21484375
+            },
+            {
+              "phase": "chunked_and_ocr_delivered",
+              "cgroupPeakMiB": 123.21484375
+            }
+          ]
+        },
+        "received": 23,
+        "sentParts": 932,
+        "delivered": 17,
+        "concurrency": {
+          "deliveries": 2,
+          "receipts": 4,
+          "claimBatch": 2,
+          "claimBatchBytes": 523382
+        },
+        "rssMiB": {
+          "baseline": 102.0390625,
+          "peak": 168.984375,
+          "maximum": 168.984375,
+          "cgroupPeak": 123.21484375
+        }
+      },
+      {
+        "event": "notification_capacity.measured",
+        "scenario": "legacy",
+        "memoryMiB": 256,
+        "targetMiB": 192,
+        "targetMet": true,
+        "workload": {
+          "plannedParts": 8823,
+          "completedParts": 1,
+          "conflictJsonbBytes": 8006627,
+          "overlappingConflicts": 4,
+          "jsonbBytes": 8382648
+        },
+        "received": 4,
+        "sentParts": 1,
+        "delivered": 0,
+        "concurrency": {
+          "deliveries": 1,
+          "receipts": 4,
+          "claimBatch": 1,
+          "claimBatchBytes": 8382648
+        },
+        "rssMiB": {
+          "baseline": 102.2734375,
+          "peak": 217.59375,
+          "maximum": 217.59375,
+          "cgroupPeak": 172.1875
+        }
+      }
+    ],
+    "note": "Capacity validation of the production image, separate from the paired study; single run per scenario, not a measured before/after improvement."
+  }
+}
