@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { AppError, DatabaseError, DiscordApiError, InvariantViolationError, NotificationNotStartedError } from "./index.ts";
+import { AppError, DatabaseError, DiscordApiError, NotificationAdmissionInvariantError, NotificationNotStartedError } from "./index.ts";
 import { settledCall } from "../runtime/effect.ts";
 
 /** External I/O is lazy and remains owned until its underlying Promise settles. */
@@ -7,7 +7,7 @@ export const fromDatabaseCall = <T>(
   call: () => Promise<T>,
   message: string
 ): Effect.Effect<T, DatabaseError> =>
-  settledCall(call).pipe(Effect.catch(cause => cause instanceof InvariantViolationError || cause instanceof NotificationNotStartedError
+  settledCall(call).pipe(Effect.catch(cause => cause instanceof NotificationAdmissionInvariantError || cause instanceof NotificationNotStartedError
     ? Effect.die(cause) : Effect.fail(new DatabaseError(message, { cause }))));
 
 export const fromDiscordCall = <T>(

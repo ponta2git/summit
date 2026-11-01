@@ -6,7 +6,7 @@ import { settledCall } from "../../runtime/effect.ts";
 import type { Clock } from "../../time/index.ts";
 import { claimLeaseRemainingMs, monotonicNow, type ClaimLease } from "../../time/lease.ts";
 import { NOTIFICATION_LEASE_RETRY_MS } from "../../config.ts";
-import { InvariantViolationError, NotificationNotStartedError } from "../../errors/index.ts";
+import { NotificationAdmissionInvariantError, NotificationNotStartedError } from "../../errors/index.ts";
 
 type OwnershipState = "owned" | "uncertain" | "lost";
 export interface ClaimOwnership {
@@ -100,7 +100,7 @@ export const withClaimHeartbeat = <T, E>(options: {
       yield* settledCall(() => options.renew(remaining)).pipe(Effect.match({
         onFailure: error => {
           pendingSince = undefined;
-          if (error instanceof InvariantViolationError || error instanceof NotificationNotStartedError) { throw error; }
+          if (error instanceof NotificationAdmissionInvariantError || error instanceof NotificationNotStartedError) { throw error; }
           failed = true; transition("uncertain");
         },
         onSuccess: renewed => {

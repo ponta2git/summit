@@ -13,13 +13,13 @@ import { planResultNotification } from "./resultNotifications.plan.ts";
 import { findClaimedResultNotifications, getResultSetting, inspectResultNotification, retryResultNotification, setResultSetting } from "./resultNotifications.state.ts";
 import { systemClock, type Clock } from "../../time/index.ts";
 import { notificationCommandNow } from "../../time/lease.ts";
-import { InvariantViolationError, NotificationNotStartedError } from "../../errors/index.ts";
+import { NotificationAdmissionInvariantError, NotificationNotStartedError } from "../../errors/index.ts";
 import { notificationNotStarted, notificationOwnerRequest as owner } from "../notificationControl.ts";
 import type { NotificationAdmissionRequest } from "../notificationAdmission.ts";
 
 /** Keep driver errors (which may embed bound payloads) behind the port boundary. */
 const sanitizeFailure = (error: unknown): never => {
-  if (error instanceof NotificationInputError || error instanceof NotificationNotStartedError || error instanceof InvariantViolationError) { throw error; }
+  if (error instanceof NotificationInputError || error instanceof NotificationNotStartedError || error instanceof NotificationAdmissionInvariantError) { throw error; }
   let current: unknown = error;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth += 1) {
     if ("code" in current && ["22P02", "22P05", "22003", "22007", "22008"].includes(String(current.code))) {

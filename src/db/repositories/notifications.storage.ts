@@ -11,7 +11,7 @@ import { resultCancellationReason, type ResultCancellationReason } from "../../d
 import { identityLayout, wireId } from "../identities.ts";
 import { notificationAdmissionFor } from "../notificationControl.ts";
 import type { NotificationAdmissionRequest } from "../notificationAdmission.ts";
-import { InvariantViolationError } from "../../errors/index.ts";
+import { NotificationAdmissionInvariantError } from "../../errors/index.ts";
 
 export type NotificationFamily = "attendance" | "result";
 export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "delete" | "execute">;
@@ -44,7 +44,7 @@ export const notificationTransaction = <T>(
   db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>,
   options: Omit<NotificationAdmissionRequest, "family"> = { key: "direct", operation: "maintenance" }
 ): Promise<T> => {
-  if (isTransactionHandle(db)) { return Promise.reject(new InvariantViolationError("Nested notification admission is not supported.")); }
+  if (isTransactionHandle(db)) { return Promise.reject(new NotificationAdmissionInvariantError("Nested notification admission is not supported.")); }
   const admission = notificationAdmissionFor(db);
   const request = { ...options, family, key: typeof options.key === "string" ? `${family}:${options.key}` : options.key };
   return admission.run(request, () => runTransaction(db, async tx => {

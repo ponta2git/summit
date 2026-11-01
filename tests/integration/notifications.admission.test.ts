@@ -1,7 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { notificationAdmissionFor } from "../../src/db/notificationControl.ts";
-import { notificationTransaction } from "../../src/db/repositories/notifications.storage.ts";
+import { lockNotificationFamily, notificationTransaction } from "../../src/db/repositories/notifications.storage.ts";
+import { releaseExpiredOutboxClaims } from "../../src/db/repositories/outbox.claim.ts";
 import { discordNotifications } from "../../src/db/schema.ts";
 import { identityLayout } from "../../src/db/identities.ts";
 import { makeResultNotificationsPort } from "../../src/db/repositories/resultNotifications.ts";
@@ -114,5 +115,23 @@ import { isIntegration } from "./_support.ts";
     try {
       await expect(h.port.claim({ limit: 1, now: notificationNow, claimDurationMs: 30_000 })).rejects.toBeInstanceOf(InvariantViolationError);
     } finally { release.resolve(); await first; }
+  });
+
+  it("coalesces reconnect and supervisor claim recovery on the same root handle", async () => {
+    const entered = deferred<void>(); const release = deferred<void>();
+    const holder = h.db.transaction(async tx => {
+      await lockNotificationFamily(tx, "attendance"); entered.resolve(); await release.promise;
+    });
+    await entered.promise;
+    const reconnect = releaseExpiredOutboxClaims(h.db, notificationNow);
+    const supervisor = releaseExpiredOutboxClaims(h.db, new Date(notificationNow.getTime() + 1));
+    try {
+      expect(supervisor).toBe(reconnect);
+      await waitForLockWaiters(h.client, 1);
+      expect(notificationAdmissionFor(h.db).snapshot()).toMatchObject({ attendance: 1, waiting: 0 });
+    } finally { release.resolve(); await holder; }
+    expect(await Promise.all([reconnect, supervisor])).toEqual([0, 0]);
+    const later = releaseExpiredOutboxClaims(h.db, notificationNow);
+    expect(later).not.toBe(reconnect); expect(await later).toBe(0);
   });
 });

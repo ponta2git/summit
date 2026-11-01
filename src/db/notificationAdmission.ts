@@ -4,7 +4,7 @@ import {
   NOTIFICATION_DB_QUEUE_WAIT_MS, NOTIFICATION_PENDING_WARN_AFTER_MS,
   NOTIFICATION_PENDING_WARNING_INTERVAL_MS, NOTIFICATION_SATURATED_WARN_AFTER_MS
 } from "../config.ts";
-import { InvariantViolationError, NotificationNotStartedError } from "../errors/index.ts";
+import { NotificationAdmissionInvariantError, NotificationNotStartedError } from "../errors/index.ts";
 
 export type NotificationFamily = "attendance" | "result";
 export type NotificationOperation = "http" | "claim" | "begin" | "renew" | "finalize" | "maintenance";
@@ -59,6 +59,7 @@ export const createNotificationAdmission = (options: {
   let stopped = false;
   let monitorTimer: ReturnType<typeof setTimeout> | undefined;
   let fullSince: number | undefined;
+  let urgentOwed = false;
   const snapshot = (): NotificationAdmissionSnapshot => ({ running: running.size, waiting: waiting.length,
     ...counts, renewing: [...running].filter(job => job.request.operation === "renew").length,
     oldestAgeMs: Math.max(0, ...[...running].map(job => now() - job.startedAt)) });
@@ -105,8 +106,11 @@ export const createNotificationAdmission = (options: {
       const ordinary = eligible.find(job => !critical(job.request));
       const urgent = eligible.filter(job => critical(job.request)).sort((a, b) =>
         (a.request.remainingMs?.() ?? Infinity) - (b.request.remainingMs?.() ?? Infinity))[0];
-      const next = ordinary && now() - ordinary.queuedAt >= NOTIFICATION_DB_QUEUE_WAIT_MS ? ordinary : urgent ?? ordinary;
+      const aged = ordinary !== undefined && now() - ordinary.queuedAt >= NOTIFICATION_DB_QUEUE_WAIT_MS;
+      // An aged ordinary job gets one grant, not an uninterrupted drain of the ordinary queue.
+      const next = aged && !(urgentOwed && urgent) ? ordinary : urgent ?? ordinary;
       if (!next) { break; }
+      urgentOwed = next === ordinary && aged;
       remove(next); next.start();
     }
   };
@@ -123,7 +127,7 @@ export const createNotificationAdmission = (options: {
       try {
         assertCanStart(request);
         if (keys.has(request.key) || keys.size >= NOTIFICATION_DB_MAX_PRODUCERS) {
-          throw new InvariantViolationError("Notification database producer bound exceeded.");
+          throw new NotificationAdmissionInvariantError("Notification database producer bound exceeded.");
         }
       } catch (error: unknown) { rejectWork(error); return; }
       keys.add(request.key);

@@ -9,7 +9,7 @@ import {
   OUTBOX_MAX_ATTEMPTS
 } from "../../config.ts";
 import type { OutboxEntry } from "../../db/ports.ts";
-import { AppError, InvariantViolationError, NotificationNotStartedError } from "../../errors/index.ts";
+import { AppError, NotificationAdmissionInvariantError, NotificationNotStartedError } from "../../errors/index.ts";
 import { logger } from "../../logger.ts";
 import { getTextChannel } from "../../discord/shared/channels.ts";
 import type { prepareAttendanceNotification } from "./definitions/attendance.ts";
@@ -107,7 +107,7 @@ const recordDeliveryFailure = Effect.fnUntraced(function* (
   error: unknown,
   remainingMs: () => number
 ): Effect.fn.Return<void, unknown> {
-  if (error instanceof InvariantViolationError || error instanceof NotificationNotStartedError) { return yield* Effect.die(error); }
+  if (error instanceof NotificationAdmissionInvariantError || error instanceof NotificationNotStartedError) { return yield* Effect.die(error); }
   const failedNow = ctx.clock.now();
   const nextAttemptAt = computeOutboxBackoff(entry.attemptCount, failedNow);
   // redact: 外部例外のmessageにはtokenや接続情報が含まれるため、DBにも固定診断だけを保存する。

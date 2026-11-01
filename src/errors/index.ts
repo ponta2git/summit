@@ -32,6 +32,9 @@ export class InvariantViolationError extends AppError {
   }
 }
 
+/** A notification admission invariant is an internal defect, not a database outage. */
+export class NotificationAdmissionInvariantError extends InvariantViolationError {}
+
 export class ValidationError extends AppError {
   public constructor(message: string, options?: AppErrorOptions) {
     super("VALIDATION", message, options);

@@ -98,6 +98,23 @@ describe("notification database admission", () => {
     } finally { await h.cleanup(); }
   });
 
+  it("gives only one aged ordinary grant before a waiting renewal among ten attendance owners", async () => {
+    const h = harness();
+    const owners = Array.from({ length: 10 }, (_, index) => h.hold(request(`owner-${index}`, "attendance", "begin")));
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      const renew = h.hold(request("renew", "attendance", "renew", () => 30_000 - performance.now()));
+      owners[0]!.release(); await owners[0]!.pending; await vi.advanceTimersByTimeAsync(0);
+      expect(h.calls).toEqual(["owner-0", "owner-1", "owner-2"]);
+      await vi.advanceTimersByTimeAsync(4_000);
+      owners[1]!.release(); await owners[1]!.pending; await vi.advanceTimersByTimeAsync(0);
+      expect(h.calls).toEqual(["owner-0", "owner-1", "owner-2", "renew"]);
+      owners[2]!.release(); await owners[2]!.pending; await vi.advanceTimersByTimeAsync(0);
+      renew.release(); await renew.pending; await vi.advanceTimersByTimeAsync(0);
+      expect(h.calls.slice(2, 6)).toEqual(["owner-2", "renew", "owner-3", "owner-4"]);
+    } finally { await h.cleanup(); }
+  });
+
   it("expires a queued begin/renew without a connection and still attempts an expired known-send finalize", async () => {
     const h = harness(); const first = h.hold(request("first")); h.hold(request("second"));
     let deadline = 1_000;

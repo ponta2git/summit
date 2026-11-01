@@ -39,6 +39,14 @@ export const claimNextOutboxBatch = async (
   return claimed;
 }, { key: "claim", operation: "claim" }), []);
 
-export const releaseExpiredOutboxClaims = (db: DbLike, now: Date): Promise<number> =>
-  notificationNotStarted(notificationTransaction(db, "attendance", tx => releaseExpiredNotificationClaims(tx, "attendance", now),
-    { key: "recovery:expired", operation: "maintenance" }), 0);
+const recoveringExpired = new WeakMap<object, Promise<number>>();
+
+/** Reconnect and the supervisor share one actual recovery command per root handle. */
+export const releaseExpiredOutboxClaims = (db: DbLike, now: Date): Promise<number> => {
+  const current = recoveringExpired.get(db);
+  if (current) { return current; }
+  const pending = notificationNotStarted(notificationTransaction(db, "attendance", tx => releaseExpiredNotificationClaims(tx, "attendance", now),
+    { key: "recovery:expired", operation: "maintenance" }), 0).finally(() => { recoveringExpired.delete(db); });
+  recoveringExpired.set(db, pending);
+  return pending;
+};
