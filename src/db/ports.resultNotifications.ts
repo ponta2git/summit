@@ -62,13 +62,13 @@ export interface ResultNotificationsPort {
     readonly payloadBudgetBytes?: number; readonly allowOversizedPayload?: boolean; readonly preferredKind?: ResultNotificationKind }): Promise<readonly ClaimedResultNotification[]>;
   plan(id: string, token: string, options: {
     readonly count: number; readonly rendererVersion: number; readonly context: ResultDeliveryContext; readonly now: Date;
-  }): Promise<boolean>;
-  begin(id: string, partNo: number, token: string, now: Date): Promise<boolean>;
-  complete(id: string, partNo: number, token: string, messageId: string, now: Date): Promise<boolean>;
+  }, remainingMs?: () => number): Promise<boolean>;
+  begin(id: string, partNo: number, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  complete(id: string, partNo: number, token: string, messageId: string, now: Date, remainingMs?: () => number): Promise<boolean>;
   /** Release only between completed parts when the other kind is due; a handoff does not consume a retry. */
-  yield(id: string, token: string, now: Date): Promise<boolean>;
-  fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date): Promise<boolean>;
-  renew(id: string, token: string, now: Date, claimDurationMs: number): Promise<ClaimLease | null>;
+  yield(id: string, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date, remainingMs?: () => number): Promise<boolean>;
+  renew(id: string, token: string, now: Date, claimDurationMs: number, remainingMs?: () => number): Promise<ClaimLease | null>;
   getNextDispatchAt(excludeIds?: readonly string[]): Promise<Date | null>;
   inspect(id: string): Promise<ResultNotificationState | null>;
   retry(id: string, now: Date): Promise<boolean>;

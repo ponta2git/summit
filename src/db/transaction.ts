@@ -10,6 +10,8 @@ interface TransactionLimits {
 }
 
 const DEFAULT_LIMITS: TransactionLimits = { lockTimeoutMs: 5_000, statementTimeoutMs: 10_000 };
+const transactionHandles = new WeakSet<object>();
+export const isTransactionHandle = (db: object): boolean => transactionHandles.has(db);
 
 /** Bound SQL and lock waits without releasing ownership before rollback has settled. */
 export const runTransaction = async <T>(
@@ -23,6 +25,7 @@ export const runTransaction = async <T>(
   }
   const layout = await identityLayout(db);
   return db.transaction(async tx => {
+    transactionHandles.add(tx);
     inheritIdentityLayout(tx, layout);
     // pooler: transaction-local settings cannot leak into the next pooled borrower.
     await tx.execute(sql`SELECT

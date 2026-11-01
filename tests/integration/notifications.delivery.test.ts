@@ -47,7 +47,9 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(await h.port.begin(id, -1, claimToken, now)).toBe(false);
     expect(await h.port.begin(id, 2, claimToken, now)).toBe(false);
     expect(await h.port.begin(id, 1, claimToken, now)).toBe(false);
-    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), h.port.begin(id, 0, claimToken, at(1))])).sort())
+    // Independent roots model competing processes; a single process rejects duplicate owner producers before SQL.
+    const competitor = makeResultNotificationsPort(drizzle(h.client, { schema, casing: "snake_case" }), checkNotificationAdmission, repositoryClock);
+    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), competitor.begin(id, 0, claimToken, at(1))])).sort())
       .toEqual([false, true]);
     expect(await h.port.begin(id, 1, claimToken, at(2))).toBe(false);
     expect(await h.db.select({ partNo: parts.partNo, status: parts.status, attemptCount: parts.attemptCount,

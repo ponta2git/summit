@@ -6,10 +6,12 @@ import { settledCall } from "../../runtime/effect.ts";
 import type { Clock } from "../../time/index.ts";
 import { claimLeaseRemainingMs, monotonicNow, type ClaimLease } from "../../time/lease.ts";
 import { NOTIFICATION_LEASE_RETRY_MS } from "../../config.ts";
+import { InvariantViolationError, NotificationNotStartedError } from "../../errors/index.ts";
 
 type OwnershipState = "owned" | "uncertain" | "lost";
 export interface ClaimOwnership {
   state(): OwnershipState;
+  remainingMs(): number;
   /** Synchronous guard immediately before registering and starting foreign I/O. */
   canStart(): boolean;
   /** Wait for a confirmed renewal; stop or terminal ownership loss returns false. */
@@ -21,7 +23,7 @@ export const withClaimHeartbeat = <T, E>(options: {
   readonly intervalMs: number;
   readonly lease: ClaimLease;
   readonly clock: Clock;
-  readonly renew: () => Promise<ClaimLease | null>;
+  readonly renew: (remainingMs: () => number) => Promise<ClaimLease | null>;
   readonly onLost: (reason: "lost" | "uncertain") => void;
   readonly isStopping?: () => boolean;
   readonly stopSignal?: AbortSignal;
@@ -67,7 +69,7 @@ export const withClaimHeartbeat = <T, E>(options: {
     return state === "owned";
   };
   const ownership: ClaimOwnership = {
-    state: refresh, canStart,
+    state: refresh, canStart, remainingMs: remaining,
     awaitOwnership: () => Effect.gen(function* () {
       while (true) {
         if (finished) { return false; }
@@ -95,8 +97,12 @@ export const withClaimHeartbeat = <T, E>(options: {
       pendingSince = monotonicNow(options.clock);
       let failed = false;
       // DB promises are not cancellable: the scope keeps this single renewal until settlement.
-      yield* settledCall(options.renew).pipe(Effect.match({
-        onFailure: () => { pendingSince = undefined; failed = true; transition("uncertain"); },
+      yield* settledCall(() => options.renew(remaining)).pipe(Effect.match({
+        onFailure: error => {
+          pendingSince = undefined;
+          if (error instanceof InvariantViolationError || error instanceof NotificationNotStartedError) { throw error; }
+          failed = true; transition("uncertain");
+        },
         onSuccess: renewed => {
           pendingSince = undefined;
           // A reply after the previously confirmed deadline cannot resurrect a terminal owner.

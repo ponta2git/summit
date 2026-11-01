@@ -1,4 +1,5 @@
 import { appConfig } from "./userConfig.ts";
+import { RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_MAX_RECEIPTS } from "./notifications/config.ts";
 
 type Hhmm = Readonly<{ hour: number; minute: number }>;
 
@@ -94,6 +95,13 @@ export const SHUTDOWN_DRAIN_TIMEOUT_MS = 20_000;
 export const NOTIFICATION_PENDING_WARN_AFTER_MS = 90_000;
 export const NOTIFICATION_SATURATED_WARN_AFTER_MS = 300_000;
 export const NOTIFICATION_PENDING_WARNING_INTERVAL_MS = 60_000;
+export const NOTIFICATION_DB_FAMILY_LIMIT = 2;
+export const NOTIFICATION_DB_GLOBAL_LIMIT = 3;
+export const NOTIFICATION_DB_QUEUE_WAIT_MS = 5_000;
+// HTTP 4 + result owners 2*(work+renew) + attendance owners 10*(work+renew)
+// + claim 2 + retention 2 + attendance recovery 2. Includes running producers.
+export const NOTIFICATION_DB_MAX_PRODUCERS = RESULT_NOTIFICATION_MAX_RECEIPTS
+  + 2 * (RESULT_NOTIFICATION_CONCURRENCY + OUTBOX_WORKER_BATCH_LIMIT) + 2 + 2 + 2;
 export const NOTIFICATION_LEASE_RETRY_MS = [1_000, 2_000, 4_000] as const;
 // why: DB/Discord 障害中の連打でも業務処理と拒否応答の owned work を有限に保つ。
 export const INTERACTION_CONCURRENCY = 32;

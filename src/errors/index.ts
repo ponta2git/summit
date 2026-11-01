@@ -61,3 +61,13 @@ export class ShutdownError extends AppError {
     super("SHUTDOWN", message, options);
   }
 }
+
+/** No database command started; internal callers return their operation's no-op result. */
+export class NotificationNotStartedError extends Error {
+  public readonly reason: "stopped" | "expired" | "queue_timeout";
+  public constructor(reason: "stopped" | "expired" | "queue_timeout") {
+    super("Notification database command was not started.");
+    this.name = "NotificationNotStartedError";
+    this.reason = reason;
+  }
+}

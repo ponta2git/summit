@@ -8,13 +8,14 @@ import { claimNotifications, releaseExpiredNotificationClaims } from "./notifica
 import { failNotification } from "./notifications.delivery.ts";
 import { systemClock, type Clock } from "../../time/index.ts";
 import { notificationCommandNow } from "../../time/lease.ts";
+import { notificationNotStarted } from "../notificationControl.ts";
 
 /** Claim attendance notifications through the shared delivery contract. */
 export const claimNextOutboxBatch = async (
   db: DbLike,
   options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number },
   clock: Clock = systemClock
-): Promise<readonly OutboxEntry[]> => notificationTransaction(db, "attendance", async (tx) => {
+): Promise<readonly OutboxEntry[]> => notificationNotStarted(notificationTransaction(db, "attendance", async (tx) => {
   const claims = await claimNotifications(tx, "attendance", { ...options, now: notificationCommandNow(clock, options.now) }, clock);
   if (claims.length === 0) {
     return [];
@@ -36,7 +37,8 @@ export const claimNextOutboxBatch = async (
     }
   }
   return claimed;
-});
+}, { key: "claim", operation: "claim" }), []);
 
 export const releaseExpiredOutboxClaims = (db: DbLike, now: Date): Promise<number> =>
-  notificationTransaction(db, "attendance", tx => releaseExpiredNotificationClaims(tx, "attendance", now));
+  notificationNotStarted(notificationTransaction(db, "attendance", tx => releaseExpiredNotificationClaims(tx, "attendance", now),
+    { key: "recovery:expired", operation: "maintenance" }), 0);

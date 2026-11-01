@@ -91,6 +91,12 @@ Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確�
 
 通知 repository は Clock を受け取り、family gate 取得後に現在時刻を読む。業務の発生時刻とは別に、claim / renew の期限は更新直前に採取した wall / monotonic の対を基準にする。時計補正で command の受付時刻より過去へ戻さず、その基準から保存する expiresAt とローカルの期間上限を同時に決める。返答受信時から新しく30秒を与えない。port の claim はこの観測を含み、renew は確認した観測または拒否の null を返す。begin・complete・fail・yield・plan の有効期限確認も gate 待機前の時刻だけに依存しない。[実DBのgate待ち・commit応答喪失](../tests/integration/notifications.leaseClock.test.ts)で検証する。
 
+通知 command は root DB handle ごとの[入場制御](../src/db/notificationAdmission.ts)で、connection取得前に family 2件・全体3件の両条件を満たすまで待つ。枠は実 commit / rollback の settlement だけで解放し、応答喪失時の早期解放はしない。共有PG gate・READ COMMITTED・token/期限CASは維持し、source業務transactionや他アプリはこの局所制御の対象外。入れ子取得は禁止する。
+
+producer は HTTP 4、結果owner 2×(処理1+renew1)、出欠owner 10×(処理1+renew1)、claim 2、retention 2、出欠recovery 2の計34件（実行中を含む）まで。内部producerの同じキーの重複や上限超過は invariant violation とする。未開始HTTPだけ5秒で503にし、内部待機は新attemptやDB backoffへ変換しない。renewとfinalizeは確認済み期限が近い順、その他は実行可能なFIFO先頭を選び、通常列の先頭が5秒待った場合は次の付与を譲る。既にPG側へ入った同familyの最大2件は追い越せない。
+
+stopは未開始claim・受付・保守・beginをNotStartedで取り除く。内部portはこれを操作ごとのno-opへ戻し、DB障害としてfailしない。開始済み配送のrenew/finalizeはdrain中も受け付ける。begin/renewの期限は待機中とgate後にも確認し、既知送信のfinalizeは期限後でも既存CASを試す。[待機・期限・飢餓](../tests/notifications/databaseAdmission.test.ts)と[4地点の実DB応答喪失](../tests/integration/notifications.admission.test.ts)で所有と回復を検証する。
+
 reminder tick は enqueue までを行う。Discord 受理後に Session 完了と HeldEvent を原子的に確定し、その後 delivered を記録する。送信 skip の経路も同じ完了 command を使う。再送の可能性があっても、開催履歴を欠落させない。
 
 ### 回復

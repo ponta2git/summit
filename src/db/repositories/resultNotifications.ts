@@ -12,10 +12,13 @@ import { planResultNotification } from "./resultNotifications.plan.ts";
 import { findClaimedResultNotifications, getResultSetting, inspectResultNotification, retryResultNotification, setResultSetting } from "./resultNotifications.state.ts";
 import { systemClock, type Clock } from "../../time/index.ts";
 import { notificationCommandNow } from "../../time/lease.ts";
+import { InvariantViolationError, NotificationNotStartedError } from "../../errors/index.ts";
+import { notificationNotStarted, notificationOwnerRequest as owner } from "../notificationControl.ts";
+import type { NotificationAdmissionRequest } from "../notificationAdmission.ts";
 
 /** Keep driver errors (which may embed bound payloads) behind the port boundary. */
 const sanitizeFailure = (error: unknown): never => {
-  if (error instanceof NotificationInputError) { throw error; }
+  if (error instanceof NotificationInputError || error instanceof NotificationNotStartedError || error instanceof InvariantViolationError) { throw error; }
   let current: unknown = error;
   for (let depth = 0; depth < 4 && typeof current === "object" && current !== null; depth += 1) {
     if ("code" in current && ["22P02", "22P05", "22003", "22007", "22008"].includes(String(current.code))) {
@@ -27,11 +30,12 @@ const sanitizeFailure = (error: unknown): never => {
 };
 
 export const makeResultNotificationsPort = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck, clock: Clock = systemClock): ResultNotificationsPort => {
-  const run = <T>(command: (tx: NotificationDb) => Promise<T>): Promise<T> =>
-    notificationTransaction(db, "result", command).catch(sanitizeFailure);
+  const run = <T>(command: (tx: NotificationDb) => Promise<T>,
+    request: Omit<NotificationAdmissionRequest, "family"> = { key: Symbol("http"), operation: "http" }): Promise<T> =>
+    notificationTransaction(db, "result", command, request).catch(sanitizeFailure);
   return {
     receive: (rawJson, now) => run(tx => receiveResultNotification(tx, rawJson, now, admissionCheck)),
-    claim: options => run(async tx => {
+    claim: options => notificationNotStarted(run(async tx => {
       const claims = await claimNotifications(tx, "result", { ...options, now: notificationCommandNow(clock, options.now) }, clock);
       const entries = await findClaimedResultNotifications(tx, claims.map(claim => claim.id));
       const byId = new Map(entries.map(entry => [entry.id, entry]));
@@ -40,16 +44,21 @@ export const makeResultNotificationsPort = (db: DbLike, admissionCheck: ResultNo
         if (!entry) { throw new Error("Missing claimed notification"); }
         return { ...entry, lease };
       });
-    }),
-    plan: (id, token, options) => run(tx => planResultNotification(tx, id, token, { ...options, now: notificationCommandNow(clock, options.now) })),
-    begin: (id, partNo, token, now) => run(tx => beginNotificationPart(tx, id, partNo, token, notificationCommandNow(clock, now), "result")),
-    complete: (id, partNo, token, messageId, now) => run(tx => completeNotificationPart(tx, id, partNo, token, messageId, notificationCommandNow(clock, now), "result")),
-    yield: (id, token, now) => run(tx => yieldResultNotification(tx, id, token, notificationCommandNow(clock, now))),
-    fail: (id, token, error, nextAttemptAt, now) => run(tx => {
+    }, { key: "claim", operation: "claim" }), []),
+    plan: (id, token, options, remaining) => notificationNotStarted(run(tx => planResultNotification(tx, id, token,
+      { ...options, now: notificationCommandNow(clock, options.now) }), owner(id, token, "begin", remaining)), false),
+    begin: (id, partNo, token, now, remaining) => notificationNotStarted(run(tx => beginNotificationPart(tx, id, partNo, token,
+      notificationCommandNow(clock, now), "result"), owner(id, token, "begin", remaining)), false),
+    complete: (id, partNo, token, messageId, now, remaining) => run(tx => completeNotificationPart(tx, id, partNo, token,
+      messageId, notificationCommandNow(clock, now), "result"), owner(id, token, "finalize", remaining)),
+    yield: (id, token, now, remaining) => run(tx => yieldResultNotification(tx, id, token,
+      notificationCommandNow(clock, now)), owner(id, token, "finalize", remaining)),
+    fail: (id, token, error, nextAttemptAt, now, remaining) => run(tx => {
       const current = notificationCommandNow(clock, now);
       return failNotification(tx, id, token, error, nextAttemptAt && nextAttemptAt < current ? current : nextAttemptAt, current, "result");
-    }),
-    renew: (id, token, now, claimDurationMs) => run(tx => renewNotificationClaim(tx, id, token, now, claimDurationMs, "result", clock)),
+    }, owner(id, token, "finalize", remaining)),
+    renew: (id, token, now, claimDurationMs, remaining) => notificationNotStarted(run(tx =>
+      renewNotificationClaim(tx, id, token, now, claimDurationMs, "result", clock), owner(id, token, "renew", remaining)), null),
     getNextDispatchAt: excludeIds => findNextNotificationDispatchAt(db, "result", excludeIds).catch(sanitizeFailure),
     inspect: id => run(tx => inspectResultNotification(tx, id)),
     retry: (id, now) => run(tx => retryResultNotification(tx, id, now)),

@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, RESULT_NOTIFICATION_SQL_TIMEOUT_MS } from "../../config.ts";
 import type { DbLike } from "../rows.ts";
-import { runTransaction } from "../transaction.ts";
+import { isTransactionHandle, runTransaction } from "../transaction.ts";
 import {
   discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationResults as results, discordNotificationSettings as settings,
@@ -9,6 +9,9 @@ import {
 } from "../schema.ts";
 import { resultCancellationReason, type ResultCancellationReason } from "../../domain/notification.ts";
 import { identityLayout, wireId } from "../identities.ts";
+import { notificationAdmissionFor } from "../notificationControl.ts";
+import type { NotificationAdmissionRequest } from "../notificationAdmission.ts";
+import { InvariantViolationError } from "../../errors/index.ts";
 
 export type NotificationFamily = "attendance" | "result";
 export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "delete" | "execute">;
@@ -34,11 +37,18 @@ export const lockNotificationFamily = async (tx: NotificationDb, family: Notific
 };
 
 export const notificationTransaction = <T>(
-  db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>
-): Promise<T> => runTransaction(db, async tx => {
-  await lockNotificationFamily(tx, family);
-  return command(tx);
-}, { lockTimeoutMs: RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, statementTimeoutMs: RESULT_NOTIFICATION_SQL_TIMEOUT_MS });
+  db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>,
+  options: Omit<NotificationAdmissionRequest, "family"> = { key: "direct", operation: "maintenance" }
+): Promise<T> => {
+  if (isTransactionHandle(db)) { return Promise.reject(new InvariantViolationError("Nested notification admission is not supported.")); }
+  const admission = notificationAdmissionFor(db);
+  const request = { ...options, family, key: typeof options.key === "string" ? `${family}:${options.key}` : options.key };
+  return admission.run(request, () => runTransaction(db, async tx => {
+    await lockNotificationFamily(tx, family);
+    admission.assertCanStart(request);
+    return command(tx);
+  }, { lockTimeoutMs: RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, statementTimeoutMs: RESULT_NOTIFICATION_SQL_TIMEOUT_MS }));
+};
 
 export const lockNotification = async (tx: NotificationDb, id: string): Promise<NotificationStateRow | undefined> => {
   const [row] = await tx.select(notificationStateColumns).from(notifications).where(eq(notifications.id, id)).for("update");
