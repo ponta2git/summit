@@ -8,8 +8,9 @@ const request = (key: string, family: "result" | "attendance" = "result",
   operation: NotificationAdmissionRequest["operation"] = "claim", remainingMs?: () => number): NotificationAdmissionRequest => ({
   key, family, operation, ...(remainingMs ? { remainingMs } : {})
 });
-const harness = () => {
-  const logger = { warn: vi.fn() }; const admission = createNotificationAdmission({ logger });
+const harness = (monotonicNow?: () => number) => {
+  const logger = { warn: vi.fn() }; const admission = createNotificationAdmission({ logger,
+    ...(monotonicNow ? { monotonicNow } : {}) });
   const calls: string[] = []; const releases: (() => void)[] = []; const work: Promise<unknown>[] = [];
   const hold = (input: NotificationAdmissionRequest) => {
     const release = deferred<void>(); releases.push(() => release.resolve());
@@ -62,6 +63,20 @@ describe("notification database admission", () => {
       expect(h.calls).toEqual(["accepted", "holder"]);
       expect(h.admission.snapshot()).toMatchObject({ running: 2, waiting: 0 });
       accepted.release(); expect(await accepted.pending).toBe("accepted");
+    } finally { await h.cleanup(); }
+  });
+
+  it("rejects an expired HTTP waiter before a holder settlement can bypass its delayed timer", async () => {
+    let now = 0;
+    const h = harness(() => now); const first = h.hold(request("first")); h.hold(request("second"));
+    const waiting = h.hold(request("waiting", "result", "http")); const failed = waiting.pending.catch(error => error);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      // A synchronous pause advances the real deadline before timer callbacks can execute.
+      now = 5_001; first.release(); await first.pending;
+      expect(h.calls).toEqual(["first", "second"]);
+      expect(await failed).toMatchObject({ reason: "queue_timeout" });
+      expect(h.admission.snapshot()).toMatchObject({ running: 1, waiting: 0 });
     } finally { await h.cleanup(); }
   });
 

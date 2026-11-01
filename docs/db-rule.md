@@ -93,7 +93,7 @@ Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確�
 
 通知 command は root DB handle ごとの[入場制御](../src/db/notificationAdmission.ts)で、connection取得前に family 2件・全体3件の両条件を満たすまで待つ。枠は実 commit / rollback の settlement だけで解放し、応答喪失時の早期解放はしない。共有PG gate・READ COMMITTED・token/期限CASは維持し、source業務transactionや他アプリはこの局所制御の対象外。入れ子取得は禁止する。
 
-producer は HTTP 4、結果owner 2×(処理1+renew1)、出欠owner 10×(処理1+renew1)、claim 2、retention 2、出欠recovery 2の計34件（実行中を含む）まで。再接続と定期supervisorが重なる出欠claim回復は、root handleごとに開始済みPromiseを共有する。回復対象時刻は先行呼出しの値で、後から期限を迎えたclaimは次回の回復対象になる。それ以外の内部producerの同じキーの重複や上限超過は専用の admission invariant とする。未開始HTTPだけ5秒で503にし、内部待機は新attemptやDB backoffへ変換しない。renewとfinalizeは確認済み期限が近い順、その他は実行可能なFIFO先頭を選び、通常列の先頭が5秒待った場合は1回だけ付与を譲り、次は実行可能なrenew/finalizeへ戻す。通常列が複数滞留しても連続で優先しない。既にPG側へ入った同familyの最大2件は追い越せない。
+producer は HTTP 4、結果owner 2×(処理1+renew1)、出欠owner 10×(処理1+renew1)、claim 2、retention 2、出欠recovery 2の計34件（実行中を含む）まで。再接続と定期supervisorが重なる出欠claim回復は、root handleごとに開始済みPromiseを共有する。回復対象時刻は先行呼出しの値で、後から期限を迎えたclaimは次回の回復対象になる。それ以外の内部producerの同じキーの重複や上限超過は専用の admission invariant とする。未開始HTTPだけ5秒で503にし、timerが遅れても枠付与前に単調clockで期限を再確認する。内部待機は新attemptやDB backoffへ変換しない。renewとfinalizeは確認済み期限が近い順、その他は実行可能なFIFO先頭を選び、通常列の先頭が5秒待った場合は1回だけ付与を譲り、次は実行可能なrenew/finalizeへ戻す。通常列が複数滞留しても連続で優先しない。既にPG側へ入った同familyの最大2件は追い越せない。
 
 stopは未開始claim・受付・保守・beginをNotStartedで取り除く。内部portはこれを操作ごとのno-opへ戻し、DB障害としてfailしない。開始済み配送のrenew/finalizeはdrain中も受け付ける。begin/renewの期限は待機中とgate後にも確認し、既知送信のfinalizeは期限後でも既存CASを試す。[待機・期限・飢餓](../tests/notifications/databaseAdmission.test.ts)と[4地点の実DB応答喪失](../tests/integration/notifications.admission.test.ts)で所有と回復を検証する。
 

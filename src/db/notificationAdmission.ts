@@ -99,7 +99,13 @@ export const createNotificationAdmission = (options: {
   };
   const pump = (): void => {
     for (const job of [...waiting]) {
-      try { assertCanStart(job.request); } catch (error: unknown) { reject(job, error); }
+      try {
+        assertCanStart(job.request);
+        // A holder can settle before an overdue timer callback after an event-loop pause.
+        if (job.request.operation === "http" && now() - job.queuedAt >= NOTIFICATION_DB_QUEUE_WAIT_MS) {
+          throw new NotificationNotStartedError("queue_timeout");
+        }
+      } catch (error: unknown) { reject(job, error); }
     }
     while (running.size < NOTIFICATION_DB_GLOBAL_LIMIT) {
       const eligible = waiting.filter(job => counts[job.request.family] < NOTIFICATION_DB_FAMILY_LIMIT);
