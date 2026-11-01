@@ -30,6 +30,7 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 | Neon インスタンスを restore したい | [backup.md](./backup.md) |
 | Bot が応答しない / 起動状態を確認したい | [recovery.md](./recovery.md) case 1 + `/status` |
 | slash command 定義を更新したい / 同期結果が不明 | 本書 §本番Discordコマンド同期 |
+| allocator 設定の効果を確認したい / 変更後に遅延やメモリが増えた | 本書 §runtimeのメモリ設定 |
 
 ## 実行権限と準備
 
@@ -47,6 +48,17 @@ Summit Discord Bot の運用入口。症状または対象操作から該当 SOP
 4. **単一インスタンス前提**: Fly app を scale しない / cron を多重登録しない / in-memory 状態を信頼しない。
 5. **secrets 実値をログ・コミット・PR に載せない** — token / 接続文字列は `.env.example` の placeholder のみ commit 可。
 6. **ログ・作業記録は公開前に確認する** — redact の有無だけで公開可と判断しない。必要な event / code / 集計値を抜粋し、secret・識別子・接続先・投稿本文・個人情報を除去する。生ログや実環境の詳細はアクセス制限された運用資料に残す。
+
+## runtimeのメモリ設定
+
+[Dockerfile](../../Dockerfile) の runtime stage が `MALLOC_ARENA_MAX=2` を既定値として持つ。build stage とホストの開発 process には適用しない。VM 容量や JS heap の上限を変える設定ではない。測定条件・採用理由・未確定の性能影響は [性能レポート](../performance.md) を参照する。
+
+1. 本書の権限・禁止窓・単一 instance の原則に従い、変更前の image revision、稼働日齢、通知件数・大きさ、待機時 Anonymous / RSS、heap、peak、処理当たり CPU、通常通知の受付から配送完了までの p95、受付・配送失敗を記録する。比較窓と負荷帯を変更前に決め、再起動直後と長期稼働後を直接比較しない。
+2. 通常の image deploy で適用し、新 process の当該環境変数だけを確認する。環境全体や secret を出力しない。runtime 環境の override と `GLIBC_TUNABLES` による allocator 指定も確認し、競合する指定があれば自動で上書きせず対象を整理する。256 MiB・単一 instance を維持し、同条件の観測を継続する。
+3. OOM・配送停止や欠落などの機能異常、同程度の負荷で受付失敗が増える場合は復旧する。CPU または p95 の10%超の悪化が複数の比較窓で再現する、peak の増加で容量の余裕を失う場合も切り戻す。待機時の便益が2 MiB未満で他の改善もなければ、設定を維持する理由を再評価する。ローカル試験の未帰属503を変更の成功・失敗の証拠へ流用しない。
+4. allocator だけを戻す場合は、許可された変更として runtime 環境へ `MALLOC_ARENA_MAX=0` を指定した構成を deploy し、新 process で反映と受付・配送の復旧を確認する。`0` は glibc の既定の上限決定に戻す値。環境指定を単に削除しても image 内の `2` に戻るため、解除にはならない。恒久的に戻すときは Dockerfile と runtime image 検証を同じ変更で更新し、一時 override を解消する。復旧 revision を使う場合も、業務・DB 契約との互換性を確認する。
+
+根拠は [glibc の arena 設定](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html) と、使用する [glibc 2.36 の上限決定](https://github.com/bminor/glibc/blob/glibc-2.36/malloc/arena.c)。CPU 数・architecture・Node / libc・外部通信・負荷特性を変えた場合はローカル容量 gate と比較測定を再実行する。
 
 ## 本番Discordコマンド同期
 
