@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import type { Client } from "discord.js";
 import { sql } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -42,7 +43,7 @@ describeDb("reconciler startup idempotency across boots (integration)", () => {
 
   it("two consecutive runReconciler({scope:'startup'}) calls converge on first and no-op on second", async () => {
     const ctx = {
-      ports: makeRealPorts(integrationDb.db, payload => assertNewNotificationPartLimit(payload, "https://example.test")),
+      ports: makeRealPorts(integrationDb.db, payload => assertNewNotificationPartLimit(payload, "https://example.test"), repositoryClock),
       clock: fixedClock
     };
 

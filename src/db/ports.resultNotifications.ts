@@ -1,6 +1,7 @@
 import type { DiscordNotificationReceipt, DiscordResultNotification } from "@momo/db/notifications";
 import type { ResultNotificationKind } from "@momo/db";
 import type { NotificationStatus, ResultDeliveryError } from "../domain/notification.ts";
+import type { ClaimLease } from "../time/lease.ts";
 
 export interface ResultDeliveryContext {
   readonly webOrigin: string;
@@ -19,6 +20,7 @@ export interface ClaimedResultNotification {
   /** UTF-8 bytes of PostgreSQL's JSONB text, reserved before payload hydration. */
   readonly payloadBytes: number;
   readonly claimToken: string;
+  readonly lease: ClaimLease;
   readonly attemptCount: number;
   readonly maxAttempts: number;
   readonly partCount: number;
@@ -50,6 +52,7 @@ export interface ResultNotificationSetting {
   readonly enabled: boolean;
   readonly generation: string;
 }
+/** Pure validation using fixed configuration; it runs synchronously before DB admission, including duplicates. */
 export type ResultNotificationAdmissionCheck = (payload: DiscordResultNotification) => void;
 
 /** Application commands own receipt, cancellation, delivery and retry aggregates. */
@@ -60,13 +63,13 @@ export interface ResultNotificationsPort {
     readonly payloadBudgetBytes?: number; readonly allowOversizedPayload?: boolean; readonly preferredKind?: ResultNotificationKind }): Promise<readonly ClaimedResultNotification[]>;
   plan(id: string, token: string, options: {
     readonly count: number; readonly rendererVersion: number; readonly context: ResultDeliveryContext; readonly now: Date;
-  }): Promise<boolean>;
-  begin(id: string, partNo: number, token: string, now: Date): Promise<boolean>;
-  complete(id: string, partNo: number, token: string, messageId: string, now: Date): Promise<boolean>;
+  }, remainingMs?: () => number): Promise<boolean>;
+  begin(id: string, partNo: number, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  complete(id: string, partNo: number, token: string, messageId: string, now: Date, remainingMs?: () => number): Promise<boolean>;
   /** Release only between completed parts when the other kind is due; a handoff does not consume a retry. */
-  yield(id: string, token: string, now: Date): Promise<boolean>;
-  fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date): Promise<boolean>;
-  renew(id: string, token: string, now: Date, claimDurationMs: number): Promise<boolean>;
+  yield(id: string, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date, remainingMs?: () => number): Promise<boolean>;
+  renew(id: string, token: string, now: Date, claimDurationMs: number, remainingMs?: () => number): Promise<ClaimLease | null>;
   getNextDispatchAt(excludeIds?: readonly string[]): Promise<Date | null>;
   inspect(id: string): Promise<ResultNotificationState | null>;
   retry(id: string, now: Date): Promise<boolean>;

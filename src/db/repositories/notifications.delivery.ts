@@ -1,14 +1,15 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts } from "../schema.ts";
 import { afterDeliveryFailure, ownsNotificationClaim, RESULT_DELIVERY_ERRORS } from "../../domain/notification.ts";
-import { addMs } from "../../time/index.ts";
+import type { Clock } from "../../time/index.ts";
+import { observeClaimLease, type ClaimLease } from "../../time/lease.ts";
 import { cancelAttendanceSuccessors } from "./notifications.claim.ts";
-import { cancelNotification, loadResultCancellationReason, lockNotification, type NotificationDb, type NotificationFamily } from "./notifications.storage.ts";
+import { cancelNotification, loadResultCancellationReason, lockNotification, lockNotificationDelivery, type NotificationDb, type NotificationFamily } from "./notifications.storage.ts";
 
 export const beginNotificationPart = async (
   tx: NotificationDb, id: string, partNo: number, token: string, now: Date, family: NotificationFamily = "attendance"
 ): Promise<boolean> => {
-  const row = await lockNotification(tx, id);
+  const row = await lockNotificationDelivery(tx, id);
   if (!row || row.family !== family || !ownsNotificationClaim(row, token, now)) { return false; }
   if (row.family === "result") {
     const reason = await loadResultCancellationReason(tx, id);
@@ -27,7 +28,7 @@ export const beginNotificationPart = async (
 export const completeNotificationPart = async (
   tx: NotificationDb, id: string, partNo: number, token: string, messageId: string | null, now: Date, family: NotificationFamily = "attendance"
 ): Promise<boolean> => {
-  const row = await lockNotification(tx, id);
+  const row = await lockNotificationDelivery(tx, id);
   if (!row || row.family !== family || !ownsNotificationClaim(row, token, now, true)) { return false; }
   if (row.family === "result" && (!messageId || messageId.length > 200)) { throw new Error("Invalid delivered message ID"); }
   const changed = await tx.update(parts).set({
@@ -76,13 +77,14 @@ export const failNotification = async (
 };
 
 export const renewNotificationClaim = async (
-  tx: NotificationDb, id: string, token: string, now: Date, claimDurationMs: number, family: NotificationFamily = "attendance"
-): Promise<boolean> => {
+  tx: NotificationDb, id: string, token: string, requestedAt: Date, claimDurationMs: number, family: NotificationFamily, clock: Clock
+): Promise<ClaimLease | null> => {
   if (!Number.isSafeInteger(claimDurationMs) || claimDurationMs < 1 || claimDurationMs > 300_000) {
     throw new Error("Invalid notification claim duration");
   }
-  const changed = await tx.update(notifications).set({ claimExpiresAt: addMs(now, claimDurationMs), updatedAt: now })
-    .where(and(eq(notifications.id, id), eq(notifications.family, family), eq(notifications.status, "IN_FLIGHT"), eq(notifications.claimToken, token), gt(notifications.claimExpiresAt, now)))
+  const lease = observeClaimLease(clock, requestedAt, claimDurationMs);
+  const changed = await tx.update(notifications).set({ claimExpiresAt: lease.expiresAt, updatedAt: lease.observedAt })
+    .where(and(eq(notifications.id, id), eq(notifications.family, family), eq(notifications.status, "IN_FLIGHT"), eq(notifications.claimToken, token), gt(notifications.claimExpiresAt, lease.observedAt)))
     .returning({ id: notifications.id });
-  return changed.length === 1;
+  return changed.length === 1 ? lease : null;
 };

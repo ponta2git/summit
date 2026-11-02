@@ -10,6 +10,7 @@ const claimed = (): ClaimedResultNotification => {
   const payload = analysisNotification();
   return { id: payload.notificationId, kind: payload.kind, payload, payloadBytes: 100,
     claimToken: "claim-token", attemptCount: 1, maxAttempts: 3, partCount: 0,
+    lease: { observedAt: new Date("2026-09-09T12:00:00Z"), observedMonotonicMs: 0, expiresAt: new Date("2026-09-09T12:00:30Z") },
     rendererVersion: null, deliveryContext: null, deliveredPartNos: [] };
 };
 

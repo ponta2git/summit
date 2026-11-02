@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import { randomUUID } from "node:crypto";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
@@ -161,7 +162,7 @@ const sessionAlias = "Friday-session-old";
       VALUES (${storedDraft}, 'draft-1', ${storedAccount}, 'draft_ready') ON CONFLICT DO NOTHING`;
     await db.update(discordNotificationSettings).set({ enabled: true, generation: 0n });
     const payload = ocrReceiptPayload();
-    const port = makeResultNotificationsPort(db, checkNotificationAdmission);
+    const port = makeResultNotificationsPort(db, checkNotificationAdmission, repositoryClock);
     expect(await port.receive(JSON.stringify(payload), notificationNow)).toMatchObject({ disposition: "accepted", status: "PENDING" });
     expect(await loadResultCancellationReason(db, payload.notificationId)).toBeNull();
     await db.update(matchDrafts).set({ status: "cancelled" }).where(eq(matchDrafts.id, storedDraft));

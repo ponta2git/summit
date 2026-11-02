@@ -40,6 +40,11 @@
 | 信頼性・高 | Discord の rate-limit 待機で出欠 claim の期限を超える | 両 family の共通 heartbeat、期限切れ owner の復活禁止、renew の settlement。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts)、[real / fake 契約](../tests/contracts/attendance.ts) |
 | 信頼性・中 | Discord 受理後の DB 失敗で短時間再送する | 通知 / part の安定 nonce、begin / finalize fencing。[配送所有権](../tests/scheduler/outboxWorker.ownership.test.ts) |
 | 信頼性・保守性・高 | claim 待機中の停止、準備の同期失敗、配送終了と枠補充を競合させる | 共通容量台帳で予約と完了待ちを持ち、Scope が実行を所有して settlement 後に解放。出欠 batch と A/B の随時補充は別方針。[容量](../tests/notifications/delivery.capacity.test.ts)、[claim と停止](../tests/scheduler/resultNotifications.test.ts) |
+| 信頼性・性能・高 | SDK の送信・channel 取得が45秒を超え、20分未完了になる | 論理配送と実未完了 I/O の owner 和集合で2件・元本文512 KiBを予約。旧巨大通知の単独予約、遅延成功、stop / drain、警告数と実完了後の再開を[障害注入](../tests/scheduler/resultNotifications.pendingIo.test.ts)・[台帳](../tests/notifications/resultIo.test.ts)で検証 |
+| 信頼性・高 | renew の応答喪失・未応答、clock jump、同期処理によるtimer遅延 | 独立した期限監視と直前guard、uncertain中の新規停止、同じclaimの期限内回復、停止中のDB所有を[heartbeat](../tests/scheduler/claimHeartbeat.recovery.test.ts)と[実DB](../tests/integration/notifications.leaseClock.test.ts)で検証 |
+| 信頼性・性能・高 | 通知DB応答喪失、family gateの占有、待機中stop | family 2/全体3の実未settle上限とproducer 34件、期限優先/FIFO、未開始HTTP 5秒、stop時no-opを[待機列](../tests/notifications/databaseAdmission.test.ts)・[実DB](../tests/integration/notifications.admission.test.ts)で検証。通知以外のDB待ち全体が消える保証ではない |
+| 信頼性・性能・高 | 次時刻照会の応答喪失、空き枠がある状態で期日を跨ぐ | [pump進捗](../tests/notifications/resultRuntime.progress.test.ts)で20分の単一照会所有・警告上限・復帰と、期日を跨いだ候補のtimer再設定を検証 |
+| 信頼性・性能・高 | 受付待機で解析木を保持する、新規検証失敗が既存duplicateを壊す | 同期preparationから元JSON・最小DTO・固定結果だけを渡す。[DTO境界](../tests/notifications/receiptPreparation.test.ts)と[エラー優先順](../tests/integration/resultNotifications.preparation.test.ts)を検証。duplicateの追加CPUは性能比較の対象 |
 | 信頼性・高 | stop / drain の先頭で同期 throw、destroy を遅延・reject させる | 全 owner を呼び、非同期 destroy 完了を待つ。[lifecycle](../tests/runtime/lifecycle.test.ts)、[shutdown](../tests/shutdown.test.ts) |
 | 信頼性・中 | metrics を失敗させる、cron 登録を途中で失敗させる | 観測と回復の失敗分離、登録済み task の回収。[cron lifecycle](../tests/scheduler/cron.lifecycle.test.ts) |
 | 信頼性・高 | Session row / advisory lock を保持して出欠 transaction を待たせる | transaction-local の SQL / lock deadline、rollback 完了後の再利用。[実 DB 期限](../tests/integration/transactionLimits.test.ts) |
@@ -83,7 +88,7 @@
 
 標準の新規受付上限は分析 JSONB text 256 KiB、OCR 16 KiB、HTTP 本文512 KiB、受付全体1 MiB、50試合・16シーズン、名称256・表示名32・メモ150 Unicode コードポイント、分析128投稿とする。OCR の一投稿・既存の文脈名201コードポイント制約も維持する。配送は最大2件、取得・保持中の payload 合計512 KiBに収める。譲渡した配送も heartbeat を含む settlement まで予約し、参照と予約を解放してから補充する。再開待ちの payload を別枠で保持しない。配送枠への割当ては [lanes](../src/notifications/delivery/lanes.ts)、上限値の正本は [notification config](../src/notifications/config.ts)。上限超過は永続受付前に拒否し、旧通知だけは以前の容量・本文・分割を保ち、予算を超える payload を途中譲渡せず単独配送する。
 
-合格条件は Node 24 / Debian の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
+合格条件は [Dockerfile](../Dockerfile) が固定する Node / Debian と allocator 設定の本番 image を256 MiB・swapなしで実行し、標準ケースの cgroup memory peak を192 MiB以下に収めること。通常の小さい通知、最大近傍の Unicode、Markdown 密集の50試合・16シーズン、最大本文の2受付と2配送の重複、旧容量近傍まで数値展開する異内容の4同時受付、5連続 burst、容量・件数超過の拒否を実 DB で検証する。全17通知の全part配送確定まで確認する。旧8 MiB近傍の通知は別 container で単独配送し、全partの計画と最初の一投稿の配送確定、同じ4同時受付を測定する。残りのpartが未配送であることを確認し、全partのDiscord送信負荷を測ったとは扱わない。
 
 最新の実装比較と容量結果は [性能レポート](./performance.md) に記録する。2026-10-02の標準ケースは146.71 MiBで合格。旧巨大通知と4競合受付の別ケースは193.21–196.60 MiBで比較目標192 MiBを超えたが、256 MiB内で完了した。この条件のpeak改善は確認できていない。
 
@@ -100,7 +105,7 @@ fixture 生成と負荷 client は container 外に置き、計測には本番�
 
 速度・CPU・heap の診断、旧8,823投稿の全件確定、100通知の連続負荷は[性能レポート](./performance.md)で別に測定する。上表は容量gateの結果であり、追加のprofile採取やCPU quota付き計測の数値と混在させない。
 
-payload 上限、配送並列数、文字列処理、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
+payload 上限、配送並列数、文字列処理、Node / allocator、VM memory を変える場合は [容量検証器](../scripts/verify/notificationCapacity.ts) を `pnpm verify:notification-capacity <local-image>` で再実行し、同じimageで `pnpm verify:runtime-image <local-image>` も通してallocator設定と実行環境を照合する。[fly.toml](../fly.toml) は256 MiBとし、標準負荷の検証条件に合わせる。allocator の採用根拠は [性能レポート](./performance.md)、適用後の観測と復旧は [運用手順](./operations/README.md#runtimeのメモリ設定) に従う。設定 file の更新だけでは稼働中 Machine を変更せず、実際の deploy は運用手順と別の権限に従う。
 
 ## 4. 残る運用上の境界
 

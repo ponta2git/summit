@@ -45,7 +45,7 @@ const context = { channelId: "frozen-channel", webOrigin: "https://example.test"
         claimToken: notifications.claimToken }).from(notifications).where(eq(notifications.id, entry.id)))
         .toEqual([{ status: "IN_FLIGHT", attemptCount: 1, claimToken: entry.claimToken }]);
     } finally { release.resolve(); await handingOff; }
-    expect(await handingOff).toBe(true); expect(await renewing).toBe(false);
+    expect(await handingOff).toBe(true); expect(await renewing).toBeNull();
     expect(await h.port.inspect(entry.id)).toMatchObject({ status: "PENDING", attemptCount: 0, claimExpiresAt: null,
       parts: [{ status: "DELIVERED", deliveredMessageId: "already-sent" }, { status: "PENDING" }] });
   });

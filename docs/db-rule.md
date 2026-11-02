@@ -89,6 +89,14 @@ Discord と PostgreSQL の原子的 commit はできない。受理後・DB 確�
 
 両 family とも通知 ID / part から安定 nonce を生成し、Discord の短時間の重複抑止を利用する。nonce の保持期間を越えた配送保証には使わない。時刻取得は状態を書き戻す境界でも行う。
 
+通知 repository は Clock を受け取り、family gate 取得後に現在時刻を読む。業務の発生時刻とは別に、claim / renew の期限は更新直前に採取した wall / monotonic の対を基準にする。時計補正で command の受付時刻より過去へ戻さず、その基準から保存する expiresAt とローカルの期間上限を同時に決める。返答受信時から新しく30秒を与えない。port の claim はこの観測を含み、renew は確認した観測または拒否の null を返す。begin・complete・fail・yield・plan の有効期限確認も gate 待機前の時刻だけに依存しない。[実DBのgate待ち・commit応答喪失](../tests/integration/notifications.leaseClock.test.ts)で検証する。
+
+通知 command は root DB handle ごとの[入場制御](../src/db/notificationAdmission.ts)で、connection取得前に family 2件・全体3件の両条件を満たすまで待つ。枠は実 commit / rollback の settlement だけで解放し、応答喪失時の早期解放はしない。共有PG gate・READ COMMITTED・token/期限CASは維持し、source業務transactionや他アプリはこの局所制御の対象外。入れ子取得は禁止する。
+
+producer は HTTP 4、結果owner 2×(処理1+renew1)、出欠owner 10×(処理1+renew1)、claim 2、retention 2、出欠recovery 2の計34件（実行中を含む）まで。再接続と定期supervisorが重なる出欠claim回復は、root handleごとに開始済みPromiseを共有する。回復対象時刻は先行呼出しの値で、後から期限を迎えたclaimは次回の回復対象になる。それ以外の内部producerの同じキーの重複や上限超過は専用の admission invariant とする。未開始HTTPだけ5秒で503にし、timerが遅れても枠付与前に単調clockで期限を再確認する。内部待機は新attemptやDB backoffへ変換しない。renewとfinalizeは確認済み期限が近い順、その他は実行可能なFIFO先頭を選び、通常列の先頭が5秒待った場合は1回だけ付与を譲り、次は実行可能なrenew/finalizeへ戻す。通常列が複数滞留しても連続で優先しない。既にPG側へ入った同familyの最大2件は追い越せない。
+
+stopは未開始claim・受付・保守・beginをNotStartedで取り除く。内部portはこれを操作ごとのno-opへ戻し、DB障害としてfailしない。開始済み配送のrenew/finalizeはdrain中も受け付ける。begin/renewの期限は待機中とgate後にも確認し、既知送信のfinalizeは期限後でも既存CASを試す。[待機・期限・飢餓](../tests/notifications/databaseAdmission.test.ts)と[4地点の実DB応答喪失](../tests/integration/notifications.admission.test.ts)で所有と回復を検証する。
+
 reminder tick は enqueue までを行う。Discord 受理後に Session 完了と HeldEvent を原子的に確定し、その後 delivered を記録する。送信 skip の経路も同じ完了 command を使う。再送の可能性があっても、開催履歴を欠落させない。
 
 ### 回復
@@ -106,6 +114,10 @@ message ID が null の候補は、Session lock 後に現在の状態と ID を�
 ### 受付と generation
 
 受付では parent、固定 payload、result relation、取消対象と PENDING / CANCELLED を一 command で確定する。OCR v2 / analysis v1 の version を**既存 ID との照合より先に**検証し、同一 ID でも旧 OCR の再受付を拒否する。受け取った schemaVersion を保存する。
+
+parse・identity/version・新規validation・描画予算・INSERT用metadataの投影は、awaitを挟まない[事前処理](../src/db/repositories/resultNotifications.prepare.ts)で一度だけ計算する。待機へ渡すのは元JSON、段階付きの固定結果、最小DTOだけ。解析木・renderer closure・全parts・元例外を保持せず、admission callbackはcompositionで固定したoriginだけを読むpureな検査にする。新規参照は最大50件×200 UTF-16 code unitsで、制御文字等のJSON escapingとidentityの複製を含む元JSON以外のmetadata表現は64 KiB未満、HTTP最大4件分でも256 KiB未満。これは保持heap全体の上限ではなく、実メモリは容量gateで検証する。
+
+事前計算したエラーはgate取得後の元の段階で適用する。identity/version→既存identity照合→既存なら旧hash、新規ならvalidation/admission→JSONB正規化/hash→metadata→INSERTの順を保つ。新規検証の未知例外も固定内部エラーとして記録し、既存duplicateでは無視する。DB障害の503と入力4xx、200/409の優先順を[実DB](../tests/integration/resultNotifications.preparation.test.ts)で検証する。同期計算の移動だけでevent-loop停止時間が短縮するとは扱わない。
 
 content hash は JSONB と互換な数値・文字列の扱いを維持する。JSON の decimal を JS number へ丸めてから同一性を判断しない。通知 ID の生成と ops path の検証は `@momo/db/notifications` に集約し、ID の形と version / content の受入可否を別々に判断する。
 
@@ -132,6 +144,8 @@ OFF は通知 ID 順に parent を bounded batch で lock し、**lock 取得後
 配送 query の集約でも family gate 取得後の新しい statement で取消を確認する。begin は前の未完了 part がないことと対象の PENDING を条件付き UPDATE で検証する。complete は part の DELIVERED 更新後、別 statement で残件を確認して親を確定する。同一 statement 内の更新 CTE と残件照会が更新後の状態を読めるとは仮定しない。
 
 取消条件の設定・世代・対象有無は gate 後の一 SELECT で取得し、理由の優先順位は domain の判定を維持する。正常な begin / complete は合計16 SQL・2 transactions（driver の BEGIN / COMMIT を含む）。claim・plan・renew・協調 yield は別計上する。plan と最初の begin の統合は、channel 取得失敗時にも renderer / 宛先を固定する現行境界が変わるため採用しない。再評価時は失敗・再開時の固定内容と削減効果を同時に検証する。
+
+begin / complete の親lockはfamily・status・token・期限・part数だけを取得し、固定deliveryContext等を読み直さない。transaction-local timeoutは範囲検証した設定整数だけをDrizzleのescapingでinline化し、`prepare:false`のparameter Describe待ちを避ける。request値は引き続きbindし、timeout設定とgate取得は別statement。SQL件数の減少とは扱わず、通信往復・転送量・処理時間を比較する。
 
 claim は payload 本文を取得する前に DB 内で正規化 byte 数を調べ、実行中の通知を含む byte 予算と配送 slot の両方に収める。予算より大きい既受理 payload は、他に実行中の通知がない場合だけ単独で取得する。配送中に保持する予算は実処理の settlement まで解放せず、予算待ちの due row を短周期で再取得しない。本文は part 数を先に数えてから一投稿ずつ生成し、全投稿の文字列配列を保持しない。
 

@@ -11,6 +11,8 @@ import { notificationNow } from "../contracts/resultNotifications.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
+import type { ClaimLease } from "../../src/time/lease.ts";
+import { InvariantViolationError, NotificationAdmissionInvariantError } from "../../src/errors/index.ts";
 
 describe("result notification delivery", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(notificationNow); });
@@ -48,13 +50,24 @@ describe("result notification delivery", () => {
     expect(h.channel.send).not.toHaveBeenCalled();
   });
 
+  it("preserves a ledger invariant as a defect instead of consuming a Discord retry", async () => {
+    const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
+    const failure = new InvariantViolationError("Invalid result I/O reservation");
+    vi.spyOn(h.io, "run").mockImplementation(() => { throw failure; });
+    const fail = vi.spyOn(h.port, "fail");
+    const exit = await runEffect(Effect.exit(deliverPreparedResultNotification(h, prepareResultDelivery(entry, h.context))));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) { throw new Error("Expected a ledger defect"); }
+    expect(Cause.hasDies(exit.cause)).toBe(true); expect(Cause.squash(exit.cause)).toBe(failure);
+    expect(fail).not.toHaveBeenCalled(); expect(h.channel.send).not.toHaveBeenCalled();
+  });
+
   it("preserves a Discord failure combined with a heartbeat defect without normal retry finalization", async () => {
     const h = resultWorkerHarness(); await h.enqueue(); const entry = await h.claim();
     const started = deferred<void>(); const sending = deferred<{ id: string }>();
-    const defect = new Error("heartbeat diagnostic invariant");
+    const defect = new NotificationAdmissionInvariantError("heartbeat producer invariant");
     h.channel.send.mockImplementationOnce(() => { started.resolve(); return sending.promise; });
-    h.port.renew = async () => false;
-    h.logger.warn.mockImplementation(() => { throw defect; });
+    h.port.renew = async () => { throw defect; };
     const fail = vi.spyOn(h.port, "fail");
     const pending = runEffect(Effect.exit(deliverPreparedResultNotification(h, prepareResultDelivery(entry, h.context))));
     try {
@@ -69,6 +82,25 @@ describe("result notification delivery", () => {
     expect(exit.cause.reasons.filter(Cause.isDieReason).map(reason => reason.defect)).toContain(defect);
     expect(fail).not.toHaveBeenCalled();
     expect(h.channel.send).toHaveBeenCalledOnce();
+  });
+
+  it("recovers the same claim when the transient-lease warning logger throws", async () => {
+    const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
+    const started = deferred<void>(); const sending = deferred<{ id: string }>();
+    h.channel.send.mockImplementationOnce(() => { started.resolve(); return sending.promise; });
+    const renew = h.port.renew;
+    h.port.renew = vi.fn<typeof renew>().mockRejectedValueOnce(new Error("Temporary database failure")).mockImplementation(renew);
+    h.logger.warn.mockImplementationOnce(() => { throw new Error("Logging destination failed"); });
+    const pending = h.deliver(entry);
+    try {
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS + 1_000);
+      expect(h.port.renew).toHaveBeenCalledTimes(2);
+    } finally { sending.resolve({ id: "first" }); }
+    await pending;
+    expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(1);
+    expect(h.port.calls.some(call => call.name === "fail")).toBe(false);
   });
 
   it("reuses each part's nonce and persisted context, skips delivered parts, and disables mentions", async () => {
@@ -137,7 +169,7 @@ describe("result notification delivery", () => {
     const h = resultWorkerHarness(); const id = await h.enqueue(); const entry = await h.claim();
     const sending = deferred<void>(); const sent = deferred<{ id: string }>();
     h.channel.send.mockImplementationOnce(() => { sending.resolve(); return sent.promise; });
-    h.port.renew = async () => false;
+    h.port.renew = async () => null;
     const delivery = h.deliver(entry); await sending.promise;
     await vi.advanceTimersByTimeAsync(10_000); sent.resolve({ id: "known" }); await delivery;
     expect(h.channel.send).toHaveBeenCalledOnce();
@@ -146,7 +178,7 @@ describe("result notification delivery", () => {
 
   it("waits for an already-started renewal before releasing the delivery scope", async () => {
     const h = resultWorkerHarness(); const id = await h.enqueue("pending-renewal", "Short summary"); const entry = await h.claim();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<boolean>();
+    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<ClaimLease | null>();
     h.channel.send.mockImplementationOnce(() => { sending.resolve(); return sent.promise; });
     h.port.renew = vi.fn(() => renewed.promise);
     let settled = false;
@@ -159,7 +191,7 @@ describe("result notification delivery", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" });
       expect(settled).toBe(false);
-    } finally { sent.resolve({ id: "accepted" }); renewed.resolve(true); await delivery; }
+    } finally { sent.resolve({ id: "accepted" }); renewed.resolve(null); await delivery; }
     expect(settled).toBe(true);
     await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS * 2);
     expect(h.port.renew).toHaveBeenCalledOnce();
@@ -175,7 +207,7 @@ describe("result notification delivery", () => {
       const begin = h.port.begin;
       h.port.begin = async (...args) => { const changed = await begin(...args); entered.resolve(); await release.promise; return changed; };
     }
-    h.port.renew = async () => false;
+    h.port.renew = async () => null;
     const delivery = h.deliver(entry);
     try {
       await entered.promise;
@@ -194,7 +226,7 @@ describe("result notification delivery", () => {
     try {
       await sending.promise;
       await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_HEARTBEAT_MS);
-    } finally { sent.resolve({ id: "already-started" }); await delivery; }
+    } finally { sent.resolve({ id: "already-started" }); await vi.advanceTimersByTimeAsync(7_000); await delivery; }
     expect(h.channel.send).toHaveBeenCalledOnce();
     expect((await h.port.inspect(id))?.parts[0]).toMatchObject({ status: "DELIVERED", deliveredMessageId: "already-started" });
     expect(h.logger.warn).toHaveBeenCalledWith({ event: "result_notification.lease_uncertain", notificationId: id });

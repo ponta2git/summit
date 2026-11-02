@@ -78,12 +78,12 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const [claim] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
       if (!claim?.claimToken) { throw new Error("Expected a live claim"); }
       const options = { claimToken: claim.claimToken, now: new Date(now.getTime() + 10_000), claimDurationMs: 30_000 };
-      expect(await h.ports.outbox.renewClaim(claim.id, options)).toBe(true);
+      expect(await h.ports.outbox.renewClaim(claim.id, options)).toMatchObject({ observedAt: options.now, expiresAt: new Date(options.now.getTime() + options.claimDurationMs) });
       expect(await h.ports.outbox.releaseExpiredClaims(new Date(now.getTime() + 30_000))).toBe(0);
       const afterOriginalExpiry = new Date(now.getTime() + 35_000);
       expect(await h.ports.outbox.beginDelivery(claim.id, { ...options, now: afterOriginalExpiry })).toBe(true);
       expect(await h.ports.outbox.markDelivered(claim.id, { ...options, now: afterOriginalExpiry, deliveredMessageId: "message" })).toBe(true);
-      expect(await h.ports.outbox.renewClaim(claim.id, { ...options, now: afterOriginalExpiry })).toBe(false);
+      expect(await h.ports.outbox.renewClaim(claim.id, { ...options, now: afterOriginalExpiry })).toBeNull();
       expect(await h.ports.outbox.claimNextBatch({ limit: 1, now: new Date(now.getTime() + 60_000), claimDurationMs: 30_000 })).toEqual([]);
     });
 
@@ -94,12 +94,12 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const now = new Date("2100-01-01T00:00:00Z");
       const [old] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
       if (!old?.claimToken) { throw new Error("Expected a live claim"); }
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: "00000000-0000-4000-8000-000000000001", now, claimDurationMs: 30_000 })).toBe(false);
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: "00000000-0000-4000-8000-000000000001", now, claimDurationMs: 30_000 })).toBeNull();
       const expiry = new Date(now.getTime() + 30_000);
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBe(false);
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
       const [current] = await h.ports.outbox.claimNextBatch({ limit: 1, now: expiry, claimDurationMs: 30_000 });
       expect(current?.claimToken).not.toBe(old.claimToken);
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBe(false);
+      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
       expect(current?.attemptCount).toBe(2);
     });
 

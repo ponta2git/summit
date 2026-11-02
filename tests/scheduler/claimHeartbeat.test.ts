@@ -8,6 +8,11 @@ import { settledCall } from "../../src/runtime/effect.ts";
 import { withClaimHeartbeat } from "../../src/notifications/delivery/claimHeartbeat.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";
+import type { ClaimLease } from "../../src/time/lease.ts";
+
+const initialLease = () => ({ clock: { now: () => new Date() }, lease: {
+  observedAt: new Date(), observedMonotonicMs: performance.now(), expiresAt: new Date(Date.now() + 30_000)
+} });
 
 describe("claim heartbeat ownership", () => {
   beforeEach(() => { vi.useFakeTimers(); });
@@ -21,18 +26,18 @@ describe("claim heartbeat ownership", () => {
     let lostDuringDiagnostic = false;
     let settled = false;
     let nextSendStarted = false;
-    const renew = vi.fn(() => reason === "lost" ? Promise.resolve(false) : Promise.reject(new Error("renew failed")));
-    const pending = runEffect(Effect.exit(withClaimHeartbeat({ intervalMs: 10, renew,
+    const renew = vi.fn(() => reason === "lost" ? Promise.resolve(null) : Promise.reject(new Error("renew failed")));
+    const pending = runEffect(Effect.exit(withClaimHeartbeat({ ...initialLease(), intervalMs: 10, renew,
       onLost: actual => {
         expect(actual).toBe(reason);
         lostDuringDiagnostic = isClaimLost();
         throw diagnosticFailure;
       }
     }, readLost => {
-      isClaimLost = readLost;
+      isClaimLost = () => !readLost.canStart();
       return Effect.gen(function* () {
         yield* settledCall(() => { started.resolve(); return delivery.promise; });
-        if (!readLost()) { nextSendStarted = true; }
+        if (readLost.canStart()) { nextSendStarted = true; }
       });
     }))).then(exit => { settled = true; return exit; });
     try {
@@ -55,8 +60,8 @@ describe("claim heartbeat ownership", () => {
   it("preserves both delivery failure and a concurrent heartbeat defect", async () => {
     const started = deferred<void>(); const delivery = deferred<void>();
     const failure = new DatabaseError("delivery failed"); const defect = new Error("diagnostic failed");
-    const pending = runEffect(Effect.exit(withClaimHeartbeat({ intervalMs: 10,
-      renew: () => Promise.resolve(false), onLost: () => { throw defect; }
+    const pending = runEffect(Effect.exit(withClaimHeartbeat({ ...initialLease(), intervalMs: 10,
+      renew: () => Promise.resolve(null), onLost: () => { throw defect; }
     }, () => settledCall(() => { started.resolve(); return delivery.promise; }))));
     try {
       await started.promise;
@@ -77,13 +82,13 @@ describe("claim heartbeat ownership", () => {
     const started = deferred<void>();
     const delivery = deferred<void>();
     const renewing = deferred<void>();
-    const renewal = deferred<boolean>();
+    const renewal = deferred<ClaimLease | null>();
     const failure = new DatabaseError("delivery failed");
     const controller = new AbortController();
     const onLost = vi.fn();
     const renew = vi.fn(() => { renewing.resolve(); return renewal.promise; });
     let settled = false;
-    const pending = Effect.runPromiseExit(withClaimHeartbeat({ intervalMs: 10, renew, onLost }, () =>
+    const pending = Effect.runPromiseExit(withClaimHeartbeat({ ...initialLease(), intervalMs: 10, renew, onLost }, () =>
       settledCall(() => { started.resolve(); return delivery.promise; })
     ), { signal: controller.signal }).then(exit => { settled = true; return exit; });
     try {
@@ -95,7 +100,7 @@ describe("claim heartbeat ownership", () => {
       else { delivery.resolve(); }
       await setImmediate();
       expect(settled).toBe(false);
-    } finally { delivery.resolve(); renewal.resolve(false); }
+    } finally { delivery.resolve(); renewal.resolve(null); }
     const exit = await pending;
     expect(Exit.isSuccess(exit)).toBe(mode === "success");
     const interrupted = Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause);

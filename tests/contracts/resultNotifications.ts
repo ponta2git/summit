@@ -108,7 +108,7 @@ export const resultNotificationContract = (
       expect(await port.inspect(id)).toMatchObject({ parts: [{ status: "DELIVERED" }, { status: "DELIVERED" }, { status: "PENDING" }] });
       expect(await port.complete(id, 2, old.claimToken, "stale", at(1_002))).toBe(false);
       expect(await port.fail(id, old.claimToken, "delivery_uncertain", at(2_000), at(1_002))).toBe(false);
-      expect(await port.renew(id, old.claimToken, at(1_002), 1_000)).toBe(false);
+      expect(await port.renew(id, old.claimToken, at(1_002), 1_000)).toBeNull();
       expect(await port.begin(id, 0, current.claimToken, at(1_002))).toBe(false);
       expect(await port.begin(id, 2, current.claimToken, at(1_002))).toBe(true);
       expect(await port.complete(id, 2, current.claimToken, "sent-2", at(1_003))).toBe(true);
@@ -117,9 +117,9 @@ export const resultNotificationContract = (
 
     it("renews ownership without permitting a late renewal after expiry", async () => {
       const id = await receive(); const entry = await claim();
-      expect(await port.renew(id, entry.claimToken, at(900), 1_000)).toBe(true);
+      expect(await port.renew(id, entry.claimToken, at(900), 1_000)).toMatchObject({ observedAt: at(900), expiresAt: at(1_900) });
       expect(await port.claim({ limit: 1, now: at(1_001), claimDurationMs: 1_000 })).toEqual([]);
-      expect(await port.renew(id, entry.claimToken, at(1_901), 1_000)).toBe(false);
+      expect(await port.renew(id, entry.claimToken, at(1_901), 1_000)).toBeNull();
       expect((await claim(1_902)).attemptCount).toBe(2);
     });
 
@@ -189,7 +189,7 @@ export const resultNotificationContract = (
         parts: [{ status: "DELIVERED", deliveredMessageId: "before-yield" }, { status: "PENDING" }, { status: "PENDING" }] });
       expect(await port.yield(entry.id, entry.claimToken, at(6))).toBe(false);
       expect(await port.begin(entry.id, 1, entry.claimToken, at(6))).toBe(false);
-      expect(await port.renew(entry.id, entry.claimToken, at(6), 1_000)).toBe(false);
+      expect(await port.renew(entry.id, entry.claimToken, at(6), 1_000)).toBeNull();
       const [resumed] = await port.claim({ limit: 1, now: at(7), claimDurationMs: 1_000, preferredKind: "analysis_completed" });
       expect(resumed).toMatchObject({ id: entry.id, payload: analysis, attemptCount: 1,
         partCount: 3, rendererVersion: 1, deliveryContext: context, deliveredPartNos: [0] });

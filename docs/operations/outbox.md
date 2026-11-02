@@ -11,6 +11,8 @@ outbox は Discord への副作用を at-least-once で配送し、Session 内�
 
 `scheduler_supervisor` tick 内で `event=outbox.metrics` として出力される構造化ログ。頻度は `CRON_SCHEDULER_SUPERVISOR_SCHEDULE` を確認する。
 
+hint・出欠の次時刻照会が未応答のままになると、先行tickの所有と`noOverlap`により後続supervisorも待つ。この読取には専用のpending警告がなく、metricsの出力が途切れた状態を正常な空queueと解釈しない。最終tick時刻、DB接続・lock、他の通知のpending警告を照合する。未完了Promiseを捨ててtickを重ねず、必要な本番復旧は[運用入口](README.md#実行権限と準備)の権限と手順に従う。
+
 | field | 意味 |
 |---|---|
 | `pending` | PENDING 状態の outbox row 件数 |

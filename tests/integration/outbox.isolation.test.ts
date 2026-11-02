@@ -1,10 +1,11 @@
+import { repositoryClock, claimNextOutboxBatch } from "./_notificationClock.ts";
 import { fixtureSession } from "./canonicalFixture.ts";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { makeRealPorts } from "../../src/db/ports.real.ts";
 import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
-import { claimNextOutboxBatch, enqueueOutbox, findStrandedOutboxEntries } from "../../src/db/repositories/outbox.ts";
+import { enqueueOutbox, findStrandedOutboxEntries } from "../../src/db/repositories/outbox.ts";
 import { buildAskBodyIntent } from "../../src/db/repositories/sessionOutboxIntents.ts";
 import { discordNotifications, sessions } from "../../src/db/schema.ts";
 import { reconcileMissingMessageIntents } from "../../src/scheduler/reconciler.missingAskMessage.ts";
@@ -19,7 +20,7 @@ describeDb("attendance outbox failure isolation (integration)", () => {
   const now = new Date("2026-04-24T12:00:00Z");
   const first = buildSessionRow({ id: "first" });
   const second = buildSessionRow({ id: "second", candidateDateIso: "2026-05-01" });
-  const ports = makeRealPorts(db, payload => assertNewNotificationPartLimit(payload, "https://example.test"));
+  const ports = makeRealPorts(db, payload => assertNewNotificationPartLimit(payload, "https://example.test"), repositoryClock);
 
   beforeEach(async () => {
     await truncatePerTestTables(db);

@@ -1,14 +1,8 @@
+import { claimNextOutboxBatch, markOutboxFailed } from "./_notificationClock.ts";
 import { eq, sql } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  claimNextOutboxBatch,
-  enqueueOutbox,
-  findStrandedOutboxEntries,
-  markOutboxFailed,
-  requeueFailedOutboxChains,
-  releaseExpiredOutboxClaims
-} from "../../src/db/repositories/outbox.js";
+import { enqueueOutbox, findStrandedOutboxEntries, requeueFailedOutboxChains, releaseExpiredOutboxClaims } from "../../src/db/repositories/outbox.js";
 import { discordNotifications, discordNotificationAttendance } from "../../src/db/schema.js";
 import { createOutboxContractHarness } from "./_outboxContract.js";
 import { isIntegration } from "./_support.js";

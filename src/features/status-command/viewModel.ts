@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import type { HeldEventRow, OutboxDiagnostic, ResponseRow, SessionRow } from "../../db/ports.ts";
 import type { SessionStatus } from "../../db/rows.ts";
 import {

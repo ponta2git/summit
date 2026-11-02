@@ -53,7 +53,7 @@ const loadDeliveredPartNos = async (
 /** Hydrate a claimed batch once, inside the command that owns its parent locks. */
 export const findClaimedResultNotifications = async (
   tx: NotificationDb, ids: readonly string[]
-): Promise<readonly ClaimedResultNotification[]> => {
+): Promise<readonly Omit<ClaimedResultNotification, "lease">[]> => {
   if (ids.length === 0) { return []; }
   const rows = await tx.select({
     id: notifications.id, kind: notifications.kind, payload: notifications.payload,

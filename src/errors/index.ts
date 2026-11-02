@@ -32,6 +32,9 @@ export class InvariantViolationError extends AppError {
   }
 }
 
+/** A notification admission invariant is an internal defect, not a database outage. */
+export class NotificationAdmissionInvariantError extends InvariantViolationError {}
+
 export class ValidationError extends AppError {
   public constructor(message: string, options?: AppErrorOptions) {
     super("VALIDATION", message, options);
@@ -59,5 +62,15 @@ export class DatabaseError extends AppError {
 export class ShutdownError extends AppError {
   public constructor(message: string, options?: AppErrorOptions) {
     super("SHUTDOWN", message, options);
+  }
+}
+
+/** No database command started; internal callers return their operation's no-op result. */
+export class NotificationNotStartedError extends Error {
+  public readonly reason: "stopped" | "expired" | "queue_timeout";
+  public constructor(reason: "stopped" | "expired" | "queue_timeout") {
+    super("Notification database command was not started.");
+    this.name = "NotificationNotStartedError";
+    this.reason = reason;
   }
 }
