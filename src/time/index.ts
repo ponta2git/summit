@@ -1,13 +1,11 @@
-import {
-  addDays,
-  addMinutes,
-  format,
-  getISOWeek,
-  getISOWeekYear,
-  set,
-  startOfDay
-} from "date-fns";
-import { ja } from "date-fns/locale";
+import { addDays } from "date-fns/addDays";
+import { addMinutes } from "date-fns/addMinutes";
+import { format } from "date-fns/format";
+import { getISOWeek } from "date-fns/getISOWeek";
+import { getISOWeekYear } from "date-fns/getISOWeekYear";
+import { ja } from "date-fns/locale/ja";
+import { set } from "date-fns/set";
+import { startOfDay } from "date-fns/startOfDay";
 import {
   ASK_DEADLINE_HHMM,
   REMINDER_LEAD_MINUTES
@@ -20,10 +18,12 @@ import {
 
 export interface Clock {
   now(): Date;
+  readonly monotonicNow?: () => number;
 }
 
 export const systemClock: Clock = {
-  now: () => new Date()
+  now: () => new Date(),
+  monotonicNow: () => performance.now()
 };
 
 export const isUtcMillisecondTimestamp = (value: string): boolean => {

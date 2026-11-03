@@ -8,6 +8,7 @@ import {
   type OutboxStatus
 } from "../schema.ts";
 import { assertEnum } from "../rows.ts";
+import type { ClaimLease } from "../../time/lease.ts";
 
 // invariant: worker が新規投稿 payload を rehydrate する際の schema。
 //   既存 message の編集は DB 正本からの best-effort 経路であり outbox へ混在させない。
@@ -39,6 +40,8 @@ export interface OutboxEntry {
   readonly lastError: string | null;
   readonly claimExpiresAt: Date | null;
   readonly claimToken: string | null;
+  /** Present only on claims returned by the delivery acquisition boundary. */
+  readonly lease?: ClaimLease;
   readonly nextAttemptAt: Date;
   readonly deliveredAt: Date | null;
   readonly deliveredMessageId: string | null;

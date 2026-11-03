@@ -14,6 +14,7 @@ import { constants, lstatSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 assert.notEqual(process.getuid(), 0, 'Runtime must not run as root');
 assert.equal(process.env.NODE_ENV, 'production');
+assert.equal(process.env.MALLOC_ARENA_MAX, '2', 'Runtime must retain the measured malloc arena limit');
 const checkOwnership = path => {
   const entry = lstatSync(path);
   assert.equal(entry.uid, 0, 'Application tree must remain owned by root: ' + path);
@@ -32,14 +33,15 @@ checkTree('/app/summit');
 checkTree('/app/momo-db');
 await assert.rejects(access('dist/index.js', constants.W_OK));
 const manifest = JSON.parse(await readFile('package.json', 'utf8'));
-const entries = { 'discord-api-types': 'discord-api-types/v10', effect: 'effect/Effect' };
+const entries = { 'discord-api-types': 'discord-api-types/v10', effect: 'effect/Effect', 'date-fns': 'date-fns/format' };
 await Promise.all(Object.keys(manifest.dependencies).map(name => import(entries[name] ?? name)));
 await import('@momo/db/notifications');
 await import('./dist/commands/definitions.js');
+await import('date-fns/locale/ja');
 for (const name of ['vitest', 'typescript', 'vite', 'oxlint', 'knip']) {
   await assert.rejects(access('node_modules/' + name));
 }
-console.log('Runtime image: non-root, read-only code, production dependencies and shared schema imports verified');
+console.log('Runtime image: non-root, read-only code, malloc arena limit, production dependencies and public subpath imports verified');
 `;
 
 const containerName = `summit-runtime-check-${randomUUID()}`;

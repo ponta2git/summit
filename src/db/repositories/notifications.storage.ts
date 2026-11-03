@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, RESULT_NOTIFICATION_SQL_TIMEOUT_MS } from "../../config.ts";
 import type { DbLike } from "../rows.ts";
-import { runTransaction } from "../transaction.ts";
+import { isTransactionHandle, runTransaction } from "../transaction.ts";
 import {
   discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationResults as results, discordNotificationSettings as settings,
@@ -9,16 +9,23 @@ import {
 } from "../schema.ts";
 import { resultCancellationReason, type ResultCancellationReason } from "../../domain/notification.ts";
 import { identityLayout, wireId } from "../identities.ts";
+import { notificationAdmissionFor } from "../notificationControl.ts";
+import type { NotificationAdmissionRequest } from "../notificationAdmission.ts";
+import { NotificationAdmissionInvariantError } from "../../errors/index.ts";
 
 export type NotificationFamily = "attendance" | "result";
 export type NotificationDb = Pick<DbLike, "select" | "insert" | "update" | "delete" | "execute">;
 
 // why: claim の制御や各 part の更新では、大きな immutable payload を読み直さない。
+const notificationDeliveryColumns = {
+  family: notifications.family, status: notifications.status,
+  claimToken: notifications.claimToken, claimExpiresAt: notifications.claimExpiresAt, partCount: notifications.partCount
+};
 export const notificationStateColumns = {
-  id: notifications.id, family: notifications.family, kind: notifications.kind, schemaVersion: notifications.schemaVersion, status: notifications.status,
-  claimToken: notifications.claimToken, claimExpiresAt: notifications.claimExpiresAt,
+  ...notificationDeliveryColumns,
+  id: notifications.id, kind: notifications.kind, schemaVersion: notifications.schemaVersion,
   attemptCount: notifications.attemptCount, maxAttempts: notifications.maxAttempts, retryCycle: notifications.retryCycle,
-  partCount: notifications.partCount, rendererVersion: notifications.rendererVersion,
+  rendererVersion: notifications.rendererVersion,
   deliveryContext: notifications.deliveryContext, purgedAt: notifications.purgedAt,
   terminalAt: notifications.terminalAt, lastError: notifications.lastError
 };
@@ -34,14 +41,28 @@ export const lockNotificationFamily = async (tx: NotificationDb, family: Notific
 };
 
 export const notificationTransaction = <T>(
-  db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>
-): Promise<T> => runTransaction(db, async tx => {
-  await lockNotificationFamily(tx, family);
-  return command(tx);
-}, { lockTimeoutMs: RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, statementTimeoutMs: RESULT_NOTIFICATION_SQL_TIMEOUT_MS });
+  db: DbLike, family: NotificationFamily, command: (tx: NotificationDb) => Promise<T>,
+  options: Omit<NotificationAdmissionRequest, "family"> = { key: "direct", operation: "maintenance" }
+): Promise<T> => {
+  if (isTransactionHandle(db)) { return Promise.reject(new NotificationAdmissionInvariantError("Nested notification admission is not supported.")); }
+  const admission = notificationAdmissionFor(db);
+  const request = { ...options, family, key: typeof options.key === "string" ? `${family}:${options.key}` : options.key };
+  return admission.run(request, () => runTransaction(db, async tx => {
+    await lockNotificationFamily(tx, family);
+    admission.assertCanStart(request);
+    return command(tx);
+  }, { lockTimeoutMs: RESULT_NOTIFICATION_LOCK_TIMEOUT_MS, statementTimeoutMs: RESULT_NOTIFICATION_SQL_TIMEOUT_MS }));
+};
 
 export const lockNotification = async (tx: NotificationDb, id: string): Promise<NotificationStateRow | undefined> => {
   const [row] = await tx.select(notificationStateColumns).from(notifications).where(eq(notifications.id, id)).for("update");
+  return row;
+};
+
+export const lockNotificationDelivery = async (
+  tx: NotificationDb, id: string
+): Promise<Pick<typeof notifications.$inferSelect, keyof typeof notificationDeliveryColumns> | undefined> => {
+  const [row] = await tx.select(notificationDeliveryColumns).from(notifications).where(eq(notifications.id, id)).for("update");
   return row;
 };
 

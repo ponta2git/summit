@@ -3,6 +3,7 @@ import type { DbLike } from "../rows.ts";
 import { discordNotifications as notifications, discordNotificationAttendance as attendance } from "../schema.ts";
 import { notificationTransaction } from "./notifications.storage.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../notifications/config.ts";
+import { notificationNotStarted } from "../notificationControl.ts";
 
 interface RequeueFailedOutboxChainsResult {
   readonly deadLettersRequeued: number;
@@ -16,7 +17,7 @@ export const requeueFailedOutboxChains = async (
   const total = { deadLettersRequeued: 0, successorsRequeued: 0 };
   let after: string | undefined;
   for (;;) {
-    const batch = await notificationTransaction(db, "attendance", async tx => {
+    const batch = await notificationNotStarted(notificationTransaction(db, "attendance", async tx => {
       const rows = await tx.select({ sessionId: attendance.sessionId }).from(notifications)
         .innerJoin(attendance, eq(attendance.notificationId, notifications.id))
         .where(and(eq(notifications.family, "attendance"), eq(notifications.status, "FAILED"),
@@ -54,7 +55,7 @@ export const requeueFailedOutboxChains = async (
       `);
       if (!counts) { throw new Error("Missing outbox recovery counts"); }
       return { counts, last: ids.at(-1), full: ids.length === NOTIFICATION_MAINTENANCE_BATCH_SIZE };
-    });
+    }, { key: "recovery:chains", operation: "maintenance" }), undefined);
     if (!batch) { return total; }
     total.deadLettersRequeued += batch.counts.deadLettersRequeued;
     total.successorsRequeued += batch.counts.successorsRequeued;

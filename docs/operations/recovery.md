@@ -30,7 +30,7 @@ fly logs -a "${FLY_APP:?}" | jq -c 'select(.event != null)'
 
 **人手作業**: 不要。`event=phase, phase=ready` が出るのを待つ。
 
-**判断 NG ライン**: 再起動から 60 秒経っても `phase=ready` が出ない → `fly logs` を遡り、`level=fatal` / `phase=reconcile` の例外を確認。直前の deploy が原因なら直前リビジョンへ rollback (`fly releases` → `fly deploy --image <prev>` 不可なので、git revert + redeploy)。
+**判断 NG ライン**: 再起動から 60 秒経っても `phase=ready` が出ない → `fly logs` を遡り、`level=fatal` / `phase=reconcile` の例外を確認。直前の deploy が原因なら、禁止窓・単一instance・DB互換性を確認し、記録済みの互換なimage digestと対応する設定で復旧する。`fly deploy --image` によるimage再利用は可能。アプリrevisionを戻すときは復旧imageに対応する設定を使い、無関係なallocator変更を加えない。allocatorだけを戻す場合は [runtime設定の切り戻し](./README.md#切り戻し) に従い、同じimageの環境指定だけを変える。復旧imageを保持していない場合に限り、復旧revisionからのbuildと必要な検証を経てredeployする。
 
 ## case 2: Gateway disconnect → reconnect
 

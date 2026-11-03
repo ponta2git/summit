@@ -2,6 +2,97 @@
 
 通知の容量・処理速度・CPU・heap を判断するための測定記録。通知入力、配送処理、DB クエリ、Node / image、CPU / memory 条件を変えたら再測定する。上限の契約は [品質評価](./quality-assurance.md#実行メモリの容量契約) と [notification config](../src/notifications/config.ts) が所有し、本書は測定条件・結果・評価限界を所有する。
 
+## 2026-11-01 通知の実所有とDB入場制御
+
+SDKの送信・channel取得が45秒の待機期限を超えても、実Promiseのsettlementまで配送枠と元本文の予約を保持する。leaseは期限内の更新確認で同じclaimから再開し、通知DB transactionはfamily 2件・全体3件、待機を含むproducerは34件までに制限する。受付待機へは元JSONと最小metadataだけを渡す。timeout設定の不要なbindとbegin / completeの不要列も除いた。設計上の境界は[Architecture](./architecture.md#6-scheduler-と-lifecycle)と[DB規約](./db-rule.md#5-出欠-outbox)を正本とする。
+
+### 比較条件と結果
+
+変更前 `10f11fe` / image `4e399e99e95a` と、修正後 `6c7de44` / image `1c8a886711c6` を比較した。Node 26.13.0 / Linux ARM64、PostgreSQL 18.6、momo-db `0f102e4`、256 MiB・swapなし・1 CPU。各runに専用DBと新しいcontainerを用意し、実Pinoと固定容量histogramを使った。実Discordは代替送信、DB RTTは同じcontainerのTCP proxyで0 / 20 / 50 msを注入した。CPUにはproxyと計測処理も含む。
+
+各RTTで新旧順序を反転する6組を事前に固定した。0 msで200通知のwarmupと1秒の自然待機後、新規20通知（同時2件）、既存duplicate 32要求、不正JSON 32要求を別々に計測する。詳細DB診断と定期的な `process.memoryUsage()` は主比較から外し、cgroup peakと測定境界のmemoryを記録した。peakには起動とwarmupを含む。通常p95と同一処理量CPUの初期許容幅+10%は変更していない。
+
+| RTT ms | 測定対象 | p95 msの算術平均：変更前→変更後 | p95のペア比変化［95%区間］ | CPUのペア比変化［95%区間］ |
+|---:|---|---:|---:|---:|
+| 0 | 新規→配送完了 | 60.71 → 67.67 | +10.4%［-22.2, +56.6］ | +0.0%［-16.4, +19.8］ |
+| 0 | 既存duplicate受付 | 22.21 → 14.78 | -32.9%［-44.4, -18.9］ | -6.7%［-29.5, +23.3］ |
+| 0 | 不正JSON受付 | 6.99 → 7.16 | +2.1%［-16.0, +24.1］ | -17.7%［-38.8, +10.7］ |
+| 20 | 新規→配送完了 | 2531.33 → 2514.94 | -0.6%［-6.6, +5.9］ | -6.5%［-23.3, +13.9］ |
+| 20 | 既存duplicate受付 | 642.39 → 634.20 | -1.3%［-5.9, +3.6］ | -14.8%［-42.4, +26.0］ |
+| 20 | 不正JSON受付 | 243.37 → 327.34 | +34.5%［+27.5, +41.9］ | +2.9%［-49.4, +109.3］ |
+| 50 | 新規→配送完了 | 5570.56 → 5472.26 | -1.8%［-2.7, -0.8］ | -0.2%［-10.5, +11.4］ |
+| 50 | 既存duplicate受付 | 1432.23 → 1377.62 | -3.8%［-4.3, -3.3］ | -8.6%［-29.0, +17.6］ |
+| 50 | 不正JSON受付 | 552.96 → 711.34 | +28.6%［+27.2, +30.1］ | +15.9%［-36.7, +112.2］ |
+
+通常負荷のp95 / CPUには95%区間の上限が+10%を超える条件があり、一括した非劣化は確認できていない。統計単位は独立したrunの6組で、対数比のpaired t・95%両側区間を使う。20,000回のpaired bootstrapは感度分析として別記した。各runの通常20件から求めるp95は粗い分位であり、全通知を独立標本として扱わない。上限が+10%を超える区間を合格や改善と読み替えず、複数指標の同時保証もしない。
+
+不正JSONの4同時受付では20 / 50 ms条件のp95が+10%を超えて増加した。別の詳細診断でもDB入場待ちを観測した。family上限と既存の入力4xx / DB不通503の優先順を維持するため、短い拒否transactionにも同じ入場制御を適用する。未完了workの有限化、期限内回復、保持構造とSQL通信の削減を確認した一方、全条件の高速化は確認できていない。
+
+全36runで各221通知（warmup200＋通常20＋孤立wire測定1）が完了し、各runの最大attemptは1だった。duplicate / 不正入力は各1,152要求を別に確認した。受付status・配送数・attempt・計測commandのassertionを満たし、histogram範囲超過と標準容量目標超過はなかった。
+
+### SQLと保持量の確認
+
+timing測定後にdispatcherを止め、他のDB workがない状態で1 partのbegin＋completeを別計測した。PostgreSQL protocolのFlush / Sync / Queryによる応答境界は **26→24**、SQL数は **16・2 transactionsのまま**。50 ms条件の合計所要時間は平均 **1411.5→1322.6 ms**、ペア比変化は **-6.3%［-7.1, -5.5］** だった。転送量と全ペアは[集計JSON](./performance/notification-reliability-20261101.json)に残す。この孤立比較はSQL変更の効果を示すが、4改善をまとめた通常処理のCPU差を候補ごとに分解した結果ではない。
+
+受付のPreparedReceiptは解析木・renderer closure・元exceptionを保持せず、元JSON以外のidentityとDTOのJSON表現は制御文字のescapingを含め64 KiB未満、HTTP4件分でも256 KiB未満を検証した。これはheap全体の上限ではない。SDK / DBの保持件数と本文予約は障害時にも有限であることを確認し、単に同期処理を前へ移したことでevent-loop停止が短縮したとは主張しない。
+
+### 最終imageの容量・障害・停止
+
+標準17通知・932 partsは **124.45 MiB**、旧8 MiB近傍通知の8,823 parts計画・先頭1 partと4競合受付は **162.63 MiB** で、192 MiB目標を満たした。旧ケースの全part配送はこの容量gateの対象外。runtime imageの非root・read-only・本番依存検証も通した。
+
+100秒のSDK未応答と実Pino出力停止では実未完了送信2件、attempt 1を維持し、出欠renewは10回進んだ。peakは62.35 MiB、滞留logは最大3,055 bytes。解除後に6通知が完了した。SDK成功8回には既存の不確実配送契約で許される2回の再送が含まれ、exactly-onceの根拠にはしない。実 `@discordjs/rest` とloopback APIによるHTTP 429 / Retry-After 50秒でも、48秒時点で未完了送信2件・attempt 1を保ち、解除後に全6通知が完了した。
+
+子processのSIGTERM試験では、SDKとDBが各1件未応答でも20.114秒でdrain期限からDB close・client destroy・exitへ進んだ。DB gate取得前、gate保持中、更新後、COMMIT適用後の応答喪失は実DBで、20分の未応答・clock jump・timer遅延は仮想時間で検証した。外部サービスのPromiseを実際に取り消せるという意味ではない。
+
+`pnpm run ci` は137 files / 1,010 testsが成功し、既存4ファイルの行数advisoryだけが残った。実DBの `pnpm test:integration` は31 files / 177 testsが成功した。途中で見つけたclaimテストの期待順と、JSON escapingを含むmetadata上限の説明・テストを修正し、最後にCIと実DB gateを通した。Opus 5.5 xhighのコードレビューと修正を2巡完了した。
+
+### 再現性と残る限界
+
+初回36run、修正後の詳細診断36run、別採取のCPU profile 1組、中断した修正前steady 16runを保持し、主比較36runへ混ぜていない。初回には診断scopeの引継ぎとTCP_NODELAYの計測器不備があった。別profileで定期memory計測のCPU負荷を確認し、主比較から外した。steadyの中断理由はHTTP待機期限の修正で、性能値による試行選別ではない。
+
+生データ・再現harness・gate logは `artifacts/notification-performance/notification-reliability-20261101/`、hashと測定条件は[集計JSON](./performance/notification-reliability-20261101.json)に保存した。本番x64・実Discord / Gateway・Neon / TLS・長期稼働は未測定。通知枠を使い切るDB障害は有限停止となり、監視は自動復旧を保証しない。先行する出欠hint照会が未応答ならsupervisorも待つ既存の限界は[運用手順](./operations/result-notifications.md#遅延停止からの回復)で扱う。本番deployは実施していない。
+
+## 2026-11-01 runtime のメモリ削減
+
+date-fns の関数と日本語 locale を公開 subpath から import し、非 bundle 実行で不要な module の初期化を避ける。加えて [Dockerfile](../Dockerfile) の runtime stage に `MALLOC_ARENA_MAX=2` を設定する。build / 開発環境、JS heap 上限、256 MiB の VM 容量は変更しない。`verify:runtime-image` は image に埋め込まれた値と `date-fns/format`・`date-fns/locale/ja` の import を検証する。barrel import の再導入を検出する検査ではない。
+
+採用理由は、限定 import 後にも allocator 設定による待機メモリの削減があり、CPU と peak が事前の許容幅内だったこと。p95 の非劣化は未確定だが、便益と残る性能リスク、復旧可能性を比較して条件付きで採用する。不存在の証明や、信頼区間がゼロを含むことだけを採否の理由にしない。適用後の観測と切り戻しは [運用手順](./operations/README.md#runtimeのメモリ設定) に従う。
+
+### allocator の比較条件と結果
+
+source `22e99aa` に今回と同じ限定 import を適用した一時 image を使い、環境変数だけを変えて比較した。Node 26.13.0 / Linux ARM64 / glibc 2.36、単一 CPU 固定（quota なし）、256 MiB・swap なし、非 root・read-only。各試行に新しい application / PostgreSQL container と専用 DB を用意し、実 Discord / TLS は代替送信とした。allocator 診断 addon は測定 image のみに含み、本番 image には含めない。
+
+追加測定前に、既定値対 `=2` の12組、実行順6組ずつの反転、自然待機 Anonymous の便益2 MiB、通常 p95 / 同一処理量 CPU の悪化10%、peak 増加2 MiBという判定幅を固定した。幅は既存 SLO ではなく、低コストで可逆な設定変更への工学的判断。通常100通知と大きな10通知を4周（440通知・2,980 parts）、処理完了を待たない固定間隔の到着で負荷をかけた。warmup 後の開始点を除き、反復中に GC を強制せず、最後の10秒自然待機の8 / 9 / 10秒時点の Anonymous 平均を主指標にした。
+
+予定24試行のうち既定側の1試行が3周目に HTTP 503となり、原因は未確定。再試行の成功で置き換えず、候補側単独の成功と失敗を記録した。効果値を見る前に完走した11組での解析へ変更し、実行順の不均衡も感度分析した。以下は完走条件での比較であり、欠測による選択バイアスや全試行の可用性を保証しない。
+
+| 指標 | 既定 / `=2` の算術平均 | ペアの差・比変化［90%区間］ | 事前幅での判断 |
+|---|---:|---:|---|
+| 自然待機 Anonymous MiB | 74.31 / 69.11 | −5.20［−7.01, −3.39］MiB | 2 MiB以上の便益を支持 |
+| 通常通知 p95 ms | 35.79 / 36.69 | +2.98［−6.11, +12.94］% | 悪化10%以内は未確定 |
+| 同じ処理量の CPU ms | 7,623.7 / 7,532.1 | −1.22［−2.95, +0.54］% | 許容幅内 |
+| cgroup peak MiB | 86.63 / 82.03 | −4.60［−6.42, −2.78］MiB | 許容幅内 |
+
+統計単位は独立した11組。各試行の通常400通知から nearest-rank p95 を求め、メモリ差と p95 / CPU の対数比に paired t の90%両側区間（各端が片側95%限界）を用いた。block bootstrap 20,000回と順序を等重みにした感度分析でも判断は変わらなかった。遅い組・メモリが増えた組を除いていない。p95 の絶対差は平均+0.91 msだが、この事後集計で10%の判定幅を置き換えない。
+
+診断 GC 後の heapUsed は32.291 / 32.282 MiBでほぼ同じ。一方、arena 数は9 / 2、arena 確保領域は19.96 / 14.61 MiBであり、JS 生存 object より allocator 側の保持・配置の変化と整合する。arena 統計と Anonymous / RSS は異なる会計であり、厳密な内訳として足し引きしない。
+
+### 反復と評価限界
+
+同じ process で30周を処理する補助試験は各設定1回、3,300通知・22,350 parts・約4.6分。各周の自然待機 Anonymous の10周ごとの中央値は、既定77.15 / 80.56 / 79.20 MiB、`=2` は70.50 / 73.21 / 71.31 MiBだった。初期に増えた後は上下し、候補の方が低い水準を保ったが、蓄積の抑制や数日間のリーク解消を証明したとは扱わない。最後の自然待機は74.43 / 71.47 MiB、通常 p95 は37.01 / 36.99 msだった。
+
+A/A 2組でも p95 比は+7.85 / +11.23%と揺れた。`=1` の参考2組はメモリがさらに減ったが、peak 差が+5.43 / −9.15 MiBと振れ、最良とは判断しない。A/A、`=1`、30周を主比較の標本数へ加えない。計画34試行中33試行が完走し、warmup・中断試行を除く20,240通知・137,080 partsを検証した。候補の失敗0件から失敗率ゼロを推定しない。
+
+本番 x64・実 TLS・長期稼働への効果量は未測定。起動時の限定 import の削減量と、この反復後の allocator の削減量を単純合計して本番を予測しない。メモリ逼迫の緊急対策ではなく、通常の可逆な最適化として運用する。生データに基づく公開用の[集計 JSON](./performance/runtime-memory-20261101.json)に、全ペア、判定幅、失敗、補助試験、元 artifact の hash を保存する。
+
+根拠は [date-fns 4.4.0 の公開 exports](https://github.com/date-fns/date-fns/blob/v4.4.0/pkgs/core/package.json)、[glibc 2.36 の arena 制御](https://github.com/bminor/glibc/blob/glibc-2.36/malloc/arena.c)、[NIST の対応比較](https://www.itl.nist.gov/div898/handbook/prc/section3/prc311.htm)。Node / libc / CPU・通知負荷が変わった場合は容量 gate と比較測定を再評価する。
+
+### 本実装 image の容量 gate
+
+診断 addon を含まない本実装 image `4e399e99e95a`（Linux ARM64、momo-db `0f102e4`）を新しく build し、専用 local PostgreSQL で標準・旧巨大通知を検証した。標準17通知・932 partsの cgroup peak は **123.21 MiB** で、必須目標192 MiB以下を達成。旧8 MiB近傍の通知は8,823 partsを計画し、先頭1 partの確定と4競合受付を **172.19 MiB** で完了した。旧ケースの全part配送を確認した結果とは区別する。
+
+容量 gate は各1回で、上の対比較とは image・計測方法が異なる。過去の単回値との差を改善量として扱わない。非 root・read-only・本番依存・format / ja の公開 subpath・image 内の allocator 設定の検査も成功した。imageのruntime入力は実装commit `f40407e` と同一で、その後の差分は検証器・文書に限定される。`pnpm run ci` の130 files / 963 tests、build、文書・禁止 pattern 検査が成功し、既存4ファイルの行数 advisory は残る。本番への deploy は実施していない。
+
 ## 2026-10-14 通知定義と runtime 注入の分離
 
 配送 runtime へ取得元と配送 task factory を注入する構成に変え、出欠の業務確定・renderer と結果通知の種別・renderer版選択を通知定義へ寄せた。同期factory失敗と予約ID／byte数の変更の隔離を共通化した。出欠準備処理の遅延実行と、停止中にclaimが完了した後の新規task生成抑止も検証した。全変更のreviewと最終refactorを終えた凍結差分に対し、以下のgateと比較測定を実行した。

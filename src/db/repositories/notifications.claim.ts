@@ -3,7 +3,8 @@ import { supportedResultNotification } from "./notifications.supported.ts";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationAttendance as attendance } from "../schema.ts";
-import { addMs } from "../../time/index.ts";
+import type { Clock } from "../../time/index.ts";
+import { observeClaimLease, type ClaimLease } from "../../time/lease.ts";
 import { afterDeliveryFailure } from "../../domain/notification.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES } from "../../notifications/config.ts";
 import {
@@ -86,8 +87,8 @@ const selectClaimCandidates = (
 };
 
 export const claimNotifications = async (
-  tx: NotificationDb, family: NotificationFamily, options: NotificationClaimOptions
-): Promise<readonly string[]> => {
+  tx: NotificationDb, family: NotificationFamily, options: NotificationClaimOptions, clock: Clock
+): Promise<readonly { readonly id: string; readonly lease: ClaimLease }[]> => {
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
     || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000
     || (options.payloadBudgetBytes !== undefined && (!Number.isSafeInteger(options.payloadBudgetBytes) || options.payloadBudgetBytes < 0))) {
@@ -97,7 +98,7 @@ export const claimNotifications = async (
   const due = and(eq(notifications.family, family), family === "result" ? supportedResultNotification() : undefined, eq(notifications.status, "PENDING"),
     lte(notifications.nextAttemptAt, options.now), isNull(notifications.purgedAt),
     options.excludeIds?.length ? notInArray(notifications.id, [...options.excludeIds]) : undefined);
-  const claimed: string[] = [];
+  const claimed: { readonly id: string; readonly lease: ClaimLease }[] = [];
   const payloadBudget = options.payloadBudgetBytes ?? RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
   let claimedBytes = 0;
   let scanned = 0;
@@ -110,7 +111,9 @@ export const claimNotifications = async (
     if (family === "result" && preferredKind && oldest && oldest.kind !== preferredKind
       && oldest.payloadBytes <= payloadBudget - claimedBytes) {
       const preferred = await selectClaimCandidates(tx, family, due, 1, preferredKind);
-      if (preferred.length > 0) { rows = preferred; }
+      const candidate = preferred[0];
+      if (candidate && (candidate.payloadBytes <= payloadBudget - claimedBytes
+        || (claimed.length === 0 && (options.allowOversizedPayload ?? true)))) { rows = preferred; }
     }
     if (rows.length === 0) { break; }
     scanned += rows.length;
@@ -128,12 +131,13 @@ export const claimNotifications = async (
         if (row.payloadBytes > payloadBudget - claimedBytes
           && !(claimed.length === 0 && (options.allowOversizedPayload ?? true))) { return claimed; }
       }
+      const lease = observeClaimLease(clock, options.now, options.claimDurationMs);
       const [updated] = await tx.update(notifications).set({
-        status: "IN_FLIGHT", claimToken: randomUUID(), claimExpiresAt: addMs(options.now, options.claimDurationMs),
-        attemptCount: row.attemptCount + 1, updatedAt: options.now
+        status: "IN_FLIGHT", claimToken: randomUUID(), claimExpiresAt: lease.expiresAt,
+        attemptCount: row.attemptCount + 1, updatedAt: lease.observedAt
       }).where(eq(notifications.id, row.id)).returning({ id: notifications.id });
       if (updated) {
-        claimed.push(updated.id);
+        claimed.push({ id: updated.id, lease });
         if (preferredKind) { preferredKind = row.kind === "ocr_completed" ? "analysis_completed" : "ocr_completed"; }
         claimedBytes += row.payloadBytes;
         if (family === "result" && claimedBytes > payloadBudget) { return claimed; }

@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import { fixtureId } from "./canonicalFixture.ts";
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -46,7 +47,9 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(await h.port.begin(id, -1, claimToken, now)).toBe(false);
     expect(await h.port.begin(id, 2, claimToken, now)).toBe(false);
     expect(await h.port.begin(id, 1, claimToken, now)).toBe(false);
-    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), h.port.begin(id, 0, claimToken, at(1))])).sort())
+    // Independent roots model competing processes; a single process rejects duplicate owner producers before SQL.
+    const competitor = makeResultNotificationsPort(drizzle(h.client, { schema, casing: "snake_case" }), checkNotificationAdmission, repositoryClock);
+    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), competitor.begin(id, 0, claimToken, at(1))])).sort())
       .toEqual([false, true]);
     expect(await h.port.begin(id, 1, claimToken, at(2))).toBe(false);
     expect(await h.db.select({ partNo: parts.partNo, status: parts.status, attemptCount: parts.attemptCount,
@@ -138,13 +141,14 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(queries).toHaveLength(1);
     expect(queries[0]).toContain("information_schema.columns");
     queries.length = 0;
-    const measured = makeResultNotificationsPort(measuredDb, checkNotificationAdmission);
+    const measured = makeResultNotificationsPort(measuredDb, checkNotificationAdmission, repositoryClock);
     expect(await measured.begin(id, 0, claimToken, now)).toBe(true);
     expect(await measured.complete(id, 0, claimToken, "message", at(1))).toBe(true);
     // why: postgres.js の BEGIN / COMMIT 各2回は別に発行され、合計16 SQL・2 transactionsとなる。
     expect(queries).toHaveLength(12);
     expect(queries.filter(query => query.startsWith("set transaction"))).toHaveLength(2);
     expect(queries.every(query => !query.includes('"payload"'))).toBe(true);
+    expect(queries.every(query => !query.includes('"delivery_context"'))).toBe(true);
     expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", parts: [{ deliveredMessageId: "message" }] });
   });
 

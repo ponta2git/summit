@@ -1,5 +1,6 @@
 import { checkpointMap } from "./transactions.ts";
 import { randomUUID } from "node:crypto";
+import { observeClaimLease, notificationCommandNow } from "../../src/time/lease.ts";
 
 import type {
   EnqueueOutboxInput,
@@ -109,6 +110,7 @@ export const createFakeOutboxPort = (
       return { id, skipped: false };
     },
     claimNextBatch: async ({ limit, now, claimDurationMs }) => {
+      now = notificationCommandNow(clock, now);
       recordCall(calls, "claimNextBatch", { limit, now, claimDurationMs });
       releaseExpiredFakeOutboxClaims(byId, sendingTokens, now);
       cancelFailedFakeOutboxSuccessors(byId, cancellationReasons, sendingTokens, now);
@@ -142,11 +144,12 @@ export const createFakeOutboxPort = (
           continue;
         }
         sendingTokens.delete(entry.id);
+        const lease = observeClaimLease(clock, now, claimDurationMs);
         const claimed: OutboxEntry = {
           ...entry,
           status: "IN_FLIGHT",
           attemptCount: entry.attemptCount + 1,
-          claimExpiresAt: new Date(now.getTime() + claimDurationMs),
+          claimExpiresAt: lease.expiresAt, lease,
           claimToken,
           updatedAt: now
         };
@@ -167,15 +170,17 @@ export const createFakeOutboxPort = (
       return true;
     },
     renewClaim: async (id, options) => {
+      options = { ...options, now: notificationCommandNow(clock, options.now) };
       recordCall(calls, "renewClaim", { id, ...options });
       if (!Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000) {
         throw new Error("Invalid notification claim duration");
       }
       const found = byId.get(id);
       if (!found || found.status !== "IN_FLIGHT" || found.claimToken !== options.claimToken
-        || found.claimExpiresAt === null || found.claimExpiresAt <= options.now) { return false; }
-      byId.set(id, { ...found, claimExpiresAt: new Date(options.now.getTime() + options.claimDurationMs), updatedAt: options.now });
-      return true;
+        || found.claimExpiresAt === null || found.claimExpiresAt <= options.now) { return null; }
+      const lease = observeClaimLease(clock, options.now, options.claimDurationMs);
+      byId.set(id, { ...found, claimExpiresAt: lease.expiresAt, updatedAt: lease.observedAt });
+      return structuredClone(lease);
     },
     markDelivered: async (id, options) => {
       const { deliveredMessageId, now } = options;

@@ -5,6 +5,7 @@ import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationTargets as targets } from "../schema.ts";
 import type { DbLike } from "../rows.ts";
 import { notificationTransaction, type NotificationDb, type NotificationFamily } from "./notifications.storage.ts";
+import { notificationNotStarted } from "../notificationControl.ts";
 
 interface NotificationPurgeCounts {
   readonly deliveredPruned: number;
@@ -51,7 +52,8 @@ export const pruneNotificationBatches = async (
 ): Promise<NotificationPurgeCounts> => {
   const total = { deliveredPruned: 0, failedPruned: 0, cancelledPruned: 0 };
   for (let batch = 0; batch < NOTIFICATION_RETENTION_MAX_BATCHES; batch += 1) {
-    const counts = await notificationTransaction(db, family, tx => purgeNotifications(tx, family, now, cutoffs));
+    const counts = await notificationNotStarted(notificationTransaction(db, family, tx => purgeNotifications(tx, family, now, cutoffs),
+      { key: "retention", operation: "maintenance" }), { deliveredPruned: 0, failedPruned: 0, cancelledPruned: 0 });
     total.deliveredPruned += counts.deliveredPruned;
     total.failedPruned += counts.failedPruned;
     total.cancelledPruned += counts.cancelledPruned;

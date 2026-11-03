@@ -1,19 +1,37 @@
 import { fixtureSession } from "./canonicalFixture.ts";
 import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeEach, describe, expect, it } from "vitest";
 import { runTransaction } from "../../src/db/transaction.ts";
 import { sessions } from "../../src/db/schema.ts";
+import * as schema from "../../src/db/schema.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { makeSession } from "../testing/fixtures.ts";
 import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("database transaction limits", () => {
-  const { db } = createIntegrationDb();
+  const { db, client } = createIntegrationDb();
   const blocker = createIntegrationDb();
   beforeEach(() => truncatePerTestTables(db));
 
   const settings = async (): Promise<unknown> => db.execute(sql`SELECT
     current_setting('lock_timeout') AS lock, current_setting('statement_timeout') AS statement`);
+
+  it("sends validated timeout constants without binds while keeping caller data parameterized", async () => {
+    const observed: { readonly query: string; readonly parameterCount: number }[] = [];
+    const measured = drizzle(client, { schema, casing: "snake_case",
+      logger: { logQuery: (query, params) => { observed.push({ query, parameterCount: params.length }); } } });
+    expect(await runTransaction(measured, tx => tx.execute(sql`SELECT ${"safe bound value"}::text AS value`)))
+      .toEqual([{ value: "safe bound value" }]);
+    const limits = observed.filter(item => item.query.includes("set_config"));
+    expect(limits).toHaveLength(1); expect(limits[0]?.parameterCount).toBe(0);
+    expect(observed.find(item => item.query.includes(" AS value"))?.parameterCount).toBe(1);
+  });
+
+  it.each([0, -1, 1.5, NaN, Infinity, 2_147_483_648])("rejects unsafe timeout value %s before a transaction", async value => {
+    await expect(runTransaction(db, async () => { throw new Error("command must not run"); },
+      { lockTimeoutMs: value, statementTimeoutMs: value + 1 })).rejects.toThrow("Invalid database transaction limits");
+  });
 
   it("keeps limits local to the transaction on commit and rollback", async () => {
     const before = await settings();

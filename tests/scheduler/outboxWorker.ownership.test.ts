@@ -6,6 +6,7 @@ import { deferred } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
+import type { ClaimLease } from "../../src/time/lease.ts";
 
 const createWorker = async () => {
   const session = buildSessionRow({ id: "lease-owner", status: "ASKING", askMessageId: null });
@@ -52,7 +53,7 @@ describe("outbox delivery ownership", () => {
       const begin = context.ports.outbox.beginDelivery;
       context.ports.outbox.beginDelivery = async (...args) => pause(await begin(...args));
     }
-    context.ports.outbox.renewClaim = async () => false;
+    context.ports.outbox.renewClaim = async () => null;
     const client = stubClient(channel, async () => phase === "channel" ? pause(channel) : channel);
     const tick = runEffect(runOutboxWorkerTick(client, context));
     try { await entered.promise; await vi.advanceTimersByTimeAsync(OUTBOX_HEARTBEAT_MS); }
@@ -76,7 +77,7 @@ describe("outbox delivery ownership", () => {
 
   it("retains a pending renewal after delivery finishes until that database operation settles", async () => {
     const { context, channel } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<boolean>();
+    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<ClaimLease | null>();
     channel.send.mockImplementationOnce(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     context.ports.outbox.renewClaim = vi.fn(() => renewed.promise);
     let finished = false;
@@ -87,7 +88,7 @@ describe("outbox delivery ownership", () => {
       sent.resolve({ id: "delivered" }); await vi.advanceTimersByTimeAsync(0);
       expect(context.ports.outbox.listEntries()[0]?.status).toBe("DELIVERED");
       expect(finished).toBe(false);
-    } finally { sent.resolve({ id: "delivered" }); renewed.resolve(true); await tick; }
+    } finally { sent.resolve({ id: "delivered" }); renewed.resolve(null); await tick; }
     expect(finished).toBe(true);
   });
 

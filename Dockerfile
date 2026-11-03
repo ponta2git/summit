@@ -51,6 +51,8 @@ RUN apt-get update \
  && rm -f /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 ENV NODE_ENV=production
+# Reduce allocator retention in the small runtime VM; see docs/performance.md.
+ENV MALLOC_ARENA_MAX=2
 
 # momo-db/dist は @momo/db symlink の解決先として必要
 COPY --from=momo-db-build /app/momo-db/package.json /app/momo-db/package.json

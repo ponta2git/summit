@@ -69,6 +69,26 @@ import { isIntegration } from "./_support.ts";
     expect(await h.port.inspect(ocr.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
   });
 
+  it("claims an older fitting row when the preferred kind does not fit the retained owner's remaining budget", async () => {
+    const older = ocrReceiptPayload(); await h.port.receive(JSON.stringify(older), now);
+    const legacy = storedPayload("younger-preferred", "x".repeat(400 * 1024));
+    await h.seedStoredNotification(legacy);
+    await h.client`UPDATE discord_notifications SET next_attempt_at = ${new Date(now.getTime() + 1).toISOString()}
+      WHERE id = ${legacy.notificationId}`;
+    const younger = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
+    await h.port.receive(JSON.stringify(younger), new Date(now.getTime() + 2));
+    const options = { limit: 1, now: new Date(now.getTime() + 3), claimDurationMs: 30_000,
+      payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - 200 * 1024,
+      allowOversizedPayload: false, preferredKind: "analysis_completed" as const };
+    expect((await h.port.claim(options)).map(entry => entry.id)).toEqual([older.notificationId]);
+    expect(await h.port.inspect(legacy.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    // Once the large row is oldest, younger small work must wait for capacity to drain.
+    expect(await h.port.claim({ ...options, preferredKind: "ocr_completed" })).toEqual([]);
+    expect(await h.port.inspect(younger.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect((await h.port.claim({ ...options, payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
+      allowOversizedPayload: true })).map(entry => entry.id)).toEqual([legacy.notificationId]);
+  });
+
   it("fills the requested slot after removing exhausted and cancelled heads within a bounded scan", async () => {
     const exhausted = storedPayload("a-exhausted", "Short summary");
     const cancelled = { ...storedPayload("b-stale-generation", "Short summary"), settingsGeneration: "1" };

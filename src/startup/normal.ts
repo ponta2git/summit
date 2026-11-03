@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createAppContext } from "../appContext.ts";
 import { closeDb, db } from "../db/client.ts";
+import { notificationAdmissionFor } from "../db/notificationControl.ts";
 import { waitForInFlightSend } from "../features/ask-session/send.ts";
 import { createDiscordClient } from "../discord/client.ts";
 import { registerInteractionHandlers } from "../discord/index.ts";
@@ -53,7 +54,8 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       () => interactions.stop(),
       () => reconnect.stop(),
       () => resultNotifications?.stop(),
-      () => scheduler?.stop()
+      () => scheduler?.stop(),
+      () => notificationAdmissionFor(db).stop()
     ]),
     waitForInFlightSend: () => drainResources([
       () => startupInFlight,
@@ -61,7 +63,8 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
       () => reconnect.drain(),
       waitForInFlightSend,
       () => scheduler?.drain(),
-      () => resultNotifications?.drain()
+      () => resultNotifications?.drain(),
+      () => notificationAdmissionFor(db).drain()
     ]),
     closeDb,
     destroyClient: () => client.destroy()

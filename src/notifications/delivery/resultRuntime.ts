@@ -2,7 +2,8 @@ import type { Logger } from "pino";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type { ClaimedResultNotification } from "../../db/ports.resultNotifications.ts";
-import { RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_MIN_TIMER_DELAY_MS } from "../../config.ts";
+import { RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_MIN_TIMER_DELAY_MS,
+  NOTIFICATION_PENDING_WARN_AFTER_MS, NOTIFICATION_PENDING_WARNING_INTERVAL_MS } from "../../config.ts";
 import { catchExpectedError, runPromiseBoundary } from "../../runtime/effect.ts";
 import type { Clock } from "../../time/index.ts";
 import { createDeliveryCapacity } from "./capacity.ts";
@@ -10,6 +11,7 @@ import { deliveryLanes } from "./lanes.ts";
 import { prepareDeliveryTask, type DeliveryTask } from "./contracts.ts";
 import type { ResultDeliverySource } from "./sources/result.ts";
 import type { DeliveryRuntime } from "./runtime.ts";
+import type { ResultIoLedger } from "./resultIo.ts";
 
 /** Refill result deliveries on completion; capacity accounting never selects notification kinds. */
 export const createResultDeliveryRuntime = <E>(deps: {
@@ -17,12 +19,17 @@ export const createResultDeliveryRuntime = <E>(deps: {
   readonly clock: Clock;
   readonly prepareTask: (entry: ClaimedResultNotification, consumeYieldRequest: () => boolean) => DeliveryTask<E>;
   readonly logger: Pick<Logger, "info" | "warn" | "error">;
+  readonly io: ResultIoLedger;
 }): DeliveryRuntime => {
   const { source, logger } = deps;
+  const observe = (report: () => void): void => {
+    try { report(); } catch { /* Diagnostics must not prevent wake, recovery or settlement. */ }
+  };
   const capacity = createDeliveryCapacity({ ...deliveryLanes.results,
+    retained: deps.io.reservations,
     onSettled: (notificationId, exit) => {
-      if (Exit.isFailure(exit)) { logger.error({ event: "result_notification.dispatch_failed", notificationId }); }
-      dispatcher.wake("delivery_finished");
+      try { if (Exit.isFailure(exit)) { observe(() => logger.error({ event: "result_notification.dispatch_failed", notificationId })); } }
+      finally { dispatcher.wake("delivery_finished"); }
     }
   });
   let timer: { readonly handle: ReturnType<typeof setTimeout>; readonly dueAt: number } | undefined;
@@ -30,6 +37,16 @@ export const createResultDeliveryRuntime = <E>(deps: {
   let queued = false;
   let recoveryAttempt = 0;
   let recoveryDueAt = 0;
+  let pumpMonitor: ReturnType<typeof setTimeout> | undefined;
+  let pumpStartedAt = 0;
+  let pumpPhase: "claim" | "next_dispatch" = "claim";
+  const monitorPump = (): void => {
+    if (!pumping) { return; }
+    observe(() => logger.warn({ event: "result_notification.database_pending", phase: pumpPhase,
+      elapsedMs: performance.now() - pumpStartedAt }));
+    pumpMonitor = setTimeout(monitorPump, NOTIFICATION_PENDING_WARNING_INTERVAL_MS);
+    pumpMonitor.unref();
+  };
   const schedule = (delay: number): void => {
     if (capacity.isStopping()) { return; }
     const boundedDelay = Math.max(0, Math.min(Math.max(delay, recoveryDueAt - performance.now()), 2_147_483_647));
@@ -53,13 +70,15 @@ export const createResultDeliveryRuntime = <E>(deps: {
   const pumpWork = Effect.gen(function* () {
     const available = capacity.snapshot();
     if (available.slots <= 0 || available.payloadBytes <= 0) { return; }
+    const claimStartedAt = deps.clock.now();
     yield* source.claim(available).pipe(Effect.flatMap(startBatch));
     if (capacity.isStopping()) { return; }
     const remaining = capacity.snapshot();
     if (remaining.slots > 0 && remaining.payloadBytes > 0) {
+      pumpPhase = "next_dispatch";
       const next = yield* source.nextDispatchAt(remaining.activeIds);
       // invariant: 容量待ちのdue通知は完了wakeで再開し、同じ通知をpollしない。
-      if (next !== null && (remaining.activeIds.length === 0 || next > deps.clock.now())) {
+      if (next !== null && (remaining.activeIds.length === 0 || next > claimStartedAt)) {
         schedule(Math.max(SCHEDULER_MIN_TIMER_DELAY_MS, next.getTime() - deps.clock.now().getTime()));
       }
     }
@@ -70,16 +89,20 @@ export const createResultDeliveryRuntime = <E>(deps: {
     if (capacity.isStopping()) { return Promise.resolve(); }
     if (pumping) { queued = true; return pumping; }
     queued = false;
+    pumpStartedAt = performance.now(); pumpPhase = "claim";
+    pumpMonitor = setTimeout(monitorPump, NOTIFICATION_PENDING_WARN_AFTER_MS); pumpMonitor.unref();
     const work = catchExpectedError(pumpWork, () => Effect.sync(() => {
-      logger.warn({ event: "result_notification.dispatch_unavailable", recoveryAttempt });
+      const attempt = recoveryAttempt;
       const delay = RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[recoveryAttempt++];
-      queued = false;
       recoveryDueAt = delay === undefined ? 0 : performance.now() + delay;
-      if (delay !== undefined) { schedule(delay); }
+      if (delay !== undefined) { queued = false; schedule(delay); }
+      // After backoff is exhausted, a wake received during this pump still owns one retry.
+      observe(() => logger.warn({ event: "result_notification.dispatch_unavailable", recoveryAttempt: attempt }));
     }));
     // 外部timerの境界だけでPromiseへ変換。個別配送はcapacityのScope内に残す。
-    pumping = runPromiseBoundary(work).catch(() => { logger.error({ event: "result_notification.dispatch_failed" }); })
+    pumping = runPromiseBoundary(work).catch(() => { observe(() => logger.error({ event: "result_notification.dispatch_failed" })); })
       .finally(() => {
+        clearTimeout(pumpMonitor); pumpMonitor = undefined;
         pumping = undefined;
         if (queued && !capacity.isStopping()) { schedule(0); }
       });
@@ -90,13 +113,15 @@ export const createResultDeliveryRuntime = <E>(deps: {
       if (capacity.isStopping()) { return; }
       queued = true;
       source.wake(reason);
-      logger.info({ event: "result_notification.wake", reason });
+      observe(() => logger.info({ event: "result_notification.wake", reason }));
       if (!pumping) { schedule(0); }
     },
-    stop: () => { capacity.stop(); clearTimeout(timer?.handle); timer = undefined; },
+    stop: () => { capacity.stop(); deps.io.stop(); clearTimeout(timer?.handle); timer = undefined; },
     drain: async () => {
-      await pumping;
-      await runPromiseBoundary(capacity.drain());
+      const deliveries = async (): Promise<void> => { await pumping; await runPromiseBoundary(capacity.drain()); };
+      await Promise.all([deliveries(), deps.io.drain()]);
+      // A delivery may have started a later SDK operation after the first drain snapshot.
+      await deps.io.drain();
       if (capacity.isStopping()) { await runPromiseBoundary(capacity.close()); }
     }
   };

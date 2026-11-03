@@ -40,7 +40,8 @@ const bindSinglePostDelivery = (
   ctx: AppContext,
   entry: OutboxEntry,
   claimToken: string,
-  confirmBusiness: AttendanceNotificationDefinition["confirmBusiness"]
+  confirmBusiness: AttendanceNotificationDefinition["confirmBusiness"],
+  remainingMs?: () => number
 ): SinglePostDefinition<boolean | undefined> => {
   const { id, sessionId, dedupeKey, attemptCount, payload: { target } } = entry;
   return {
@@ -62,7 +63,7 @@ const bindSinglePostDelivery = (
     confirmDelivery: Effect.fnUntraced(function* (messageId: string, backfillResult: boolean | undefined) {
       const marked = yield* settledCall(() => ctx.ports.outbox.markDelivered(id, {
         claimToken, deliveredMessageId: messageId, now: ctx.clock.now()
-      }));
+      }, remainingMs));
       if (!marked) {
         logger.error({ event: "outbox.claim_lost_after_send", outboxId: id, sessionId, messageId },
           "Outbox worker lost claim after Discord accepted the message.");
@@ -83,7 +84,8 @@ export const prepareAttendanceNotification = Effect.fnUntraced(function* (
   ctx: AppContext,
   entry: OutboxEntry,
   claimToken: string,
-  registry: AttendanceNotificationRegistry = attendanceDefinitions
+  registry: AttendanceNotificationRegistry = attendanceDefinitions,
+  remainingMs?: () => number
 ) {
   const notification = Object.hasOwn(registry, entry.payload.renderer) ? registry[entry.payload.renderer] : undefined;
   if (!notification) { return undefined; }
@@ -92,6 +94,6 @@ export const prepareAttendanceNotification = Effect.fnUntraced(function* (
   return {
     body,
     channelId: entry.payload.channelId,
-    definition: bindSinglePostDelivery(ctx, entry, claimToken, notification.confirmBusiness)
+    definition: bindSinglePostDelivery(ctx, entry, claimToken, notification.confirmBusiness, remainingMs)
   };
 });

@@ -1,3 +1,4 @@
+import { repositoryClock } from "./_notificationClock.ts";
 import { fixtureId } from "./canonicalFixture.ts";
 import { eq, sql } from "drizzle-orm";
 import type { DiscordResultNotification } from "@momo/db/notifications";
@@ -25,7 +26,7 @@ export const createResultNotificationHarness = async () => {
   await db.insert(matchDrafts).values({ id: fixtureId("match_drafts", "draft-1"), legacyId: "draft-1", createdByAccountId: fixtureId("momo_login_accounts", "result-account"), status: "draft_ready" });
   await db.insert(matches).values({ id: fixtureId("matches", "match-1"), legacyId: "match-1", legacyHeldEventId: "held-1", heldEventId: fixtureId("held_events", "held-1"), matchNoInEvent: 1, gameTitleId: fixtureId("game_titles", "title-1"), layoutFamily: "momotetsu_2",
     mapMasterId: fixtureId("map_masters", "map-1"), seasonMasterId: fixtureId("season_masters", "season-1"), ownerMemberId: fixtureId("members", "m1"), playedAt: notificationNow, createdByAccountId: fixtureId("momo_login_accounts", "result-account") });
-  return { db, client, port: makeResultNotificationsPort(db, checkNotificationAdmission),
+  return { db, client, port: makeResultNotificationsPort(db, checkNotificationAdmission, repositoryClock),
     // Seed an already accepted snapshot without applying today's admission policy.
     seedStoredNotification: async (payload: DiscordResultNotification): Promise<void> => {
       const normalized = await normalizeNotificationJson(db, JSON.stringify(payload));

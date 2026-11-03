@@ -1,13 +1,8 @@
+import { claimNextOutboxBatch, beginOutboxDelivery, markOutboxDelivered, markOutboxFailed } from "./_notificationClock.ts";
 import { eq, sql } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  claimNextOutboxBatch,
-  beginOutboxDelivery,
-  enqueueOutbox,
-  markOutboxDelivered,
-  markOutboxFailed
-} from "../../src/db/repositories/outbox.js";
+import { enqueueOutbox } from "../../src/db/repositories/outbox.js";
 import { discordNotifications, discordNotificationParts } from "../../src/db/schema.js";
 
 import { createOutboxContractHarness } from "./_outboxContract.js";
@@ -107,10 +102,12 @@ describeDb("discord_outbox repository contract (integration)", () => {
     });
     const pid = await locked.promise;
     const first = claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 });
+    // A second root models another process; one runtime has only one claim producer.
+    const competitor = new Proxy(db, {});
     let second: ReturnType<typeof claimNextOutboxBatch>;
     try {
       await waitForBlockedBy(harness.client, pid);
-      second = claimNextOutboxBatch(db, { limit: 5, now, claimDurationMs: 30_000 });
+      second = claimNextOutboxBatch(competitor, { limit: 5, now, claimDurationMs: 30_000 });
       await waitForLockWaiters(harness.client, 2);
     } finally { release.resolve(); await blocker; }
     const results = await Promise.all([first, second]);

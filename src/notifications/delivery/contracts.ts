@@ -6,7 +6,8 @@ import type { DeliveryExecution } from "./capacity.ts";
  * One claimed delivery owned by a runtime. Creating a task starts no asynchronous I/O.
  * Factories preserve the claimed identity and accounted payload bytes. run settles
  * only after its delivery and heartbeat cleanup; capacity is released by
- * the runtime, never by the task. SDK requests may outlive a bounded send wait.
+ * the runtime, never by the task. The result I/O ledger retains SDK reservations
+ * when a request outlives its bounded wait.
  */
 export interface DeliveryTask<E = unknown> {
   readonly id: string;

@@ -1,6 +1,7 @@
 import type { SessionStatus } from "../../src/db/ports.js";
+import type { Clock } from "../../src/time/index.ts";
 
-export type FakeClock = { readonly now: () => Date };
+export type FakeClock = Clock;
 export const DEFAULT_CLOCK: FakeClock = { now: () => new Date("2026-04-24T12:00:00.000Z") };
 
 export const MESSAGE_RECOVERY_STATUSES: readonly SessionStatus[] = [

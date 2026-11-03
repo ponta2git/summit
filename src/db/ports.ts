@@ -39,6 +39,7 @@ import type {
   SubmitPostponeVoteResult
 } from "./repositories/sessionCommands.ts";
 import type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
+import type { ClaimLease } from "../time/lease.ts";
 export type { ResultNotificationsPort } from "./ports.resultNotifications.ts";
 
 export type {
@@ -208,20 +209,21 @@ export interface OutboxPort {
     readonly now: Date;
     readonly claimDurationMs: number;
   }): Promise<readonly OutboxEntry[]>;
-  beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }): Promise<boolean>;
+  beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }, remainingMs?: () => number): Promise<boolean>;
   /** Extend only a live claim; expired or replaced owners cannot regain delivery rights. */
   renewClaim(id: string, options: {
     readonly claimToken: string;
     readonly now: Date;
     readonly claimDurationMs: number;
-  }): Promise<boolean>;
+  }, remainingMs?: () => number): Promise<ClaimLease | null>;
   markDelivered(
     id: string,
     options: {
       readonly claimToken: string;
       readonly deliveredMessageId: string | null;
       readonly now: Date;
-    }
+    },
+    remainingMs?: () => number
   ): Promise<boolean>;
   markFailed(
     id: string,
@@ -230,7 +232,8 @@ export interface OutboxPort {
       readonly claimToken: string;
       readonly now: Date;
       readonly nextAttemptAt: Date | null;
-    }
+    },
+    remainingMs?: () => number
   ): Promise<boolean>;
   requeueFailedChains(now: Date): Promise<{
     readonly deadLettersRequeued: number;

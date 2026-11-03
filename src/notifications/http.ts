@@ -5,6 +5,7 @@ import { NotificationHttpError, notificationBodyReservation } from "./http.body.
 import { authorizeNotificationRequest, routeNotificationRequest, type NotificationHttpDeps } from "./http.routes.ts";
 import { isPrivateNotificationBind, RESULT_NOTIFICATION_BODY_BUDGET_BYTES } from "./config.ts";
 import { createNotificationHttpServer } from "./http.connections.ts";
+import { NotificationNotStartedError } from "../errors/index.ts";
 
 const respond = (response: ServerResponse, status: number, value: unknown, reusable = false): void => {
   if (response.destroyed || response.writableEnded) { return; }
@@ -52,6 +53,7 @@ export const createNotificationReceiver = (deps: NotificationHttpDeps): Notifica
         respond(response, result.status, result.body, !stopped && bodyConsumed);
       } catch (error: unknown) {
         if (error instanceof NotificationHttpError) { respond(response, error.status, { error: error.code }); }
+        else if (error instanceof NotificationNotStartedError) { respond(response, 503, { error: "unavailable" }); }
         else if (error instanceof NotificationInputError) {
           const status = { invalid_input: 400, unsupported_version: 422, identity_conflict: 409, payload_too_large: 413 }[error.code];
           respond(response, status, { error: error.code });

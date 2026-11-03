@@ -71,6 +71,7 @@ Git index から対象一覧を得て、作業中の内容を読む。未追跡�
 - union は discriminant と `assertNever` で閉じる。public function / repository / service / handler は return type を明示し、config / DTO は readonly、constant map は `as const satisfies` を優先する。
 - 独立した I/O だけを並列化する。Promise の追跡、fire-and-forget の catch、失敗時の settlement は [Architecture §5](./architecture.md#5-非同期処理とエラー) に従う。
 - Effect は `effect/Effect` 等の公開 subpath から namespace import し、非 bundle 実行で不要な barrel 初期化を避ける。
+- date-fns の関数・locale も `date-fns/format`・`date-fns/locale/ja` 等の公開 subpath から読み、未使用の関数や全 locale の初期化を避ける。
 
 ## 4. File の責務
 

@@ -1,0 +1,4350 @@
+{
+  "implementationBaseline": "10f11fe",
+  "implementationSource": "6c7de442145d3fe9fbdca9f8e341ce113570a524",
+  "image": "sha256:1c8a886711c6f007a747aae5217cc517cc87861d11a59a166c16380c5c12e74c",
+  "schema": "0f102e45e540e4f25e8ec10766d981f8ea4f5791",
+  "runtime": {
+    "node": "26.13.0",
+    "os": "Linux",
+    "architecture": "arm64",
+    "memoryMiB": 256,
+    "swapMiB": 0
+  },
+  "gates": {
+    "ci": {
+      "passed": true,
+      "files": 137,
+      "tests": 1010,
+      "fileSizeAdvisories": 4,
+      "log": "ci-final.log"
+    },
+    "integration": {
+      "passed": true,
+      "files": 31,
+      "tests": 177,
+      "log": "integration-final-clean.log",
+      "priorAttempts": [
+        {
+          "passedTests": 176,
+          "failedTests": 1,
+          "log": "integration-review2.log",
+          "failure": "New claim test incorrectly forced OCR preference on the idle follow-up; production implementation was unchanged."
+        },
+        {
+          "files": 1,
+          "tests": 5,
+          "passed": true,
+          "log": "integration-review2-claim-fixed.log"
+        }
+      ]
+    },
+    "runtimeImage": {
+      "passed": true,
+      "log": "runtime-image-final-runner.log"
+    },
+    "capacity": {
+      "passed": true,
+      "standardMiB": 124.4453125,
+      "legacyMiB": 162.625,
+      "standardTargetMiB": 192,
+      "standardNotifications": 17,
+      "standardParts": 932,
+      "legacyPlannedParts": 8823,
+      "legacyDeliveredParts": 1,
+      "log": "capacity-final.log"
+    },
+    "imageChecks": [
+      {
+        "gate": "runtime-image-final",
+        "exit": 0,
+        "elapsedSeconds": 2.5090385829098523
+      },
+      {
+        "gate": "capacity-final",
+        "exit": 0,
+        "elapsedSeconds": 16.325280291959643
+      },
+      {
+        "gate": "shutdown-final",
+        "exit": 0,
+        "elapsedSeconds": 20.57804616703652
+      },
+      {
+        "gate": "fault-final",
+        "exit": 0,
+        "elapsedSeconds": 105.8922028329689
+      }
+    ],
+    "rateLimit": {
+      "passed": true,
+      "log": "rate-limit-corrected.log",
+      "correction": {
+        "initialAttempt": {
+          "log": "rate-limit-final.log",
+          "passed": false,
+          "failure": "The mock API returned 429 only on the first request, then allowed other requests before the 50-second reset. At the 48-second observation it had received 6 requests instead of the asserted 1."
+        },
+        "correction": "Return 429 to every request until the same monotonic 50-second deadline. Allow at most two initial SDK HTTP attempts because bucket discovery can use distinct handlers. All requests observed before the deadline must have received 429; app-level pending SDK calls, attempt count and claimed-owner count retain their original assertions.",
+        "productionSourceChanged": false
+      }
+    },
+    "performance": {
+      "completed": true,
+      "normalP95AndCpuWithin10PercentInAllRtts": false,
+      "invalidInputP95RegressionOver10PercentRtts": [
+        "20",
+        "50"
+      ],
+      "claim": "Confirmed bounded ownership and reduced SQL wire; no all-condition normal CPU/p95 non-regression claim unless the paired intervals pass."
+    },
+    "docs": {
+      "passed": true,
+      "log": "docs-final.log"
+    }
+  },
+  "faultVerification": {
+    "scenario": "100 second unresolved SDK + blocked actual Pino + two result owners/four accepted receipts/attendance renew/retention",
+    "samples": [
+      {
+        "seconds": 10,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2016,
+        "peakMiB": 62.34765625,
+        "attendanceRenewals": 1
+      },
+      {
+        "seconds": 20,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2016,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 2
+      },
+      {
+        "seconds": 30,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2016,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 3
+      },
+      {
+        "seconds": 40,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2016,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 4
+      },
+      {
+        "seconds": 50,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2836,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 5
+      },
+      {
+        "seconds": 60,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2836,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 6
+      },
+      {
+        "seconds": 70,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2836,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 7
+      },
+      {
+        "seconds": 80,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 2836,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 8
+      },
+      {
+        "seconds": 90,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 3055,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 9
+      },
+      {
+        "seconds": 100,
+        "pendingSends": 2,
+        "attempts": 1,
+        "claimed": 2,
+        "queuedLogBytes": 3055,
+        "peakMiB": 62.3515625,
+        "attendanceRenewals": 10
+      }
+    ],
+    "final": {
+      "elapsedMs": 101593.927337,
+      "cpuMs": 1491.727,
+      "histograms": {
+        "receipt.rendererAdmission": {
+          "count": 6,
+          "p50": 0.127,
+          "p95": 0.975,
+          "p99": 0.975,
+          "max": 0.975,
+          "mean": 0.2678333333333333,
+          "exceeds": 0
+        },
+        "receipt.synchronousPreparation": {
+          "count": 6,
+          "p50": 0.473,
+          "p95": 4.959,
+          "p99": 4.959,
+          "max": 4.959,
+          "mean": 1.2231666666666667,
+          "exceeds": 0
+        },
+        "admission.wait.http": {
+          "count": 6,
+          "p50": 0.051,
+          "p95": 22.911,
+          "p99": 22.911,
+          "max": 22.911,
+          "mean": 6.256833333333333,
+          "exceeds": 0
+        },
+        "database.transactionEntry.receive": {
+          "count": 6,
+          "p50": 2.303,
+          "p95": 13.823,
+          "p99": 13.823,
+          "max": 13.823,
+          "mean": 4.481333333333333,
+          "exceeds": 0
+        },
+        "database.gateCall.receive": {
+          "count": 6,
+          "p50": 6.111,
+          "p95": 10.879,
+          "p99": 10.879,
+          "max": 10.879,
+          "mean": 6.524666666666667,
+          "exceeds": 0
+        },
+        "database.transactionWall.receive": {
+          "count": 6,
+          "p50": 17.535,
+          "p95": 41.727,
+          "p99": 41.727,
+          "max": 41.727,
+          "mean": 23.125333333333334,
+          "exceeds": 0
+        },
+        "database.gateHold.receive": {
+          "count": 6,
+          "p50": 9.407,
+          "p95": 17.023,
+          "p99": 17.023,
+          "max": 17.023,
+          "mean": 11.136,
+          "exceeds": 0
+        },
+        "port.receive": {
+          "count": 6,
+          "p50": 32.255,
+          "p95": 67.583,
+          "p99": 67.583,
+          "max": 67.583,
+          "mean": 39.157333333333334,
+          "exceeds": 0
+        },
+        "admission.wait.claim": {
+          "count": 9,
+          "p50": 0.039,
+          "p95": 0.287,
+          "p99": 0.287,
+          "max": 0.287,
+          "mean": 0.07911111111111112,
+          "exceeds": 0
+        },
+        "database.transactionEntry.claim": {
+          "count": 8,
+          "p50": 1.615,
+          "p95": 3.967,
+          "p99": 3.967,
+          "max": 3.967,
+          "mean": 1.8855,
+          "exceeds": 0
+        },
+        "database.gateCall.claim": {
+          "count": 8,
+          "p50": 2.047,
+          "p95": 10.751,
+          "p99": 10.751,
+          "max": 10.751,
+          "mean": 3.18,
+          "exceeds": 0
+        },
+        "database.transactionWall.claim": {
+          "count": 8,
+          "p50": 13.375,
+          "p95": 42.495,
+          "p99": 42.495,
+          "max": 42.495,
+          "mean": 17.624,
+          "exceeds": 0
+        },
+        "database.gateHold.claim": {
+          "count": 8,
+          "p50": 9.471,
+          "p95": 34.303,
+          "p99": 34.303,
+          "max": 34.303,
+          "mean": 11.83,
+          "exceeds": 0
+        },
+        "port.claim": {
+          "count": 8,
+          "p50": 13.439,
+          "p95": 42.751,
+          "p99": 42.751,
+          "max": 42.751,
+          "mean": 17.748,
+          "exceeds": 0
+        },
+        "admission.wait.begin": {
+          "count": 16,
+          "p50": 0.031,
+          "p95": 0.349,
+          "p99": 0.583,
+          "max": 0.583,
+          "mean": 0.1174375,
+          "exceeds": 0
+        },
+        "database.transactionEntry.plan": {
+          "count": 8,
+          "p50": 1.639,
+          "p95": 2.287,
+          "p99": 2.287,
+          "max": 2.287,
+          "mean": 1.65125,
+          "exceeds": 0
+        },
+        "database.gateCall.plan": {
+          "count": 8,
+          "p50": 3.279,
+          "p95": 5.407,
+          "p99": 5.407,
+          "max": 5.407,
+          "mean": 3.01025,
+          "exceeds": 0
+        },
+        "database.transactionWall.plan": {
+          "count": 8,
+          "p50": 7.423,
+          "p95": 13.503,
+          "p99": 13.503,
+          "max": 13.503,
+          "mean": 9.23,
+          "exceeds": 0
+        },
+        "database.gateHold.plan": {
+          "count": 8,
+          "p50": 3.775,
+          "p95": 6.271,
+          "p99": 6.271,
+          "max": 6.271,
+          "mean": 4.0235,
+          "exceeds": 0
+        },
+        "port.plan": {
+          "count": 8,
+          "p50": 7.551,
+          "p95": 13.695,
+          "p99": 13.695,
+          "max": 13.695,
+          "mean": 9.498,
+          "exceeds": 0
+        },
+        "database.transactionEntry.begin": {
+          "count": 8,
+          "p50": 0.919,
+          "p95": 1.559,
+          "p99": 1.559,
+          "max": 1.559,
+          "mean": 1.0525,
+          "exceeds": 0
+        },
+        "database.gateCall.begin": {
+          "count": 8,
+          "p50": 3.535,
+          "p95": 9.855,
+          "p99": 9.855,
+          "max": 9.855,
+          "mean": 5.028,
+          "exceeds": 0
+        },
+        "database.transactionWall.begin": {
+          "count": 8,
+          "p50": 11.007,
+          "p95": 18.431,
+          "p99": 18.431,
+          "max": 18.431,
+          "mean": 12.556,
+          "exceeds": 0
+        },
+        "database.gateHold.begin": {
+          "count": 8,
+          "p50": 5.663,
+          "p95": 7.455,
+          "p99": 7.455,
+          "max": 7.455,
+          "mean": 6,
+          "exceeds": 0
+        },
+        "port.begin": {
+          "count": 8,
+          "p50": 11.071,
+          "p95": 18.431,
+          "p99": 18.431,
+          "max": 18.431,
+          "mean": 12.612,
+          "exceeds": 0
+        },
+        "admission.wait.renew": {
+          "count": 18,
+          "p50": 0.115,
+          "p95": 0.451,
+          "p99": 0.543,
+          "max": 0.543,
+          "mean": 0.16227777777777777,
+          "exceeds": 0
+        },
+        "database.transactionEntry.renew": {
+          "count": 8,
+          "p50": 2.463,
+          "p95": 3.391,
+          "p99": 3.391,
+          "max": 3.391,
+          "mean": 2.487,
+          "exceeds": 0
+        },
+        "database.gateCall.renew": {
+          "count": 8,
+          "p50": 1.415,
+          "p95": 7.583,
+          "p99": 7.583,
+          "max": 7.583,
+          "mean": 3.204,
+          "exceeds": 0
+        },
+        "database.transactionWall.renew": {
+          "count": 8,
+          "p50": 9.279,
+          "p95": 15.103,
+          "p99": 15.103,
+          "max": 15.103,
+          "mean": 10.152,
+          "exceeds": 0
+        },
+        "database.gateHold.renew": {
+          "count": 8,
+          "p50": 3.103,
+          "p95": 5.727,
+          "p99": 5.727,
+          "max": 5.727,
+          "mean": 3.469,
+          "exceeds": 0
+        },
+        "port.renew": {
+          "count": 8,
+          "p50": 9.343,
+          "p95": 15.103,
+          "p99": 15.103,
+          "max": 15.103,
+          "mean": 10.328,
+          "exceeds": 0
+        },
+        "admission.wait.maintenance": {
+          "count": 10,
+          "p50": 0.061,
+          "p95": 0.431,
+          "p99": 0.431,
+          "max": 0.431,
+          "mean": 0.0947,
+          "exceeds": 0
+        },
+        "database.transactionEntry.prune": {
+          "count": 10,
+          "p50": 1.431,
+          "p95": 3.487,
+          "p99": 3.487,
+          "max": 3.487,
+          "mean": 1.7164000000000001,
+          "exceeds": 0
+        },
+        "database.gateCall.prune": {
+          "count": 10,
+          "p50": 0.983,
+          "p95": 1.399,
+          "p99": 1.399,
+          "max": 1.399,
+          "mean": 1.0242,
+          "exceeds": 0
+        },
+        "database.transactionWall.prune": {
+          "count": 10,
+          "p50": 5.599,
+          "p95": 10.623,
+          "p99": 10.623,
+          "max": 10.623,
+          "mean": 6.2576,
+          "exceeds": 0
+        },
+        "database.gateHold.prune": {
+          "count": 10,
+          "p50": 2.591,
+          "p95": 4.639,
+          "p99": 4.639,
+          "max": 4.639,
+          "mean": 2.86,
+          "exceeds": 0
+        },
+        "port.prune": {
+          "count": 10,
+          "p50": 5.823,
+          "p95": 11.519,
+          "p99": 11.519,
+          "max": 11.519,
+          "mean": 6.504,
+          "exceeds": 0
+        },
+        "admission.wait.finalize": {
+          "count": 8,
+          "p50": 0.025,
+          "p95": 0.052,
+          "p99": 0.052,
+          "max": 0.052,
+          "mean": 0.027,
+          "exceeds": 0
+        },
+        "database.transactionEntry.fail": {
+          "count": 2,
+          "p50": 1.503,
+          "p95": 2.415,
+          "p99": 2.415,
+          "max": 2.415,
+          "mean": 1.954,
+          "exceeds": 0
+        },
+        "database.gateCall.fail": {
+          "count": 2,
+          "p50": 1.479,
+          "p95": 7.935,
+          "p99": 7.935,
+          "max": 7.935,
+          "mean": 4.698,
+          "exceeds": 0
+        },
+        "database.transactionWall.fail": {
+          "count": 2,
+          "p50": 12.159,
+          "p95": 15.039,
+          "p99": 15.039,
+          "max": 15.039,
+          "mean": 13.568,
+          "exceeds": 0
+        },
+        "database.gateHold.fail": {
+          "count": 2,
+          "p50": 4.799,
+          "p95": 7.455,
+          "p99": 7.455,
+          "max": 7.455,
+          "mean": 6.112,
+          "exceeds": 0
+        },
+        "port.fail": {
+          "count": 2,
+          "p50": 12.415,
+          "p95": 15.167,
+          "p99": 15.167,
+          "max": 15.167,
+          "mean": 13.76,
+          "exceeds": 0
+        },
+        "database.transactionEntry.complete": {
+          "count": 6,
+          "p50": 1.135,
+          "p95": 2.175,
+          "p99": 2.175,
+          "max": 2.175,
+          "mean": 1.2906666666666669,
+          "exceeds": 0
+        },
+        "database.gateCall.complete": {
+          "count": 6,
+          "p50": 2.543,
+          "p95": 10.751,
+          "p99": 10.751,
+          "max": 10.751,
+          "mean": 4.962666666666667,
+          "exceeds": 0
+        },
+        "database.transactionWall.complete": {
+          "count": 6,
+          "p50": 8.255,
+          "p95": 66.559,
+          "p99": 66.559,
+          "max": 66.559,
+          "mean": 27.706666666666667,
+          "exceeds": 0
+        },
+        "database.gateHold.complete": {
+          "count": 6,
+          "p50": 4.079,
+          "p95": 56.063,
+          "p99": 56.063,
+          "max": 56.063,
+          "mean": 20.198666666666668,
+          "exceeds": 0
+        },
+        "port.complete": {
+          "count": 6,
+          "p50": 8.319,
+          "p95": 66.559,
+          "p99": 66.559,
+          "max": 66.559,
+          "mean": 27.744,
+          "exceeds": 0
+        },
+        "delivery.receiptToComplete": {
+          "count": 4,
+          "p50": 100663.295,
+          "p95": 100663.295,
+          "p99": 100663.295,
+          "max": 100663.295,
+          "mean": 100401.152,
+          "exceeds": 0
+        },
+        "port.getNextDispatchAt": {
+          "count": 2,
+          "p50": 1.551,
+          "p95": 2.287,
+          "p99": 2.287,
+          "max": 2.287,
+          "mean": 1.914,
+          "exceeds": 0
+        }
+      },
+      "loopP95Ms": 15.007743,
+      "loopMaxMs": 48.529407,
+      "cgroupPeakBytes": 67014656,
+      "peak": {
+        "rss": 115847168,
+        "heapUsed": 36357528,
+        "external": 5737179,
+        "pendingDb": 2,
+        "queuedDb": 2
+      },
+      "wire": {
+        "upBytes": 231473,
+        "downBytes": 215023,
+        "parse": 337,
+        "describe": 337,
+        "bind": 337,
+        "execute": 337,
+        "flush": 267,
+        "sync": 337,
+        "query": 205,
+        "ready": 544,
+        "responseBoundaries": 809
+      },
+      "maxDbSockets": 2,
+      "logging": {
+        "actualPino": true,
+        "logBytes": 6008,
+        "logLines": 33,
+        "maxQueuedBytes": 3055,
+        "queuedBytes": 0
+      },
+      "attendanceRenewals": 10,
+      "operations": 0,
+      "pendingSends": 0,
+      "maxPendingSends": 2,
+      "sent": 8,
+      "delivered": 6,
+      "errors": 0,
+      "activeTraces": 0,
+      "database": {
+        "enabled": true,
+        "byCommand": {
+          "receive": {
+            "drizzleStatements": 55,
+            "committedTransactions": 6,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 12
+          },
+          "claim": {
+            "drizzleStatements": 78,
+            "committedTransactions": 8,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 16
+          },
+          "plan": {
+            "drizzleStatements": 44,
+            "committedTransactions": 8,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 16
+          },
+          "begin": {
+            "drizzleStatements": 48,
+            "committedTransactions": 8,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 16
+          },
+          "renew": {
+            "drizzleStatements": 32,
+            "committedTransactions": 8,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 16
+          },
+          "prune": {
+            "drizzleStatements": 40,
+            "committedTransactions": 10,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 20
+          },
+          "fail": {
+            "drizzleStatements": 12,
+            "committedTransactions": 2,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 4
+          },
+          "complete": {
+            "drizzleStatements": 36,
+            "committedTransactions": 6,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 12
+          },
+          "getNextDispatchAt": {
+            "drizzleStatements": 2,
+            "committedTransactions": 0,
+            "failedTransactions": 0,
+            "estimatedCommittedBeginCommitStatements": 0
+          }
+        }
+      }
+    },
+    "persisted": [
+      {
+        "status": "DELIVERED",
+        "attempts": 2
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 2
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      }
+    ],
+    "notes": "SDK success after application timeout can lead to resending after settlement, according to existing nonce/uncertain-delivery contract."
+  },
+  "shutdownVerification": {
+    "event": "shutdown_verified",
+    "elapsedMs": 20113.75455,
+    "io": 1,
+    "db": 1,
+    "exit": 0,
+    "parentElapsedSeconds": 20.23999391705729,
+    "order": [
+      "stop",
+      "drain_timeout",
+      "close_db",
+      "destroy_client",
+      "exit"
+    ],
+    "ioActuallySettled": false,
+    "dbActuallySettled": false
+  },
+  "provenance": [
+    {
+      "name": "ci-review1-local.log",
+      "sha256": "fb254e0f7877db327145f2b6f04c5fe0d23849679f92bbdd8e587a4a08125ae3"
+    },
+    {
+      "name": "integration-review1.log",
+      "sha256": "19fde7e25ca6eb21358df9f64cd4a436e9249f9992138ab512ae05e6acdd4e65"
+    },
+    {
+      "name": "image-build-review1.log",
+      "sha256": "8b87e2fb0c0c9ffa1ce7dacebb791c07fc6486bd7b0d2a0f32d0dec4d41605a8"
+    },
+    {
+      "name": "runtime-image-review1.log",
+      "sha256": "44812bd4553fbd62dd88b4968b9a3790813a62ef61bd31b0a86734ced8779dfd"
+    },
+    {
+      "name": "capacity-review1.log",
+      "sha256": "cc7b511cbbe9eb795c79cbb0d0cdc37a16632a4f626eba3bbdc6011375eb868a"
+    },
+    {
+      "name": "fault-verification.json",
+      "sha256": "c81997a993fea5e7b73792a006863d2c705508924e08a19d906cbd2d6c0f2121"
+    },
+    {
+      "name": "shutdown-verification.json",
+      "sha256": "88a5daa5dfec4963e35c8dc4483e0e1fb7a007d4974c6c4282e3f37d02a4b516"
+    },
+    {
+      "name": "review-1.txt",
+      "sha256": "76befc4661554dc808d104bc10f141f0ec47ed3ce7c09580752b9ffa8abae791"
+    },
+    {
+      "name": "review-1-disposition.txt",
+      "sha256": "76ff1348a9e8bf8b4c326645af6e969daa47a60d3e7ecee9e4774c59c85d9919"
+    }
+  ],
+  "shutdownSource": "6c7de442145d3fe9fbdca9f8e341ce113570a524",
+  "reviews": {
+    "rounds": 2,
+    "model": "claude-opus-5-5",
+    "effort": "xhigh",
+    "allFindingsAddressed": true,
+    "round1Disposition": "review-1-disposition.txt",
+    "round2Disposition": "review-2-disposition.txt",
+    "staticReviewOnly": true,
+    "round2OutputRecovery": "Initial invocation returned a truncated fragment after automatic output continuation; complete stream captured in the repeated invocation of the same review round."
+  },
+  "faultSource": "6c7de442145d3fe9fbdca9f8e341ce113570a524",
+  "validationSource": "5775c058d95416d6588ac79bc95a7927dbefb61f",
+  "runtimeSourceNote": "Only docs/db-rule.md and tests/notifications/receiptPreparation.test.ts changed after the final image source 6c7de44; runtime/build inputs are identical.",
+  "rateLimitVerification": {
+    "scenario": "Real @discordjs/rest with loopback HTTP 429, Retry-After 50 seconds, two original SDK Promises and four queued receipts",
+    "heldAt48Seconds": {
+      "apiRequests": 2,
+      "rateLimitedResponses": 2,
+      "pendingSends": 2,
+      "rateLimitEvents": 2,
+      "maximumRetryAfter": 50098.99560546875,
+      "attempts": 1,
+      "claimed": 2
+    },
+    "final": {
+      "apiRequests": 10,
+      "rateLimitedResponses": 2,
+      "rateLimitEvents": 2,
+      "uniqueNonces": 6,
+      "delivered": 6,
+      "sent": 8,
+      "pendingSends": 0,
+      "maxPendingSends": 2,
+      "cgroupPeakMiB": 70.25
+    },
+    "persisted": [
+      {
+        "status": "DELIVERED",
+        "attempts": 2
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 2
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      },
+      {
+        "status": "DELIVERED",
+        "attempts": 1
+      }
+    ],
+    "limitation": "No Discord service or Gateway connection. Same-nonce retry after SDK settlement remains allowed; mock API applies nonce deduplication."
+  },
+  "gateStatusNote": "Code, real DB, runtime image, capacity, bounded fault ownership and shutdown gates passed. Performance comparison is complete with inconclusive normal CPU/zero-RTT p95 and higher invalid-input p95 under RTT20/50; it is not a universal non-regression pass.",
+  "performance": {
+    "method": {
+      "pairsPerRtt": 6,
+      "confidence": "95% two-sided paired t interval on log ratios; 20,000 paired bootstrap draws as sensitivity only",
+      "decision": "Unchanged 1.10 upper-bound threshold; no claim of non-regression when the upper t bound exceeds 1.10",
+      "statisticalUnit": "Independent run pair, not individual notification",
+      "p95": "Two-significant-figure fixed histogram of 20 normal notifications per run; duplicate/invalid each32 requests",
+      "warmup": "200 notifications at zero injected RTT plus one second natural idle, excluded from CPU/latency window; cgroup peak includes startup/warmup",
+      "databaseDiagnostics": false,
+      "scope": "Warm steady-state timing; detailed database diagnostics are retained as a separate study; no cold-start claim",
+      "errorCounterScope": "Control-probe exceptions only; HTTP statuses, delivery counts, maximum attempt and capacity validated separately."
+    },
+    "rtts": {
+      "0": {
+        "normal": {
+          "cpuMs": {
+            "baselineMean": 214.53133333333335,
+            "currentMean": 213.72983333333332,
+            "geometricPairedRatio": 1.0004064811247717,
+            "ratio95Interval": [
+              0.8356250717485076,
+              1.197682024286672
+            ],
+            "bootstrap95Interval": [
+              0.8714467798637101,
+              1.1141649884011127
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 203.891,
+                "current": 212.39,
+                "ratio": 1.0416840370590168
+              },
+              {
+                "baseline": 284.117,
+                "current": 208.975,
+                "ratio": 0.7355244494345639
+              },
+              {
+                "baseline": 185.008,
+                "current": 201.517,
+                "ratio": 1.0892339790711751
+              },
+              {
+                "baseline": 212.428,
+                "current": 252.513,
+                "ratio": 1.1886992298567045
+              },
+              {
+                "baseline": 211.298,
+                "current": 230.804,
+                "ratio": 1.0923151189315563
+              },
+              {
+                "baseline": 190.446,
+                "current": 176.18,
+                "ratio": 0.9250916270228832
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 60.71366666666667,
+            "currentMean": 67.66833333333334,
+            "geometricPairedRatio": 1.103842828581354,
+            "ratio95Interval": [
+              0.7778361019143125,
+              1.5664855195223537
+            ],
+            "bootstrap95Interval": [
+              0.8711731556976184,
+              1.3989248723465124
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 54.527,
+                "current": 59.391,
+                "ratio": 1.0892035138555212
+              },
+              {
+                "baseline": 90.111,
+                "current": 62.719,
+                "ratio": 0.696019353907958
+              },
+              {
+                "baseline": 52.223,
+                "current": 51.967,
+                "ratio": 0.9950979453497502
+              },
+              {
+                "baseline": 53.759,
+                "current": 89.087,
+                "ratio": 1.6571550810096916
+              },
+              {
+                "baseline": 58.111,
+                "current": 92.159,
+                "ratio": 1.5859131661819623
+              },
+              {
+                "baseline": 55.551,
+                "current": 50.687,
+                "ratio": 0.912440820147252
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 1553.6666666666667,
+            "currentMean": 1453.6666666666667,
+            "geometricPairedRatio": 0.9356409066956901,
+            "ratio95Interval": [
+              0.9316287226346595,
+              0.9396703697655667
+            ],
+            "bootstrap95Interval": [
+              0.9334118719467878,
+              0.9387941440997336
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 1542,
+                "current": 1454,
+                "ratio": 0.9429312581063554
+              },
+              {
+                "baseline": 1556,
+                "current": 1453,
+                "ratio": 0.9338046272493573
+              },
+              {
+                "baseline": 1558,
+                "current": 1454,
+                "ratio": 0.9332477535301669
+              },
+              {
+                "baseline": 1555,
+                "current": 1457,
+                "ratio": 0.9369774919614148
+              },
+              {
+                "baseline": 1555,
+                "current": 1451,
+                "ratio": 0.9331189710610932
+              },
+              {
+                "baseline": 1556,
+                "current": 1453,
+                "ratio": 0.9338046272493573
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 10.339668333333334,
+            "currentMean": 10.386089666666667,
+            "geometricPairedRatio": 1.0044759989753325,
+            "ratio95Interval": [
+              0.9931452593403738,
+              1.0159360103955286
+            ],
+            "bootstrap95Interval": [
+              0.9969748704731128,
+              1.0127845294654112
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 10.346495,
+                "current": 10.289151,
+                "ratio": 0.9944576400027255
+              },
+              {
+                "baseline": 10.444799,
+                "current": 10.371071,
+                "ratio": 0.9929411757947665
+              },
+              {
+                "baseline": 10.354687,
+                "current": 10.412031,
+                "ratio": 1.0055379752183722
+              },
+              {
+                "baseline": 10.330111,
+                "current": 10.559487,
+                "ratio": 1.0222046016736897
+              },
+              {
+                "baseline": 10.346495,
+                "current": 10.362879,
+                "ratio": 1.0015835314277926
+              },
+              {
+                "baseline": 10.215423,
+                "current": 10.321919,
+                "ratio": 1.0104250210686332
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 71.20703125,
+            "current": 73.07421875
+          }
+        },
+        "duplicate": {
+          "cpuMs": {
+            "baselineMean": 72.34983333333334,
+            "currentMean": 68.84233333333333,
+            "geometricPairedRatio": 0.932569597711399,
+            "ratio95Interval": [
+              0.7054853595248425,
+              1.232748550815215
+            ],
+            "bootstrap95Interval": [
+              0.7894109732918716,
+              1.1514140673684587
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 67.892,
+                "current": 54.014,
+                "ratio": 0.7955871089377247
+              },
+              {
+                "baseline": 85.166,
+                "current": 59.349,
+                "ratio": 0.6968625977502759
+              },
+              {
+                "baseline": 58.731,
+                "current": 50.535,
+                "ratio": 0.8604484854676405
+              },
+              {
+                "baseline": 62.101,
+                "current": 61.996,
+                "ratio": 0.9983092059709184
+              },
+              {
+                "baseline": 68.237,
+                "current": 103.005,
+                "ratio": 1.5095182965253455
+              },
+              {
+                "baseline": 91.972,
+                "current": 84.155,
+                "ratio": 0.915006741182099
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 22.207,
+            "currentMean": 14.783,
+            "geometricPairedRatio": 0.6711460079256377,
+            "ratio95Interval": [
+              0.5555869715907766,
+              0.8107406886536824
+            ],
+            "bootstrap95Interval": [
+              0.590920862493037,
+              0.7622627538553486
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 23.679,
+                "current": 16.127,
+                "ratio": 0.6810676126525613
+              },
+              {
+                "baseline": 27.135,
+                "current": 14.271,
+                "ratio": 0.5259259259259259
+              },
+              {
+                "baseline": 18.175,
+                "current": 13.631,
+                "ratio": 0.7499862448418156
+              },
+              {
+                "baseline": 18.943,
+                "current": 16.511,
+                "ratio": 0.8716148445336007
+              },
+              {
+                "baseline": 25.087,
+                "current": 14.527,
+                "ratio": 0.5790648543070116
+              },
+              {
+                "baseline": 20.223,
+                "current": 13.631,
+                "ratio": 0.6740345151560105
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 479.6666666666667,
+            "currentMean": 412.1666666666667,
+            "geometricPairedRatio": 0.8592779617502089,
+            "ratio95Interval": [
+              0.857219815926951,
+              0.8613410490880599
+            ],
+            "bootstrap95Interval": [
+              0.8577393359913109,
+              0.8608205929211667
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 480,
+                "current": 412,
+                "ratio": 0.8583333333333333
+              },
+              {
+                "baseline": 480,
+                "current": 412,
+                "ratio": 0.8583333333333333
+              },
+              {
+                "baseline": 479,
+                "current": 413,
+                "ratio": 0.8622129436325678
+              },
+              {
+                "baseline": 481,
+                "current": 412,
+                "ratio": 0.8565488565488566
+              },
+              {
+                "baseline": 479,
+                "current": 412,
+                "ratio": 0.860125260960334
+              },
+              {
+                "baseline": 479,
+                "current": 412,
+                "ratio": 0.860125260960334
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 10.328745666666666,
+            "currentMean": 10.282324333333333,
+            "geometricPairedRatio": 0.9955012694700952,
+            "ratio95Interval": [
+              0.9789439846571987,
+              1.0123385944943544
+            ],
+            "bootstrap95Interval": [
+              0.9832988958955916,
+              1.005980828805325
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 10.371071,
+                "current": 10.272767,
+                "ratio": 0.9905213261002648
+              },
+              {
+                "baseline": 10.346495,
+                "current": 10.330111,
+                "ratio": 0.9984164685722072
+              },
+              {
+                "baseline": 10.297343,
+                "current": 10.256383,
+                "ratio": 0.9960222748722656
+              },
+              {
+                "baseline": 10.256383,
+                "current": 10.338303,
+                "ratio": 1.0079872212260403
+              },
+              {
+                "baseline": 10.239999,
+                "current": 10.371071,
+                "ratio": 1.0128000012500002
+              },
+              {
+                "baseline": 10.461183,
+                "current": 10.125311,
+                "ratio": 0.9678934973224348
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 71.20703125,
+            "current": 73.50390625
+          }
+        },
+        "invalid": {
+          "cpuMs": {
+            "baselineMean": 48.437666666666665,
+            "currentMean": 39.026666666666664,
+            "geometricPairedRatio": 0.8231432592976775,
+            "ratio95Interval": [
+              0.6120727494087989,
+              1.1070004766290664
+            ],
+            "bootstrap95Interval": [
+              0.6480575010352981,
+              0.9673816357308825
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 46.026,
+                "current": 36.514,
+                "ratio": 0.793334202407335
+              },
+              {
+                "baseline": 38.033,
+                "current": 38.678,
+                "ratio": 1.016958956695501
+              },
+              {
+                "baseline": 74.524,
+                "current": 35.973,
+                "ratio": 0.48270355858515374
+              },
+              {
+                "baseline": 45.732,
+                "current": 45.372,
+                "ratio": 0.9921280503804776
+              },
+              {
+                "baseline": 42.171,
+                "current": 41.589,
+                "ratio": 0.9861990467382798
+              },
+              {
+                "baseline": 44.14,
+                "current": 36.034,
+                "ratio": 0.8163570457634798
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 6.991,
+            "currentMean": 7.156333333333333,
+            "geometricPairedRatio": 1.020815096854703,
+            "ratio95Interval": [
+              0.83960166321487,
+              1.2411403021480114
+            ],
+            "bootstrap95Interval": [
+              0.8757978199805747,
+              1.149329016738031
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 7.807,
+                "current": 9.023,
+                "ratio": 1.155757653387985
+              },
+              {
+                "baseline": 6.143,
+                "current": 6.047,
+                "ratio": 0.984372456454501
+              },
+              {
+                "baseline": 8.447,
+                "current": 6.239,
+                "ratio": 0.738605422043329
+              },
+              {
+                "baseline": 6.879,
+                "current": 8.031,
+                "ratio": 1.167466201482774
+              },
+              {
+                "baseline": 5.919,
+                "current": 7.167,
+                "ratio": 1.2108464267612773
+              },
+              {
+                "baseline": 6.751,
+                "current": 6.431,
+                "ratio": 0.9525996148718708
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 224,
+            "currentMean": 192,
+            "geometricPairedRatio": 0.8571428571428571,
+            "ratio95Interval": [
+              0.8571428571428571,
+              0.8571428571428571
+            ],
+            "bootstrap95Interval": [
+              0.8571428571428571,
+              0.8571428571428571
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              },
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              },
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              },
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              },
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              },
+              {
+                "baseline": 224,
+                "current": 192,
+                "ratio": 0.8571428571428571
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 10.577236333333333,
+            "currentMean": 10.667348333333333,
+            "geometricPairedRatio": 1.0080324421442368,
+            "ratio95Interval": [
+              0.9414161563063047,
+              1.0793626151500426
+            ],
+            "bootstrap95Interval": [
+              0.9621876102483026,
+              1.0560616179136326
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 10.543103,
+                "current": 10.977279,
+                "ratio": 1.041181045087011
+              },
+              {
+                "baseline": 11.010047,
+                "current": 10.223615,
+                "ratio": 0.9285714220838477
+              },
+              {
+                "baseline": 10.436607,
+                "current": 11.362303,
+                "ratio": 1.0886970257670907
+              },
+              {
+                "baseline": 10.764287,
+                "current": 10.698751,
+                "ratio": 0.9939117193735173
+              },
+              {
+                "baseline": 10.067967,
+                "current": 10.706943,
+                "ratio": 1.0634662390132985
+              },
+              {
+                "baseline": 10.641407,
+                "current": 10.035199,
+                "ratio": 0.9430330970331274
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 71.78515625,
+            "current": 73.50390625
+          }
+        },
+        "isolatedPart": {
+          "responseBoundaries": {
+            "baselineMean": 26,
+            "currentMean": 24,
+            "geometricPairedRatio": 0.9230769230769231,
+            "ratio95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "bootstrap95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              }
+            ]
+          },
+          "upBytes": {
+            "baselineMean": 5672,
+            "currentMean": 5230,
+            "geometricPairedRatio": 0.9220733427362482,
+            "ratio95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "bootstrap95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              }
+            ]
+          },
+          "downBytes": {
+            "baselineMean": 2747,
+            "currentMean": 1651,
+            "geometricPairedRatio": 0.6010192937750273,
+            "ratio95Interval": [
+              0.6010192937750273,
+              0.6010192937750273
+            ],
+            "bootstrap95Interval": [
+              0.6010192937750273,
+              0.6010192937750273
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              }
+            ]
+          },
+          "milliseconds": {
+            "baselineMean": 12.91811099999965,
+            "currentMean": 9.663257000000158,
+            "geometricPairedRatio": 0.7547609715145815,
+            "ratio95Interval": [
+              0.6124340573557518,
+              0.9301640189332699
+            ],
+            "bootstrap95Interval": [
+              0.6568722953027728,
+              0.865826036294682
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 15.753248999999414,
+                "current": 8.9512909999994,
+                "ratio": 0.5682187211031663
+              },
+              {
+                "baseline": 14.466875000000073,
+                "current": 9.90137500000128,
+                "ratio": 0.6844169870826444
+              },
+              {
+                "baseline": 10.924208000000363,
+                "current": 10.231375999999727,
+                "ratio": 0.9365782855836677
+              },
+              {
+                "baseline": 10.710249999998268,
+                "current": 10.10254199999872,
+                "ratio": 0.9432592143040875
+              },
+              {
+                "baseline": 12.12854200000038,
+                "current": 9.553874999999607,
+                "ratio": 0.7877183424025169
+              },
+              {
+                "baseline": 13.525541999999405,
+                "current": 9.23908300000221,
+                "ratio": 0.6830841233573204
+              }
+            ]
+          }
+        }
+      },
+      "20": {
+        "normal": {
+          "cpuMs": {
+            "baselineMean": 416.6886666666667,
+            "currentMean": 388.2561666666667,
+            "geometricPairedRatio": 0.9348529885692454,
+            "ratio95Interval": [
+              0.7671642076500123,
+              1.1391956265972645
+            ],
+            "bootstrap95Interval": [
+              0.8044225131540073,
+              1.060898437036998
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 568.637,
+                "current": 387.975,
+                "ratio": 0.6822894043124174
+              },
+              {
+                "baseline": 427.222,
+                "current": 365.812,
+                "ratio": 0.8562574024745917
+              },
+              {
+                "baseline": 486.766,
+                "current": 566.384,
+                "ratio": 1.163565244902068
+              },
+              {
+                "baseline": 360.355,
+                "current": 331.506,
+                "ratio": 0.9199428341496578
+              },
+              {
+                "baseline": 349.438,
+                "current": 348.784,
+                "ratio": 0.9981284233540714
+              },
+              {
+                "baseline": 307.714,
+                "current": 329.076,
+                "ratio": 1.069421605776793
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 2531.327,
+            "currentMean": 2514.9429999999998,
+            "geometricPairedRatio": 0.9943833916940915,
+            "ratio95Interval": [
+              0.9335787193695495,
+              1.0591483172889649
+            ],
+            "bootstrap95Interval": [
+              0.9619996928233552,
+              1.0451486885063892
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 2375.679,
+                "current": 2310.143,
+                "ratio": 0.972413781491523
+              },
+              {
+                "baseline": 2342.911,
+                "current": 2326.527,
+                "ratio": 0.9930069900222416
+              },
+              {
+                "baseline": 2342.911,
+                "current": 2621.439,
+                "ratio": 1.1188811696218934
+              },
+              {
+                "baseline": 2719.743,
+                "current": 2572.287,
+                "ratio": 0.945783112595565
+              },
+              {
+                "baseline": 2703.359,
+                "current": 2605.055,
+                "ratio": 0.9636363501850845
+              },
+              {
+                "baseline": 2703.359,
+                "current": 2654.207,
+                "ratio": 0.9818181750925422
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 1549,
+            "currentMean": 1449,
+            "geometricPairedRatio": 0.9354492386018093,
+            "ratio95Interval": [
+              0.9314484158216272,
+              0.9394672459975285
+            ],
+            "bootstrap95Interval": [
+              0.9332187203318225,
+              0.9386716522650599
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 1548,
+                "current": 1450,
+                "ratio": 0.9366925064599483
+              },
+              {
+                "baseline": 1552,
+                "current": 1450,
+                "ratio": 0.9342783505154639
+              },
+              {
+                "baseline": 1536,
+                "current": 1448,
+                "ratio": 0.9427083333333334
+              },
+              {
+                "baseline": 1552,
+                "current": 1448,
+                "ratio": 0.9329896907216495
+              },
+              {
+                "baseline": 1554,
+                "current": 1450,
+                "ratio": 0.9330759330759331
+              },
+              {
+                "baseline": 1552,
+                "current": 1448,
+                "ratio": 0.9329896907216495
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 14.177620333333333,
+            "currentMean": 14.544895,
+            "geometricPairedRatio": 1.0264125948735727,
+            "ratio95Interval": [
+              0.9531944752074702,
+              1.105254848110396
+            ],
+            "bootstrap95Interval": [
+              0.9957438184396936,
+              1.0877551216744736
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 12.984319,
+                "current": 12.918783,
+                "ratio": 0.9949526809992885
+              },
+              {
+                "baseline": 12.967935,
+                "current": 12.976127,
+                "ratio": 1.000631711988069
+              },
+              {
+                "baseline": 12.959743,
+                "current": 15.359999,
+                "ratio": 1.1852086110040918
+              },
+              {
+                "baseline": 15.392767,
+                "current": 15.302655,
+                "ratio": 0.9941458218655554
+              },
+              {
+                "baseline": 15.384575,
+                "current": 15.335423,
+                "ratio": 0.996805111613418
+              },
+              {
+                "baseline": 15.376383,
+                "current": 15.376383,
+                "ratio": 1.0
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 71.36328125,
+            "current": 74.57421875
+          }
+        },
+        "duplicate": {
+          "cpuMs": {
+            "baselineMean": 113.65233333333333,
+            "currentMean": 88.96683333333334,
+            "geometricPairedRatio": 0.8521750459604698,
+            "ratio95Interval": [
+              0.5762576068036116,
+              1.260204291247158
+            ],
+            "bootstrap95Interval": [
+              0.6253241878170703,
+              1.0052361232947264
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 240.057,
+                "current": 95.727,
+                "ratio": 0.39876779264924583
+              },
+              {
+                "baseline": 99.728,
+                "current": 98.979,
+                "ratio": 0.9924895716348469
+              },
+              {
+                "baseline": 84.231,
+                "current": 86.76,
+                "ratio": 1.0300245752751365
+              },
+              {
+                "baseline": 80.329,
+                "current": 79.434,
+                "ratio": 0.9888583201583488
+              },
+              {
+                "baseline": 83.451,
+                "current": 83.017,
+                "ratio": 0.994799343327222
+              },
+              {
+                "baseline": 94.118,
+                "current": 89.884,
+                "ratio": 0.9550139186978049
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 642.3883333333333,
+            "currentMean": 634.1963333333333,
+            "geometricPairedRatio": 0.9873525259108308,
+            "ratio95Interval": [
+              0.9410877996342808,
+              1.035891667920191
+            ],
+            "bootstrap95Interval": [
+              0.9632796233311004,
+              1.0257130070596834
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 610.303,
+                "current": 581.631,
+                "ratio": 0.9530200572502511
+              },
+              {
+                "baseline": 598.015,
+                "current": 585.727,
+                "ratio": 0.97945202043427
+              },
+              {
+                "baseline": 606.207,
+                "current": 655.359,
+                "ratio": 1.0810812148325573
+              },
+              {
+                "baseline": 684.031,
+                "current": 663.551,
+                "ratio": 0.9700598364693999
+              },
+              {
+                "baseline": 671.743,
+                "current": 659.455,
+                "ratio": 0.9817072898415019
+              },
+              {
+                "baseline": 684.031,
+                "current": 659.455,
+                "ratio": 0.9640718037632798
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 454,
+            "currentMean": 412,
+            "geometricPairedRatio": 0.9074889867841409,
+            "ratio95Interval": [
+              0.9074889867841409,
+              0.9074889867841409
+            ],
+            "bootstrap95Interval": [
+              0.9074889867841409,
+              0.9074889867841409
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 14.165332333333334,
+            "currentMean": 14.636372333333334,
+            "geometricPairedRatio": 1.033745877475832,
+            "ratio95Interval": [
+              0.9602771905590816,
+              1.1128354913606895
+            ],
+            "bootstrap95Interval": [
+              1.0031026825011458,
+              1.095223483266538
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 13.000703,
+                "current": 13.033471,
+                "ratio": 1.0025204790848619
+              },
+              {
+                "baseline": 13.017087,
+                "current": 13.099007,
+                "ratio": 1.0062932666886224
+              },
+              {
+                "baseline": 12.943359,
+                "current": 15.441919,
+                "ratio": 1.1930379895976
+              },
+              {
+                "baseline": 15.351807,
+                "current": 15.433727,
+                "ratio": 1.0053361796432172
+              },
+              {
+                "baseline": 15.343615,
+                "current": 15.359999,
+                "ratio": 1.0010678057289628
+              },
+              {
+                "baseline": 15.335423,
+                "current": 15.450111,
+                "ratio": 1.0074786329663028
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 72.9921875,
+            "current": 74.984375
+          }
+        },
+        "invalid": {
+          "cpuMs": {
+            "baselineMean": 73.407,
+            "currentMean": 79.65566666666666,
+            "geometricPairedRatio": 1.0292327735375604,
+            "ratio95Interval": [
+              0.5060825898919521,
+              2.0931763377791412
+            ],
+            "bootstrap95Interval": [
+              0.6636521655629191,
+              1.7764955482853553
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 72.511,
+                "current": 57.355,
+                "ratio": 0.7909834369957661
+              },
+              {
+                "baseline": 65.169,
+                "current": 53.402,
+                "ratio": 0.8194386901747764
+              },
+              {
+                "baseline": 63.759,
+                "current": 53.707,
+                "ratio": 0.8423438259696671
+              },
+              {
+                "baseline": 55.92,
+                "current": 175.885,
+                "ratio": 3.145296852646638
+              },
+              {
+                "baseline": 50.493,
+                "current": 78.695,
+                "ratio": 1.5585328659418136
+              },
+              {
+                "baseline": 132.59,
+                "current": 58.89,
+                "ratio": 0.4441511426201071
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 243.36966666666666,
+            "currentMean": 327.3376666666667,
+            "geometricPairedRatio": 1.3451284753511237,
+            "ratio95Interval": [
+              1.275101263842398,
+              1.4190015071807476
+            ],
+            "bootstrap95Interval": [
+              1.301568486346756,
+              1.4016717324999557
+            ],
+            "judgment": "regression_over_10_percent",
+            "pairs": [
+              {
+                "baseline": 230.399,
+                "current": 303.103,
+                "ratio": 1.3155569251602655
+              },
+              {
+                "baseline": 235.519,
+                "current": 309.247,
+                "ratio": 1.3130448074253034
+              },
+              {
+                "baseline": 230.399,
+                "current": 337.919,
+                "ratio": 1.4666686921384207
+              },
+              {
+                "baseline": 246.783,
+                "current": 344.063,
+                "ratio": 1.3941924686870653
+              },
+              {
+                "baseline": 259.071,
+                "current": 331.775,
+                "ratio": 1.28063349429307
+              },
+              {
+                "baseline": 258.047,
+                "current": 337.919,
+                "ratio": 1.3095250090099864
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 226,
+            "currentMean": 194,
+            "geometricPairedRatio": 0.8584070796460177,
+            "ratio95Interval": [
+              0.8584070796460177,
+              0.8584070796460177
+            ],
+            "bootstrap95Interval": [
+              0.8584070796460177,
+              0.8584070796460177
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 14.113449666666666,
+            "currentMean": 14.595412333333334,
+            "geometricPairedRatio": 1.0346900718139276,
+            "ratio95Interval": [
+              0.967289326656423,
+              1.1067873026273731
+            ],
+            "bootstrap95Interval": [
+              0.9996618365722509,
+              1.0906514384623727
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 12.812287,
+                "current": 13.033471,
+                "ratio": 1.0172634284573863
+              },
+              {
+                "baseline": 13.025279,
+                "current": 13.000703,
+                "ratio": 0.9981132074023137
+              },
+              {
+                "baseline": 12.967935,
+                "current": 15.237119,
+                "ratio": 1.1749842206951222
+              },
+              {
+                "baseline": 14.942207,
+                "current": 15.466495,
+                "ratio": 1.0350877216464742
+              },
+              {
+                "baseline": 15.409151,
+                "current": 15.450111,
+                "ratio": 1.0026581607254028
+              },
+              {
+                "baseline": 15.523839,
+                "current": 15.384575,
+                "ratio": 0.9910290231688179
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 75.05078125,
+            "current": 74.984375
+          }
+        },
+        "isolatedPart": {
+          "responseBoundaries": {
+            "baselineMean": 26,
+            "currentMean": 24,
+            "geometricPairedRatio": 0.9230769230769231,
+            "ratio95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "bootstrap95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              }
+            ]
+          },
+          "upBytes": {
+            "baselineMean": 5672,
+            "currentMean": 5230,
+            "geometricPairedRatio": 0.9220733427362482,
+            "ratio95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "bootstrap95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              }
+            ]
+          },
+          "downBytes": {
+            "baselineMean": 2746.3333333333335,
+            "currentMean": 1650.6666666666667,
+            "geometricPairedRatio": 0.6010437901120167,
+            "ratio95Interval": [
+              0.6005961456345038,
+              0.6014917682339922
+            ],
+            "bootstrap95Interval": [
+              0.6007280671392895,
+              0.601311192419291
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2745,
+                "current": 1651,
+                "ratio": 0.6014571948998179
+              },
+              {
+                "baseline": 2745,
+                "current": 1651,
+                "ratio": 0.6014571948998179
+              },
+              {
+                "baseline": 2747,
+                "current": 1649,
+                "ratio": 0.600291226792865
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              }
+            ]
+          },
+          "milliseconds": {
+            "baselineMean": 640.9633405000035,
+            "currentMean": 595.3080278333327,
+            "geometricPairedRatio": 0.9288741977026161,
+            "ratio95Interval": [
+              0.8711566885899527,
+              0.9904157156322956
+            ],
+            "bootstrap95Interval": [
+              0.8863160202495154,
+              0.967119597720057
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 618.9688750000059,
+                "current": 567.4147090000042,
+                "ratio": 0.9167095986853924
+              },
+              {
+                "baseline": 615.7090420000022,
+                "current": 562.2474989999973,
+                "ratio": 0.9131707684097894
+              },
+              {
+                "baseline": 606.7701250000027,
+                "current": 583.8123339999947,
+                "ratio": 0.9621639397621827
+              },
+              {
+                "baseline": 622.801750000006,
+                "current": 618.9084580000053,
+                "ratio": 0.9937487458890399
+              },
+              {
+                "baseline": 699.9720420000012,
+                "current": 584.6614169999957,
+                "ratio": 0.835263956156687
+              },
+              {
+                "baseline": 681.5582090000025,
+                "current": 654.8037499999991,
+                "ratio": 0.9607451591856576
+              }
+            ]
+          }
+        }
+      },
+      "50": {
+        "normal": {
+          "cpuMs": {
+            "baselineMean": 470.0985,
+            "currentMean": 469.1745,
+            "geometricPairedRatio": 0.998360042962117,
+            "ratio95Interval": [
+              0.8947192801838384,
+              1.1140061441154179
+            ],
+            "bootstrap95Interval": [
+              0.9251337703240582,
+              1.0809337556884717
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 529.491,
+                "current": 457.3,
+                "ratio": 0.8636596278312568
+              },
+              {
+                "baseline": 439.087,
+                "current": 465.841,
+                "ratio": 1.0609309772323026
+              },
+              {
+                "baseline": 437.342,
+                "current": 510.818,
+                "ratio": 1.1680058169578957
+              },
+              {
+                "baseline": 491.363,
+                "current": 481.813,
+                "ratio": 0.9805642671507623
+              },
+              {
+                "baseline": 482.17,
+                "current": 488.031,
+                "ratio": 1.012155463840554
+              },
+              {
+                "baseline": 441.138,
+                "current": 411.244,
+                "ratio": 0.932234357502641
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 5570.559,
+            "currentMean": 5472.255,
+            "geometricPairedRatio": 0.9823872008419675,
+            "ratio95Interval": [
+              0.9729814759026562,
+              0.9918838500833596
+            ],
+            "bootstrap95Interval": [
+              0.9775633038214789,
+              0.9892013742354933
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 5570.559,
+                "current": 5472.255,
+                "ratio": 0.9823529380085553
+              },
+              {
+                "baseline": 5472.255,
+                "current": 5472.255,
+                "ratio": 1.0
+              },
+              {
+                "baseline": 5603.327,
+                "current": 5472.255,
+                "ratio": 0.9766081829598736
+              },
+              {
+                "baseline": 5570.559,
+                "current": 5472.255,
+                "ratio": 0.9823529380085553
+              },
+              {
+                "baseline": 5603.327,
+                "current": 5472.255,
+                "ratio": 0.9766081829598736
+              },
+              {
+                "baseline": 5603.327,
+                "current": 5472.255,
+                "ratio": 0.9766081829598736
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 1550.6666666666667,
+            "currentMean": 1453.6666666666667,
+            "geometricPairedRatio": 0.9374570285024076,
+            "ratio95Interval": [
+              0.9328187777439404,
+              0.9421183420149828
+            ],
+            "bootstrap95Interval": [
+              0.9356499356499357,
+              0.9410816914814195
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 1554,
+                "current": 1454,
+                "ratio": 0.9356499356499357
+              },
+              {
+                "baseline": 1534,
+                "current": 1452,
+                "ratio": 0.9465449804432855
+              },
+              {
+                "baseline": 1554,
+                "current": 1454,
+                "ratio": 0.9356499356499357
+              },
+              {
+                "baseline": 1554,
+                "current": 1454,
+                "ratio": 0.9356499356499357
+              },
+              {
+                "baseline": 1554,
+                "current": 1454,
+                "ratio": 0.9356499356499357
+              },
+              {
+                "baseline": 1554,
+                "current": 1454,
+                "ratio": 0.9356499356499357
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 15.055529666666667,
+            "currentMean": 15.069183,
+            "geometricPairedRatio": 1.0009068983392053,
+            "ratio95Interval": [
+              0.9994779012677263,
+              1.0023379385100142
+            ],
+            "bootstrap95Interval": [
+              0.9999093505952975,
+              1.0018145201321325
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 15.056895,
+                "current": 15.081471,
+                "ratio": 1.001632209031145
+              },
+              {
+                "baseline": 15.048703,
+                "current": 15.081471,
+                "ratio": 1.002177463400002
+              },
+              {
+                "baseline": 15.048703,
+                "current": 15.073279,
+                "ratio": 1.0016330975500014
+              },
+              {
+                "baseline": 15.040511,
+                "current": 15.065087,
+                "ratio": 1.0016339870367437
+              },
+              {
+                "baseline": 15.073279,
+                "current": 15.056895,
+                "ratio": 0.9989130434061495
+              },
+              {
+                "baseline": 15.065087,
+                "current": 15.056895,
+                "ratio": 0.9994562261738018
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 72.7109375,
+            "current": 74.0703125
+          }
+        },
+        "duplicate": {
+          "cpuMs": {
+            "baselineMean": 111.42233333333334,
+            "currentMean": 99.8325,
+            "geometricPairedRatio": 0.9141027306805577,
+            "ratio95Interval": [
+              0.7103597113550595,
+              1.176282647904847
+            ],
+            "bootstrap95Interval": [
+              0.7592609488204186,
+              1.0715314989556668
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 100.572,
+                "current": 90.436,
+                "ratio": 0.8992164817245357
+              },
+              {
+                "baseline": 97.194,
+                "current": 107.315,
+                "ratio": 1.104131942300965
+              },
+              {
+                "baseline": 99.934,
+                "current": 95.168,
+                "ratio": 0.9523085236255929
+              },
+              {
+                "baseline": 90.296,
+                "current": 108.728,
+                "ratio": 1.2041286435722511
+              },
+              {
+                "baseline": 114.121,
+                "current": 96.515,
+                "ratio": 0.8457251513744184
+              },
+              {
+                "baseline": 166.417,
+                "current": 100.833,
+                "ratio": 0.6059056466586947
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 1432.2336666666665,
+            "currentMean": 1377.6203333333333,
+            "geometricPairedRatio": 0.9618565162302914,
+            "ratio95Interval": [
+              0.9569442431312288,
+              0.9667940054557617
+            ],
+            "bootstrap95Interval": [
+              0.9580797247313875,
+              0.964817933726815
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 1441.791,
+                "current": 1392.639,
+                "ratio": 0.9659090672642567
+              },
+              {
+                "baseline": 1433.599,
+                "current": 1368.063,
+                "ratio": 0.9542856823979371
+              },
+              {
+                "baseline": 1433.599,
+                "current": 1384.447,
+                "ratio": 0.9657142617984527
+              },
+              {
+                "baseline": 1425.407,
+                "current": 1368.063,
+                "ratio": 0.9597700867190916
+              },
+              {
+                "baseline": 1425.407,
+                "current": 1376.255,
+                "ratio": 0.9655172171877928
+              },
+              {
+                "baseline": 1433.599,
+                "current": 1376.255,
+                "ratio": 0.959999972098195
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 454,
+            "currentMean": 412,
+            "geometricPairedRatio": 0.9074889867841409,
+            "ratio95Interval": [
+              0.9074889867841409,
+              0.9074889867841409
+            ],
+            "bootstrap95Interval": [
+              0.9074889867841409,
+              0.9074889867841409
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              },
+              {
+                "baseline": 454,
+                "current": 412,
+                "ratio": 0.9074889867841409
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 15.058260333333333,
+            "currentMean": 15.062356333333334,
+            "geometricPairedRatio": 1.0002712568627452,
+            "ratio95Interval": [
+              0.9981432804053517,
+              1.0024037700273352
+            ],
+            "bootstrap95Interval": [
+              0.9987305179017449,
+              1.0016337897503929
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 15.089663,
+                "current": 15.081471,
+                "ratio": 0.9994571117989846
+              },
+              {
+                "baseline": 15.048703,
+                "current": 15.040511,
+                "ratio": 0.9994556341499996
+              },
+              {
+                "baseline": 15.065087,
+                "current": 15.081471,
+                "ratio": 1.0010875476523966
+              },
+              {
+                "baseline": 15.056895,
+                "current": 15.015935,
+                "ratio": 0.9972796516147585
+              },
+              {
+                "baseline": 15.032319,
+                "current": 15.081471,
+                "ratio": 1.0032697549859075
+              },
+              {
+                "baseline": 15.056895,
+                "current": 15.073279,
+                "ratio": 1.0010881393540965
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 72.7109375,
+            "current": 74.0703125
+          }
+        },
+        "invalid": {
+          "cpuMs": {
+            "baselineMean": 72.30066666666667,
+            "currentMean": 85.23,
+            "geometricPairedRatio": 1.1589753107159981,
+            "ratio95Interval": [
+              0.6329082200184305,
+              2.122304195717555
+            ],
+            "bootstrap95Interval": [
+              0.7647027392903438,
+              1.769678718484709
+            ],
+            "judgment": "inconclusive",
+            "pairs": [
+              {
+                "baseline": 63.826,
+                "current": 113.281,
+                "ratio": 1.7748409738977846
+              },
+              {
+                "baseline": 57.986,
+                "current": 63.255,
+                "ratio": 1.0908667609422966
+              },
+              {
+                "baseline": 60.448,
+                "current": 64.017,
+                "ratio": 1.0590424827951297
+              },
+              {
+                "baseline": 58.704,
+                "current": 148.825,
+                "ratio": 2.5351764786045243
+              },
+              {
+                "baseline": 132.702,
+                "current": 61.688,
+                "ratio": 0.4648611173908457
+              },
+              {
+                "baseline": 60.138,
+                "current": 60.314,
+                "ratio": 1.002926602148392
+              }
+            ]
+          },
+          "p95Ms": {
+            "baselineMean": 552.959,
+            "currentMean": 711.3376666666667,
+            "geometricPairedRatio": 1.2863703059205007,
+            "ratio95Interval": [
+              1.2716452488777212,
+              1.3012658722347177
+            ],
+            "bootstrap95Interval": [
+              1.2761594668393506,
+              1.2966628442229866
+            ],
+            "judgment": "regression_over_10_percent",
+            "pairs": [
+              {
+                "baseline": 552.959,
+                "current": 712.703,
+                "ratio": 1.2888894113306775
+              },
+              {
+                "baseline": 552.959,
+                "current": 700.415,
+                "ratio": 1.2666671489206254
+              },
+              {
+                "baseline": 557.055,
+                "current": 716.799,
+                "ratio": 1.2867652206694133
+              },
+              {
+                "baseline": 552.959,
+                "current": 704.511,
+                "ratio": 1.274074569723976
+              },
+              {
+                "baseline": 548.863,
+                "current": 712.703,
+                "ratio": 1.2985080065517258
+              },
+              {
+                "baseline": 552.959,
+                "current": 720.895,
+                "ratio": 1.3037042529373788
+              }
+            ]
+          },
+          "wireBoundaries": {
+            "baselineMean": 226,
+            "currentMean": 194,
+            "geometricPairedRatio": 0.8584070796460177,
+            "ratio95Interval": [
+              0.8584070796460177,
+              0.8584070796460177
+            ],
+            "bootstrap95Interval": [
+              0.8584070796460177,
+              0.8584070796460177
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              },
+              {
+                "baseline": 226,
+                "current": 194,
+                "ratio": 0.8584070796460177
+              }
+            ]
+          },
+          "loopP95Ms": {
+            "baselineMean": 15.125161666666667,
+            "currentMean": 15.045972333333333,
+            "geometricPairedRatio": 0.9947687793152633,
+            "ratio95Interval": [
+              0.987354305507744,
+              1.0022389316381197
+            ],
+            "bootstrap95Interval": [
+              0.9895672512365071,
+              0.9996539381123634
+            ],
+            "judgment": "within_10_percent",
+            "pairs": [
+              {
+                "baseline": 15.097855,
+                "current": 15.032319,
+                "ratio": 0.995659250933328
+              },
+              {
+                "baseline": 15.130623,
+                "current": 14.983167,
+                "ratio": 0.990254466058668
+              },
+              {
+                "baseline": 15.155199,
+                "current": 15.171583,
+                "ratio": 1.0010810811524151
+              },
+              {
+                "baseline": 15.040511,
+                "current": 14.958591,
+                "ratio": 0.9945533765441879
+              },
+              {
+                "baseline": 15.286271,
+                "current": 15.040511,
+                "ratio": 0.9839228285302545
+              },
+              {
+                "baseline": 15.040511,
+                "current": 15.089663,
+                "ratio": 1.0032679740734873
+              }
+            ]
+          },
+          "cgroupPeakMiB": {
+            "baseline": 72.7109375,
+            "current": 74.0703125
+          }
+        },
+        "isolatedPart": {
+          "responseBoundaries": {
+            "baselineMean": 26,
+            "currentMean": 24,
+            "geometricPairedRatio": 0.9230769230769231,
+            "ratio95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "bootstrap95Interval": [
+              0.9230769230769231,
+              0.9230769230769231
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              },
+              {
+                "baseline": 26,
+                "current": 24,
+                "ratio": 0.9230769230769231
+              }
+            ]
+          },
+          "upBytes": {
+            "baselineMean": 5672,
+            "currentMean": 5230,
+            "geometricPairedRatio": 0.9220733427362482,
+            "ratio95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "bootstrap95Interval": [
+              0.9220733427362482,
+              0.9220733427362482
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              },
+              {
+                "baseline": 5672,
+                "current": 5230,
+                "ratio": 0.9220733427362482
+              }
+            ]
+          },
+          "downBytes": {
+            "baselineMean": 2747,
+            "currentMean": 1650.6666666666667,
+            "geometricPairedRatio": 0.6008978879846404,
+            "ratio95Interval": [
+              0.6005859169994242,
+              0.6012100210214346
+            ],
+            "bootstrap95Interval": [
+              0.6006551499707569,
+              0.6010192937750273
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1651,
+                "ratio": 0.6010192937750273
+              },
+              {
+                "baseline": 2747,
+                "current": 1649,
+                "ratio": 0.600291226792865
+              }
+            ]
+          },
+          "milliseconds": {
+            "baselineMean": 1411.4700838333374,
+            "currentMean": 1322.6473476666724,
+            "geometricPairedRatio": 0.9370603467162206,
+            "ratio95Interval": [
+              0.9290579740970376,
+              0.9451316471841728
+            ],
+            "bootstrap95Interval": [
+              0.9315676198132045,
+              0.9424534889753351
+            ],
+            "judgment": "improvement_supported",
+            "pairs": [
+              {
+                "baseline": 1409.2623760000133,
+                "current": 1323.0681660000118,
+                "ratio": 0.9388373581329467
+              },
+              {
+                "baseline": 1410.9072079999896,
+                "current": 1326.511249999996,
+                "ratio": 0.9401831973630442
+              },
+              {
+                "baseline": 1438.914168000003,
+                "current": 1335.744292000003,
+                "ratio": 0.9283001875341881
+              },
+              {
+                "baseline": 1395.208375000002,
+                "current": 1293.2794180000055,
+                "ratio": 0.9269435599539056
+              },
+              {
+                "baseline": 1396.359626000005,
+                "current": 1317.7870840000105,
+                "ratio": 0.9437304398258259
+              },
+              {
+                "baseline": 1418.1687500000116,
+                "current": 1339.4938760000077,
+                "ratio": 0.9445236161070372
+              }
+            ]
+          }
+        }
+      }
+    },
+    "rawFiles": [
+      {
+        "name": "0-1-baseline.json",
+        "sha256": "89216787dd1534fab9c5a7730d35f35297442827e8846ea733a73b7b71a20d89"
+      },
+      {
+        "name": "0-1-current.json",
+        "sha256": "fc747c3f2e120dbd78771646e27bbe29d8543c9342581041c7f8fe7234b2c76e"
+      },
+      {
+        "name": "0-2-baseline.json",
+        "sha256": "88809df9f08eb9a7b37e41b524e2b111d16a903d2b686c6122fbec5210bb52b1"
+      },
+      {
+        "name": "0-2-current.json",
+        "sha256": "c6551ed71457db6ca083985d431e8d9f5270944525a7373f4edada78ac745fa7"
+      },
+      {
+        "name": "0-3-baseline.json",
+        "sha256": "c8d67b7c0e8fdc98e909b653568647b8feb8d93bad1a56e8698d2510025bc8b6"
+      },
+      {
+        "name": "0-3-current.json",
+        "sha256": "b8eda5546cb20153c264479beb3d4c109a71b47bc4d478488b1027bd29c33744"
+      },
+      {
+        "name": "0-4-baseline.json",
+        "sha256": "260327d28628963cc893d5031d13ab455bf6382d92a4c39ecd279c5ee13ffeb5"
+      },
+      {
+        "name": "0-4-current.json",
+        "sha256": "4ad47ffe4de968a60ed79f7e7586e7b630394a8b775708c99a6bf9ddf6ac6a3d"
+      },
+      {
+        "name": "0-5-baseline.json",
+        "sha256": "54cbbda05eda34f3ddeda220749eb911a0ca71823b9684250048b9bc4eab5982"
+      },
+      {
+        "name": "0-5-current.json",
+        "sha256": "bdae57acf797cfdab5049827238a3288daea297a208f952e61f7e1e031299b30"
+      },
+      {
+        "name": "0-6-baseline.json",
+        "sha256": "f7b71d6e11bc7d2c4b4e6de124d615d2611c47abdfc84803304369588826111c"
+      },
+      {
+        "name": "0-6-current.json",
+        "sha256": "56bf74f400e676392af5c7e40654321e6c864a1bc0c4b1d011bbbf82ab933b50"
+      },
+      {
+        "name": "20-1-baseline.json",
+        "sha256": "3e3d52f5ea198a5a32e904681c5623b165ce911dceeddbd55881644279280426"
+      },
+      {
+        "name": "20-1-current.json",
+        "sha256": "90fbad81e5d9e4fb20ff3a1727068a06a0be0e2c6f57f051e43a14882b1b3c26"
+      },
+      {
+        "name": "20-2-baseline.json",
+        "sha256": "c76cfd6af6d877edaac795bf601d5872e30cfbad8b3af4582d9eff27976cca6b"
+      },
+      {
+        "name": "20-2-current.json",
+        "sha256": "8c16289d6dac63455c50855e1a25d0f935afae32ce736fd04bb9410f11712838"
+      },
+      {
+        "name": "20-3-baseline.json",
+        "sha256": "fddd8ead45011aeb25ae7d5b62a3077141e9b4c1c3a8492c811bc57eff4bfca1"
+      },
+      {
+        "name": "20-3-current.json",
+        "sha256": "cd230236112ca82f1bc4e50ef12de2faf4ea0d91b8801c6722bac0b9e0cae4c1"
+      },
+      {
+        "name": "20-4-baseline.json",
+        "sha256": "3e34a80c51b4d5da0019b897b3c6f64baaecbd5449e70aa0ad47b1f54dfc620f"
+      },
+      {
+        "name": "20-4-current.json",
+        "sha256": "26a2db5be3d25f3607ca9c15b55aeeec5a3e92bc4f943d5cdb8e3d75d96b6ca4"
+      },
+      {
+        "name": "20-5-baseline.json",
+        "sha256": "ce50de5223a7e24b506579f4f1076ab9a35fb5667909c51b72e1fa3c474164ba"
+      },
+      {
+        "name": "20-5-current.json",
+        "sha256": "4043e7fa9d3ca94a4c5a907130b706c3cf2c30b70f85dfeda11ae1dedf5e50e3"
+      },
+      {
+        "name": "20-6-baseline.json",
+        "sha256": "9d635a33575700e7754ca02335cb0001417ad62e77f51d4a39b7575550875ce7"
+      },
+      {
+        "name": "20-6-current.json",
+        "sha256": "ff7b3332ea7a7ad9274263348bdb61103068733e6767bf2927c2e53dbef9d8f8"
+      },
+      {
+        "name": "50-1-baseline.json",
+        "sha256": "65ce2a3ca990eb7c4afdd5fa3b1817a2b0668cfd1042e1ab9abfb2ec461c9f1f"
+      },
+      {
+        "name": "50-1-current.json",
+        "sha256": "1e9b7dd45acaf5838019cd5450b9c8feb13773e871c1bd5bd00aa17065b73154"
+      },
+      {
+        "name": "50-2-baseline.json",
+        "sha256": "b62499c2e24e0811eddc9a43fd8d13c3041f16e919ca2050d43227472b15c1bd"
+      },
+      {
+        "name": "50-2-current.json",
+        "sha256": "5bfb870dc85242dd03ced5cdbbe3f8165da3a035ffefb946200c557c7863c659"
+      },
+      {
+        "name": "50-3-baseline.json",
+        "sha256": "daf634f18a73e404a461eacc33d495a5bccb93b40d4e1b898032431531bda26b"
+      },
+      {
+        "name": "50-3-current.json",
+        "sha256": "f02a182d34e0862e6fa031b75b908c347be62c68c652dae958a60ce80b04bf5f"
+      },
+      {
+        "name": "50-4-baseline.json",
+        "sha256": "e860d2c81c510f988282c7df3d55d48ee57eaf2b75417d4e6b8dd29f2c900371"
+      },
+      {
+        "name": "50-4-current.json",
+        "sha256": "a11da788ef2c37df3410b0123ded00a346ce773eaf666bcf20261a3997f07bb6"
+      },
+      {
+        "name": "50-5-baseline.json",
+        "sha256": "e70b168c0361595531ee7098f9a1a838360df496d26a730a66d09179c459250b"
+      },
+      {
+        "name": "50-5-current.json",
+        "sha256": "5978e52b6fd78c29d25d300ce8353b3425a411305568c6311eb8df6cbf5428ff"
+      },
+      {
+        "name": "50-6-baseline.json",
+        "sha256": "37da19e109866eefbd33fa32f50196e3c3dff62a49fe3a6f3690c470578556de"
+      },
+      {
+        "name": "50-6-current.json",
+        "sha256": "5dabe9a939661c8b62dfcdbecb9764ae7f04a38a85c209ac8557f5f67bfdbfa0"
+      },
+      {
+        "name": "manifest.json",
+        "sha256": "5cd54a23dfbef7a780324d99e0ff8d6a7f3d9b8ece10e10b2d82b4e8992988e3"
+      }
+    ]
+  },
+  "reproduction": {
+    "artifactDirectory": "artifacts/notification-performance/notification-reliability-20261101",
+    "harnessDirectory": "harness",
+    "lockfileSha256": "c5e8cc9cd2fa31b3d3e86cd6536262615cbd2d9b0a36bad057d846d448306c54",
+    "schemaSource": "0f102e45e540e4f25e8ec10766d981f8ea4f5791",
+    "nodeBaseDigest": "sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9",
+    "postgresImageObservedAfterRuns": "sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873"
+  },
+  "priorSeries": [
+    {
+      "directory": "benchmark",
+      "runs": 36,
+      "role": "exploratory",
+      "limits": [
+        "diagnostic async context labeling corrected afterward",
+        "TCP_NODELAY not explicitly set"
+      ]
+    },
+    {
+      "directory": "benchmark-corrected",
+      "runs": 36,
+      "role": "detailed diagnostics and wire",
+      "limits": [
+        "not the primary timing baseline",
+        "periodic full process.memoryUsage cost included"
+      ]
+    },
+    {
+      "directory": "profile-warmed",
+      "runs": 2,
+      "role": "separate paired CPU profile at RTT20",
+      "limits": [
+        "profile overhead",
+        "periodic full memory sampler still present"
+      ]
+    },
+    {
+      "directory": "benchmark-steady",
+      "runs": 16,
+      "role": "interrupted pre-fix steady comparison",
+      "limits": [
+        "stopped because queue deadline defect required a code fix; no results selected by performance",
+        "not pooled with final results"
+      ]
+    }
+  ],
+  "limitations": [
+    "Each phase has a separate paired interval; there is no simultaneous confidence guarantee across all metrics.",
+    "Cgroup peaks include startup and warmup. CPU includes the in-container TCP proxy, real Pino and bounded measurement.",
+    "Twenty normal samples per run give a coarse p95. No cold-start, real Discord/Gateway, Neon/TLS or production x64 SLA claim.",
+    "All four changes are compared together; isolated wire measurement establishes SQL mechanism, not each candidate's separate total CPU effect.",
+    "Existing uncertain-delivery semantics allow same-nonce retry after SDK settlement."
+  ],
+  "artifacts": [
+    {
+      "path": "README.txt",
+      "bytes": 4036,
+      "sha256": "fefebfaf8b2fb57170c0471ec940cb661e9f9479b78f1a1359452d9858d12224"
+    },
+    {
+      "path": "benchmark/0-1-baseline.json",
+      "bytes": 28948,
+      "sha256": "7af33e12f82ac37d3302a316a3660030c592c3ef7d31ef6ab8a4d7d0bdc0c016"
+    },
+    {
+      "path": "benchmark/0-1-current.json",
+      "bytes": 31371,
+      "sha256": "227272ccad664034cf8abc9d81c7acb4fbdd279c70acad0c1a62c3632eca3fc2"
+    },
+    {
+      "path": "benchmark/0-2-baseline.json",
+      "bytes": 28914,
+      "sha256": "2f43c28d7dbf923a12a8ec3409202047a933e95d669b628d69fb12e4a5f727c0"
+    },
+    {
+      "path": "benchmark/0-2-current.json",
+      "bytes": 31350,
+      "sha256": "8e27e122bf1a9a66ac76877079298d9fb1ee2bcdd8d19419be61478c3d3e8729"
+    },
+    {
+      "path": "benchmark/0-3-baseline.json",
+      "bytes": 28976,
+      "sha256": "1d8fe2738c25c1d6d2b31d3ddfa4885999ba1a7c1e901ff5c0db62dcd1dae3f5"
+    },
+    {
+      "path": "benchmark/0-3-current.json",
+      "bytes": 31381,
+      "sha256": "664b790672f414e1890fee0480ab684a356728b32b9ede2fbd40403959b2fbbb"
+    },
+    {
+      "path": "benchmark/0-4-baseline.json",
+      "bytes": 28959,
+      "sha256": "4fde1edf34c63aa29a641d4b0b429beb323b8b29af97adca7de09bc1a28144ae"
+    },
+    {
+      "path": "benchmark/0-4-current.json",
+      "bytes": 31347,
+      "sha256": "62e0f0d9904217b8dd95e5802a4abc94c51adb49af00c0dde71f1678b6f12855"
+    },
+    {
+      "path": "benchmark/0-5-baseline.json",
+      "bytes": 28944,
+      "sha256": "f753c95beb653fcb994204f376ede5117f516094171f64d6d7f26d2e6e1e2e21"
+    },
+    {
+      "path": "benchmark/0-5-current.json",
+      "bytes": 31105,
+      "sha256": "59414b03861593c4cc9bc8912ed311bab98ca02f16cf032f9e33c28b21efc51a"
+    },
+    {
+      "path": "benchmark/0-6-baseline.json",
+      "bytes": 28915,
+      "sha256": "3b982f27fc0c7e0f2b162f5b71a8fcf64cb0fe02e25c06d6f9a9d63a466be8ca"
+    },
+    {
+      "path": "benchmark/0-6-current.json",
+      "bytes": 31094,
+      "sha256": "a551a6ff01081587f62843e675201b43f9cd50c72789a8d715aa0b7d73dd1ed7"
+    },
+    {
+      "path": "benchmark/20-1-baseline.json",
+      "bytes": 29204,
+      "sha256": "b5eb040da0560dab41b8e972b7f3ac41d1ab8d7e8eaba7e135b8b778881dd8c8"
+    },
+    {
+      "path": "benchmark/20-1-current.json",
+      "bytes": 31048,
+      "sha256": "2f80aec5144c5e90df1d34b0f1433901b7813bb142c8919852fa4d13bb0f40d5"
+    },
+    {
+      "path": "benchmark/20-2-baseline.json",
+      "bytes": 29229,
+      "sha256": "9f91cfb59371ba1b961a36b4556e3685d599d4a4f145fe30ed74697335d4db6b"
+    },
+    {
+      "path": "benchmark/20-2-current.json",
+      "bytes": 31074,
+      "sha256": "ca18dd6bdf88d1f1b101d3a358f2a7bf7c78806e9082f68b56bde5d25463625d"
+    },
+    {
+      "path": "benchmark/20-3-baseline.json",
+      "bytes": 29229,
+      "sha256": "758b7091c76bdae11ba80ffdf0ae508ae4bd65d3de0809ae837acc42445d89fa"
+    },
+    {
+      "path": "benchmark/20-3-current.json",
+      "bytes": 31046,
+      "sha256": "1f86a2f23d2a0e2251fe99e5bbd1edb328f7b8833ee7b156e1420a88a0f8c32d"
+    },
+    {
+      "path": "benchmark/20-4-baseline.json",
+      "bytes": 29241,
+      "sha256": "cae5ff8982d433d17af676c0c841d02ad5a556a220c79e87771b4e2e6722a842"
+    },
+    {
+      "path": "benchmark/20-4-current.json",
+      "bytes": 31091,
+      "sha256": "514f253d81bd3fee8c228d280c6ffe222155be56eb52562f40c60e032db10e8c"
+    },
+    {
+      "path": "benchmark/20-5-baseline.json",
+      "bytes": 29205,
+      "sha256": "7875a7abdd8fe0b5e31076e67dd87da920ba3f6fc0855a80929f3d4723e35f84"
+    },
+    {
+      "path": "benchmark/20-5-current.json",
+      "bytes": 31062,
+      "sha256": "aabadaaaaa871b5b7d9d085beea9aac9aebcced1b3aae5cb505d4a80f0c96fea"
+    },
+    {
+      "path": "benchmark/20-6-baseline.json",
+      "bytes": 29213,
+      "sha256": "f036df6d001420d0230eee3fd5a31ff243c1baf48198cf80a858fdd8d9e3ffc8"
+    },
+    {
+      "path": "benchmark/20-6-current.json",
+      "bytes": 31057,
+      "sha256": "e6f64719fd224b2e738f50ef8f1ccde1de93b03f28229539d65a8a0ed0623581"
+    },
+    {
+      "path": "benchmark/50-1-baseline.json",
+      "bytes": 29352,
+      "sha256": "ea342f62e358f77ea5b3a668b522bf933786b1a2a60cd63c999dc273960c064a"
+    },
+    {
+      "path": "benchmark/50-1-current.json",
+      "bytes": 31171,
+      "sha256": "5689e7e6a134c6ee9e79268e65bba98d03d82f11be8a308d83fd786a1ef4436d"
+    },
+    {
+      "path": "benchmark/50-2-baseline.json",
+      "bytes": 29348,
+      "sha256": "e1ed703e1306af0deccf751d978af42e70cc17eca76520229a98d1f3e687a54a"
+    },
+    {
+      "path": "benchmark/50-2-current.json",
+      "bytes": 31158,
+      "sha256": "59ec5d9cfb0fec62415696a4d30444b06af25cec26ed6d5233f35d0e3bb4cd1a"
+    },
+    {
+      "path": "benchmark/50-3-baseline.json",
+      "bytes": 29353,
+      "sha256": "d37666fd20389cbdeecf6341c2d90280996c7dbd09a890c5cab2d0917bc3f9a7"
+    },
+    {
+      "path": "benchmark/50-3-current.json",
+      "bytes": 31161,
+      "sha256": "98f2cc2932fe906b5ef5ea9d969c547a16505d0424ed5025e7ef9092ce914843"
+    },
+    {
+      "path": "benchmark/50-4-baseline.json",
+      "bytes": 29316,
+      "sha256": "ea799c1ebcdab7521f9a0ebbfa29d918d58a986cb9abcdb88314c607b618830c"
+    },
+    {
+      "path": "benchmark/50-4-current.json",
+      "bytes": 31146,
+      "sha256": "cecb2514f30b633db870d8b7d15c10c93dcb502355399c086da352ac47609ee8"
+    },
+    {
+      "path": "benchmark/50-5-baseline.json",
+      "bytes": 29337,
+      "sha256": "fda4cf4f089c433b98dfe8c1c287c7bdf7b5ec7175cde6af3bf186598b07ba75"
+    },
+    {
+      "path": "benchmark/50-5-current.json",
+      "bytes": 31164,
+      "sha256": "14d281e41ab462edf1ec8dfa1b1e296ec0d5703dae5a7ea8d5af07d13e3f0341"
+    },
+    {
+      "path": "benchmark/50-6-baseline.json",
+      "bytes": 29321,
+      "sha256": "c936b480569cd694a8911d1fb4877e1648bbff4671eb09409f0057ac8feac922"
+    },
+    {
+      "path": "benchmark/50-6-current.json",
+      "bytes": 31163,
+      "sha256": "dca0e7eedd741dd2c2154d1b17c56e658e52fd7bc41599caa49cc55efe221d59"
+    },
+    {
+      "path": "benchmark/manifest.json",
+      "bytes": 1023,
+      "sha256": "1316f113674ad73dac3db66f0164861299472f09bd719d072191023dd304b8f1"
+    },
+    {
+      "path": "benchmark/results.json",
+      "bytes": 1183171,
+      "sha256": "ec388d1e64e3fd01e93af442b68f0c012121e7e8456ce8cdc122f32f5adb9c5d"
+    },
+    {
+      "path": "benchmark-corrected/0-1-baseline.json",
+      "bytes": 36530,
+      "sha256": "c8026a028e1ca9f48b752979cfdf613860debd60f34045ebd8d5fd6d9c0639f2"
+    },
+    {
+      "path": "benchmark-corrected/0-1-current.json",
+      "bytes": 38739,
+      "sha256": "a8e1e015aaaefa417d888565a3a47fa97485e9213c21f3192f4ac098b994c17f"
+    },
+    {
+      "path": "benchmark-corrected/0-2-baseline.json",
+      "bytes": 36483,
+      "sha256": "1865b744c21b06a5d84c413ba98d9e3585f657bf1cd16c198c97256e1427cbd2"
+    },
+    {
+      "path": "benchmark-corrected/0-2-current.json",
+      "bytes": 38757,
+      "sha256": "a53dc11d5ed485c6cef9535f6ee8099db84c3cfa0f66c9cf36b6e36974e32bd3"
+    },
+    {
+      "path": "benchmark-corrected/0-3-baseline.json",
+      "bytes": 36467,
+      "sha256": "dd5526d524bd1054f50cb303aed3f59760e0647d487128ca7a7f17db6a4c3fe5"
+    },
+    {
+      "path": "benchmark-corrected/0-3-current.json",
+      "bytes": 38759,
+      "sha256": "5ba72abf36e6ef8f301c7abffd80d3093ae29903f04dd4ccca86f0b0d144ca22"
+    },
+    {
+      "path": "benchmark-corrected/0-4-baseline.json",
+      "bytes": 36469,
+      "sha256": "7b9bddb48404831dbd926afaa82a39d8409a8d44cb7e33ce604dc4f965445284"
+    },
+    {
+      "path": "benchmark-corrected/0-4-current.json",
+      "bytes": 38792,
+      "sha256": "30afc52ab1e56ff092542dde6eedc2200abfd5039679f5a024cde58490204e5f"
+    },
+    {
+      "path": "benchmark-corrected/0-5-baseline.json",
+      "bytes": 36468,
+      "sha256": "a068d7a4dce34be1785f37b64a31e9147fb8ce8107829e8d7471e2d2a92c5cf0"
+    },
+    {
+      "path": "benchmark-corrected/0-5-current.json",
+      "bytes": 38798,
+      "sha256": "de4dd41b8868420af8512b499e57fb219952cf9dbc923979454efb1b08af9c4b"
+    },
+    {
+      "path": "benchmark-corrected/0-6-baseline.json",
+      "bytes": 36464,
+      "sha256": "82527aa90c2f560c0c71afc10aff91843f465fa58025176135a37ba59f60b783"
+    },
+    {
+      "path": "benchmark-corrected/0-6-current.json",
+      "bytes": 38743,
+      "sha256": "f4ebf7baae1f03600c11ed21fc878d384b5c0c7f7ee08493bb7167f170828f0a"
+    },
+    {
+      "path": "benchmark-corrected/20-1-baseline.json",
+      "bytes": 36933,
+      "sha256": "639c85c6ae386b729fab6aa66202ae79397f51c5a2a13c4dfbe6c7df6b612607"
+    },
+    {
+      "path": "benchmark-corrected/20-1-current.json",
+      "bytes": 39255,
+      "sha256": "dd3ae9371f1d85061ba2f85c420cf848e1f3d4a44cda06764fba63253974f3fd"
+    },
+    {
+      "path": "benchmark-corrected/20-2-baseline.json",
+      "bytes": 36971,
+      "sha256": "b354d40dd44f51389165645b33e9aaf65d1e6663ad4a8f38f927ccdcbc75370a"
+    },
+    {
+      "path": "benchmark-corrected/20-2-current.json",
+      "bytes": 39350,
+      "sha256": "b5fbbd23ac5b4a282e549a0b7619c049966fe2c3632efe01c17e00e5d1cf0973"
+    },
+    {
+      "path": "benchmark-corrected/20-3-baseline.json",
+      "bytes": 37000,
+      "sha256": "c203c8700db57096b698c2fb0f0883d0da1e447cc61c25123c604e2c8c7ff6d1"
+    },
+    {
+      "path": "benchmark-corrected/20-3-current.json",
+      "bytes": 39291,
+      "sha256": "d8956fc2bb2ba489dab605465d2470d899535b48afa36d35174b601e0a96d56e"
+    },
+    {
+      "path": "benchmark-corrected/20-4-baseline.json",
+      "bytes": 36979,
+      "sha256": "b51254d73ba7252e86e480b0643a3f2878c885d2a698b0904995fbcaa5aff2ed"
+    },
+    {
+      "path": "benchmark-corrected/20-4-current.json",
+      "bytes": 39249,
+      "sha256": "2698348e89bda12f76296d5547d07b5c973ae742ef4847d5075d68f9f49daea6"
+    },
+    {
+      "path": "benchmark-corrected/20-5-baseline.json",
+      "bytes": 36999,
+      "sha256": "a06c9f29afb220822951d3b3d4499e8710d2cd4f4f06658bb857ab9e5cd7e1e8"
+    },
+    {
+      "path": "benchmark-corrected/20-5-current.json",
+      "bytes": 39248,
+      "sha256": "9c491c311ab51f8df0a186da63bd32e8095f80f045800ac85f093b27a27ed061"
+    },
+    {
+      "path": "benchmark-corrected/20-6-baseline.json",
+      "bytes": 36956,
+      "sha256": "328443d5122e923044a54dba357c7cd62e9ccac2500d86b12762f492a4ac02a0"
+    },
+    {
+      "path": "benchmark-corrected/20-6-current.json",
+      "bytes": 39312,
+      "sha256": "c493d97ba39d285ce728b6cb2534ef3786ce9c40f09e2c19bcc1918d99c0c578"
+    },
+    {
+      "path": "benchmark-corrected/50-1-baseline.json",
+      "bytes": 37060,
+      "sha256": "d77a2052241eb6a6d5868abb1b72cc034fda1a430272ddc45d25962d60e715e7"
+    },
+    {
+      "path": "benchmark-corrected/50-1-current.json",
+      "bytes": 39390,
+      "sha256": "7675eb60b38f7db665ac0fe520b5597e30cbf85bf7a160376df710f5efb1a0e9"
+    },
+    {
+      "path": "benchmark-corrected/50-2-baseline.json",
+      "bytes": 37019,
+      "sha256": "6a2b73957f2945c0fb1265864d83dda60ee3432513517938b4c22c7c47c992c9"
+    },
+    {
+      "path": "benchmark-corrected/50-2-current.json",
+      "bytes": 39345,
+      "sha256": "7c837113e080ee7d2d44da8c8803d99a49ac15a23054e237ad6d45af2b8b4f55"
+    },
+    {
+      "path": "benchmark-corrected/50-3-baseline.json",
+      "bytes": 37088,
+      "sha256": "7c055a2e37c252e37ab44f52adcb938abbb8c077c88632d1e322bdd73e5b5442"
+    },
+    {
+      "path": "benchmark-corrected/50-3-current.json",
+      "bytes": 39353,
+      "sha256": "8f745274f5b85daa7c3995a7f894439e77ae8588bf760b2fa8e221a82d8929c3"
+    },
+    {
+      "path": "benchmark-corrected/50-4-baseline.json",
+      "bytes": 37081,
+      "sha256": "e7657f751cc55f02e25cb04450351b04bb08dc503b3e2e13a5408e3b3d407d9f"
+    },
+    {
+      "path": "benchmark-corrected/50-4-current.json",
+      "bytes": 39416,
+      "sha256": "652b1d2080f601f7f06cdef90a42649702dac66c940db5472ee931c1192b46ec"
+    },
+    {
+      "path": "benchmark-corrected/50-5-baseline.json",
+      "bytes": 37092,
+      "sha256": "e53791c54b257f241582080abfb9f830594bf003b561f29267522fe089a2619e"
+    },
+    {
+      "path": "benchmark-corrected/50-5-current.json",
+      "bytes": 39355,
+      "sha256": "d8477d3b6418d7ebb7770be5c96ffe5eb72687f61ced787cc3d299927d5625ec"
+    },
+    {
+      "path": "benchmark-corrected/50-6-baseline.json",
+      "bytes": 37079,
+      "sha256": "392ba6acc489bbae8db14eada40092cf7aee6e681a5e70d5ae2ba4b089784efd"
+    },
+    {
+      "path": "benchmark-corrected/50-6-current.json",
+      "bytes": 39411,
+      "sha256": "1c2494a66a1357a93f5607f190b2a620a57893c14cf4c1db77f6e0b4d70cbdea"
+    },
+    {
+      "path": "benchmark-corrected/analysis.json",
+      "bytes": 68835,
+      "sha256": "4376105bb1a2eeb488aea1adb308a1b5173b7bd08b6a272f428cd463eef25f55"
+    },
+    {
+      "path": "benchmark-corrected/manifest.json",
+      "bytes": 1114,
+      "sha256": "a7ead775c498b7ed82d3486550e07b354de54ebd646b7bdf7b385b8603ac3773"
+    },
+    {
+      "path": "benchmark-corrected/results.json",
+      "bytes": 1488951,
+      "sha256": "2d0e8869daea8c7dbc74e822f96d2887bc173d8e034499f1b299aefcc1ef1638"
+    },
+    {
+      "path": "benchmark-final/0-1-baseline.json",
+      "bytes": 22854,
+      "sha256": "89216787dd1534fab9c5a7730d35f35297442827e8846ea733a73b7b71a20d89"
+    },
+    {
+      "path": "benchmark-final/0-1-current.json",
+      "bytes": 22832,
+      "sha256": "fc747c3f2e120dbd78771646e27bbe29d8543c9342581041c7f8fe7234b2c76e"
+    },
+    {
+      "path": "benchmark-final/0-2-baseline.json",
+      "bytes": 22845,
+      "sha256": "88809df9f08eb9a7b37e41b524e2b111d16a903d2b686c6122fbec5210bb52b1"
+    },
+    {
+      "path": "benchmark-final/0-2-current.json",
+      "bytes": 22848,
+      "sha256": "c6551ed71457db6ca083985d431e8d9f5270944525a7373f4edada78ac745fa7"
+    },
+    {
+      "path": "benchmark-final/0-3-baseline.json",
+      "bytes": 22820,
+      "sha256": "c8d67b7c0e8fdc98e909b653568647b8feb8d93bad1a56e8698d2510025bc8b6"
+    },
+    {
+      "path": "benchmark-final/0-3-current.json",
+      "bytes": 22860,
+      "sha256": "b8eda5546cb20153c264479beb3d4c109a71b47bc4d478488b1027bd29c33744"
+    },
+    {
+      "path": "benchmark-final/0-4-baseline.json",
+      "bytes": 22819,
+      "sha256": "260327d28628963cc893d5031d13ab455bf6382d92a4c39ecd279c5ee13ffeb5"
+    },
+    {
+      "path": "benchmark-final/0-4-current.json",
+      "bytes": 22860,
+      "sha256": "4ad47ffe4de968a60ed79f7e7586e7b630394a8b775708c99a6bf9ddf6ac6a3d"
+    },
+    {
+      "path": "benchmark-final/0-5-baseline.json",
+      "bytes": 22853,
+      "sha256": "54cbbda05eda34f3ddeda220749eb911a0ca71823b9684250048b9bc4eab5982"
+    },
+    {
+      "path": "benchmark-final/0-5-current.json",
+      "bytes": 22870,
+      "sha256": "bdae57acf797cfdab5049827238a3288daea297a208f952e61f7e1e031299b30"
+    },
+    {
+      "path": "benchmark-final/0-6-baseline.json",
+      "bytes": 22836,
+      "sha256": "f7b71d6e11bc7d2c4b4e6de124d615d2611c47abdfc84803304369588826111c"
+    },
+    {
+      "path": "benchmark-final/0-6-current.json",
+      "bytes": 22842,
+      "sha256": "56bf74f400e676392af5c7e40654321e6c864a1bc0c4b1d011bbbf82ab933b50"
+    },
+    {
+      "path": "benchmark-final/20-1-baseline.json",
+      "bytes": 22939,
+      "sha256": "3e3d52f5ea198a5a32e904681c5623b165ce911dceeddbd55881644279280426"
+    },
+    {
+      "path": "benchmark-final/20-1-current.json",
+      "bytes": 22942,
+      "sha256": "90fbad81e5d9e4fb20ff3a1727068a06a0be0e2c6f57f051e43a14882b1b3c26"
+    },
+    {
+      "path": "benchmark-final/20-2-baseline.json",
+      "bytes": 22936,
+      "sha256": "c76cfd6af6d877edaac795bf601d5872e30cfbad8b3af4582d9eff27976cca6b"
+    },
+    {
+      "path": "benchmark-final/20-2-current.json",
+      "bytes": 22956,
+      "sha256": "8c16289d6dac63455c50855e1a25d0f935afae32ce736fd04bb9410f11712838"
+    },
+    {
+      "path": "benchmark-final/20-3-baseline.json",
+      "bytes": 22931,
+      "sha256": "fddd8ead45011aeb25ae7d5b62a3077141e9b4c1c3a8492c811bc57eff4bfca1"
+    },
+    {
+      "path": "benchmark-final/20-3-current.json",
+      "bytes": 22942,
+      "sha256": "cd230236112ca82f1bc4e50ef12de2faf4ea0d91b8801c6722bac0b9e0cae4c1"
+    },
+    {
+      "path": "benchmark-final/20-4-baseline.json",
+      "bytes": 22937,
+      "sha256": "3e34a80c51b4d5da0019b897b3c6f64baaecbd5449e70aa0ad47b1f54dfc620f"
+    },
+    {
+      "path": "benchmark-final/20-4-current.json",
+      "bytes": 22951,
+      "sha256": "26a2db5be3d25f3607ca9c15b55aeeec5a3e92bc4f943d5cdb8e3d75d96b6ca4"
+    },
+    {
+      "path": "benchmark-final/20-5-baseline.json",
+      "bytes": 22950,
+      "sha256": "ce50de5223a7e24b506579f4f1076ab9a35fb5667909c51b72e1fa3c474164ba"
+    },
+    {
+      "path": "benchmark-final/20-5-current.json",
+      "bytes": 22930,
+      "sha256": "4043e7fa9d3ca94a4c5a907130b706c3cf2c30b70f85dfeda11ae1dedf5e50e3"
+    },
+    {
+      "path": "benchmark-final/20-6-baseline.json",
+      "bytes": 22911,
+      "sha256": "9d635a33575700e7754ca02335cb0001417ad62e77f51d4a39b7575550875ce7"
+    },
+    {
+      "path": "benchmark-final/20-6-current.json",
+      "bytes": 22931,
+      "sha256": "ff7b3332ea7a7ad9274263348bdb61103068733e6767bf2927c2e53dbef9d8f8"
+    },
+    {
+      "path": "benchmark-final/50-1-baseline.json",
+      "bytes": 22991,
+      "sha256": "65ce2a3ca990eb7c4afdd5fa3b1817a2b0668cfd1042e1ab9abfb2ec461c9f1f"
+    },
+    {
+      "path": "benchmark-final/50-1-current.json",
+      "bytes": 22981,
+      "sha256": "1e9b7dd45acaf5838019cd5450b9c8feb13773e871c1bd5bd00aa17065b73154"
+    },
+    {
+      "path": "benchmark-final/50-2-baseline.json",
+      "bytes": 22979,
+      "sha256": "b62499c2e24e0811eddc9a43fd8d13c3041f16e919ca2050d43227472b15c1bd"
+    },
+    {
+      "path": "benchmark-final/50-2-current.json",
+      "bytes": 22974,
+      "sha256": "5bfb870dc85242dd03ced5cdbbe3f8165da3a035ffefb946200c557c7863c659"
+    },
+    {
+      "path": "benchmark-final/50-3-baseline.json",
+      "bytes": 22953,
+      "sha256": "daf634f18a73e404a461eacc33d495a5bccb93b40d4e1b898032431531bda26b"
+    },
+    {
+      "path": "benchmark-final/50-3-current.json",
+      "bytes": 22986,
+      "sha256": "f02a182d34e0862e6fa031b75b908c347be62c68c652dae958a60ce80b04bf5f"
+    },
+    {
+      "path": "benchmark-final/50-4-baseline.json",
+      "bytes": 22950,
+      "sha256": "e860d2c81c510f988282c7df3d55d48ee57eaf2b75417d4e6b8dd29f2c900371"
+    },
+    {
+      "path": "benchmark-final/50-4-current.json",
+      "bytes": 22985,
+      "sha256": "a11da788ef2c37df3410b0123ded00a346ce773eaf666bcf20261a3997f07bb6"
+    },
+    {
+      "path": "benchmark-final/50-5-baseline.json",
+      "bytes": 22933,
+      "sha256": "e70b168c0361595531ee7098f9a1a838360df496d26a730a66d09179c459250b"
+    },
+    {
+      "path": "benchmark-final/50-5-current.json",
+      "bytes": 22972,
+      "sha256": "5978e52b6fd78c29d25d300ce8353b3425a411305568c6311eb8df6cbf5428ff"
+    },
+    {
+      "path": "benchmark-final/50-6-baseline.json",
+      "bytes": 22986,
+      "sha256": "37da19e109866eefbd33fa32f50196e3c3dff62a49fe3a6f3690c470578556de"
+    },
+    {
+      "path": "benchmark-final/50-6-current.json",
+      "bytes": 22998,
+      "sha256": "5dabe9a939661c8b62dfcdbecb9764ae7f04a38a85c209ac8557f5f67bfdbfa0"
+    },
+    {
+      "path": "benchmark-final/analysis.json",
+      "bytes": 69084,
+      "sha256": "6ffd335c7ead19c2b35223f0413a1f26a1b674316c821071f47f4fab4b7e87e7"
+    },
+    {
+      "path": "benchmark-final/manifest.json",
+      "bytes": 1502,
+      "sha256": "5cd54a23dfbef7a780324d99e0ff8d6a7f3d9b8ece10e10b2d82b4e8992988e3"
+    },
+    {
+      "path": "benchmark-final/results.json",
+      "bytes": 898741,
+      "sha256": "42f8bbb157d720b467c55241e7b9a2626d475f8932b164cf5e46e98aa35f6a42"
+    },
+    {
+      "path": "benchmark-final.log",
+      "bytes": 6355,
+      "sha256": "14e4fbd6a12f93b9ec022b51b307c93fafb640ff6fda499cf6e80ccabb87d2c9"
+    },
+    {
+      "path": "benchmark-steady/0-1-baseline.json",
+      "bytes": 22849,
+      "sha256": "04d2ff51bdb8b883b5c23537a2b0ec0b55e94bdff2b0f9e119d1f4a6f2d671cf"
+    },
+    {
+      "path": "benchmark-steady/0-1-current.json",
+      "bytes": 22845,
+      "sha256": "c0b23023e4fe3e844d86922a3d6eca2349480faeb4bd3373a7cfec387af33167"
+    },
+    {
+      "path": "benchmark-steady/0-2-baseline.json",
+      "bytes": 22853,
+      "sha256": "93b78671122f41e97d6c2b5cc196f360df4349072d0b7b2147385168d24cfce3"
+    },
+    {
+      "path": "benchmark-steady/0-2-current.json",
+      "bytes": 22856,
+      "sha256": "552ed02c33f6f445471dcd99074ea1f93d8a8a32b5d9516b46dc001fcbb41b52"
+    },
+    {
+      "path": "benchmark-steady/0-3-baseline.json",
+      "bytes": 22807,
+      "sha256": "86b2d136ea97704022b3caf7df540ae0eafc3cabf776542bd0bb1b59071eec15"
+    },
+    {
+      "path": "benchmark-steady/0-3-current.json",
+      "bytes": 22841,
+      "sha256": "bc55f705a6a1bb1021ceb8cea67347ca5dcdeb5e51b09b01ea0e112a67ca6665"
+    },
+    {
+      "path": "benchmark-steady/0-4-baseline.json",
+      "bytes": 22845,
+      "sha256": "6ef6ecdc13f63dc35d1ad225dee712ba1ebdb42e6c965874e4d4f9857aa284af"
+    },
+    {
+      "path": "benchmark-steady/0-4-current.json",
+      "bytes": 22847,
+      "sha256": "9719c024158a9bf94128eec2aff437936272ceb0466fbed3fb91448e317ef00a"
+    },
+    {
+      "path": "benchmark-steady/0-5-baseline.json",
+      "bytes": 22800,
+      "sha256": "3f8889f19839e9b8525d8ceb0398e919358452ccc0ce0294b1321028469a7629"
+    },
+    {
+      "path": "benchmark-steady/0-5-current.json",
+      "bytes": 22806,
+      "sha256": "b1204e49847ceeb8a85cdccef7e8475c970d7c5f396db727ac0cf9fb24bc5988"
+    },
+    {
+      "path": "benchmark-steady/0-6-baseline.json",
+      "bytes": 22841,
+      "sha256": "1f8b4c1e119cbafc03bd5d3bd17ebd2c864c80ab8e0638276e1f3ef85e15641d"
+    },
+    {
+      "path": "benchmark-steady/0-6-current.json",
+      "bytes": 22873,
+      "sha256": "8b1ed34fc66ea6dcb6b56e6af81b67d67d6e349a1ae6a7444410661d1ca0b75e"
+    },
+    {
+      "path": "benchmark-steady/20-1-baseline.json",
+      "bytes": 22948,
+      "sha256": "12115efc7c266029f829eb3d724e06b4063d01ca06916ce9df4caaa836f6598f"
+    },
+    {
+      "path": "benchmark-steady/20-1-current.json",
+      "bytes": 22937,
+      "sha256": "7cb023b36bf9c1e48819ca07032889bddc17ce29c07c7a1dcb0a5f4d76a07b98"
+    },
+    {
+      "path": "benchmark-steady/20-2-baseline.json",
+      "bytes": 22926,
+      "sha256": "38f98dedf2a7a5650e7d8cbcdf3d5225ba089e04dd9d9a96668eade8065e5ec5"
+    },
+    {
+      "path": "benchmark-steady/20-2-current.json",
+      "bytes": 22960,
+      "sha256": "eaa922614239d44d9803ec691e726ded39669bfd8c0f3f80a07932f6e4fe8953"
+    },
+    {
+      "path": "benchmark-steady/interruption.json",
+      "bytes": 664,
+      "sha256": "e454b1fbb5d2e01fd8e967e5d5b2de49beea1edade674b433e3327a91dd81aab"
+    },
+    {
+      "path": "benchmark-steady/manifest.json",
+      "bytes": 1502,
+      "sha256": "4b6d32de11ec5379c638094cf59c3bc81c0cee9f006b4742ff2c8da9fbad660f"
+    },
+    {
+      "path": "capacity-final.log",
+      "bytes": 2643,
+      "sha256": "7039f9bff94795af915ca40c6d8c712c64cd595531510e7213822162863bd9a9"
+    },
+    {
+      "path": "ci-final.log",
+      "bytes": 81489,
+      "sha256": "c073a0afcf5fc436cbaa98c4d4ad4a9d9e1774ae121a3508e516823e045ea2fb"
+    },
+    {
+      "path": "ci-review2.log",
+      "bytes": 81488,
+      "sha256": "373407e69b9b5f3c75542314d63cd3029bcaba831232a8cb2c7d1fa881aa5470"
+    },
+    {
+      "path": "docs-final.log",
+      "bytes": 102,
+      "sha256": "1536919d2e4751517de24888a30ab7f315829a07b546f77e3d84e13543b34503"
+    },
+    {
+      "path": "fault-final.log",
+      "bytes": 1578,
+      "sha256": "54df08b5608efa36ce9a6636cf75be6d4d7646ed4d3e2e21a9865513c8f3d515"
+    },
+    {
+      "path": "fault-verification.json",
+      "bytes": 15511,
+      "sha256": "6e81264fb1d83dcc173bfd0099ef2f49c55e001ec7d1ed551f1c8af87bb4455f"
+    },
+    {
+      "path": "final-image-gates.json",
+      "bytes": 383,
+      "sha256": "b2e974abfba424eadc24648c05c40595f43e64f569e2e59b027e9c2cdb2e00e4"
+    },
+    {
+      "path": "harness/analyze-benchmark.py",
+      "bytes": 4068,
+      "sha256": "19791cd8991d4a8c02ae15e67491313c97dea4687a922af307584753e0a904db"
+    },
+    {
+      "path": "harness/analyze-profile.py",
+      "bytes": 1604,
+      "sha256": "538f34f753a9ffc949eca30747baa0033b31f7575475b6a04d1b719f26e1b699"
+    },
+    {
+      "path": "harness/analyze-steady.py",
+      "bytes": 4228,
+      "sha256": "8a044300cfa30972fc06a1a2ca53f384cf5f0f92eb378fc956ed705ae8ede0cf"
+    },
+    {
+      "path": "harness/probe-main.mjs",
+      "bytes": 9358,
+      "sha256": "e8b7690a81bf97ae5506dc0e04a22b53874787039fa8482f32f58f16b5e0aad2"
+    },
+    {
+      "path": "harness/probe-main.mjs.initial",
+      "bytes": 7705,
+      "sha256": "41776bb674a171bfc9dbea75988e4f406e79e58aed656f0f126ddf94d69361c3"
+    },
+    {
+      "path": "harness/probe-support.mjs",
+      "bytes": 5568,
+      "sha256": "7c6997901c4b78d1a38501723e5781a2eacb2908ec7c286ce450f2d1139b1686"
+    },
+    {
+      "path": "harness/probe-support.mjs.initial",
+      "bytes": 5540,
+      "sha256": "6ea7867160fbf24381887fd5a180c7aada59debdcc2e8ea55da3eede0a008d30"
+    },
+    {
+      "path": "harness/run-benchmark.mjs",
+      "bytes": 6605,
+      "sha256": "87411f6f7cf12152a656b0985161263e3d27bf57cf2454587acd98d2c4d4c549"
+    },
+    {
+      "path": "harness/run-benchmark.mjs.initial",
+      "bytes": 6044,
+      "sha256": "a6e6c29543640694dc65bd1780d28565716ea0c2e0c67c0442c152547c4d8e73"
+    },
+    {
+      "path": "harness/run-fault.mjs",
+      "bytes": 5782,
+      "sha256": "a5a61d9316f6abcc7507790a197c272ebcb1a3785d01fc17c05ba2c9dad84d70"
+    },
+    {
+      "path": "harness/run-rate-limit.mjs",
+      "bytes": 7293,
+      "sha256": "c66b9f8f208ec6a36949886edf82c5891636e16c981ab200dc59757d2a7e4fd7"
+    },
+    {
+      "path": "harness/run-rate-limit.mjs.initial",
+      "bytes": 6717,
+      "sha256": "fa10fe079777a27bd9533debc1122ad33727599961d3f58efc491b060d015cb4"
+    },
+    {
+      "path": "harness/run-steady.mjs",
+      "bytes": 8377,
+      "sha256": "42ca798cc012c342c1e32a3235ef3b5d450351915d7823a6ebf30cfc5953d0b3"
+    },
+    {
+      "path": "harness/run-steady.profile-version.mjs",
+      "bytes": 8140,
+      "sha256": "d38af1c0c2aa073d4bb2b57b850851776d07c9d836e74bb433e0198d736131f1"
+    },
+    {
+      "path": "harness/validate-benchmark.py",
+      "bytes": 1799,
+      "sha256": "8ef35493dea9e7c1ab9899f35653eb4dea7067daaebcd15f25c6fb0f698ba50e"
+    },
+    {
+      "path": "harness/validate-capacity.py",
+      "bytes": 1854,
+      "sha256": "b88c0564d54075a293900b4a91041374fb0a57d1af0bfe823e7040502f08e4d2"
+    },
+    {
+      "path": "harness/validate-fault.py",
+      "bytes": 1787,
+      "sha256": "f6551430c1e9e4f9097949d5bc717aac7e180a8a21d913befe6ada4b8f7db960"
+    },
+    {
+      "path": "harness/validate-integration.py",
+      "bytes": 1805,
+      "sha256": "ae76be8483e2d111e467a1439a4f782f7501fbcf42a005dd410841b450408c90"
+    },
+    {
+      "path": "harness/validate-rate-limit.py",
+      "bytes": 1802,
+      "sha256": "f9d8883ddb0a8b467433a8853abfa1202280d60944021943f053b3041fff3624"
+    },
+    {
+      "path": "harness/validate-steady.py",
+      "bytes": 1796,
+      "sha256": "04bdcd9c4673f9b6adb2385797c93af4c1f7b6548e5c3281190d6c705f38b7f2"
+    },
+    {
+      "path": "harness/verify-shutdown.py",
+      "bytes": 3400,
+      "sha256": "90294678436763888ac1368cb89b2c089525b5ed081ea899e788120c7e3e5522"
+    },
+    {
+      "path": "image-build-final.log",
+      "bytes": 4161,
+      "sha256": "a0b05d1cc2a9f1c4dc5c939d8388e4473c2dfa816e704f217d7e9731a5b5cc0f"
+    },
+    {
+      "path": "integration-final-clean.log",
+      "bytes": 2592,
+      "sha256": "4f7ad0418d508486da48b1a874cc5032c07b1f8bee8f64818bbe4a68ba638608"
+    },
+    {
+      "path": "integration-review2-claim-fixed.log",
+      "bytes": 316,
+      "sha256": "486271db6b16e2843d5ce5b25c5f450102fdc872ef45bc615130776a2f36f98c"
+    },
+    {
+      "path": "integration-review2.log",
+      "bytes": 3938,
+      "sha256": "4c42c5ecd3ecb0325132d16609ac21ea7f07c653ec7cabeb9f565635245dc829"
+    },
+    {
+      "path": "measurement-correction.json",
+      "bytes": 521,
+      "sha256": "cae8e6f25d0954d790aae85a63f6fdd49ff72d5ad5460948f3dcef0238e2e1bd"
+    },
+    {
+      "path": "pr-body.txt",
+      "bytes": 3314,
+      "sha256": "9085ccae3fcf29ab1ff7adf73c05673c337f18f129731b41827208342f1605d7"
+    },
+    {
+      "path": "pr-title.txt",
+      "bytes": 63,
+      "sha256": "238c33e77351d5329457fb402af940732cedbe64de5988117a0d456beaff8435"
+    },
+    {
+      "path": "profile-warmed/20-1-baseline.cpuprofile",
+      "bytes": 195123,
+      "sha256": "9ef77730f413e9c28abbdfdcb9bbb0943a51ba64e6047bac252a4466a6c700bc"
+    },
+    {
+      "path": "profile-warmed/20-1-baseline.json",
+      "bytes": 22915,
+      "sha256": "b3ca65a0d054983628a1c69e11cf519bc018d5e2e490512a2a496b6e33a50152"
+    },
+    {
+      "path": "profile-warmed/20-1-current.cpuprofile",
+      "bytes": 206127,
+      "sha256": "657b1da3fcc5d3aeb0f5afe0e352f47c94bccba55070714d8cc3aa5116ab68e5"
+    },
+    {
+      "path": "profile-warmed/20-1-current.json",
+      "bytes": 22931,
+      "sha256": "5e2ac8debcdf0ee40ecedf0b9702137d5339b066e83f1c989565002edae32ed1"
+    },
+    {
+      "path": "profile-warmed/manifest.json",
+      "bytes": 1341,
+      "sha256": "8ede8a15a4a4c5501b156508414dc1a7a3a0cf615f0a6bd7631cc7920f7fa1ae"
+    },
+    {
+      "path": "profile-warmed/profile-summary.json",
+      "bytes": 9503,
+      "sha256": "4395c8b98add8936cc2af6aa50e8c2dc3a72482c2458fe52d519ad7dcabde77d"
+    },
+    {
+      "path": "profile-warmed/results.json",
+      "bytes": 49940,
+      "sha256": "bfed8c624e01cb8c33d1eaa0f748bfc35adc0b567e6f7fe191303324f356053c"
+    },
+    {
+      "path": "rate-limit-corrected.log",
+      "bytes": 958,
+      "sha256": "851ae664645ab5e59c741116ecee9bbadeef87e1d54e77a7495a8a19f8751f82"
+    },
+    {
+      "path": "rate-limit-correction.json",
+      "bytes": 686,
+      "sha256": "2353694e6bfca8ad1f4f3955b3a3f88e85a17148ca9a8ff5ee9c63f49b55997f"
+    },
+    {
+      "path": "rate-limit-final.log",
+      "bytes": 124,
+      "sha256": "ce5ca67cfc48c690124bedc4755703e562a77c27a533d4c3c48aa806f2d3d65f"
+    },
+    {
+      "path": "rate-limit-verification.json",
+      "bytes": 1128,
+      "sha256": "eb5058318331dc2b51413b4c369b7b021951ed18fa4de4b1a394bb613fd822bd"
+    },
+    {
+      "path": "report-method.txt",
+      "bytes": 4510,
+      "sha256": "fcb2ae343948c71c8ef6f6a723249b49ab761b25bafc4fb1793ac9a2d817f3e3"
+    },
+    {
+      "path": "reviews/round1-disposition.txt",
+      "bytes": 1898,
+      "sha256": "76ff1348a9e8bf8b4c326645af6e969daa47a60d3e7ecee9e4774c59c85d9919"
+    },
+    {
+      "path": "reviews/round1.txt",
+      "bytes": 8410,
+      "sha256": "76befc4661554dc808d104bc10f141f0ec47ed3ce7c09580752b9ffa8abae791"
+    },
+    {
+      "path": "reviews/round2-disposition.txt",
+      "bytes": 2851,
+      "sha256": "1cb49789aeb6596ef000478e2a8716d5f1b15ad3f45d858123be1bfdaeefd59d"
+    },
+    {
+      "path": "reviews/round2.txt",
+      "bytes": 6616,
+      "sha256": "457f5c6033c15c876205e53f657bdabcca43398bf36588aefc4cf6d799e58361"
+    },
+    {
+      "path": "runtime-image-final-runner.log",
+      "bytes": 200,
+      "sha256": "44812bd4553fbd62dd88b4968b9a3790813a62ef61bd31b0a86734ced8779dfd"
+    },
+    {
+      "path": "shutdown-verification.json",
+      "bytes": 302,
+      "sha256": "f25c39d2de080296b922a7824bc65c790d4683dafce8fd858e4533341c32d4a1"
+    },
+    {
+      "path": "steady-study-plan.json",
+      "bytes": 2880,
+      "sha256": "764b80b4a8d87aefd9f8698b710217a4a15c313c0ba63cd5baa806d265e1e8f2"
+    },
+    {
+      "path": "validation-summary.json",
+      "bytes": 23770,
+      "sha256": "756932328056dee993bc29211f980f065205ac0422c3b5dfa268642bfaa450c1"
+    }
+  ]
+}

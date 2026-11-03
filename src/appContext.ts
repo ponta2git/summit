@@ -13,10 +13,13 @@ export interface AppContext {
   readonly clock: Clock;
 }
 
-export const createAppContext = (): AppContext => ({
-  ports: makeRealPorts(defaultDb, payload => {
-    if (!env.RESULT_NOTIFICATION_WEB_ORIGIN) { throw new Error("Notification receipt is not configured"); }
-    assertNewNotificationPartLimit(payload, env.RESULT_NOTIFICATION_WEB_ORIGIN);
-  }),
-  clock: systemClock
-});
+export const createAppContext = (): AppContext => {
+  const webOrigin = env.RESULT_NOTIFICATION_WEB_ORIGIN;
+  return {
+    ports: makeRealPorts(defaultDb, payload => {
+      if (!webOrigin) { throw new Error("Notification receipt is not configured"); }
+      assertNewNotificationPartLimit(payload, webOrigin);
+    }),
+    clock: systemClock
+  };
+};

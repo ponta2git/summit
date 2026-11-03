@@ -2,6 +2,7 @@
 // @see docs/architecture.md
 
 import type { DbLike } from "./rows.ts";
+import { systemClock, type Clock } from "../time/index.ts";
 import { makeResultNotificationsPort } from "./repositories/resultNotifications.ts";
 import type { ResultNotificationAdmissionCheck } from "./ports.resultNotifications.ts";
 import {
@@ -110,13 +111,13 @@ const makeStatusPort = (db: DbLike): StatusPort => ({
   loadCurrentWeekSnapshot: (weekKey) => loadCurrentWeekSnapshot(db, weekKey)
 });
 
-const makeOutboxPort = (db: DbLike): OutboxPort => ({
+const makeOutboxPort = (db: DbLike, clock: Clock): OutboxPort => ({
   enqueue: (input) => enqueueOutbox(db, input),
-  claimNextBatch: (options) => claimNextOutboxBatch(db, options),
-  beginDelivery: (id, options) => beginOutboxDelivery(db, id, options),
-  renewClaim: (id, options) => renewOutboxClaim(db, id, options),
-  markDelivered: (id, options) => markOutboxDelivered(db, id, options),
-  markFailed: (id, options) => markOutboxFailed(db, id, options),
+  claimNextBatch: (options) => claimNextOutboxBatch(db, options, clock),
+  beginDelivery: (id, options, remaining) => beginOutboxDelivery(db, id, options, clock, remaining),
+  renewClaim: (id, options, remaining) => renewOutboxClaim(db, id, options, clock, remaining),
+  markDelivered: (id, options, remaining) => markOutboxDelivered(db, id, options, clock, remaining),
+  markFailed: (id, options, remaining) => markOutboxFailed(db, id, options, clock, remaining),
   requeueFailedChains: (now) => requeueFailedOutboxChains(db, now),
   releaseExpiredClaims: (now) => releaseExpiredOutboxClaims(db, now),
   findStranded: (threshold) => findStrandedOutboxEntries(db, threshold),
@@ -125,13 +126,13 @@ const makeOutboxPort = (db: DbLike): OutboxPort => ({
   getNextDispatchAt: () => getNextOutboxDispatchAt(db)
 });
 
-export const makeRealPorts = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck): AppPorts => ({
+export const makeRealPorts = (db: DbLike, admissionCheck: ResultNotificationAdmissionCheck, clock: Clock = systemClock): AppPorts => ({
   sessions: makeSessionsPort(db),
   sessionCommands: makeSessionCommandsPort(db),
   responses: makeResponsesPort(db),
   members: makeMembersPort(db),
   heldEvents: makeHeldEventsPort(db),
   status: makeStatusPort(db),
-  outbox: makeOutboxPort(db),
-  resultNotifications: makeResultNotificationsPort(db, admissionCheck)
+  outbox: makeOutboxPort(db, clock),
+  resultNotifications: makeResultNotificationsPort(db, admissionCheck, clock)
 });
