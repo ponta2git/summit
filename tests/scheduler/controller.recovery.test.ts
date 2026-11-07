@@ -19,7 +19,7 @@ describe("scheduler transient-failure recovery", () => {
   afterEach(async () => { controller?.stop(); await controller?.drain(); controller = undefined; vi.clearAllTimers(); vi.useRealTimers(); });
 
   it("retries a failed hint read without waiting for a supervisor and resets its finite budget after success", async () => {
-    const context = createTestAppContext();
+    const context = createTestAppContext({ now: new Date("2026-04-25T12:00:00Z") });
     const hints = vi.spyOn(context.ports.sessions, "getSchedulerSessionHints");
     hints.mockRejectedValue(new Error("database unavailable"));
     controller = createController(context);
@@ -37,7 +37,7 @@ describe("scheduler transient-failure recovery", () => {
   });
 
   it("bounds failing due ticks and recovers on a later explicit wake", async () => {
-    const context = createTestAppContext();
+    const context = createTestAppContext({ now: new Date("2026-04-25T12:00:00Z") });
     const hints = { nextAskingDeadlineAt: context.clock.now() as Date | null, nextPostponeDeadlineAt: null, nextReminderAt: null };
     context.ports.sessions.getSchedulerSessionHints = async () => hints;
     const deadline = vi.fn<() => Effect.Effect<void, DatabaseError>>(() => Effect.fail(new DatabaseError("deadline unavailable")));

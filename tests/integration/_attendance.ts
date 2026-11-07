@@ -3,7 +3,7 @@ import { fixtureMember, fixtureSession, fixtureResponse } from "./canonicalFixtu
 import { eq, getTableColumns, sql } from "drizzle-orm";
 import { makeRealPorts } from "../../src/db/ports.real.ts";
 import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
-import { sessions, responses, members, discordNotifications, discordNotificationAttendance, discordNotificationParts, heldEvents, heldEventParticipants } from "../../src/db/schema.ts";
+import { weeklyAskSchedules, sessions, responses, members, discordNotifications, discordNotificationAttendance, discordNotificationParts, heldEvents, heldEventParticipants } from "../../src/db/schema.ts";
 import { attendanceMembers, type AttendanceHarness, type AttendanceSeed } from "../contracts/attendance.ts";
 import { createIntegrationDb, truncatePerTestTables } from "./_support.ts";
 
@@ -18,7 +18,7 @@ export const createAttendanceHarness = () => {
     if (seed.sessions?.length) { await db.insert(sessions).values(seed.sessions.map(fixtureSession)); }
     if (seed.responses?.length) { await db.insert(responses).values(seed.responses.map(fixtureResponse)); }
     return { ports,
-      snapshot: async () => ({ sessions: await db.select({ ...getTableColumns(sessions), id: sessions.legacyId }).from(sessions).orderBy(sessions.legacyId), responses: await db.select({ ...getTableColumns(responses), id: responses.legacyId, sessionId: sql<string>`(SELECT legacy_id FROM sessions WHERE id = ${responses.sessionId})`, memberId: sql<string>`(SELECT legacy_id FROM members WHERE id = ${responses.memberId})` }).from(responses).orderBy(responses.legacyId),
+      snapshot: async () => ({ weeks: await db.select().from(weeklyAskSchedules).orderBy(weeklyAskSchedules.weekKey), sessions: await db.select({ ...getTableColumns(sessions), id: sessions.legacyId }).from(sessions).orderBy(sessions.legacyId), responses: await db.select({ ...getTableColumns(responses), id: responses.legacyId, sessionId: sql<string>`(SELECT legacy_id FROM sessions WHERE id = ${responses.sessionId})`, memberId: sql<string>`(SELECT legacy_id FROM members WHERE id = ${responses.memberId})` }).from(responses).orderBy(responses.legacyId),
         notifications: await db.select().from(discordNotifications).orderBy(discordNotifications.id),
         attendance: await db.select().from(discordNotificationAttendance).orderBy(discordNotificationAttendance.notificationId),
         parts: await db.select().from(discordNotificationParts).orderBy(discordNotificationParts.notificationId),

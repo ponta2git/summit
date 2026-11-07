@@ -34,7 +34,7 @@ describe("cron callback lifetime", () => {
     const failure = new Error("registration failed");
     const stops = [vi.fn(), vi.fn(() => { throw new Error("cleanup failed"); })];
     const callbacks: Array<() => void | Promise<void>> = [];
-    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }));
+    const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }));
     expect(() => createAskScheduler({ client: stubClient(undefined), context: createTestAppContext(), sendAsk,
       cronAdapter: { schedule: (_expression, callback) => {
         const stop = stops[callbacks.length];
@@ -75,7 +75,7 @@ describe("cron callback lifetime", () => {
   it.each([CRON_ASK_SCHEDULE, CRON_OUTBOX_RETENTION_SCHEDULE, CRON_SCHEDULER_SUPERVISOR_SCHEDULE])(
     "keeps %s pending until its work completes and includes it in shutdown drain", async expression => {
       const context = createTestAppContext(); const pending = deferred<void>(); const callbacks = new Map<string, () => void | Promise<void>>();
-      const sendAsk = vi.fn(async () => { await pending.promise; return { status: "queued" as const, weekKey: "2026-W17" }; });
+      const sendAsk = vi.fn(async () => { await pending.promise; return { status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }; });
       const prune = context.ports.outbox.prune;
       context.ports.outbox.prune = async (...args) => { await pending.promise; return prune(...args); };
       const getMetrics = context.ports.outbox.getMetrics;

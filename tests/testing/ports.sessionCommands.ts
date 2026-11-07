@@ -13,8 +13,8 @@ import {
 import { recordCall, type AnyCall } from "./ports.shared.js";
 import type { FakeResponsesPort } from "./ports.responses.js";
 import type { FakeSessionsPort } from "./ports.sessions.js";
-import type { FakeHeldEventsPort } from "./ports.heldEvents.js";
 import type { FakeOutboxPort } from "./ports.outbox.js";
+import { createFakeCreateSessionCommand } from "./ports.sessionCommands.create.ts";
 import { createFakeCancelWeekCommand } from "./ports.sessionCommands.cancelWeek.js";
 import {
   applyAskCancellation,
@@ -31,13 +31,13 @@ export const createFakeSessionCommandsPort = (
   sessions: FakeSessionsPort,
   responses: FakeResponsesPort,
   members: MembersPort,
-  heldEvents: FakeHeldEventsPort,
   outbox: FakeOutboxPort
 ): FakeSessionCommandsPort => {
   const calls: AnyCall[] = [];
   return {
     calls,
-    ...createFakeCancelWeekCommand(calls, sessions, heldEvents, outbox),
+    ...createFakeCancelWeekCommand(calls, sessions, outbox),
+    ...createFakeCreateSessionCommand(calls, sessions),
     recoverMissingMessageIntents: async (sessionId) => {
       recordCall(calls, "recoverMissingMessageIntents", { sessionId });
       const current = await sessions.findSessionById(sessionId);

@@ -13,8 +13,15 @@ import {
   type FakeSessionTransitionMethods
 } from "./ports.sessions.transitions.js";
 
+export interface FakeWeeklySchedule {
+  readonly weekKey: string;
+  readonly autoSessionId: string | null;
+  readonly disabledAt: Date | null;
+}
+
 export interface FakeSessionsPort extends SessionsPort, FakeSessionTransitionMethods {
   readonly calls: ReadonlyArray<AnyCall>;
+  readonly weeklySchedules: Map<string, FakeWeeklySchedule>;
   listSessions(): ReadonlyArray<SessionRow>;
   bumpRevision(id: string, now: Date): SessionRow | undefined;
   completeDecidedForHeld(id: string, now: Date): SessionRow | undefined;
@@ -28,10 +35,21 @@ export const createFakeSessionsPort = (
   outboxEnqueue: (entry: EnqueueOutboxInput) => Promise<void>
 ): FakeSessionsPort => {
   const state = createFakeSessionsState(seed, clock, outboxEnqueue);
+  const weeklySchedules = new Map<string, FakeWeeklySchedule>();
+  for (const session of seed) {
+    if (session.source === "weekly_auto") {
+      weeklySchedules.set(session.weekKey, { weekKey: session.weekKey, autoSessionId: session.id, disabledAt: null });
+    }
+  }
   return {
     calls: state.calls,
+    weeklySchedules,
     listSessions: () => Array.from(state.byId.values()).map(state.clone),
-    checkpoint: () => checkpointMap(state.byId),
+    checkpoint: () => {
+      const undoSessions = checkpointMap(state.byId);
+      const undoWeeks = checkpointMap(weeklySchedules);
+      return () => { undoSessions(); undoWeeks(); };
+    },
     bumpRevision: (id, now) => {
       const found = state.byId.get(id);
       if (!found) {return undefined;}

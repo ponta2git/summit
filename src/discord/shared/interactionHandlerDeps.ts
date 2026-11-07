@@ -6,6 +6,7 @@ import type { SendAskMessageResult } from "../../features/ask-session/send.ts";
 export type SendAsk = (args: {
   readonly trigger: "cron" | "command";
   readonly invokerId?: string;
+  readonly requestId?: string;
 }) => Promise<SendAskMessageResult>;
 
 export interface AppReadyState {

@@ -132,7 +132,7 @@ describe("settlePostponeVotingSession", () => {
     }]);
     expect(discord.edit).toHaveBeenCalledTimes(1);
     const editPayload = asMessagePayload(callArg(discord.edit));
-    expect(editPayload.content).toContain("- Member 2: 今週はお流れ");
+    expect(editPayload.content).toContain("- Member 2: 順延しない");
     expect(editPayload.content).toContain("この回はお流れになりました");
     expect(buttonsDisabled(editPayload)).toStrictEqual([true, true]);
     expect(discord.send).not.toHaveBeenCalled();

@@ -90,7 +90,7 @@ export const applyAskCancellation = async (
     parseCandidateDateIso(cancelled.candidateDateIso)
   );
   const startsPostponeVote =
-    cancelled.postponeCount === 0 && now.getTime() < postponeDeadline.getTime();
+    cancelled.source === "weekly_auto" && cancelled.postponeCount === 0 && now.getTime() < postponeDeadline.getTime();
   const projected = { ...cancelled, revision: cancelled.revision + 1 };
   const outbox = [
     buildSettleNoticeIntent(projected, reason, {
@@ -119,6 +119,8 @@ const createSaturday = async (
 ): Promise<SessionRow> => {
   const created = await sessions.createAskSession({
     id: input.id,
+    source: "postponed",
+    parentSessionId: parent.id,
     weekKey: parent.weekKey,
     postponeCount: 1,
     candidateDateIso: input.candidateDateIso,
@@ -134,7 +136,7 @@ const createSaturday = async (
   });
   const persisted =
     created ??
-    (await sessions.findSessionByWeekKeyAndPostponeCount(parent.weekKey, 1));
+    sessions.listSessions().find(session => session.parentSessionId === parent.id);
   if (!persisted) {throw new Error("Saturday session insert returned no row");}
   if (!created) { await outbox.enqueue(buildAskBodyIntent(persisted)); }
   return persisted;

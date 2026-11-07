@@ -43,8 +43,10 @@ const sessionAlias = "Friday-session-old";
   });
   beforeEach(async () => {
     await truncatePerTestTables(db);
-    await client`INSERT INTO sessions (id, legacy_id, week_key, candidate_date_iso, status, channel_id, deadline_at)
-      VALUES (${storedSession}, ${sessionAlias}, '2026-W17', '2026-04-24', 'ASKING', 'channel', ${deadline.toISOString()})`;
+    await client`INSERT INTO sessions (id, legacy_id, week_key, source, candidate_date_iso, status, channel_id, deadline_at)
+      VALUES (${storedSession}, ${sessionAlias}, '2026-W17', 'weekly_auto', '2026-04-24', 'ASKING', 'channel', ${deadline.toISOString()})`;
+    await client`INSERT INTO weekly_ask_schedules (week_key, auto_session_id)
+      VALUES ('2026-W17', ${storedSession})`;
   });
 
   it("reads exact historical aliases and never treats a stored UUID as a second public alias", async () => {
@@ -71,6 +73,7 @@ const sessionAlias = "Friday-session-old";
   });
 
   it("creates one UUID/alias pair and rejects new non-UUID entities without writing", async () => {
+    await client`UPDATE sessions SET status = 'COMPLETED' WHERE id = ${storedSession}`;
     const input = { id: randomUUID(), weekKey: "2026-W18", postponeCount: 0,
       candidateDateIso: "2026-05-01", channelId: "channel", deadlineAt: deadline };
     expect(await createAskSession(db, input)).toMatchObject({ id: input.id });
@@ -81,7 +84,7 @@ const sessionAlias = "Friday-session-old";
     expect(await findSessionById(db, "new-slug")).toBeUndefined();
   });
 
-  it("keeps legacy attendance links through absence, Saturday creation and week cancellation", async () => {
+  it("keeps legacy attendance links through absence and postponement when weekly cancellation is rejected", async () => {
     const responseId = randomUUID();
     const input = { sessionId: sessionAlias, memberId: memberAlias, responseId,
       choice: "ABSENT" as const, sourceInteractionId: "300", now, memberCountExpected: 1 };
@@ -93,29 +96,37 @@ const sessionAlias = "Friday-session-old";
     const saturday = { id: randomUUID(), candidateDateIso: "2026-04-25", deadlineAt: new Date("2026-04-25T13:00:00Z") };
     expect(await submitPostponeVote(db, { ...input, responseId: randomUUID(), sourceInteractionId: "301",
       choice: "POSTPONE_OK", saturday })).toMatchObject({ kind: "transitioned", outcome: "all_ok",
-      session: { id: sessionAlias, status: "POSTPONED" }, saturdaySession: { id: saturday.id, status: "ASKING" } });
+      session: { id: sessionAlias, status: "POSTPONED" },
+      saturdaySession: { id: saturday.id, status: "ASKING", source: "postponed", parentSessionId: sessionAlias } });
     const aliases = await client`SELECT DISTINCT session_id FROM discord_notification_attendance ORDER BY session_id`;
     expect(aliases.map(row => row["session_id"]).sort()).toEqual([sessionAlias, saturday.id].sort());
-    const result = await cancelWeekAtomically(db, { weekKey: "2026-W17", sentinelSessionId: randomUUID(),
-      candidateDateIso: "2026-04-24", channelId: "channel", deadlineAt: deadline, now,
+    const before = await Promise.all([findSessionById(db, sessionAlias), findSessionById(db, saturday.id)]);
+    const result = await cancelWeekAtomically(db, { weekKey: "2026-W17", channelId: "channel", now,
       invokerUserId: "333333333333333333", suppressMentions: true });
-    expect(result).toMatchObject({ kind: "applied", skippedSessions: [
-      { id: sessionAlias, status: "SKIPPED" }, { id: saturday.id, status: "SKIPPED" }
-    ] });
+    expect(result).toStrictEqual({ kind: "already_started", weekKey: "2026-W17", noticeEnqueued: false });
+    expect(await Promise.all([findSessionById(db, sessionAlias), findSessionById(db, saturday.id)])).toStrictEqual(before);
   });
 
-  it("creates and reuses the canonical cancellation sentinel when the week is empty", async () => {
-    const id = randomUUID();
-    const input = { weekKey: "2026-W19", sentinelSessionId: id, candidateDateIso: "2026-05-08",
-      channelId: "channel", deadlineAt: deadline, now, invokerUserId: "333333333333333333", suppressMentions: true };
-    expect(await cancelWeekAtomically(db, input)).toMatchObject({ kind: "applied", sentinelCreated: true,
-      skippedSessions: [{ id, status: "SKIPPED" }] });
-    expect(await cancelWeekAtomically(db, { ...input, sentinelSessionId: randomUUID() }))
-      .toMatchObject({ kind: "already_skipped", sentinelCreated: false });
-    expect(await findSessionById(db, id)).toMatchObject({ id, status: "SKIPPED" });
+  it("persists a weekly cancellation and its notification owner without creating a Session", async () => {
+    const before = await findSessionById(db, sessionAlias);
+    const input = { weekKey: "2026-W19", channelId: "channel", now,
+      invokerUserId: "333333333333333333", suppressMentions: true };
+    expect(await cancelWeekAtomically(db, input))
+      .toStrictEqual({ kind: "applied", weekKey: "2026-W19", noticeEnqueued: true });
+    expect(await cancelWeekAtomically(db, input))
+      .toStrictEqual({ kind: "already_disabled", weekKey: "2026-W19", noticeEnqueued: false });
+    const weeks = await client`SELECT week_key, auto_session_id, disabled_at = ${now.toISOString()}::timestamptz AS disabled_at_matches, disabled_by
+      FROM weekly_ask_schedules WHERE week_key = '2026-W19'`;
+    expect(weeks).toMatchObject([{ week_key: "2026-W19", auto_session_id: null,
+      disabled_at_matches: true, disabled_by: input.invokerUserId }]);
+    const notices = await client`SELECT session_id, week_key, aggregate_revision, ordinal
+      FROM discord_notification_attendance`;
+    expect(notices).toMatchObject([{ session_id: null, week_key: "2026-W19", aggregate_revision: "1", ordinal: 0 }]);
+    expect(await client`SELECT id FROM sessions WHERE week_key = '2026-W19'`).toHaveLength(0);
+    expect(await findSessionById(db, sessionAlias)).toStrictEqual(before);
   });
 
-  it("reuses a retained HeldEvent and returns historical participant aliases across completion and skip", async () => {
+  it("reuses a retained HeldEvent and preserves historical participant aliases after weekly cancellation is rejected", async () => {
     await client`UPDATE sessions SET status = 'DECIDED', decided_start_at = ${start.toISOString()} WHERE id = ${storedSession}`;
     await client`INSERT INTO held_events (id, legacy_id, session_id, held_date_iso, start_at)
       VALUES (${storedHeld}, 'held-old', ${storedSession}, '2026-04-24', ${start.toISOString()})`;
@@ -126,10 +137,11 @@ const sessionAlias = "Friday-session-old";
     });
     expect(await completeDecidedSessionAsHeld(db, input)).toBeUndefined();
     expect(await findHeldEventBySessionId(db, sessionAlias)).toMatchObject({ id: "held-old", sessionId: sessionAlias });
-    expect(await cancelWeekAtomically(db, { weekKey: "2026-W17", sentinelSessionId: randomUUID(),
-      candidateDateIso: "2026-04-24", channelId: "channel", deadlineAt: deadline, now,
+    expect(await cancelWeekAtomically(db, { weekKey: "2026-W17", channelId: "channel", now,
       invokerUserId: "333333333333333333", suppressMentions: true }))
-      .toMatchObject({ kind: "already_held", session: { id: sessionAlias } });
+      .toStrictEqual({ kind: "already_started", weekKey: "2026-W17", noticeEnqueued: false });
+    expect(await findSessionById(db, sessionAlias)).toMatchObject({ status: "COMPLETED" });
+    expect(await findHeldEventBySessionId(db, sessionAlias)).toMatchObject({ id: "held-old", sessionId: sessionAlias });
   });
 
   it("rolls back the session and new HeldEvent when a historical member lookup fails", async () => {

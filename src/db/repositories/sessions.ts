@@ -22,6 +22,5 @@ export {
   getSchedulerSessionHints,
   findMessageRecoveryCandidates,
   findSessionById,
-  findSessionByWeekKeyAndPostponeCount,
   findStrandedCancelledSessions
 } from "./sessions.queries.ts";

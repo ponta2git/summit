@@ -41,7 +41,7 @@ export const postponeMessages = {
       }
       lines.push(
         "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
-        "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+        "全員分そろえば明日の出欠確認へ進みます。そろわなければ順延は行いません。"
       );
       return lines.join("\n");
     },
@@ -50,8 +50,8 @@ export const postponeMessages = {
       `✅ ${count}名全員が「明日も募集OK」なので、${formatCandidateJa(parseCandidateDateIso(candidateDateIso))} の出欠確認へ進みます。`,
     cancelled: ({ reason }: PostponeCancelledParams): string =>
       reason === "ng"
-        ? "🛑 今週はお流れです。予定がそろわない人がいました。"
-        : `🛑 今週はお流れです。締切までに${expectedMemberCountLabel}の回答がそろいませんでした。`
+        ? "🛑 順延は行いません。予定がそろわない人がいました。"
+        : `🛑 順延は行いません。締切までに${expectedMemberCountLabel}の回答がそろいませんでした。`
   },
 
   interaction: {
@@ -62,10 +62,10 @@ export const postponeMessages = {
 
   ngConfirm: {
     prompt:
-      "⚠️ 今週はお流れで送信しますか？\n送信すると、この順延確認は終了します。",
-    confirmButtonLabel: "今週はお流れにする",
+      "⚠️ 順延しないで送信しますか？\n送信すると、この順延確認は終了します。",
+    confirmButtonLabel: "順延しない",
     abortButtonLabel: "キャンセル",
-    confirmed: "今週はお流れで受け付けました。",
+    confirmed: "順延しないで受け付けました。",
     aborted: "キャンセルしました。回答はまだ変わっていません。",
     failed: "処理に失敗しました。少し待ってもう一度お試しください。"
   }

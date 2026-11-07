@@ -11,7 +11,8 @@ import type {
 import { recordCall, type AnyCall, type FakeClock } from "./ports.shared.js";
 import { createFakeOutboxMaintenance } from "./ports.outbox.maintenance.js";
 import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.js";
-import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims } from "./ports.outbox.claims.ts";
+import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims, sameOutboxOwner } from "./ports.outbox.claims.ts";
+import { assertOutboxOwner } from "../../src/db/repositories/outbox.owner.ts";
 
 export interface FakeOutboxPort extends OutboxPort {
   readonly calls: ReadonlyArray<AnyCall>;
@@ -50,7 +51,7 @@ export const createFakeOutboxPort = (
       const ids = new Set(sessionIds);
       for (const entry of byId.values()) {
         if (
-          ids.has(entry.sessionId) &&
+          entry.sessionId !== null && ids.has(entry.sessionId) &&
           entry.dedupeKey !== exceptDedupeKey &&
           (entry.status === "PENDING" ||
             entry.status === "IN_FLIGHT" ||
@@ -72,6 +73,7 @@ export const createFakeOutboxPort = (
       byId.set(entry.id, cloneEntry(entry));
     },
     enqueue: async (input: EnqueueOutboxInput): Promise<EnqueueResult> => {
+      assertOutboxOwner(input);
       recordCall(calls, "enqueue", { input });
       const existing = activeDedupe(input.dedupeKey);
       if (existing) {return { id: existing.id, skipped: true };}
@@ -79,21 +81,19 @@ export const createFakeOutboxPort = (
       if (purgedId) {return { id: purgedId, skipped: true };}
       const orderConflict = Array.from(byId.values()).some(
         (entry) =>
-          entry.sessionId === input.sessionId &&
+          sameOutboxOwner(entry, input) &&
           entry.aggregateRevision === input.aggregateRevision &&
           entry.ordinal === input.ordinal
       );
       if (orderConflict) {
-        throw new Error("duplicate outbox Session order");
+        throw new Error("duplicate outbox owner order");
       }
       const id = randomUUID();
       const now = clock.now();
       byId.set(id, {
+        ...input,
         id,
-        kind: input.kind,
-        sessionId: input.sessionId,
         payload: structuredClone(input.payload),
-        dedupeKey: input.dedupeKey,
         status: "PENDING",
         attemptCount: 0,
         lastError: null,
@@ -102,8 +102,6 @@ export const createFakeOutboxPort = (
         nextAttemptAt: now,
         deliveredAt: null,
         deliveredMessageId: null,
-        aggregateRevision: input.aggregateRevision,
-        ordinal: input.ordinal,
         createdAt: now,
         updatedAt: now
       });
@@ -119,7 +117,7 @@ export const createFakeOutboxPort = (
         .filter((entry) =>
           !Array.from(byId.values()).some(
             (predecessor) =>
-              predecessor.sessionId === entry.sessionId &&
+              sameOutboxOwner(predecessor, entry) &&
               (predecessor.status === "PENDING" ||
                 predecessor.status === "IN_FLIGHT" ||
                 predecessor.status === "FAILED") &&
@@ -131,7 +129,7 @@ export const createFakeOutboxPort = (
         .sort(
           (left, right) =>
             left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime() ||
-            left.sessionId.localeCompare(right.sessionId) ||
+            (left.sessionId ?? left.weekKey ?? "").localeCompare(right.sessionId ?? right.weekKey ?? "") ||
             left.aggregateRevision - right.aggregateRevision ||
             left.ordinal - right.ordinal
         )

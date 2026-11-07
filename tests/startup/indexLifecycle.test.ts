@@ -61,7 +61,7 @@ vi.mock("../../src/shutdown.ts", () => ({
 
 describe("bootstrap shutdown ownership", () => {
   let releaseWork: (() => void) | undefined;
-  const phases = ["members", "receiver", "login", "reconcile", "recovery"];
+  const phases = ["members", "receiver", "login", "recovery", "reconcile"];
   beforeEach(() => {
     releaseWork = undefined; vi.resetModules(); h.calls = []; h.shuttingDown = false; h.signals.clear(); h.shutdown = undefined; h.failures.clear();
     vi.spyOn(process, "once").mockImplementation((event, listener) => { h.signals.set(event, () => { listener(); }); return process; });

@@ -43,7 +43,7 @@ export const renderPostponeBody = (
               ms.state === "ok"
                 ? "明日も募集OK"
                 : ms.state === "ng"
-                  ? "今週はお流れ"
+                  ? "順延しない"
                   : "未回答";
             return `- ${ms.displayLabel}: ${label}`;
           })

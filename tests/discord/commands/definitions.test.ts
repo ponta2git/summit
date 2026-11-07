@@ -5,9 +5,9 @@ import { buildFeatureRegistry } from "../../../src/discord/registry/index.ts";
 import { featureModules } from "../../../src/discord/registry/modules.ts";
 
 const expected = [
-  { name: "ask", description: "今週の出欠確認を投稿します。", type: 1, options: [] },
-  { name: "cancel_week", description: "今週の出欠確認をお休みにします。", type: 1, options: [] },
-  { name: "status", description: "今週の状況を自分だけに表示します。", type: 1, options: [] }
+  { name: "ask", description: "当日の出欠確認を投稿します（21:30より前）。", type: 1, options: [] },
+  { name: "cancel_week", description: "今週の未作成の金曜自動募集を停止します。", type: 1, options: [] },
+  { name: "status", description: "進行中の募集と今週の自動募集状況を自分だけに表示します。", type: 1, options: [] }
 ];
 
 describe("standalone command definitions", () => {

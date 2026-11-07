@@ -16,7 +16,7 @@ export const decidedMessages = {
         0
       );
       const lines = [
-        "🎉 今週の桃鉄1年勝負、開催です！",
+        "🎉 桃鉄1年勝負、開催です！",
         "",
         `開始: ${startTimeLabel}`,
         "回答内訳:",

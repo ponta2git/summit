@@ -7,8 +7,8 @@ import {
   type OutboxKind,
   type OutboxStatus
 } from "../schema.ts";
-import { assertEnum } from "../rows.ts";
 import type { ClaimLease } from "../../time/lease.ts";
+import { parseOutboxOwner, type OutboxOwner } from "./outbox.owner.ts";
 
 // invariant: worker が新規投稿 payload を rehydrate する際の schema。
 //   既存 message の編集は DB 正本からの best-effort 経路であり outbox へ混在させない。
@@ -24,15 +24,9 @@ const outboxPayloadSchema = z.object({
 
 export type OutboxPayload = z.infer<typeof outboxPayloadSchema>;
 
-export const parseOutboxPayload = (value: unknown): OutboxPayload | undefined => {
-  const parsed = outboxPayloadSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-};
-
-export interface OutboxEntry {
+export type OutboxEntry = OutboxOwner & {
   readonly id: string;
   readonly kind: OutboxKind;
-  readonly sessionId: string;
   readonly payload: OutboxPayload;
   readonly dedupeKey: string;
   readonly status: OutboxStatus;
@@ -49,55 +43,59 @@ export interface OutboxEntry {
   readonly ordinal: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
-}
+};
 
-export interface EnqueueOutboxInput {
+export type EnqueueOutboxInput = OutboxOwner & {
   readonly kind: OutboxKind;
-  readonly sessionId: string;
   readonly payload: OutboxPayload;
   readonly dedupeKey: string;
   readonly aggregateRevision: number;
   readonly ordinal: number;
-}
+};
 
-export type OutboxDiagnostic = Pick<OutboxEntry, "id" | "sessionId" | "status" | "attemptCount" | "createdAt" | "dedupeKey">;
+export type OutboxDiagnostic = Pick<OutboxEntry, "id" | "sessionId" | "weekKey" | "status" | "attemptCount" | "createdAt" | "dedupeKey">;
 
 export interface EnqueueResult {
   readonly id: string;
   readonly skipped: boolean;
 }
 
-export type AttendanceNotificationRow = typeof discordNotifications.$inferSelect & {
+export type AttendanceNotificationRow = Pick<typeof discordNotifications.$inferSelect,
+  "id" | "kind" | "payload" | "dedupeKey" | "status" | "attemptCount" | "lastError" |
+  "claimExpiresAt" | "claimToken" | "nextAttemptAt" | "deliveredAt" | "createdAt" | "updatedAt"
+> & {
   readonly sessionId: string | null;
+  readonly weekKey: string | null;
   readonly aggregateRevision: number;
   readonly ordinal: number;
   readonly deliveredMessageId: string | null;
 };
 
-export const mapOutboxRow = (
-  row: AttendanceNotificationRow,
-  payload: OutboxPayload
-): OutboxEntry => {
-  if (row.sessionId === null) {
-    throw new Error("Active attendance notification has no Session");
-  }
+/** Invalid persisted data is an expected item-level failure; programming errors still propagate. */
+export const parseOutboxRow = (row: AttendanceNotificationRow): OutboxEntry | undefined => {
+  const owner = parseOutboxOwner(row);
+  const kind = OUTBOX_KINDS.find(value => value === row.kind);
+  const status = OUTBOX_STATUSES.find(value => value === row.status);
+  if (!owner || !kind || !status) { return undefined; }
+  const payload = outboxPayloadSchema.safeParse(row.payload);
+  if (!payload.success) { return undefined; }
   return {
-  id: row.id,
-  kind: assertEnum(OUTBOX_KINDS, row.kind, "outbox kind"),
-  sessionId: row.sessionId,
-  payload,
-  dedupeKey: row.dedupeKey,
-  status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status"),
-  attemptCount: row.attemptCount,
-  lastError: row.lastError,
-  claimExpiresAt: row.claimExpiresAt,
-  claimToken: row.claimToken,
-  nextAttemptAt: row.nextAttemptAt,
-  deliveredAt: row.deliveredAt,
-  deliveredMessageId: row.deliveredMessageId,
-  aggregateRevision: row.aggregateRevision,
-  ordinal: row.ordinal,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt
+    ...owner,
+    id: row.id,
+    kind,
+    payload: payload.data,
+    dedupeKey: row.dedupeKey,
+    status,
+    attemptCount: row.attemptCount,
+    lastError: row.lastError,
+    claimExpiresAt: row.claimExpiresAt,
+    claimToken: row.claimToken,
+    nextAttemptAt: row.nextAttemptAt,
+    deliveredAt: row.deliveredAt,
+    deliveredMessageId: row.deliveredMessageId,
+    aggregateRevision: row.aggregateRevision,
+    ordinal: row.ordinal,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
   };
 };

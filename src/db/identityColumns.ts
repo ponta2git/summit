@@ -4,6 +4,8 @@ import { wireId, wireReference, type IdentityLayout } from "./identities.ts";
 // Explicit wire projections keep schema-only alias/public columns out of domain rows.
 export const sessionColumns = (layout: IdentityLayout) => ({
   id: wireId(layout, sessions), weekKey: sessions.weekKey, postponeCount: sessions.postponeCount,
+  source: sessions.source, parentSessionId: wireReference<string | null>(layout, sessions, sessions.parentSessionId),
+  requestId: sessions.requestId, occupiesDate: sessions.occupiesDate,
   candidateDateIso: sessions.candidateDateIso, status: sessions.status, channelId: sessions.channelId,
   askMessageId: sessions.askMessageId, postponeMessageId: sessions.postponeMessageId,
   deadlineAt: sessions.deadlineAt, decidedStartAt: sessions.decidedStartAt, cancelReason: sessions.cancelReason,

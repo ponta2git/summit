@@ -42,13 +42,16 @@ const parseExtra = <T extends z.ZodType>(
 };
 
 export const renderAskOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  const { sessionId } = entry;
+  if (sessionId === null) { return undefined; }
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session) {return undefined;}
   const [responses, members] = yield* loadAttendance(ctx, session.id);
   return renderAskBody(buildAskMessageViewModel(session, responses, members));
 });
 
 export const renderSettleOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() => {
+  if (entry.sessionId === null) { return undefined; }
   const extra = parseExtra(settleNoticeExtraSchema, entry.payload.extra);
   return extra
     ? renderSettleNotice(buildSettleNoticeViewModel(extra.reason, {
@@ -60,7 +63,9 @@ export const renderSettleOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() 
 });
 
 export const renderPostponeOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  const { sessionId } = entry;
+  if (sessionId === null) { return undefined; }
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session) {return undefined;}
   const [responses, members] = yield* loadAttendance(ctx, session.id);
   return renderPostponeBody(buildPostponeMessageViewModel(session, responses, members, {
@@ -69,7 +74,9 @@ export const renderPostponeOutbox = Effect.fnUntraced(function* ({ ctx, entry }:
 });
 
 export const renderDecidedOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  const { sessionId } = entry;
+  if (sessionId === null) { return undefined; }
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session || (session.status !== "DECIDED" && session.status !== "COMPLETED") || !session.decidedStartAt) {
     return undefined;
   }
@@ -79,7 +86,9 @@ export const renderDecidedOutbox = Effect.fnUntraced(function* ({ ctx, entry }: 
 });
 
 export const renderReminderOutbox = Effect.fnUntraced(function* ({ ctx, entry }: RendererInput) {
-  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(entry.sessionId));
+  const { sessionId } = entry;
+  if (sessionId === null) { return undefined; }
+  const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session || (session.status !== "DECIDED" && session.status !== "COMPLETED") || !session.decidedStartAt) {
     return undefined;
   }
@@ -87,6 +96,7 @@ export const renderReminderOutbox = Effect.fnUntraced(function* ({ ctx, entry }:
 });
 
 export const renderCancelWeekOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() => {
+  if (entry.sessionId === null) { return undefined; }
   const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
   if (!extra) {return undefined;}
   return {
@@ -94,6 +104,13 @@ export const renderCancelWeekOutbox: OutboxRenderer = ({ entry }) => Effect.sync
       ? cancelWeekMessages.cancelWeek.suppressedChannelNotice({ invokerUserId: extra.invokerUserId })
       : cancelWeekMessages.cancelWeek.channelNotice({ invokerUserId: extra.invokerUserId })
   };
+});
+
+export const renderWeeklyAskDisabledOutbox: OutboxRenderer = ({ entry }) => Effect.sync(() => {
+  const extra = parseExtra(cancelWeekNoticeExtraSchema, entry.payload.extra);
+  if (!extra || entry.sessionId !== null || !entry.weekKey) { return undefined; }
+  const invoker = extra.suppressMentions === true ? extra.invokerUserId : `<@${extra.invokerUserId}>`;
+  return { content: `🛑 ${entry.weekKey} の金曜自動募集はお休みです。手動募集は利用できます。（実行: ${invoker}）` };
 });
 
 const loadAttendance = (

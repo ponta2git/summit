@@ -8,6 +8,7 @@ import { set } from "date-fns/set";
 import { startOfDay } from "date-fns/startOfDay";
 import {
   ASK_DEADLINE_HHMM,
+  ASK_START_HHMM,
   REMINDER_LEAD_MINUTES
 } from "../config.ts";
 import {
@@ -84,6 +85,13 @@ export const deadlineFor = (candidateDate: Date): Date =>
     seconds: 0,
     milliseconds: 0
   });
+
+/** Only the Friday publication window can originate or recover a weekly ask. */
+export const isWeeklyAskWindow = (now: Date): boolean =>
+  now.getDay() === 5 &&
+  now.getTime() >= set(startOfDay(now), {
+    hours: ASK_START_HHMM.hour, minutes: ASK_START_HHMM.minute, seconds: 0, milliseconds: 0
+  }).getTime() && now.getTime() < deadlineFor(now).getTime();
 
 /**
  * Computes the postpone-vote deadline for a candidate date.

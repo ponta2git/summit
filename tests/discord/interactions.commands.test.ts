@@ -34,7 +34,7 @@ describe("interaction command routing", () => {
     expect(interaction.editReply).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith(askMessages.interaction.ask.queued);
     expect(sendAsk).toHaveBeenCalledOnce();
-    expect(sendAsk).toHaveBeenCalledWith({ trigger: "command", invokerId: memberUserId });
+    expect(sendAsk).toHaveBeenCalledWith({ trigger: "command", invokerId: memberUserId, requestId: interaction.id });
   });
 
   it("rejects /ask from a non-member without sending", async () => {

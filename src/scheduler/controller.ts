@@ -12,6 +12,7 @@ import { AppError, InvariantViolationError } from "../errors/index.ts";
 import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger as defaultLogger } from "../logger.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
+import { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
 import { createAttendanceDeliveryRuntime } from "../notifications/delivery/composition.attendance.ts";
 import { readAttendanceDispatchAt } from "../notifications/delivery/sources/attendance.ts";
@@ -203,6 +204,12 @@ export const createSchedulerController = (
       logger.info({ event: "scheduler.recompute_started", reason });
       try {
         const { didRun, failed } = await runDueSessionWork();
+        if (!stopped) {
+          const created = await runPromiseBoundary(reconcileMissingAsk(context));
+          if (created > 0 && !stopped) {
+            attendance.schedule(await runPromiseBoundary(readAttendanceDispatchAt(context)), context.clock.now());
+          }
+        }
         if (failed) { retryRecompute(); }
         else {
           recomputeRecoveryAttempt = 0;

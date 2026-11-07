@@ -1,9 +1,13 @@
 // source-of-truth: sessions repository の公開 input 型。
 
+import type { SessionSource } from "../rows.ts";
 import type { EnqueueOutboxInput } from "./outbox.ts";
 
 export interface CreateAskSessionInput {
   id: string;
+  source?: SessionSource;
+  parentSessionId?: string | null;
+  requestId?: string | null;
   weekKey: string;
   postponeCount: number;
   candidateDateIso: string;

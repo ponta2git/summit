@@ -13,14 +13,15 @@ export const findStrandedOutboxEntries = async (
 ): Promise<readonly OutboxDiagnostic[]> => {
   // Diagnostics must remain available even when the stored delivery body is malformed.
   const rows = await db.select({ id: discordNotifications.id, sessionId: discordNotificationAttendance.sessionId,
+    weekKey: discordNotificationAttendance.weekKey,
     dedupeKey: discordNotifications.dedupeKey, status: discordNotifications.status, attemptCount: discordNotifications.attemptCount, createdAt: discordNotifications.createdAt })
     .from(discordNotifications)
     .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
     .where(and(retainedAttendance, or(eq(discordNotifications.status, "FAILED"),
       and(inArray(discordNotifications.status, ["PENDING", "IN_FLIGHT"]), sql`${discordNotifications.attemptCount} >= ${attemptsThreshold}`))))
     .orderBy(discordNotifications.createdAt, discordNotifications.id);
-  return rows.flatMap(row => row.sessionId === null ? [] : [{ ...row, sessionId: row.sessionId,
-    status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status") }]);
+  return rows.map(({ weekKey, ...row }) => ({ ...row, ...(weekKey === null ? {} : { weekKey }),
+    status: assertEnum(OUTBOX_STATUSES, row.status, "outbox status") }));
 };
 
 interface PruneOutboxResult {

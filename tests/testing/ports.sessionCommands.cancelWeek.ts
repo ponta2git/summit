@@ -1,121 +1,25 @@
-import type {
-  CancelWeekResult,
-  SessionCommandsPort,
-  SessionRow
-} from "../../src/db/ports.js";
-import type { FakeHeldEventsPort } from "./ports.heldEvents.js";
-import type { FakeOutboxPort } from "./ports.outbox.js";
-import type { FakeSessionsPort } from "./ports.sessions.js";
-import { recordCall, type AnyCall } from "./ports.shared.js";
-
-const CANCELLABLE = new Set([
-  "ASKING",
-  "POSTPONE_VOTING",
-  "POSTPONED",
-  "DECIDED",
-  "CANCELLED"
-]);
+import type { SessionCommandsPort } from "../../src/db/ports.ts";
+import type { FakeOutboxPort } from "./ports.outbox.ts";
+import type { FakeSessionsPort } from "./ports.sessions.ts";
+import { recordCall, type AnyCall } from "./ports.shared.ts";
 
 export const createFakeCancelWeekCommand = (
-  calls: AnyCall[],
-  sessions: FakeSessionsPort,
-  heldEvents: FakeHeldEventsPort,
-  outbox: FakeOutboxPort
+  calls: AnyCall[], sessions: FakeSessionsPort, outbox: FakeOutboxPort
 ): Pick<SessionCommandsPort, "cancelWeekAtomically"> => ({
-  cancelWeekAtomically: async (input): Promise<CancelWeekResult> => {
+  cancelWeekAtomically: async input => {
     recordCall(calls, "cancelWeekAtomically", { input });
-    const weekSessions = sessions
-      .listSessions()
-      .filter((session) => session.weekKey === input.weekKey)
-      .sort(
-        (left, right) =>
-          left.postponeCount - right.postponeCount ||
-          left.id.localeCompare(right.id)
-      );
-    for (const session of weekSessions) {
-      if (await heldEvents.findBySessionId(session.id)) {
-        return {
-          kind: "already_held",
-          weekKey: input.weekKey,
-          session
-        };
-      }
-    }
-
-    let sentinelCreated = false;
-    const skippedSessions: SessionRow[] = [];
-    if (weekSessions.length === 0) {
-      const created = await sessions.createAskSession({
-        id: input.sentinelSessionId,
-        weekKey: input.weekKey,
-        postponeCount: 0,
-        candidateDateIso: input.candidateDateIso,
-        channelId: input.channelId,
-        deadlineAt: input.deadlineAt
-      });
-      if (!created) {throw new Error("SKIPPED sentinel insert returned no row");}
-      const skipped = await sessions.skipSession({
-        id: created.id,
-        cancelReason: "manual_skip"
-      });
-      if (!skipped) {throw new Error("SKIPPED sentinel transition failed");}
-      skippedSessions.push(skipped);
-      sentinelCreated = true;
-    } else {
-      for (const session of weekSessions) {
-        if (!CANCELLABLE.has(session.status)) {continue;}
-        const skipped = await sessions.skipSession({
-          id: session.id,
-          cancelReason: "manual_skip"
-        });
-        if (skipped) {skippedSessions.push(skipped);}
-      }
-    }
-
-    const alreadySkipped = weekSessions.filter(
-      (session) => session.status === "SKIPPED"
-    );
-    const anchor = skippedSessions[0] ?? alreadySkipped[0];
-    if (!anchor) {
-      return {
-        kind: "already_closed",
-        weekKey: input.weekKey,
-        sessions: weekSessions
-      };
-    }
-
-    const dedupeKey = "cancel-week-notice-" + input.weekKey;
-    outbox.cancelForSessionIds(
-      [...skippedSessions, ...alreadySkipped].map((session) => session.id),
-      dedupeKey,
-      input.now
-    );
-    const notice = await outbox.enqueue({
-      kind: "send_message",
-      sessionId: anchor.id,
-      dedupeKey,
-      aggregateRevision: anchor.revision,
-      ordinal: 0,
-      payload: {
-        kind: "send_message",
-        channelId: input.channelId,
-        renderer: "cancel_week_notice",
-        extra: {
-          invokerUserId: input.invokerUserId,
-          suppressMentions: input.suppressMentions
-        }
-      }
+    const week = sessions.weeklySchedules.get(input.weekKey);
+    if (week?.autoSessionId) { return { kind: "already_started", weekKey: input.weekKey, noticeEnqueued: false }; }
+    if (week?.disabledAt) { return { kind: "already_disabled", weekKey: input.weekKey, noticeEnqueued: false }; }
+    sessions.weeklySchedules.set(input.weekKey, {
+      weekKey: input.weekKey, autoSessionId: null, disabledAt: input.now
     });
-    return {
-      kind:
-        skippedSessions.length > 0 || sentinelCreated
-          ? "applied"
-          : "already_skipped",
-      weekKey: input.weekKey,
-      skippedSessions,
-      sentinelCreated,
-      noticeEnqueued: !notice.skipped
-    };
-
+    const notice = await outbox.enqueue({
+      kind: "send_message", sessionId: null, weekKey: input.weekKey,
+      dedupeKey: `weekly-ask-disabled-${input.weekKey}`, aggregateRevision: 1, ordinal: 0,
+      payload: { kind: "send_message", channelId: input.channelId, renderer: "weekly_ask_disabled",
+        extra: { invokerUserId: input.invokerUserId, suppressMentions: input.suppressMentions } }
+    });
+    return { kind: "applied", weekKey: input.weekKey, noticeEnqueued: !notice.skipped };
   }
 });

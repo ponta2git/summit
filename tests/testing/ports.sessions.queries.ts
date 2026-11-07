@@ -4,7 +4,6 @@ import type { FakeSessionsState } from "./ports.sessions.state.js";
 
 type SessionQueryMethods = Pick<
   SessionsPort,
-  | "findSessionByWeekKeyAndPostponeCount"
   | "findSessionById"
   | "findDueAskingSessions"
   | "findDuePostponeVotingSessions"
@@ -18,18 +17,6 @@ type SessionQueryMethods = Pick<
 export const createFakeSessionQueryMethods = (
   state: FakeSessionsState
 ): SessionQueryMethods => ({
-  findSessionByWeekKeyAndPostponeCount: async (weekKey, postponeCount) => {
-    recordCall(state.calls, "findSessionByWeekKeyAndPostponeCount", {
-      weekKey,
-      postponeCount
-    });
-    const found = Array.from(state.byId.values()).find(
-      (session) =>
-        session.weekKey === weekKey && session.postponeCount === postponeCount
-    );
-    return found ? state.clone(found) : undefined;
-  },
-
   findSessionById: async (id) => {
     recordCall(state.calls, "findSessionById", { id });
     const found = state.byId.get(id);

@@ -1,5 +1,5 @@
 import { format } from "date-fns/format";
-import type { HeldEventRow, OutboxDiagnostic, ResponseRow, SessionRow } from "../../db/ports.ts";
+import type { CurrentWeekStatusSnapshot, HeldEventRow, OutboxDiagnostic, ResponseRow, SessionRow } from "../../db/ports.ts";
 import type { SessionStatus } from "../../db/rows.ts";
 import {
   isoWeekKey,
@@ -44,6 +44,7 @@ interface SessionStatusViewModel {
 interface StatusViewModel {
   readonly nowJst: string;
   readonly currentWeekKey: string;
+  readonly weeklyAuto: CurrentWeekStatusSnapshot["weeklyAuto"];
   readonly sessions: readonly SessionStatusViewModel[];
   readonly nextEventAt: string | null;
   readonly totalWarnings: number;
@@ -128,6 +129,7 @@ const buildNextEventAt = (
  */
 export const buildStatusViewModel = (input: {
   readonly now: Date;
+  readonly weeklyAuto: CurrentWeekStatusSnapshot["weeklyAuto"];
   readonly sessions: readonly SessionRow[];
   readonly responsesBySessionId: ReadonlyMap<string, readonly ResponseRow[]>;
   readonly heldEventBySessionId: ReadonlyMap<string, HeldEventRow>;
@@ -162,6 +164,7 @@ export const buildStatusViewModel = (input: {
   return {
     nowJst: fmtJstFull(now),
     currentWeekKey: isoWeekKey(now),
+    weeklyAuto: input.weeklyAuto,
     sessions: sessionVMs,
     nextEventAt,
     totalWarnings,
@@ -179,6 +182,8 @@ export const renderStatusText = (vm: StatusViewModel): string => {
   const lines: string[] = [];
 
   lines.push(`現在時刻: ${vm.nowJst} JST  weekKey: ${vm.currentWeekKey}`);
+  const weeklyAutoLabels = { pending: "未作成", disabled: "停止（手動募集は利用可）", created: "生成済み" } as const;
+  lines.push(`今週の金曜自動募集: ${weeklyAutoLabels[vm.weeklyAuto]}`);
 
   if (vm.sessions.length === 0) {
     lines.push("非終端セッション: なし");

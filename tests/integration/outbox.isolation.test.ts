@@ -7,7 +7,7 @@ import { makeRealPorts } from "../../src/db/ports.real.ts";
 import { assertNewNotificationPartLimit } from "../../src/features/result-notifications/render.ts";
 import { enqueueOutbox, findStrandedOutboxEntries } from "../../src/db/repositories/outbox.ts";
 import { buildAskBodyIntent } from "../../src/db/repositories/sessionOutboxIntents.ts";
-import { discordNotifications, sessions } from "../../src/db/schema.ts";
+import { discordNotifications, discordNotificationAttendance, sessions } from "../../src/db/schema.ts";
 import { reconcileMissingMessageIntents } from "../../src/scheduler/reconciler.missingAskMessage.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
@@ -19,7 +19,7 @@ describeDb("attendance outbox failure isolation (integration)", () => {
   const { db } = createIntegrationDb();
   const now = new Date("2026-04-24T12:00:00Z");
   const first = buildSessionRow({ id: "first" });
-  const second = buildSessionRow({ id: "second", candidateDateIso: "2026-05-01" });
+  const second = buildSessionRow({ id: "second", status: "COMPLETED", candidateDateIso: "2026-05-01" });
   const ports = makeRealPorts(db, payload => assertNewNotificationPartLimit(payload, "https://example.test"), repositoryClock);
 
   beforeEach(async () => {
@@ -48,21 +48,33 @@ describeDb("attendance outbox failure isolation (integration)", () => {
     expect((await findStrandedOutboxEntries(db, 5)).map(row => row.id)).toStrictEqual([bad.id]);
   });
 
-  it("does not enqueue missing messages from a snapshot superseded by cancel_week", async () => {
+  it("does not enqueue missing messages from a snapshot superseded by a terminal transition", async () => {
     const staleReadPorts = { ...ports, sessions: { ...ports.sessions,
       findMessageRecoveryCandidates: async () => {
         const snapshot = await ports.sessions.findMessageRecoveryCandidates();
-        await ports.sessionCommands.cancelWeekAtomically({
-          sentinelSessionId: "unused", weekKey: first.weekKey, candidateDateIso: first.candidateDateIso,
-          deadlineAt: first.deadlineAt, channelId: first.channelId,
-          invokerUserId: "333333333333333333", suppressMentions: true, now
-        });
+        await db.update(sessions).set({ status: "COMPLETED" }).where(eq(sessions.legacyId, first.id));
         return snapshot.filter(row => row.id === first.id);
       }
     } };
     const report = await runEffect(reconcileMissingMessageIntents({ ports: staleReadPorts, clock: { now: () => now } }));
     expect(report).toStrictEqual({ processed: 1, succeeded: 0, failures: [] });
     expect(await db.select({ dedupeKey: discordNotifications.dedupeKey, status: discordNotifications.status })
-      .from(discordNotifications)).toStrictEqual([{ dedupeKey: `cancel-week-notice-${first.weekKey}`, status: "PENDING" }]);
+      .from(discordNotifications)).toStrictEqual([]);
+  });
+
+  it("isolates retained orphan ownership without hiding unrelated valid claims", async () => {
+    const orphan = await enqueueOutbox(db, buildAskBodyIntent(first));
+    const good = await enqueueOutbox(db, buildAskBodyIntent(second));
+    // The shared schema retains historical identity after its old Session has been deleted.
+    await db.update(discordNotificationAttendance).set({ sessionId: null })
+      .where(eq(discordNotificationAttendance.notificationId, orphan.id));
+    await db.update(discordNotifications).set({ nextAttemptAt: now });
+
+    expect((await claimNextOutboxBatch(db, { limit: 10, now, claimDurationMs: 30_000 })).map(row => row.id))
+      .toStrictEqual([good.id]);
+    const [failed] = await db.select({ status: discordNotifications.status, lastError: discordNotifications.lastError,
+      claimToken: discordNotifications.claimToken }).from(discordNotifications).where(eq(discordNotifications.id, orphan.id));
+    expect(failed).toStrictEqual({ status: "FAILED", lastError: "invalid_payload", claimToken: null });
+    expect(await findStrandedOutboxEntries(db, 5)).toMatchObject([{ id: orphan.id, sessionId: null }]);
   });
 });

@@ -135,7 +135,7 @@ describe("settleAskingSession", () => {
       ? ""
       : `${appConfig.memberUserIds.map((id) => `<@${id}>`).join(" ")}\n`;
     expect(discord.sentPayloads).toStrictEqual([{
-      content: `${mentionPrefix}🛑 土曜回も予定がそろわなかったため、今週はお流れです。`,
+      content: `${mentionPrefix}🛑 土曜回も予定がそろわなかったため、この回はお流れです。`,
       nonce: expect.any(String), enforceNonce: true
     }]);
     expect(ctx.ports.outbox.listEntries().map((entry) => entry.status)).toStrictEqual([

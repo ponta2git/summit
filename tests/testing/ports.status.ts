@@ -35,9 +35,8 @@ export const createFakeStatusPort = (
         .listSessions()
         .filter(
           (session) =>
-            session.weekKey === weekKey &&
             (DETAIL_STATUSES.has(session.status) || session.status === "CANCELLED")
-        );
+        ).sort((left, right) => left.candidateDateIso.localeCompare(right.candidateDateIso) || left.id.localeCompare(right.id));
       const responseRows = responses.listAllResponses();
       const heldEventRows = heldEvents.listHeldEvents();
       const sessionDetails: StatusSessionSnapshot[] = visible
@@ -50,7 +49,9 @@ export const createFakeStatusPort = (
             : undefined
         }));
 
+      const weekly = sessions.weeklySchedules.get(weekKey);
       return {
+        weeklyAuto: weekly?.disabledAt ? "disabled" : weekly?.autoSessionId ? "created" : "pending",
         sessions: sessionDetails,
         strandedCancelled: visible.filter((session) => session.status === "CANCELLED")
       };

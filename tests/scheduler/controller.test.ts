@@ -30,7 +30,7 @@ describe("SchedulerController", () => {
 
   it("debounces multiple wake requests into one scheduler hint query", async () => {
     vi.useFakeTimers();
-    const ctx = createTestAppContext();
+    const ctx = createTestAppContext({ now: new Date("2026-04-25T12:00:00Z") });
     const controller = createSchedulerController({
       client,
       context: ctx,
@@ -166,7 +166,7 @@ describe("SchedulerController", () => {
 
   it("does not start the outbox worker when no deliverable rows exist", async () => {
     vi.useFakeTimers();
-    const now = new Date("2026-04-24T12:00:00.000Z");
+    const now = new Date("2026-04-25T12:00:00.000Z");
     const ctx = createTestAppContext({ now });
     const channel = { type: 0, isSendable: () => true, send: vi.fn(async () => ({ id: "m1" })) };
     const discordClient = {

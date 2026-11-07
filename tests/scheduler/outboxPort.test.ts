@@ -222,7 +222,7 @@ describe("outbox port fake", () => {
     await ctx.ports.outbox.enqueue({ ...base, dedupeKey: "order-owner" });
 
     await expect(ctx.ports.outbox.enqueue({ ...base, dedupeKey: "order-conflict" }))
-      .rejects.toThrow("duplicate outbox Session order");
+      .rejects.toThrow("duplicate outbox owner order");
   });
 
   it("rejects completion from an expired claim after the row is reclaimed", async () => {

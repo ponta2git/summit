@@ -8,7 +8,7 @@ import { settledCall } from "../../../runtime/effect.ts";
 import { notificationNonce } from "../deliveryNonce.ts";
 import {
   renderAskOutbox, renderCancelWeekOutbox, renderDecidedOutbox, renderPostponeOutbox,
-  renderReminderOutbox, renderSettleOutbox, type OutboxRenderer
+  renderReminderOutbox, renderSettleOutbox, renderWeeklyAskDisabledOutbox, type OutboxRenderer
 } from "../outboxRenderers.ts";
 import type { SinglePostDefinition } from "../strategies/singlePost.ts";
 
@@ -33,7 +33,8 @@ export const attendanceDefinitions: AttendanceNotificationRegistry = {
       }
     })
   },
-  cancel_week_notice: { render: renderCancelWeekOutbox }
+  cancel_week_notice: { render: renderCancelWeekOutbox },
+  weekly_ask_disabled: { render: renderWeeklyAskDisabledOutbox }
 };
 
 const bindSinglePostDelivery = (
@@ -47,6 +48,10 @@ const bindSinglePostDelivery = (
   return {
     nonce: notificationNonce(id, 0),
     confirmBusiness: Effect.fnUntraced(function* (messageId: string) {
+      if (sessionId === null) {
+        if (confirmBusiness || target) { return yield* Effect.fail(new Error("Session confirmation requires a Session owner")); }
+        return undefined;
+      }
       if (confirmBusiness) {
         yield* confirmBusiness(ctx, sessionId, messageId);
       }
@@ -89,6 +94,7 @@ export const prepareAttendanceNotification = Effect.fnUntraced(function* (
 ) {
   const notification = Object.hasOwn(registry, entry.payload.renderer) ? registry[entry.payload.renderer] : undefined;
   if (!notification) { return undefined; }
+  if (entry.sessionId === null && (notification.confirmBusiness || entry.payload.target)) { return undefined; }
   const body = yield* notification.render({ ctx, entry });
   if (body === undefined) { return undefined; }
   return {
