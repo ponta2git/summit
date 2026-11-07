@@ -51,7 +51,7 @@ describe("committed attendance transitions", () => {
     const interaction = buildButtonInteraction(`${testCase.prefix}:${sessionId}:${testCase.choice}`);
     const handling = handleInteraction(asInteraction(interaction), {
       client: fixture.client, context, wakeScheduler,
-      sendAsk: async () => ({ status: "queued", weekKey: "2026-W17" })
+      sendAsk: async () => ({ status: "queued", weekKey: "2026-W17", sessionId: "session-1" })
     });
     try {
       await editing.promise;

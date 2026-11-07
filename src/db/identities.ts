@@ -100,4 +100,4 @@ export const wireReference = <T extends string | null = string>(
   layout: IdentityLayout, parent: PgTable, foreign: AnyPgColumn
 ): SQL<T> => layout === "legacy_text"
   ? sql<T>`${columnSql(foreign.table, foreign.name)}`
-  : sql<T>`(SELECT legacy_id FROM ${parent} WHERE id = ${columnSql(foreign.table, foreign.name)})`;
+  : sql<T>`(SELECT wire_parent.legacy_id FROM ${parent} AS wire_parent WHERE wire_parent.id = ${columnSql(foreign.table, foreign.name)})`;

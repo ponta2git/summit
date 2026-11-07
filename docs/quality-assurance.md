@@ -27,6 +27,7 @@
 |---|---|---|
 | 性能・高 | DB / Discord 停滞中に Interaction を連打し、Promise / DB queue を増やす | 通常受付と拒否応答の有限枠、stop / drain / 枠回収。[100件 burst](../tests/discord/interactionAdmission.test.ts) |
 | 性能・高 | 本文上限内の HTTP を極小 chunk に分割し、Buffer 数でメモリを増幅 | byte 上限内の連続 buffer。[分割本文](../tests/notifications/http.body.test.ts) |
+| 性能・保守性・中 | 週次予定の確定で不要な往復を行い、出欠claimで未使用列を転送する | 成功時の週次停止は週情報のSQLを3文から1文、自動生成の週情報書込みは2文から1文へ集約。出欠読取の通知親列は24列から13列に限定。[週次予定](../tests/integration/sessionCommands.contract.test.ts)、[配送読取](../src/db/repositories/outbox.storage.ts)。SQL・列数の削減であり実環境の遅延改善率は未測定 |
 | 性能・セキュリティ・高 | 最大本文を同時受付し、JSON 内に大量の空 object・深い配列・不正要素を入れる | 受付全体の byte 予約を DB settlement まで保持。parse 前の構造・深さ制限と配列の最初の不正での打切り。[受付容量](../tests/notifications/http.lifecycle.test.ts)、[悪性構造と8MiB近傍の正当入力](../tests/domain/notificationJson.test.ts) |
 | 性能・セキュリティ・高 | 小さな指数表記を DB で巨大な decimal へ展開させる、旧 ID の内容照合を同時に行う | SQL 前の数値展開作業量と SQL 内の正規化 byte 数を別々に制限。旧容量での内容照合もストレス対象とする。[数値予算](../tests/domain/notificationNumericBudget.test.ts)、[実 PostgreSQL との境界比較](../tests/integration/notificationNumericBudget.test.ts) |
 | 性能・信頼性・高 | 上限内の長いメモや Markdown 記号だけのメモで、正規表現の作業領域を増幅させる | hash は有限走査と逐次更新、escape は断片単位。保存 identity と全文・Unicode を維持。[hash](../tests/notifications/hash.test.ts)、[実 DB の最大近傍](../tests/integration/resultNotifications.transactions.test.ts)、[escape 境界](../tests/features/result-notifications/text.test.ts) |
@@ -50,7 +51,8 @@
 | 信頼性・高 | Session row / advisory lock を保持して出欠 transaction を待たせる | transaction-local の SQL / lock deadline、rollback 完了後の再利用。[実 DB 期限](../tests/integration/transactionLimits.test.ts) |
 | 信頼性・高 | DB commit 後に公開 edit を失敗・遅延させる | commit → wake → best-effort edit。legacy CANCELLED / startup も同じ区別。[commit 後の失敗](../tests/discord/committedTransitions.test.ts)、[起動回復](../tests/scheduler/reconciler.transitions.test.ts) |
 | 信頼性・中 | 開催確定後の編集で clock を進め、reminder skip を誤判定させる | 判定・必要な開催履歴の確定に同じ snapshot を使う。[確定処理](../tests/discord/committedTransitions.test.ts) |
-| 信頼性・中 | `/ask` の二度の clock 読取を週境界にまたがせる、別 context を同時実行 | snapshot と in-flight 所有を AppContext に閉じる。[募集](../tests/discord/ask/send.test.ts) |
+| 信頼性・中 | `/ask` の二度の clock 読取を週境界にまたがせる、別 context を同時実行 | 一つのsnapshotとDBでの作成判定。in-flight集合は停止時の待機だけを所有し、別contextの結果を再利用しない。[募集](../tests/discord/ask/send.test.ts) |
+| 信頼性・保守性・中 | 募集判定後にgate外writerが週次停止を確定する、不正な通知ownerが混在する | 条件付きupsertの失敗で募集全体をrollback。通知ownerをunionと明示検証で限定し、不正な旧行だけFAILEDへ隔離。[募集競合](../tests/integration/sessionCreation.race.test.ts)、[通知隔離](../tests/integration/outbox.isolation.test.ts) |
 | 信頼性・中 | `/status` の過去警告を大量に蓄積し、本文上限を超える | 行単位の制限・省略件数・現在週と合計の保持。[status](../tests/features/status-command/viewModel.test.ts) |
 | 信頼性・低 | 実在しない日付、0〜99年、完了済み開催の再描画 | 厳密な ISO date と確定時刻の保持。[日付](../tests/time/jst.test.ts)、[view model](../tests/discord/ask/viewModel.test.ts) |
 | 信頼性・保守性・低 | 表示 test と計算用の負定数を共有し、「-15分後」を正当化 | lead は正値、減算は計算箇所だけ。独立した期待文面。[reminder](../tests/features/reminder/delivery.test.ts) |

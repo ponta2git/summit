@@ -80,7 +80,7 @@ const buildDeps = (
   client: ReturnType<typeof createDiscordClient>["client"],
   context: TestAppContext
 ): InteractionHandlerDeps => ({
-  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" })),
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" })),
   client,
   context
 });

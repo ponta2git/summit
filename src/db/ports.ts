@@ -25,6 +25,8 @@ import type {
   OutboxDiagnostic
 } from "./repositories/outbox.ts";
 import type {
+  CreateSessionInput,
+  CreateSessionResult,
   AskingDeadlineResult,
   CancelWeekInput,
   CancelWeekResult,
@@ -56,6 +58,8 @@ export type {
   EnqueueResult,
   OutboxEntry,
   OutboxDiagnostic,
+  CreateSessionInput,
+  CreateSessionResult,
   AskingDeadlineResult,
   CancelWeekInput,
   CancelWeekResult,
@@ -85,6 +89,7 @@ export interface StatusSessionSnapshot {
 }
 
 export interface CurrentWeekStatusSnapshot {
+  readonly weeklyAuto: "pending" | "disabled" | "created";
   readonly sessions: readonly StatusSessionSnapshot[];
   readonly strandedCancelled: readonly SessionRow[];
 }
@@ -93,7 +98,7 @@ export interface CurrentWeekStatusSnapshot {
  * Read model owned by `/status`.
  *
  * @remarks
- * 現在週の Session と、その画面に必要な Response / HeldEvent を一括取得する。
+ * 全週の進行中 Session と現在週の自動募集状態、必要な Response / HeldEvent を一括取得する。
  * 個別 port の汎用 batch API を増やさず、status query の結合知識をここへ隠す。
  */
 export interface StatusPort {
@@ -109,10 +114,6 @@ export interface StatusPort {
  */
 export interface SessionsPort {
   createAskSession(input: CreateAskSessionInput): Promise<SessionRow | undefined>;
-  findSessionByWeekKeyAndPostponeCount(
-    weekKey: string,
-    postponeCount: number
-  ): Promise<SessionRow | undefined>;
   findSessionById(id: string): Promise<SessionRow | undefined>;
   updateAskMessageId(id: string, messageId: string): Promise<void>;
   updatePostponeMessageId(id: string, messageId: string): Promise<void>;
@@ -155,11 +156,12 @@ export interface ResponsesPort {
  * Session aggregate commands.
  *
  * @remarks
- * Every implementation locks the Session first, then evaluates Response mutations and
+ * Creation and weekly-stop commands share an admission gate. Other commands lock the Session before evaluating Response mutations and
  * state transitions against one snapshot. Interaction handlers must use these methods
  * instead of composing ResponsesPort + SessionsPort writes.
  */
 export interface SessionCommandsPort {
+  createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
   /** Session lock後に現在状態を検証し、新規作成した欠落message intentだけを返す。 */
   recoverMissingMessageIntents(sessionId: string): Promise<readonly EnqueueOutboxInput[]>;
   cancelWeekAtomically(input: CancelWeekInput): Promise<CancelWeekResult>;
@@ -199,7 +201,7 @@ export interface HeldEventsPort {
  * @remarks
  * 状態遷移と Discord 送信を非同期に切り離す at-least-once 配送キュー。
  * 欠落messageのrecovery・業務遷移は SessionCommandsPort、初回募集は
- * createAskSession が同一 transaction で intent を永続化する。Session 内順序は
+ * createSession が同一 transaction で intent を永続化する。Sessionまたは週内の順序は
  * aggregateRevision / ordinal、claim 所有権は claimToken で fence する。
  */
 export interface OutboxPort {

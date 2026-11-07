@@ -54,34 +54,18 @@ export interface SettlePostponeVotingInput extends SettleDeadlineInput {
 }
 
 export interface CancelWeekInput {
-  readonly sentinelSessionId: string;
   readonly weekKey: string;
-  readonly candidateDateIso: string;
   readonly channelId: string;
-  readonly deadlineAt: Date;
   readonly invokerUserId: string;
   readonly suppressMentions: boolean;
   readonly now: Date;
 }
 
-export type CancelWeekResult =
-  | {
-      readonly kind: "applied" | "already_skipped";
-      readonly weekKey: string;
-      readonly skippedSessions: readonly SessionRow[];
-      readonly sentinelCreated: boolean;
-      readonly noticeEnqueued: boolean;
-    }
-  | {
-      readonly kind: "already_held";
-      readonly weekKey: string;
-      readonly session: SessionRow;
-    }
-  | {
-      readonly kind: "already_closed";
-      readonly weekKey: string;
-      readonly sessions: readonly SessionRow[];
-    };
+export interface CancelWeekResult {
+  readonly kind: "applied" | "already_disabled" | "already_started";
+  readonly weekKey: string;
+  readonly noticeEnqueued: boolean;
+}
 
 type InteractionCommandRejection =
   | { readonly kind: "session_not_found" }

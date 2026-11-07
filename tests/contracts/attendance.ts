@@ -30,7 +30,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     it("bounds expiry recovery and keeps remaining claims visible until later work reclaims them", async () => {
       const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE + 2;
       const sessions = Array.from({ length: count }, (_, index) => buildSessionRow({
-        id: `expiry-${index}`, candidateDateIso: new Date(Date.parse("2026-04-24T00:00:00Z") + index * 7 * 86_400_000).toISOString().slice(0, 10)
+        id: `expiry-${index}`, status: "COMPLETED", candidateDateIso: new Date(Date.parse("2026-04-24T00:00:00Z") + index * 7 * 86_400_000).toISOString().slice(0, 10)
       }));
       const h = await create({ sessions });
       for (let start = 0; start < sessions.length; start += 32) {
@@ -146,7 +146,7 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const created = await h.ports.sessions.createAskSession(row);
       expect(created).toMatchObject({ id: row.id, status: "ASKING", revision: 0 });
       expect(await h.ports.sessions.createAskSession({ ...row, id: "10000000-0000-4000-a000-000000000006" })).toBeUndefined();
-      expect(await h.ports.sessions.findSessionByWeekKeyAndPostponeCount(row.weekKey, row.postponeCount))
+      expect(await h.ports.sessions.findSessionById(row.id))
         .toMatchObject({ id: row.id });
       expect(await h.ports.sessions.backfillAskMessageId(row.id, "first")).toBe(true);
       expect(await h.ports.sessions.backfillAskMessageId(row.id, "second")).toBe(false);
@@ -248,27 +248,21 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       expect(await h.snapshot()).toStrictEqual(before);
     });
 
-    it("recovers an existing Saturday and persists its missing intent", async () => {
-      const parent = fridayPostponeVoting({ id: "session-1" });
-      const child = saturdayAsking({ id: "existing-saturday" });
-      const h = await create({ sessions: [parent, child], responses: attendanceResponses("POSTPONE_OK") });
-      expect(await h.ports.sessionCommands.settlePostponeVoting({ ...attendanceInput, saturday: saturdayInput }))
-        .toMatchObject({ kind: "transitioned", saturdaySession: { id: child.id } });
-      expect((await h.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["ask-body-existing-saturday"]);
-    });
-
     it("rejects closed, missing-member and expired commands without changing state", async () => {
       const asking = makeSession(); const voting = fridayPostponeVoting({ id: "voting" });
-      const h = await create({ sessions: [asking, { ...voting, weekKey: "2026-W18" }] });
+      const h = await create({ sessions: [asking] });
       const before = await h.snapshot();
       expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, memberId: "missing", choice: "T2200" })).toMatchObject({ kind: "member_not_found" });
       expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, now: asking.deadlineAt, choice: "T2200" })).toMatchObject({ kind: "deadline_passed" });
       expect(await h.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "closed" });
-      expect(await h.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, sessionId: voting.id, now: voting.deadlineAt, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "deadline_passed" });
-      expect(await h.ports.sessionCommands.settlePostponeVoting({ ...attendanceInput, sessionId: voting.id, saturday: saturdayInput })).toMatchObject({ kind: "not_due" });
       expect(await h.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, sessionId: "missing" })).toStrictEqual({ kind: "session_not_found" });
-      expect(await h.ports.sessionCommands.settleAskingCancellation({ sessionId: voting.id, now: attendanceNow, reason: "absent" })).toMatchObject({ kind: "closed" });
       expect(await h.snapshot()).toStrictEqual(before);
+      const votingHarness = await create({ sessions: [voting] });
+      const votingBefore = await votingHarness.snapshot();
+      expect(await votingHarness.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, sessionId: voting.id, now: voting.deadlineAt, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "deadline_passed" });
+      expect(await votingHarness.ports.sessionCommands.settlePostponeVoting({ ...attendanceInput, sessionId: voting.id, saturday: saturdayInput })).toMatchObject({ kind: "not_due" });
+      expect(await votingHarness.ports.sessionCommands.settleAskingCancellation({ sessionId: voting.id, now: attendanceNow, reason: "absent" })).toMatchObject({ kind: "closed" });
+      expect(await votingHarness.snapshot()).toStrictEqual(votingBefore);
     });
 
     it("settles unanswered Saturday directly and makes repeated cancellation a no-op", async () => {

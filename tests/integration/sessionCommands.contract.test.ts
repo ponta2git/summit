@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   cancelWeekAtomically,
+  createSession,
   submitAskResponse
 } from "../../src/db/repositories/sessionCommands.js";
 import {
@@ -13,7 +14,7 @@ import {
   completeDecidedSessionAsHeld,
   findHeldEventBySessionId
 } from "../../src/db/repositories/heldEvents.js";
-import { discordNotifications, discordNotificationAttendance, sessions } from "../../src/db/schema.js";
+import { discordNotifications, discordNotificationAttendance, sessions, weeklyAskSchedules } from "../../src/db/schema.js";
 import {
   createIntegrationDb,
   isIntegration,
@@ -32,7 +33,6 @@ const baseSession = {
 } as const;
 
 const cancelInput = {
-  sentinelSessionId: "10000000-0000-4000-a000-000000000020",
   weekKey: baseSession.weekKey,
   candidateDateIso: baseSession.candidateDateIso,
   channelId: baseSession.channelId,
@@ -86,7 +86,7 @@ describeDb("session aggregate command contract (integration)", () => {
   });
 
   it("persists ABSENT, final state, and ordered notices in one command", async () => {
-    await createAskSession(primary.db, { id: "10000000-0000-4000-a000-000000000024", ...baseSession });
+    await createAskSession(primary.db, { id: "10000000-0000-4000-a000-000000000024", ...baseSession, source: "weekly_auto" });
 
     const result = await submitAskResponse(primary.db, {
       responseId: "10000000-0000-4000-a000-000000000025",
@@ -122,19 +122,55 @@ describeDb("session aggregate command contract (integration)", () => {
     ]);
   });
 
-  it("concurrent first-session creation and cancel_week converge to SKIPPED", async () => {
-    const [cancelled] = await Promise.all([
+  it("serializes weekly creation against stopping the uncreated weekly ask", async () => {
+    const [cancelled, created] = await Promise.all([
       cancelWeekAtomically(primary.db, cancelInput),
-      createAskSession(contender.db, { id: "10000000-0000-4000-a000-000000000026", ...baseSession })
+      createSession(contender.db, { id: "10000000-0000-4000-a000-000000000026", source: "weekly_auto", channelId: "channel-1", now: cancelInput.now })
     ]);
+    const rows = await primary.db.select().from(sessions);
+    const outcome = { cancelled: cancelled.kind, created: created.kind,
+      reason: created.kind === "rejected" ? created.reason : null,
+      rows: rows.map(row => ({ status: row.status, source: row.source })) };
+    expect([
+      { cancelled: "applied", created: "rejected", reason: "auto_disabled", rows: [] },
+      { cancelled: "already_started", created: "created", reason: null, rows: [{ status: "ASKING", source: "weekly_auto" }] }
+    ]).toContainEqual(outcome);
+    expect(await primary.db.select().from(discordNotifications)).toHaveLength(1);
+  });
 
-    expect(cancelled.kind).toMatch(/applied|already_skipped/);
-    const rows = await primary.db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.weekKey, baseSession.weekKey));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe("SKIPPED");
+  it.each(["absent", "pending"] as const)("disables an %s weekly schedule once and preserves its audit timestamps on replay", async state => {
+    const createdAt = state === "pending" ? new Date("2026-04-20T00:00:00Z") : cancelInput.now;
+    if (state === "pending") {
+      await primary.db.insert(weeklyAskSchedules).values({ weekKey: baseSession.weekKey, createdAt, updatedAt: createdAt });
+    }
+    expect(await cancelWeekAtomically(primary.db, cancelInput)).toMatchObject({ kind: "applied", noticeEnqueued: true });
+    const before = await primary.db.select().from(weeklyAskSchedules);
+    expect(before).toEqual([{
+      weekKey: baseSession.weekKey, createdAt, updatedAt: cancelInput.now,
+      autoSessionId: null, disabledAt: cancelInput.now, disabledBy: cancelInput.invokerUserId
+    }]);
+    expect(await cancelWeekAtomically(primary.db, { ...cancelInput, invokerUserId: "another-user", now: new Date("2026-04-24T12:01:00Z") }))
+      .toMatchObject({ kind: "already_disabled", noticeEnqueued: false });
+    expect(await primary.db.select().from(weeklyAskSchedules)).toEqual(before);
+    expect(await primary.db.select().from(discordNotifications)).toHaveLength(1);
+  });
+
+  it.each(["absent", "pending"] as const)("assigns an %s weekly schedule to its auto Session once", async state => {
+    const createdAt = state === "pending" ? new Date("2026-04-20T00:00:00Z") : cancelInput.now;
+    if (state === "pending") {
+      await primary.db.insert(weeklyAskSchedules).values({ weekKey: baseSession.weekKey, createdAt, updatedAt: createdAt });
+    }
+    const input = { id: "10000000-0000-4000-a000-000000000028", source: "weekly_auto" as const,
+      channelId: baseSession.channelId, now: cancelInput.now };
+    expect(await createSession(primary.db, input)).toMatchObject({ kind: "created", session: { id: input.id } });
+    const before = await primary.db.select().from(weeklyAskSchedules);
+    expect(before).toEqual([{
+      weekKey: baseSession.weekKey, createdAt, updatedAt: cancelInput.now,
+      autoSessionId: input.id, disabledAt: null, disabledBy: null
+    }]);
+    expect(await createSession(primary.db, { ...input, now: new Date("2026-04-24T12:01:00Z") }))
+      .toEqual({ kind: "rejected", reason: "auto_started" });
+    expect(await primary.db.select().from(weeklyAskSchedules)).toEqual(before);
     expect(await primary.db.select().from(discordNotifications)).toHaveLength(1);
   });
 
@@ -153,8 +189,7 @@ describeDb("session aggregate command contract (integration)", () => {
 
     await Promise.all([
       cancelWeekAtomically(primary.db, {
-        ...cancelInput,
-        sentinelSessionId: "10000000-0000-4000-a000-000000000028"
+        ...cancelInput
       }),
       completeDecidedSessionAsHeld(contender.db, {
         sessionId: "10000000-0000-4000-a000-000000000027",
@@ -165,9 +200,7 @@ describeDb("session aggregate command contract (integration)", () => {
 
     const persisted = await findSessionById(primary.db, "10000000-0000-4000-a000-000000000027");
     const held = await findHeldEventBySessionId(primary.db, "10000000-0000-4000-a000-000000000027");
-    expect(
-      (persisted?.status === "SKIPPED" && held === undefined) ||
-      (persisted?.status === "COMPLETED" && held !== undefined)
-    ).toBe(true);
+    expect(persisted?.status).toBe("COMPLETED");
+    expect(held).toBeDefined();
   });
 });

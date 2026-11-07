@@ -55,7 +55,7 @@ describe("outbox worker renderers", () => {
           roles: [], repliedUser: false },
         content: [
           ...mentionLines,
-          "🎉 今週の桃鉄1年勝負、開催です！",
+          "🎉 桃鉄1年勝負、開催です！",
           "",
           "開始: 23:00",
           "回答内訳:",

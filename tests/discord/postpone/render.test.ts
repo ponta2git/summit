@@ -28,7 +28,7 @@ const initialContent = [
   "回答締切: 候補日翌日 00:00 JST",
   "",
   "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
-  "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+  "全員分そろえば明日の出欠確認へ進みます。そろわなければ順延は行いません。"
 ].join("\n");
 
 const renderedButtons = (rendered: ReturnType<typeof renderPostponeBody>) => {
@@ -173,12 +173,12 @@ describe("renderPostponeBody", () => {
       "",
       "【順延投票】",
       "- メンバー1: 明日も募集OK",
-      "- メンバー2: 今週はお流れ",
+      "- メンバー2: 順延しない",
       "- メンバー3: 未回答",
       "- メンバー4: 未回答",
       "",
       "明日も募集OK = 明日もう一度、出欠確認を送ります（参加確定ではありません）",
-      "全員分そろえば明日の出欠確認へ進みます。そろわなければ今週はお流れです。"
+      "全員分そろえば明日の出欠確認へ進みます。そろわなければ順延は行いません。"
     ].join("\n"));
   });
 
@@ -220,7 +220,7 @@ describe("renderPostponeBody", () => {
       {
         type: 2,
         custom_id: `postpone:${SESSION_ID}:ng`,
-        label: "今週はお流れ",
+        label: "順延しない",
         style: 2,
         disabled: false,
         emoji: undefined

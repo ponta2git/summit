@@ -71,7 +71,6 @@ const createFakePorts = (
     sessions,
     responses,
     members,
-    heldEvents,
     outbox
   );
   const atomic = createFakeTransaction(() => {
@@ -80,6 +79,7 @@ const createFakePorts = (
   });
   sessions.createAskSession = atomic(sessions.createAskSession);
   heldEvents.completeDecidedSessionAsHeld = atomic(heldEvents.completeDecidedSessionAsHeld);
+  sessionCommands.createSession = atomic(sessionCommands.createSession);
   sessionCommands.recoverMissingMessageIntents = atomic(sessionCommands.recoverMissingMessageIntents);
   sessionCommands.submitAskResponse = atomic(sessionCommands.submitAskResponse);
   sessionCommands.settleAskingCancellation = atomic(sessionCommands.settleAskingCancellation);

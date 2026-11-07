@@ -6,14 +6,16 @@ import {
   type responses,
   type sessions,
   type ResponseChoice,
-  type SessionStatus
+  type SessionStatus,
+  type SessionSource
 } from "./schema.ts";
 import { parseTimestamp } from "../time/index.ts";
 
 export type DbLike = typeof defaultDb;
 
-export type SessionRow = Omit<typeof sessions.$inferSelect, "status" | "legacyId"> & {
+export type SessionRow = Omit<typeof sessions.$inferSelect, "status" | "source" | "legacyId"> & {
   status: SessionStatus;
+  source: SessionSource;
 };
 
 export type ResponseRow = Omit<typeof responses.$inferSelect, "choice" | "legacyId"> & {
@@ -70,5 +72,6 @@ export const parseDbTimestamp = (
 
 export type {
   ResponseChoice,
-  SessionStatus
+  SessionStatus,
+  SessionSource
 };

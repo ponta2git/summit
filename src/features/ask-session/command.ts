@@ -38,7 +38,8 @@ const sendAskStep = (
   fromDiscordCall(
     () => context.deps.sendAsk({
       trigger: "command",
-      invokerId: context.interaction.user.id
+      invokerId: context.interaction.user.id,
+      requestId: context.interaction.id
     }),
     "Failed to execute /ask."
   );
@@ -86,12 +87,12 @@ export const handleAskCommand = async (
       }
 
       if (sendResult.status === "skipped") {
-        await interaction.editReply(askMessages.interaction.ask.skippedAlreadySent);
+        await interaction.editReply(askMessages.interaction.ask.rejected(sendResult.reason));
         return;
       }
 
       // invariant: SendAskMessageResult.status 追加時に型エラーで気付くため assertNever を残す。
-      return assertNever(sendResult.status, "handleAskCommand: sendAsk result.status");
+      return assertNever(sendResult, "handleAskCommand: sendAsk result.status");
     },
     onFailure: (error) => replyAskCommandError(interaction, error)
   });

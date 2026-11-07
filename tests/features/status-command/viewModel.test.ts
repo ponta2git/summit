@@ -12,7 +12,7 @@ const NOW = new Date("2026-04-25T12:30:00.000Z"); // 21:30 JST (Asia/Tokyo)
 describe("buildStatusViewModel", () => {
   it("regression: returns valid view model even with 0 non-terminal sessions", () => {
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [],
       responsesBySessionId: new Map(),
       heldEventBySessionId: new Map()
@@ -21,6 +21,7 @@ describe("buildStatusViewModel", () => {
     expect(vm).toStrictEqual({
       nowJst: "2026-04-25 21:30",
       currentWeekKey: "2026-W17",
+      weeklyAuto: "pending",
       sessions: [],
       nextEventAt: null,
       totalWarnings: 0,
@@ -44,7 +45,7 @@ describe("buildStatusViewModel", () => {
     const response = makeResponse({ sessionId: session.id });
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, [response]]]),
       heldEventBySessionId: new Map()
@@ -53,6 +54,7 @@ describe("buildStatusViewModel", () => {
     expect(vm).toStrictEqual({
       nowJst: "2026-04-25 21:30",
       currentWeekKey: "2026-W17",
+      weeklyAuto: "pending",
       sessions: [{
         sessionId: "session-",
         weekKey: "2026-W17",
@@ -82,7 +84,7 @@ describe("buildStatusViewModel", () => {
     const session = makeSession({ status: "DECIDED" } as Partial<SessionRow>);
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, []]]),
       heldEventBySessionId: new Map()
@@ -102,7 +104,7 @@ describe("buildStatusViewModel", () => {
     };
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, []]]),
       heldEventBySessionId: new Map([[session.id, heldEvent]])
@@ -130,7 +132,7 @@ describe("buildStatusViewModel", () => {
     });
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session1, session2, alreadySent],
       responsesBySessionId: new Map([["s1", []], ["s2", []], ["s3", []]]),
       heldEventBySessionId: new Map()
@@ -142,7 +144,7 @@ describe("buildStatusViewModel", () => {
 
   it("includes stranded outbox warning in the view model and rendered text", () => {
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [],
       responsesBySessionId: new Map(),
       heldEventBySessionId: new Map(),
@@ -163,6 +165,7 @@ describe("buildStatusViewModel", () => {
     expect(vm).toStrictEqual({
       nowJst: "2026-04-25 21:30",
       currentWeekKey: "2026-W17",
+      weeklyAuto: "pending",
       sessions: [],
       nextEventAt: null,
       totalWarnings: 1,
@@ -178,6 +181,7 @@ describe("buildStatusViewModel", () => {
     expect(renderStatusText(vm)).toBe(
       "```\n" +
       "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "今週の金曜自動募集: 未作成\n" +
       "非終端セッション: なし\n" +
       "\n" +
       '⚠ 2 outbox row(s) stranded (FAILED or high attempt_count); oldest dedupeKey="settle-old"\n' +
@@ -196,7 +200,7 @@ describe("buildStatusViewModel", () => {
     });
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, []]]),
       heldEventBySessionId: new Map()
@@ -221,7 +225,7 @@ describe("renderStatusText", () => {
   it("keeps diagnostics usable below Discord's limit when old cancelled sessions accumulate", () => {
     const session = makeSession({ status: "ASKING", deadlineAt: new Date("2026-04-25T13:00:00.000Z"), askMessageId: "msg-1" });
     const vm = buildStatusViewModel({
-      now: NOW, sessions: [session], responsesBySessionId: new Map(), heldEventBySessionId: new Map(),
+      now: NOW, weeklyAuto: "pending", sessions: [session], responsesBySessionId: new Map(), heldEventBySessionId: new Map(),
       strandedCancelledSessions: Array.from({ length: 1_000 }, (_, index) => makeSession({ id: `stranded-${index}`, status: "CANCELLED" }))
     });
     const rendered = renderStatusText(vm);
@@ -237,7 +241,7 @@ describe("renderStatusText", () => {
 
   it("renders 'なし' when no sessions exist", () => {
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [],
       responsesBySessionId: new Map(),
       heldEventBySessionId: new Map()
@@ -245,6 +249,7 @@ describe("renderStatusText", () => {
     expect(renderStatusText(vm)).toBe(
       "```\n" +
       "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "今週の金曜自動募集: 未作成\n" +
       "非終端セッション: なし\n" +
       "\n" +
       "次のイベント予定: なし\n" +
@@ -261,7 +266,7 @@ describe("renderStatusText", () => {
     });
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, []]]),
       heldEventBySessionId: new Map()
@@ -270,6 +275,7 @@ describe("renderStatusText", () => {
     expect(renderStatusText(vm)).toBe(
       "```\n" +
       "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "今週の金曜自動募集: 未作成\n" +
       "\n" +
       "[ASKING] session-  week: 2026-W17  postpone: 0\n" +
       "  候補日: 2026-04-25  締切: 04-25 22:00  順延期限: 04-26 00:00\n" +
@@ -288,7 +294,7 @@ describe("renderStatusText", () => {
     });
 
     const vm = buildStatusViewModel({
-      now: NOW,
+      now: NOW, weeklyAuto: "pending",
       sessions: [session],
       responsesBySessionId: new Map([[session.id, []]]),
       heldEventBySessionId: new Map()
@@ -297,6 +303,7 @@ describe("renderStatusText", () => {
     expect(renderStatusText(vm)).toBe(
       "```\n" +
       "現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17\n" +
+      "今週の金曜自動募集: 未作成\n" +
       "\n" +
       "[ASKING] session-  week: 2026-W17  postpone: 0\n" +
       "  候補日: 2026-04-24  締切: 04-25 21:00  順延期限: 04-25 00:00\n" +

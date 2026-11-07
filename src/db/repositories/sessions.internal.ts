@@ -1,6 +1,6 @@
 // source-of-truth: sessions repository 内部 helper。barrel (sessions.ts) からは re-export しない。
 
-import { SESSION_STATUSES, type sessions } from "../schema.ts";
+import { SESSION_STATUSES, SESSION_SOURCES, type sessions } from "../schema.ts";
 import type {
   SessionRow,
   SessionStatus
@@ -18,6 +18,10 @@ export const MESSAGE_RECOVERY_STATUSES: readonly SessionStatus[] = [
 export const mapSession = (row: Omit<typeof sessions.$inferSelect, "legacyId">): SessionRow => ({
   id: row.id,
   weekKey: row.weekKey,
+  source: assertEnum(SESSION_SOURCES, row.source, "session source"),
+  parentSessionId: row.parentSessionId,
+  requestId: row.requestId,
+  occupiesDate: row.occupiesDate,
   postponeCount: row.postponeCount,
   candidateDateIso: row.candidateDateIso,
   status: assertEnum(SESSION_STATUSES, row.status, "session status"),

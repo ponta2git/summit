@@ -6,6 +6,7 @@ import type { NotificationDb } from "./notifications.storage.ts";
 import type { DbLike } from "../rows.ts";
 import { normalizeNotificationJson } from "./notifications.hash.ts";
 import type { EnqueueOutboxInput, EnqueueResult } from "./outbox.types.ts";
+import { assertOutboxOwner } from "./outbox.owner.ts";
 
 export type { EnqueueOutboxInput, EnqueueResult, OutboxDiagnostic, OutboxEntry, OutboxPayload } from "./outbox.types.ts";
 export { findStrandedOutboxEntries, getNextOutboxDispatchAt, getOutboxMetrics, pruneOutbox } from "./outbox.metrics.ts";
@@ -18,6 +19,7 @@ export const enqueueOutboxInTransaction = async (
   db: NotificationDb,
   input: EnqueueOutboxInput
 ): Promise<EnqueueResult> => {
+  assertOutboxOwner(input);
   const normalized = await normalizeNotificationJson(db, JSON.stringify(input.payload));
   const [inserted] = await db.insert(discordNotifications).values({
     id: randomUUID(), family: "attendance", kind: input.kind, dedupeKey: input.dedupeKey,
@@ -30,7 +32,7 @@ export const enqueueOutboxInTransaction = async (
     return { id: existing.id, skipped: true };
   }
   await db.insert(discordNotificationAttendance).values({
-    notificationId: inserted.id, sessionId: input.sessionId,
+    notificationId: inserted.id, sessionId: input.sessionId, weekKey: input.weekKey ?? null,
     aggregateRevision: input.aggregateRevision, ordinal: input.ordinal
   });
   await db.insert(discordNotificationParts).values({ notificationId: inserted.id, partNo: 0 });

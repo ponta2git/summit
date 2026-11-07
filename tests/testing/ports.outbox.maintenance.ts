@@ -1,7 +1,7 @@
 import type { OutboxEntry, OutboxPort } from "../../src/db/ports.js";
 import { recordCall, type AnyCall } from "./ports.shared.js";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES } from "../../src/notifications/config.ts";
-import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims } from "./ports.outbox.claims.ts";
+import { cancelFailedFakeOutboxSuccessors, releaseExpiredFakeOutboxClaims, sameOutboxOwner } from "./ports.outbox.claims.ts";
 
 type OutboxMaintenancePort = Pick<
   OutboxPort,
@@ -29,7 +29,7 @@ export const createFakeOutboxMaintenance = (
     for (const entry of Array.from(byId.values())) {
       const followsFailure = failed.some(
         (predecessor) =>
-          predecessor.sessionId === entry.sessionId &&
+          sameOutboxOwner(predecessor, entry) &&
           (predecessor.aggregateRevision < entry.aggregateRevision ||
             (predecessor.aggregateRevision === entry.aggregateRevision &&
               predecessor.ordinal < entry.ordinal))
@@ -86,8 +86,8 @@ export const createFakeOutboxMaintenance = (
             entry.attemptCount >= threshold)
       )
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
-      .map(({ id, sessionId, status, attemptCount, createdAt, dedupeKey }) =>
-        ({ id, sessionId, status, attemptCount, createdAt: new Date(createdAt), dedupeKey }));
+      .map(({ id, sessionId, weekKey, status, attemptCount, createdAt, dedupeKey }) =>
+        ({ id, sessionId, ...(weekKey === undefined ? {} : { weekKey }), status, attemptCount, createdAt: new Date(createdAt), dedupeKey }));
   },
   prune: async ({ deliveredOlderThan, failedOlderThan }) => {
     recordCall(calls, "prune", { deliveredOlderThan, failedOlderThan });

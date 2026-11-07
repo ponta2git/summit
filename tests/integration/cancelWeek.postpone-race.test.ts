@@ -1,9 +1,9 @@
-import { fixtureSession, fixtureResponse } from "./canonicalFixture.ts";
+import { fixtureSession, fixtureResponse, fixtureId } from "./canonicalFixture.ts";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { cancelWeekAtomically, settlePostponeVoting } from "../../src/db/repositories/sessionCommands.ts";
-import { discordNotificationAttendance, discordNotifications, responses, sessions } from "../../src/db/schema.ts";
+import { discordNotificationAttendance, discordNotifications, responses, sessions, weeklyAskSchedules } from "../../src/db/schema.ts";
 import { deferred } from "../helpers/deferred.ts";
 import { makeResponse } from "../testing/fixtures.ts";
 import { fridayPostponeVoting, saturdayAsking } from "../testing/sessionScenario.ts";
@@ -22,12 +22,13 @@ describeDb("cancel_week and Saturday creation (integration)", () => {
     await truncatePerTestTables(db);
     await seedBaseMembers(db);
     await db.insert(sessions).values(fixtureSession(friday));
+    await db.insert(weeklyAskSchedules).values({ weekKey: friday.weekKey, autoSessionId: fixtureId("sessions", friday.id) });
     await db.insert(responses).values(["m1", "m2", "m3", "m4"].map(memberId => makeResponse({
       id: `response-${memberId}`, sessionId: friday.id, memberId, choice: "POSTPONE_OK", answeredAt: now
     })).map(fixtureResponse));
   });
 
-  it("cancels the Saturday session committed while cancellation waits for Friday", async () => {
+  it("preserves Saturday creation when weekly-stop waits for the creation gate", async () => {
     const locked = deferred<number>();
     const release = deferred<void>();
     const blocker = db.transaction(async tx => {
@@ -46,8 +47,7 @@ describeDb("cancel_week and Saturday creation (integration)", () => {
     try {
       await waitForBlockedBy(client, pid);
       cancelled = cancelWeekAtomically(db, {
-        sentinelSessionId: "unused-sentinel", weekKey: friday.weekKey,
-        candidateDateIso: friday.candidateDateIso, deadlineAt: friday.deadlineAt,
+        weekKey: friday.weekKey,
         channelId: friday.channelId!, invokerUserId: "333333333333333333", suppressMentions: true, now
       });
       await waitForLockWaiters(client, 2);
@@ -58,13 +58,13 @@ describeDb("cancel_week and Saturday creation (integration)", () => {
     }
     await blocker;
     expect(await postponed).toMatchObject({ kind: "transitioned", outcome: "all_ok" });
-    expect(await cancelled).toMatchObject({ kind: "applied" });
+    expect(await cancelled).toMatchObject({ kind: "already_started" });
     expect(await db.select({ id: sessions.legacyId, status: sessions.status }).from(sessions).orderBy(sessions.postponeCount))
-      .toStrictEqual([{ id: friday.id, status: "SKIPPED" }, { id: saturday.id, status: "SKIPPED" }]);
+      .toStrictEqual([{ id: friday.id, status: "POSTPONED" }, { id: saturday.id, status: "ASKING" }]);
     expect(await db.select({ sessionId: discordNotificationAttendance.sessionId, status: discordNotifications.status })
       .from(discordNotifications)
       .innerJoin(discordNotificationAttendance, eq(discordNotificationAttendance.notificationId, discordNotifications.id))
       .orderBy(discordNotificationAttendance.sessionId))
-      .toStrictEqual([{ sessionId: saturday.id, status: "CANCELLED" }, { sessionId: friday.id, status: "PENDING" }]);
+      .toStrictEqual([{ sessionId: saturday.id, status: "PENDING" }]);
   });
 });

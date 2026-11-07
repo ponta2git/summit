@@ -18,7 +18,7 @@ const buildDeps = (context: TestAppContext, readyState: AppReadyState) => ({
   context,
   client: stubClient,
   getReadyState: () => readyState,
-  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }))
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }))
 }) as Parameters<typeof handleInteraction>[1];
 
 describe("startup interaction ready gate", () => {

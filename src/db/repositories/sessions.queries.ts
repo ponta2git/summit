@@ -9,25 +9,6 @@ import { parseDbTimestamp, type DbLike, type SessionRow } from "../rows.ts";
 import type { SchedulerSessionHints } from "../ports.ts";
 import { mapSession, MESSAGE_RECOVERY_STATUSES } from "./sessions.internal.ts";
 
-export const findSessionByWeekKeyAndPostponeCount = async (
-  db: DbLike,
-  weekKey: string,
-  postponeCount: number
-): Promise<SessionRow | undefined> => {
-  const rows = await db
-    .select(sessionColumns(await identityLayout(db)))
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.weekKey, weekKey),
-        eq(sessions.postponeCount, postponeCount)
-      )
-    )
-    .limit(1);
-  const row = rows[0];
-  return row ? mapSession(row) : undefined;
-};
-
 export const findSessionById = async (
   db: DbLike,
   id: string

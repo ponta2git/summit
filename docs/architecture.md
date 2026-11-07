@@ -111,6 +111,8 @@ calendar cron は ask・retention・supervisor に限定し、実行値は設定
 
 due work を処理した後に DB を再読込し、新たに due になった種類と生成済み intent を同じ再計算で拾う。一回の再計算では同種 work を一度だけ実行し、未完了 reminder を即時 loop させない。同種 timer / 再計算は一つの owned Promise にまとめ、配送・確定・次時刻取得まで待つ。実行中の wake は pending として保持し、完了時に取りこぼさない。cron callback も処理全体の Promise を返し、`noOverlap` と drain の範囲を揃える。
 
+startup / reconnectは期限超過の収束を先に行い、reconcilerが週次自動募集の欠落を判定する。controllerもdue処理後と配送完了のwake後に同じ生成commandを使う。金曜の募集窓外は補完せず、進行中募集の強制終了・専用待機列・追加pollingは行わない。DECIDEDはreminderの業務確定が終わるまでactiveとして保持する。
+
 Interaction / 集約更新 / 起動 / 再接続後は `wakeScheduler` を呼ぶ。supervisor は missed wake・claim expiry・drift の回復手段であり、通常配送の待ち時間を決める polling には使わない。
 
 hint 取得・tick・配送後の次時刻取得が失敗したら、有限 backoff で再計算する。batch の item failure も失敗として扱い、正常完了した段階で retry 回数を戻す。上限到達後は新しい wake / supervisor が再開する。観測 metrics の失敗で claim 回収や再計算を止めず、cron の途中登録失敗では登録済み task も破棄する。

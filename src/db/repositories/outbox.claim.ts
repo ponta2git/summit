@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
 import { discordNotifications } from "../schema.ts";
 import { findAttendanceNotificationRows } from "./outbox.storage.ts";
-import { mapOutboxRow, parseOutboxPayload, type OutboxEntry } from "./outbox.types.ts";
+import { parseOutboxRow, type OutboxEntry } from "./outbox.types.ts";
 import { notificationTransaction } from "./notifications.storage.ts";
 import { claimNotifications, releaseExpiredNotificationClaims } from "./notifications.claim.ts";
 import { failNotification } from "./notifications.delivery.ts";
@@ -24,11 +24,11 @@ export const claimNextOutboxBatch = async (
   const leases = new Map(claims.map(claim => [claim.id, claim.lease]));
   const claimed: OutboxEntry[] = [];
   for (const row of rows) {
-    const payload = parseOutboxPayload(row.payload);
-    if (payload) {
+    const entry = parseOutboxRow(row);
+    if (entry) {
       const lease = leases.get(row.id);
       if (!lease) { throw new Error("Missing attendance claim observation"); }
-      claimed.push({ ...mapOutboxRow(row, payload), lease });
+      claimed.push({ ...entry, lease });
     } else {
       // A malformed persisted body must not roll back claims for unrelated Sessions.
       if (!row.claimToken || !await failNotification(tx, row.id, row.claimToken, "invalid_payload", null, options.now)) {

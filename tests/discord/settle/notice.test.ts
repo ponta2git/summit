@@ -22,7 +22,7 @@ describe("buildSettleNoticeViewModel", () => {
     },
     {
       reason: "saturday_cancelled" as const,
-      cancelText: "🛑 土曜回も予定がそろわなかったため、今週はお流れです。"
+      cancelText: "🛑 土曜回も予定がそろわなかったため、この回はお流れです。"
     }
   ])("builds the complete $reason notice", ({ reason, cancelText }) => {
     expect(buildSettleNoticeViewModel(reason)).toStrictEqual({

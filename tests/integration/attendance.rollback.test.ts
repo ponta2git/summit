@@ -1,10 +1,11 @@
+import { weeklyAskSchedules, discordNotifications } from "../../src/db/schema.ts";
 import { describe, expect, it } from "vitest";
 import { attendanceInput, attendanceIntent, attendanceResponses, saturdayInput } from "../contracts/attendance.ts";
 import { makeSession } from "../testing/fixtures.ts";
 import { fridayPostponeVoting } from "../testing/sessionScenario.ts";
 import { createAttendanceHarness } from "./_attendance.ts";
 
-const { create } = createAttendanceHarness();
+const { create, db } = createAttendanceHarness();
 describe("attendance transaction failure boundaries", () => {
   it("rolls back Session and HeldEvent when a participant refers to an unknown member", async () => {
     const h = await create({ sessions: [makeSession({ status: "DECIDED", decidedStartAt: new Date("2026-04-24T14:00:00Z") })] });
@@ -28,7 +29,7 @@ describe("attendance transaction failure boundaries", () => {
 
   it.each(["submit", "settle"] as const)("rolls back %s postponement when the Saturday primary key belongs to a different week", async command => {
     const row = fridayPostponeVoting({ id: "session-1" });
-    const unrelated = makeSession({ id: saturdayInput.id, weekKey: "2026-W18", candidateDateIso: "2026-05-01" });
+    const unrelated = makeSession({ id: saturdayInput.id, weekKey: "2026-W18", candidateDateIso: "2026-05-01", status: "COMPLETED" });
     const h = await create({ sessions: [row, unrelated], responses: attendanceResponses("POSTPONE_OK", command === "submit" ? ["m2", "m3", "m4"] : undefined) });
     const before = await h.snapshot(); const input = { ...attendanceInput, saturday: saturdayInput };
     const result = command === "submit" ? h.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_OK" }) : h.ports.sessionCommands.settlePostponeVoting(input);
@@ -36,10 +37,15 @@ describe("attendance transaction failure boundaries", () => {
     expect(await h.snapshot()).toStrictEqual(before);
   });
 
-  it("rolls back cancel_week state and prior notification cancellation when notice insertion conflicts", async () => {
-    const row = makeSession(); const h = await create({ sessions: [row] });
-    await h.ports.outbox.enqueue(attendanceIntent(row.id, 1)); const before = await h.snapshot();
-    await expect(h.ports.sessionCommands.cancelWeekAtomically({ ...row, sentinelSessionId: "sentinel", invokerUserId: "user-0", suppressMentions: true, now: attendanceInput.now }))
+  it("rolls back the weekly stop when its notice ordinal conflicts", async () => {
+    const h = await create();
+    await h.ports.sessionCommands.cancelWeekAtomically({ weekKey: "2026-W17", channelId: "channel", invokerUserId: "user-0", suppressMentions: true, now: attendanceInput.now });
+    // A retained notice without disabledAt simulates a broken writer; the ordinal must not be replaced.
+    await db.update(weeklyAskSchedules).set({ disabledAt: null, disabledBy: null });
+    // Keep the existing ordinal but release the idempotency key to force a unique-order conflict.
+    await db.update(discordNotifications).set({ dedupeKey: "retained-week-notice" });
+    const before = await h.snapshot();
+    await expect(h.ports.sessionCommands.cancelWeekAtomically({ weekKey: "2026-W17", channelId: "channel", invokerUserId: "user-0", suppressMentions: true, now: attendanceInput.now }))
       .rejects.toMatchObject({ cause: { code: "23505" } });
     expect(await h.snapshot()).toStrictEqual(before);
   });

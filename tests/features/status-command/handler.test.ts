@@ -37,7 +37,7 @@ const STATUS_NOW = new Date("2026-04-25T12:30:00.000Z");
 const buildDeps = (context: AppContext): InteractionHandlerDeps => ({
   context,
   client: createClientWithChannel(undefined),
-  sendAsk: vi.fn(async () => ({ status: "skipped" as const, weekKey: "2026-W17" }))
+  sendAsk: vi.fn(async () => ({ status: "skipped" as const, weekKey: "2026-W17", reason: "duplicate" as const }))
 });
 
 const handleStatus = (
@@ -61,7 +61,7 @@ describe("handleStatusCommand", () => {
     expect(editReplyContent(interaction)).not.toContain("宙づり CANCELLED");
   });
 
-  it("limits the main status read model to the current week and batches details", async () => {
+  it("includes active sessions from every week and batches details while excluding terminal sessions", async () => {
     const current = makeSession({ id: "current-asking", weekKey: "2026-W17", status: "ASKING" });
     const old = makeSession({ id: "old-asking", weekKey: "2026-W16", status: "ASKING" });
     const terminalPostponed = makeSession({
@@ -85,8 +85,9 @@ describe("handleStatusCommand", () => {
     const content = editReplyContent(interaction);
     expect(content).toContain("[ASKING]");
     expect(content).toContain("current-");
-    expect(content).not.toContain("old-asking");
-    expect(content).not.toContain("current-postponed");
+    expect(content).toContain("old-aski");
+    expect(content).not.toContain("[POSTPONED]");
+    expect(content).toContain("今週の金曜自動募集: 生成済み");
     expect(content).toContain("宙づり CANCELLED");
     expect(ctx.ports.status.calls).toStrictEqual([{
       name: "loadCurrentWeekSnapshot",
@@ -106,6 +107,21 @@ describe("handleStatusCommand", () => {
       expect.stringContaining("メンバー")
     );
     expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
+  });
+
+  it.each([
+    { state: "disabled", autoSessionId: null, disabledAt: STATUS_NOW, expected: "停止（手動募集は利用可）" },
+    { state: "created", autoSessionId: "automatic-session", disabledAt: null, expected: "生成済み" }
+  ])("shows the current week's $state automatic recruitment independently of manual sessions", async ({ autoSessionId, disabledAt, expected }) => {
+    const ctx = createTestAppContext({ now: STATUS_NOW, seed: { sessions: [
+      makeSession({ id: "manual-session", source: "manual", requestId: "manual-request", weekKey: "2026-W18" })
+    ] } });
+    ctx.ports.sessions.weeklySchedules.set("2026-W17", { weekKey: "2026-W17", autoSessionId, disabledAt });
+    const interaction = buildInteraction();
+    await handleStatus(interaction, ctx);
+    expect(editReplyContent(interaction)).toContain(`今週の金曜自動募集: ${expected}`);
+    expect(editReplyContent(interaction)).toContain("[ASKING] manual-s");
+    expect(ctx.ports.outbox.listEntries()).toStrictEqual([]);
   });
 
   it("rejects a wrong channel interaction ephemerally", async () => {

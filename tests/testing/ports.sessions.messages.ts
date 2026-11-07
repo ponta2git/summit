@@ -1,3 +1,4 @@
+import { isActiveSession } from "../../src/domain/sessionCreation.ts";
 import type { SessionsPort } from "../../src/db/ports.js";
 import { makeSession } from "./fixtures.js";
 import { recordCall } from "./ports.shared.js";
@@ -19,13 +20,18 @@ export const createFakeSessionMessageMethods = (
     recordCall(state.calls, "createAskSession", { input });
     const duplicate = Array.from(state.byId.values()).find(
       (session) =>
-        session.weekKey === input.weekKey &&
-        session.postponeCount === input.postponeCount
+        (session.occupiesDate && session.candidateDateIso === input.candidateDateIso) ||
+        isActiveSession(session.status) ||
+        (input.parentSessionId !== undefined && input.parentSessionId !== null && session.parentSessionId === input.parentSessionId) ||
+        (input.requestId !== undefined && input.requestId !== null && session.requestId === input.requestId)
     );
     if (duplicate) {return undefined;}
     if (state.byId.has(input.id)) { throw new Error("duplicate Session primary key"); }
     const created = makeSession({
       id: input.id,
+      source: input.source ?? "manual",
+      parentSessionId: input.parentSessionId ?? null,
+      requestId: input.requestId ?? null,
       weekKey: input.weekKey,
       postponeCount: input.postponeCount,
       candidateDateIso: input.candidateDateIso,

@@ -6,11 +6,16 @@ import type {
   SessionRow,
   SessionStatus
 } from "../../src/db/ports.js";
+import { parseOutboxOwner, type OutboxOwner } from "../../src/db/repositories/outbox.owner.ts";
 
 export const makeSession = (overrides: Partial<SessionRow> = {}): SessionRow => structuredClone({
   id: "session-1",
   weekKey: "2026-W17",
   postponeCount: 0,
+  source: overrides.postponeCount === 1 ? "legacy" : "weekly_auto",
+  parentSessionId: null,
+  requestId: null,
+  occupiesDate: true,
   candidateDateIso: "2026-04-24",
   status: "ASKING" satisfies SessionStatus,
   channelId: "223456789012345678",
@@ -44,28 +49,36 @@ export const makeResponse = (overrides: Partial<ResponseRow> = {}): ResponseRow 
   ...overrides
 });
 
-export const makeOutboxEntry = (overrides: Partial<OutboxEntry> = {}): OutboxEntry => structuredClone({
-  id: "outbox-1",
-  kind: "send_message",
-  sessionId: "session-1",
-  payload: {
+type OutboxEntryOverrides = Partial<Omit<OutboxEntry, "sessionId" | "weekKey">> &
+  (OutboxOwner | { readonly sessionId?: never; readonly weekKey?: never });
+
+export const makeOutboxEntry = (overrides: OutboxEntryOverrides = {}): OutboxEntry => {
+  const { sessionId = "session-1", weekKey, ...values } = overrides;
+  const owner = parseOutboxOwner({ sessionId, weekKey: weekKey ?? null });
+  if (!owner) { throw new Error("Invalid outbox fixture owner"); }
+  return structuredClone({
+    ...owner,
+    id: "outbox-1",
     kind: "send_message",
-    channelId: "channel-1",
-    renderer: "settle_notice",
-    extra: { reason: "absent", forceSuppressMentions: true }
-  },
-  dedupeKey: "settle-1",
-  status: "FAILED",
-  attemptCount: 1,
-  lastError: "delivery failed",
-  claimExpiresAt: null,
-  claimToken: null,
-  nextAttemptAt: new Date("2026-04-25T12:30:00.000Z"),
-  deliveredAt: null,
-  deliveredMessageId: null,
-  aggregateRevision: 0,
-  ordinal: 0,
-  createdAt: new Date("2026-04-25T12:30:00.000Z"),
-  updatedAt: new Date("2026-04-25T12:30:00.000Z"),
-  ...overrides
-});
+    payload: {
+      kind: "send_message",
+      channelId: "channel-1",
+      renderer: "settle_notice",
+      extra: { reason: "absent", forceSuppressMentions: true }
+    },
+    dedupeKey: "settle-1",
+    status: "FAILED",
+    attemptCount: 1,
+    lastError: "delivery failed",
+    claimExpiresAt: null,
+    claimToken: null,
+    nextAttemptAt: new Date("2026-04-25T12:30:00.000Z"),
+    deliveredAt: null,
+    deliveredMessageId: null,
+    aggregateRevision: 0,
+    ordinal: 0,
+    createdAt: new Date("2026-04-25T12:30:00.000Z"),
+    updatedAt: new Date("2026-04-25T12:30:00.000Z"),
+    ...values
+  });
+};

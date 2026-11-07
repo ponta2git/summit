@@ -14,7 +14,6 @@ import {
   findMessageRecoveryCandidates,
   getSchedulerSessionHints,
   findSessionById,
-  findSessionByWeekKeyAndPostponeCount,
   findStrandedCancelledSessions,
   updateAskMessageId,
   updatePostponeMessageId,
@@ -24,6 +23,7 @@ import {
 import { loadCurrentWeekSnapshot } from "./repositories/status.ts";
 import { listResponses } from "./repositories/responses.ts";
 import {
+  createSession,
   cancelWeekAtomically,
   recoverMissingMessageIntents,
   settleAskingCancellation,
@@ -67,8 +67,6 @@ import type {
 
 const makeSessionsPort = (db: DbLike): SessionsPort => ({
   createAskSession: (input) => createAskSession(db, input),
-  findSessionByWeekKeyAndPostponeCount: (weekKey, postponeCount) =>
-    findSessionByWeekKeyAndPostponeCount(db, weekKey, postponeCount),
   findSessionById: (id) => findSessionById(db, id),
   updateAskMessageId: (id, messageId) => updateAskMessageId(db, id, messageId),
   updatePostponeMessageId: (id, messageId) => updatePostponeMessageId(db, id, messageId),
@@ -88,6 +86,7 @@ const makeResponsesPort = (db: DbLike): ResponsesPort => ({
 });
 
 const makeSessionCommandsPort = (db: DbLike): SessionCommandsPort => ({
+  createSession: (input) => createSession(db, input),
   recoverMissingMessageIntents: (id) => recoverMissingMessageIntents(db, id),
   cancelWeekAtomically: (input) => cancelWeekAtomically(db, input),
   submitAskResponse: (input) => submitAskResponse(db, input),

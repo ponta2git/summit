@@ -83,7 +83,7 @@ describe("renderDecidedAnnouncement", () => {
     }).content;
     expect(content).toBe(
       "<@u1> <@u2>\n" +
-      "🎉 今週の桃鉄1年勝負、開催です！\n" +
+      "🎉 桃鉄1年勝負、開催です！\n" +
       "\n" +
       "開始: 23:00\n" +
       "回答内訳:\n" +
@@ -100,7 +100,7 @@ describe("renderDecidedAnnouncement", () => {
       memberLines: [{ displayName: "A", slotLabel: "22:30" }]
     }).content;
     expect(content).toBe(
-      "🎉 今週の桃鉄1年勝負、開催です！\n" +
+      "🎉 桃鉄1年勝負、開催です！\n" +
       "\n" +
       "開始: 23:00\n" +
       "回答内訳:\n" +

@@ -2,6 +2,11 @@ import type { OutboxEntry } from "../../src/db/ports.ts";
 import { OUTBOX_MAX_ATTEMPTS } from "../../src/config.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE } from "../../src/notifications/config.ts";
 
+export const sameOutboxOwner = (
+  left: Pick<OutboxEntry, "sessionId" | "weekKey">, right: Pick<OutboxEntry, "sessionId" | "weekKey">
+): boolean => left.sessionId !== null ? left.sessionId === right.sessionId
+  : left.weekKey !== undefined && left.weekKey === right.weekKey;
+
 export const releaseExpiredFakeOutboxClaims = (
   byId: Map<string, OutboxEntry>, sendingTokens: Map<string, string>, now: Date
 ): number => {
@@ -22,7 +27,7 @@ export const cancelFailedFakeOutboxSuccessors = (
 ): void => {
   const entries = [...byId.values()];
   const successors = entries.filter(entry => (entry.status === "PENDING" || entry.status === "IN_FLIGHT")
-    && entries.some(previous => previous.sessionId === entry.sessionId && previous.status === "FAILED"
+    && entries.some(previous => sameOutboxOwner(previous, entry) && previous.status === "FAILED"
       && (previous.aggregateRevision < entry.aggregateRevision
         || (previous.aggregateRevision === entry.aggregateRevision && previous.ordinal < entry.ordinal))))
     .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);

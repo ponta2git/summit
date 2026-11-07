@@ -9,7 +9,8 @@ export const fixtureId = (table: string, alias: string): string => {
 export const fixtureMember = (row: { id: string; userId: string; displayName: string }) =>
   ({ ...row, id: fixtureId("members", row.id), legacyId: row.id });
 export const fixtureSession = (row: SessionRow) =>
-  ({ ...row, id: fixtureId("sessions", row.id), legacyId: row.id });
+  ({ ...row, id: fixtureId("sessions", row.id), legacyId: row.id,
+    parentSessionId: row.parentSessionId ? fixtureId("sessions", row.parentSessionId) : null });
 export const fixtureResponse = (row: ResponseRow) =>
   ({ ...row, id: fixtureId("responses", row.id), legacyId: row.id,
     sessionId: fixtureId("sessions", row.sessionId), memberId: fixtureId("members", row.memberId) });

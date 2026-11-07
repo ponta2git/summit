@@ -84,9 +84,10 @@ export const registerReconnectReplayHandlers = (input: {
     replayInFlight = (async () => {
       await Promise.resolve();
       try {
-        const report = await runPromiseBoundary(runReconciler(client, context, { scope: "reconnect" }));
         if (stopped) { return; }
         await runPromiseBoundary(runStartupRecovery(client, context));
+        if (stopped) { return; }
+        const report = await runPromiseBoundary(runReconciler(client, context, { scope: "reconnect" }));
         if (stopped) { return; }
         input.wakeScheduler?.("reconnect_replay");
         const completedAt = Date.now();

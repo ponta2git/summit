@@ -21,7 +21,7 @@ const buildDeps = (
 ): InteractionHandlerDeps => ({
   context,
   client: asDiscordClient({}),
-  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17" }))
+  sendAsk: vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }))
 });
 
 describe("handleAskButton deadline guard", () => {

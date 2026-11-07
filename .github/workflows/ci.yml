@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  MOMO_DB_REF: abe72368bbd892b778c32269c06ce6405bcafc13
-  MOMO_CANONICAL_DB_REF: abe72368bbd892b778c32269c06ce6405bcafc13
+  MOMO_DB_REF: c3af2d728c481017637667cae018a1fe49bf7a5f
+  MOMO_CANONICAL_DB_REF: c3af2d728c481017637667cae018a1fe49bf7a5f
 
 jobs:
   canonical-database:

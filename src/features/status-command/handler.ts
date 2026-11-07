@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
 import type {
+  CurrentWeekStatusSnapshot,
   OutboxDiagnostic,
   SessionRow,
   StatusSessionSnapshot
@@ -31,6 +32,7 @@ interface StatusPipelineStart {
 
 interface StatusSnapshot {
   readonly now: Date;
+  readonly weeklyAuto: CurrentWeekStatusSnapshot["weeklyAuto"];
   readonly sessions: readonly SessionRow[];
   readonly strandedCancelled: readonly SessionRow[];
   readonly strandedOutbox: readonly OutboxDiagnostic[];
@@ -64,6 +66,7 @@ const loadStatusSnapshot = Effect.fnUntraced(function* (
   ], { concurrency: 2 });
   return {
     now,
+    weeklyAuto: statusSnapshot.weeklyAuto,
     sessions: statusSnapshot.sessions.map(({ session }) => session),
     strandedCancelled: statusSnapshot.strandedCancelled,
     strandedOutbox,
@@ -113,7 +116,7 @@ export const handleStatusCommand = async (
   }));
 
   await Result.match(result, {
-    onSuccess: async ({ now, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
+    onSuccess: async ({ now, weeklyAuto, sessions, strandedCancelled, strandedOutbox, sessionDetails }) => {
       const responsesBySessionId = new Map(
         sessionDetails.map(({ session, responses }) => [session.id, responses])
       );
@@ -125,6 +128,7 @@ export const handleStatusCommand = async (
 
       const vm = buildStatusViewModel({
         now,
+        weeklyAuto,
         sessions,
         responsesBySessionId,
         heldEventBySessionId,

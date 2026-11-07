@@ -58,7 +58,7 @@ describe("scheduler work ownership", () => {
 
   it("joins a timer tick during recompute and drains it before shutdown completes", async () => {
     vi.useFakeTimers();
-    const now = new Date("2026-04-24T12:00:00Z"); vi.setSystemTime(now);
+    const now = new Date("2026-04-25T12:00:00Z"); vi.setSystemTime(now);
     const ctx = createTestAppContext({ now: () => new Date() }); const deadline = new Date(now.getTime() + 1_000);
     const hints = { nextAskingDeadlineAt: deadline, nextPostponeDeadlineAt: null, nextReminderAt: null };
     ctx.ports.sessions.getSchedulerSessionHints = async () => hints;
@@ -85,7 +85,7 @@ describe("scheduler work ownership", () => {
       id: `week-${index}`, status: "SKIPPED", cancelReason: "manual_skip", revision: 1,
       candidateDateIso: new Date(Date.UTC(2026, 0, 2 + index * 7)).toISOString().slice(0, 10)
     }));
-    const ctx = createTestAppContext({ seed: { sessions } });
+    const ctx = createTestAppContext({ seed: { sessions }, now: new Date("2026-04-25T12:00:00Z") });
     for (const session of sessions) {
       await ctx.ports.outbox.enqueue({ kind: "send_message", sessionId: session.id, dedupeKey: `cancel-week-notice-${session.weekKey}`,
         aggregateRevision: 1, ordinal: 0, payload: { kind: "send_message", channelId: session.channelId,
@@ -109,6 +109,7 @@ describe("scheduler work ownership", () => {
 
   it("re-reads a wake that races the completed batch's stale idle query", async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-25T12:00:00Z"));
     const sessions = [buildSessionRow({ id: "first", status: "SKIPPED", cancelReason: "manual_skip" }),
       buildSessionRow({ id: "second", status: "SKIPPED", cancelReason: "manual_skip", candidateDateIso: "2026-05-01" })];
     const ctx = createTestAppContext({ seed: { sessions }, now: () => new Date() });

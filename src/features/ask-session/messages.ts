@@ -1,6 +1,8 @@
+import type { CreationRejection } from "../../domain/sessionCreation.ts";
 import { formatCandidateJa, parseCandidateDateIso } from "../../time/index.ts";
 import { SLOT_TO_LABEL, type SlotKey } from "../../slot.ts";
 import { ASK_DEADLINE_HHMM, MEMBER_COUNT_EXPECTED } from "../../config.ts";
+import { assertNever } from "../../util/assertNever.ts";
 
 export type SettleCancelReason = "absent" | "deadline_unanswered" | "saturday_cancelled";
 
@@ -36,7 +38,7 @@ interface SettleCompletedParams {
 export const askMessages = {
   ask: {
     headerLine: (_params: AskHeaderLineParams): string =>
-      "🎲 今週の桃鉄1年勝負、出欠確認です",
+      "🎲 桃鉄1年勝負、出欠確認です",
     unanswered: "未回答",
     footerDecided: ({ startTimeLabel }: AskDecidedFooterParams): string =>
       `✅ みんなの回答がそろいました。${startTimeLabel} 開始で確定です（開催決定を投稿します）`,
@@ -72,7 +74,7 @@ export const askMessages = {
           ? "🛑 今回は予定がそろわなかったため、お流れです。"
         : reason === "deadline_unanswered"
           ? `🛑 ${answerDeadlineLabel} までに${expectedMemberCountLabel}の回答がそろわなかったため、今回はお流れです。`
-          : "🛑 土曜回も予定がそろわなかったため、今週はお流れです。",
+          : "🛑 土曜回も予定がそろわなかったため、この回はお流れです。",
     completed: ({ count }: SettleCompletedParams): string =>
       `✅ ${count}名の回答を反映して完了しました。`
   },
@@ -80,7 +82,19 @@ export const askMessages = {
   interaction: {
     ask: {
       queued: "出欠確認を受け付けました。投稿処理を開始します。",
-      skippedAlreadySent: "今週分はすでに出欠確認を送信済みです",
+      skippedAlreadySent: "この日の出欠確認はすでに作成されています。",
+      rejected: (reason: CreationRejection | "duplicate"): string => {
+        switch (reason) {
+          case "deadline_passed": return `当日の募集は ${answerDeadlineLabel} より前に開始してください。`;
+          case "active_session": return "進行中の出欠確認があります。終了後にもう一度お試しください。";
+          case "auto_disabled": return "今週の金曜自動募集は停止されています。手動募集は利用できます。";
+          case "outside_auto_window": return "金曜の自動募集時間外です。";
+          case "duplicate": return "この操作はすでに受け付けています。";
+          case "auto_started": return "今週の金曜自動募集はすでに作成されています。";
+          case "date_exists": return "この日の出欠確認はすでに作成されています。";
+          default: return assertNever(reason, "ask rejection reason");
+        }
+      },
       failed: "出欠確認の送信に失敗しました。少し待ってもう一度お試しください。"
     }
   },

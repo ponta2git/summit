@@ -81,7 +81,7 @@ const replyCancelWeekButtonError = async (
  * Handle cancel_week confirm/abort button from the ephemeral confirmation dialog.
  *
  * @remarks
- * 確認ダイアログは ephemeral で実行者のみ押下可。confirm で週全体を SKIPPED に遷移、abort は dialog 更新のみ。
+ * 確認ダイアログは ephemeral で実行者のみ押下可。confirm で未作成の週次自動募集を停止、abort は dialog 更新のみ。
  * cheap-first guard は dispatcher 側でも実施済みだが防御的に再評価する。
  */
 export const handleCancelWeekButton = async (
@@ -129,7 +129,7 @@ export const handleCancelWeekButton = async (
       }
       deps.wakeScheduler?.("cancel_week_confirmed");
       await interaction.editReply({
-        content: cancelWeekMessages.cancelWeek.done({ count: outcome.skippedCount }),
+        content: cancelWeekMessages.cancelWeek.done(outcome.kind),
         components: []
       });
     },

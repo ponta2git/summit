@@ -75,7 +75,7 @@ const applyAskCancellation = async (
     parseCandidateDateIso(cancelled.candidateDateIso)
   );
   const startsPostponeVote =
-    cancelled.postponeCount === 0 && now.getTime() < postponeDeadline.getTime();
+    cancelled.source === "weekly_auto" && cancelled.postponeCount === 0 && now.getTime() < postponeDeadline.getTime();
   const finalRows = await tx
     .update(sessions)
     .set({

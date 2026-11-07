@@ -153,41 +153,23 @@ export const applyPostponeDecision = async (
   }
 
   const layout = await identityLayout(tx);
+  // Release the active slot before inserting the child, within the same transaction.
+  const parentRows = await tx.update(sessions).set({
+    status: "POSTPONED", revision: sql`${sessions.revision} + 1`, updatedAt: now
+  }).where(eq(wireId(layout, sessions), current.id)).returning(sessionColumns(layout));
+  if (!parentRows[0]) { throw new Error("locked postpone session disappeared"); }
   await insertIdentity(tx, layout, sessions, {
-      id: saturday.id,
-      weekKey: current.weekKey,
-      postponeCount: 1,
-      candidateDateIso: saturday.candidateDateIso,
-      status: "ASKING",
-      channelId: current.channelId,
-      deadlineAt: saturday.deadlineAt
-    }, sql`ON CONFLICT (week_key, postpone_count) DO NOTHING`);
-  const [saturdayRow] = await tx
-          .select(sessionColumns(layout))
-          .from(sessions)
-          .where(
-            and(
-              eq(sessions.weekKey, current.weekKey),
-              eq(sessions.postponeCount, 1)
-            )
-          )
-          .limit(1);
-  if (!saturdayRow) {throw new Error("Saturday session insert returned no row");}
+    id: saturday.id, source: "postponed", parentSessionId: nativeId(layout, sessions, current.id),
+    weekKey: current.weekKey, postponeCount: 1,
+    candidateDateIso: saturday.candidateDateIso, status: "ASKING",
+    channelId: current.channelId, deadlineAt: saturday.deadlineAt,
+    createdAt: now, updatedAt: now
+  }, sql``);
+  const [saturdayRow] = await tx.select(sessionColumns(layout)).from(sessions)
+    .where(eq(sessions.parentSessionId, nativeId(layout, sessions, current.id)));
+  if (!saturdayRow) { throw new Error("Saturday session insert returned no row"); }
   const saturdaySession = mapSession(saturdayRow);
-  await enqueueSessionIntents(tx, [
-    buildAskBodyIntent(saturdaySession)
-  ]);
-
-  const parentRows = await tx
-    .update(sessions)
-    .set({
-      status: "POSTPONED",
-      revision: sql`${sessions.revision} + 1`,
-      updatedAt: now
-    })
-    .where(eq(wireId(layout, sessions), current.id))
-    .returning(sessionColumns(layout));
-  if (!parentRows[0]) {throw new Error("locked postpone session disappeared");}
+  await enqueueSessionIntents(tx, [buildAskBodyIntent(saturdaySession)]);
   return {
     outcome: "all_ok",
     session: mapSession(parentRows[0]),

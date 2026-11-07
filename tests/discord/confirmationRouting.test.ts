@@ -38,7 +38,7 @@ describe("confirmation dialog wiring", () => {
 
   it.each([
     { name: "absence", status: "ASKING", openId: `ask:${sessionId}:absent`, prefix: "ask_absent", label: "今回は欠席で送信する", choice: "ABSENT", final: "POSTPONE_VOTING" },
-    { name: "postpone NG", status: "POSTPONE_VOTING", openId: `postpone:${sessionId}:ng`, prefix: "postpone_ng", label: "今週はお流れにする", choice: "POSTPONE_NG", final: "COMPLETED" }
+    { name: "postpone NG", status: "POSTPONE_VOTING", openId: `postpone:${sessionId}:ng`, prefix: "postpone_ng", label: "順延しない", choice: "POSTPONE_NG", final: "COMPLETED" }
   ] as const)("routes the displayed $name buttons to their corresponding effects", async scenario => {
     const session = buildSessionRow({ id: sessionId, status: scenario.status, askMessageId: "ask-message", postponeMessageId: "vote-message" });
     const context = createMemberSeededContext(session, now);
@@ -66,7 +66,7 @@ describe("confirmation dialog wiring", () => {
   });
 
   it("uses one fresh nonce per cancel_week dialog and routes its displayed buttons", async () => {
-    const session = buildSessionRow({ id: sessionId }); const context = createMemberSeededContext(session, now);
+    const session = buildSessionRow({ id: sessionId, source: "manual" }); const context = createMemberSeededContext(session, now);
     const deps = defaultInteractionDeps(successfulSendAsk(), context);
     const prompt = buildCancelInteraction(); await handleInteraction(asInteraction(prompt), deps);
     expect(prompt.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
@@ -74,7 +74,7 @@ describe("confirmation dialog wiring", () => {
     const nonce = rendered[0]!.customId.split(":")[2];
     expect(nonce).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
     expect(rendered).toStrictEqual([
-      { customId: `cancel_week:2026-W17:${nonce}:confirm`, label: "今週はお休みにする", disabled: false, style: ButtonStyle.Danger },
+      { customId: `cancel_week:2026-W17:${nonce}:confirm`, label: "金曜自動募集を停止", disabled: false, style: ButtonStyle.Danger },
       { customId: `cancel_week:2026-W17:${nonce}:abort`, label: "キャンセル", disabled: false, style: ButtonStyle.Secondary }
     ]);
     const secondPrompt = buildCancelInteraction(); await handleInteraction(asInteraction(secondPrompt), deps);
@@ -83,8 +83,8 @@ describe("confirmation dialog wiring", () => {
     expect(context.ports.sessions.listSessions()).toStrictEqual([session]);
     expect(context.ports.outbox.listEntries()).toStrictEqual([]);
     const confirm = buildButtonInteraction(rendered[0]!.customId); await handleInteraction(asInteraction(confirm), deps);
-    expect((await context.ports.sessions.findSessionById(sessionId))?.status).toBe("SKIPPED");
-    expect(context.ports.outbox.listEntries().map(row => row.dedupeKey)).toStrictEqual(["cancel-week-notice-2026-W17"]);
+    expect((await context.ports.sessions.findSessionById(sessionId))?.status).toBe("ASKING");
+    expect(context.ports.outbox.listEntries().map(row => row.dedupeKey)).toStrictEqual(["weekly-ask-disabled-2026-W17"]);
     expect(callArg<Dialog>(confirm.editReply).components).toStrictEqual([]);
   });
 });

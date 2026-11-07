@@ -72,8 +72,8 @@ describe("sendAskMessage", () => {
     expect(context.ports.outbox.listEntries()).toStrictEqual([]);
   });
 
-  it("pins the in-flight key, candidate date and deadline to one clock snapshot at an ISO week boundary", async () => {
-    const before = new Date("2026-04-26T23:59:59.999+09:00");
+  it("pins admission to one snapshot before the deadline even if the clock crosses an ISO week", async () => {
+    const before = new Date("2026-04-26T21:29:59.999+09:00");
     const after = new Date("2026-04-27T00:00:00.000+09:00");
     const base = createTestAppContext({ now: before });
     const clock = { now: vi.fn().mockReturnValueOnce(before).mockReturnValue(after) };

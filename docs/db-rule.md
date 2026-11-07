@@ -18,9 +18,11 @@ Summit の port、Discord button、通知 payload / dedupe / target は従来の
 
 新しい Session、Response、HeldEvent、member は一度生成した UUID を保存し、その文字列表記を新しい alias とする。過去の ID は変更しない。Session lock、回答の snowflake 順序、開催履歴・参加者と状態更新の一括 commit は従来の transaction 内に保つ。出欠通知の nullable `session_id` は text のまま親の `legacy_id` を参照し、結果通知の target も元の文字列から source row を照合する。
 
-旧 schema の integration suite と [canonical adapter 契約](../tests/integration/canonicalIdentities.contract.test.ts) は別々に検証する。旧 DB 上の部分 fixture は projection・参照解決・rollback の試験であり、実 migration の代わりにはしない。CI の `canonical-database` は別の固定 DB commit から新しい公開型を build し、全 production code・検証 tool・canonical 契約を型検査する。全 migration で作成した DB の型・制約を改変せずに契約 test を実行し、同じ公開型で build した本番 image の隔離・通知容量も検証する。`SUMMIT_TEST_CANONICAL_SCHEMA=1` では部分 fixture への fallback を拒否する。
+今回の出欠consumerは momo-db の0103〜0106までの完了を必要とする。旧text schemaや途中のexpand段階では起動しない。保存済みaliasの互換と、旧schemaでの実行互換は別の契約である。
 
-旧 fixture suite は旧公開型と旧 schema の組で引き続き実行する。新旧いずれの CI も、本番 copy と全 consumer の切替 gate の代わりにはしない。旧 schema への先行導入と、停止下での canonical schema 切替は [migration runbook](./operations/migration.md) の順序に従う。
+[canonical adapter 契約](../tests/integration/canonicalIdentities.contract.test.ts)は全migrationで作成したDB上で旧alias・親参照・rollbackを検証する。CIの `canonical-database` は固定DB commitの公開型でproduction codeと検証toolを型検査し、`SUMMIT_TEST_CANONICAL_SCHEMA=1` では部分fixtureへのfallbackを拒否する。DB変更を公開revisionへまとめるときは、CIの `MOMO_DB_REF` / `MOMO_CANONICAL_DB_REF` とmomo-resultの固定refを同じ契約へ揃える。localではsiblingの未commit schemaとmigrationを使って検証できるが、公開refの同期を代替しない。
+
+migrationは旧進行中Session・未配送出欠通知・曖昧な旧SKIPPED・日付重複を検出すると停止し、旧履歴を推測して消したり完了させたりしない。適用条件と検証はmomo-dbが所有する。本番操作はこの実装依頼には含めず、[migration runbook](./operations/migration.md)と個別の権限に従う。
 
 ## 2. DB に残す不変条件
 
@@ -28,11 +30,11 @@ Session、Response、HeldEvent、notification intent が状態の正本。Discor
 
 | 対象 | DB が守る契約 |
 |---|---|
-| Session | week と順延区分の unique、許可された状態 |
+| Session | 候補日・全体active・週次自動・親・request IDのunique、許可された状態と生成元 |
 | Response | Session + member の unique |
 | HeldEvent | Session との unique な対応、確定時点の参加者 |
 | notification | 全 status を通じた dedupe identity |
-| 出欠 intent | Session revision + ordinal の一意性と順序 |
+| 出欠 intent | Sessionまたは週次予定ごとのrevision + ordinalの一意性と順序 |
 | 関連 row | FK / check / status 制約。途中状態を別々の commit に分けない |
 
 DB client は parse 済み設定と `src/db/client.ts` の pooler 設定を使う。値は parameter 化し、user input を `sql.raw` に渡さない。動的 identifier / order が必要なら allowlist で固定する。接続文字列・SQL bind・driver の未加工 error は log / HTTP に出さない。
@@ -48,7 +50,7 @@ DB client は parse 済み設定と `src/db/client.ts` の pooler 設定を使�
 | Port / 操作 | 所有する単位 |
 |---|---|
 | Sessions | read、作成、message ID 保守、scheduler hint。業務遷移は持たず、初回 message ID は null 条件の CAS で保存 |
-| SessionCommands | Session lock 後の member・回答・締切・状態判断と、Response・状態・revision・intent の一括確定 |
+| SessionCommands | 募集生成・週次停止と、Session lock 後の member・回答・締切・状態判断と、Response・状態・revision・intent の一括確定 |
 | HeldEvents | DECIDED の完了と開催履歴・参加者の同時確定。参加者はその Session の回答から得て、現行 config から再生成しない |
 | Outbox | 出欠 family の enqueue、claim、配送確定、回復、retention。message 欠落の復旧判断は SessionCommands に委ねる |
 | ResultNotifications | A/B の raw JSON 受付、設定、配送、inspect / retry、retention。§6 の共有 DB 契約を守る |
@@ -58,11 +60,15 @@ cancelled / skipped を開催履歴にしない。必須通知 intent は、そ�
 
 ## 4. 競合時の判断
 
-read-modify-write は transaction と期待値付き CAS で閉じる。競合負けは typed result として返し、必要なら最新状態を表示する。古い Interaction snowflake が新しい Response や aggregate revision を上書きしないよう fencing する。ask の process 内重複抑止に加え、DB unique を最終防衛線とする。
+read-modify-write は transaction と期待値付き CAS で閉じる。競合負けは typed result として返し、必要なら最新状態を表示する。古い Interaction snowflake が新しい Response や aggregate revision を上書きしないよう fencing する。募集の同一操作は request ID で再利用し、日付・進行中・週次自動・親子のDB uniqueを最終防衛線とする。
 
-`cancelWeek` は Session を決定論的な順序で lock する。金曜 Session の lock 待機中に土曜が作成され得るため、**金曜 lock の取得後、別 statement で週全体を読み直す**。Session がない場合も sentinel で後続作成を抑止し、週 skip、競合 intent の取消、通知 intent を一 transaction で確定する。Discord I/O は transaction の外で行う。
+募集生成・週次停止・順延は共通のtransaction advisory gateを取得して直列化する。募集生成は gate 後に当日締切・金曜窓・週次停止/生成済み・候補日占有・全週のactiveを確認し、Session・週次予定の参照・初回intentを同時に確定する。判定日時は操作開始時の一つのsnapshotを使う。同一request IDの再送は締切や週が変わっても元Sessionを返す。
 
-根拠は [SessionCommands](../src/db/repositories/sessionCommands.ts) と [金曜 lock 待機中の順延テスト](../tests/integration/cancelWeek.postpone-race.test.ts)。fake で SQL lock / MVCC を証明した扱いにしない。
+週次予定の確定は `auto_session_id` と `disabled_at` が両方nullのときだけ更新する条件付きupsertで行う。週次停止の成功経路は週情報の読書きを1文にまとめ、自動生成も週情報の書込みを1文にする。既存の作成日時を保ち、再送で停止者・停止日時・更新日時を変更しない。gate外のwriterが募集判定後に停止を確定した場合も上書きせず、Session・intentをrollbackする。[週次予定の遷移](../tests/integration/sessionCommands.contract.test.ts)と[競合](../tests/integration/sessionCreation.race.test.ts)で検証する。
+
+`cancelWeek` は未作成の `weekly_ask_schedules` だけを停止し、Sessionなしの通知を同じtransactionで保存する。既存Session・配送を変更しない。順延はgate→親Session lockの順に取得し、親をPOSTPONEDにしてからsource=postponed・parentSessionId付きの子を作る。子またはintentの失敗では親の変更もrollbackする。Discord I/O はtransactionの外で行う。
+
+根拠は [SessionCommands](../src/db/repositories/sessionCommands.ts)、[生成契約](../tests/contracts/sessionCreation.ts)、[順延と週次停止の競合](../tests/integration/cancelWeek.postpone-race.test.ts)。fakeでSQL lock / MVCCを証明した扱いにしない。
 
 ## 5. 出欠 outbox
 
@@ -70,7 +76,11 @@ read-modify-write は transaction と期待値付き CAS で閉じる。競合�
 
 必須の新規投稿は typed intent として保存する。対象は実装済みの募集・順延・締切収束・投票・決定・reminder・週取消であり、未実装 kind を先回りして追加しない。
 
-同一集約は revision / ordinal 順に処理し、先行 PENDING や dead-letter を飛ばさない。dead-letter の後続は取消し、dedupe identity は終端状態でも保持する。retry のために別 row を作らない。
+出欠intentのownerはSessionまたは週次予定の一方。新しい週次停止はnullable sessionIdとweekKeyを使い、旧cancel_week_noticeは保存済みSession参照と本文を維持する。両参照nullは削除済みSessionの旧履歴だけに許容する。週の通知もclaim・retry・dead-letter回復・retentionの対象とし、Session不要のrendererにmessage ID保存や開催確定を許可しない。
+
+配送用DTOはownerをunionで表し、新規enqueueでは型とruntimeの両方でownerの欠落・二重指定を拒否する。DB読取は必要列に絞り、保存済みpayload・ownerの不正を明示的な検証結果として個別に隔離する。予期しない例外をpayload不正へ変換しない。同一ownerのSQL比較は[共通定義](../src/db/repositories/outbox.owner.ts)をclaim・後続取消・再送に使う。
+
+同一ownerは revision / ordinal 順に処理し、先行 PENDING や dead-letter を飛ばさない。dead-letter の後続は取消し、dedupe identity は終端状態でも保持する。retry のために別 row を作らない。
 
 不正 payload / 状態や未対応 renderer は FAILED（dead-letter）にする。claim transaction 内の不正 row は item 単位で隔離し、他 Session の正常な claim を巻き戻さない。`/status` は保存状態から集計し、本文を parse しない。claim / read / cancel / parts は必要な projection を使い、一度取得した batch 本文を無目的に読み直さない。projection の最適化でも validity と fencing を落とさない。
 

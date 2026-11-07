@@ -30,7 +30,7 @@ describe("fake aggregate rollback and snapshot isolation", () => {
     expect(ports.outbox.listEntries()).toStrictEqual([]);
   });
   it("restores sending ownership as well as rows after cancel_week fails", async () => {
-    const row = makeSession(); const { ports } = createTestAppContext({ now: attendanceNow, seed: { sessions: [row] } });
+    const row = makeSession({ source: "manual" }); const { ports } = createTestAppContext({ now: attendanceNow, seed: { sessions: [row] } });
     await ports.outbox.enqueue(attendanceIntent(row.id));
     const [claim] = await ports.outbox.claimNextBatch({ limit: 1, now: attendanceNow, claimDurationMs: 60_000 });
     if (!claim?.claimToken) { throw new Error("Expected claim"); }
@@ -38,9 +38,10 @@ describe("fake aggregate rollback and snapshot isolation", () => {
     expect(await ports.outbox.beginDelivery(claim.id, owner)).toBe(true);
     const before = ports.outbox.listEntries();
     vi.spyOn(ports.outbox, "enqueue").mockRejectedValueOnce(new Error("notice unavailable"));
-    await expect(ports.sessionCommands.cancelWeekAtomically({ ...row, sentinelSessionId: "sentinel", invokerUserId: "user-0", suppressMentions: true, now: attendanceNow })).rejects.toThrow("notice unavailable");
+    await expect(ports.sessionCommands.cancelWeekAtomically({ ...row, invokerUserId: "user-0", suppressMentions: true, now: attendanceNow })).rejects.toThrow("notice unavailable");
     expect(ports.sessions.listSessions()).toStrictEqual([row]);
     expect(ports.outbox.listEntries()).toStrictEqual(before);
+    expect(ports.sessions.weeklySchedules.size).toBe(0);
     expect(await ports.outbox.markDelivered(claim.id, { ...owner, deliveredMessageId: "sent" })).toBe(true);
   });
   it("keeps seed, retrieved Date and nested payload values independent", async () => {

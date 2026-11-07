@@ -1,3 +1,4 @@
+import { lockAttendanceCreation } from "./attendance.creation.ts";
 import { runTransaction } from "../transaction.ts";
 import type { DbLike } from "../rows.ts";
 import { evaluatePostponeVote } from "../../domain/postponeDecision.ts";
@@ -21,6 +22,7 @@ export const submitPostponeVote = async (
   input: SubmitPostponeVoteInput
 ): Promise<SubmitPostponeVoteResult> =>
   runTransaction(db, async (tx) => {
+    await lockAttendanceCreation(tx);
     const current = await lockSession(tx, input.sessionId);
     if (!current) {return { kind: "session_not_found" };}
     if (current.status !== "POSTPONE_VOTING") {
@@ -79,6 +81,7 @@ export const settlePostponeVoting = async (
   input: SettlePostponeVotingInput
 ): Promise<SettlePostponeVotingResult> =>
   runTransaction(db, async (tx) => {
+    await lockAttendanceCreation(tx);
     const current = await lockSession(tx, input.sessionId);
     if (!current) {return { kind: "session_not_found" };}
     if (current.status !== "POSTPONE_VOTING") {

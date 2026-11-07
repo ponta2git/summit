@@ -8,17 +8,11 @@ import { enqueueOutboxInTransaction } from "./outbox.ts";
 import type { DbLike, SessionRow } from "../rows.ts";
 import { mapSession } from "./sessions.internal.ts";
 import type { CreateAskSessionInput } from "./sessions.types.ts";
-import { identityLayout, wireId } from "../identities.ts";
+import { identityLayout, nativeId, wireId } from "../identities.ts";
 import { sessionColumns } from "../identityColumns.ts";
 import { insertIdentity } from "../identityInsert.ts";
 
-/**
- * Create an ASKING session for the given `(weekKey, postponeCount)`.
- *
- * @remarks
- * unique: `(weekKey, postponeCount)` unique + `onConflictDoNothing` で race を吸収。
- *   呼び出し側は `undefined` を skipped として扱い多重送信を回避する。
- */
+/** Insert one Session and its intents; database constraints resolve conflicting admission. */
 export const createAskSession = async (
   db: DbLike,
   input: CreateAskSessionInput
@@ -28,12 +22,15 @@ export const createAskSession = async (
     const inserted = await insertIdentity(tx, layout, sessions, {
         id: input.id,
         weekKey: input.weekKey,
+        source: input.source ?? "manual",
+        parentSessionId: input.parentSessionId ? nativeId(layout, sessions, input.parentSessionId) : null,
+        requestId: input.requestId ?? null,
         postponeCount: input.postponeCount,
         candidateDateIso: input.candidateDateIso,
         status: "ASKING",
         channelId: input.channelId,
         deadlineAt: input.deadlineAt
-      }, sql`ON CONFLICT (week_key, postpone_count) DO NOTHING`);
+      }, sql`ON CONFLICT DO NOTHING`);
     if (!inserted) {return undefined;}
     const [row] = await tx.select(sessionColumns(layout)).from(sessions)
       .where(eq(wireId(layout, sessions), input.id));

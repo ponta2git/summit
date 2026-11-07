@@ -46,16 +46,32 @@ describe("reconnect readiness event control", () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it("stops replay admission and drains current work without starting another recovery phase", async () => {
+  it("does not start deferred replay work when stopped immediately after a Gateway event", async () => {
+    const h = createHarness();
+    h.emit("shardReady");
+    h.lifecycle.stop();
+    await h.lifecycle.drain();
+    expect(runStartupRecovery).not.toHaveBeenCalled();
+    expect(runReconciler).not.toHaveBeenCalled();
+    expect(h.wake).not.toHaveBeenCalled();
+    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
+    expect(h.listeners.size).toBe(0);
+  });
+
+  it.each(["recovery", "reconcile"] as const)("stops replay admission during %s and drains without starting another phase", async phase => {
     const reconcile = deferred<typeof report>();
-    vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
+    const recovery = deferred<typeof recovered>();
+    if (phase === "reconcile") { vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile")); }
+    else { vi.mocked(runStartupRecovery).mockReturnValueOnce(fromDatabaseCall(() => recovery.promise, "recovery")); }
     const h = createHarness(); h.emit("shardReady"); await setImmediate();
     h.lifecycle.stop(); let drained = false;
     const drain = h.lifecycle.drain().then(() => { drained = true; return undefined; }); await setImmediate();
     try { expect(drained).toBe(false); expect(h.listeners.size).toBe(0); }
-    finally { reconcile.resolve(report); await drain; }
+    finally { reconcile.resolve(report); recovery.resolve(recovered); await drain; }
     expect(h.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
-    expect(runStartupRecovery).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
+    expect(runStartupRecovery).toHaveBeenCalledOnce();
+    expect(runReconciler).toHaveBeenCalledTimes(phase === "reconcile" ? 1 : 0);
+    expect(h.wake).not.toHaveBeenCalled();
   });
 
   it("ignores shard events during initial startup", async () => {
@@ -114,7 +130,7 @@ describe("reconnect readiness event control", () => {
     expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
   });
 
-  it("waits for reconcile then recovery, rejects overlapping replay and wakes before readiness", async () => {
+  it("waits for recovery then reconcile, rejects overlapping replay and wakes before readiness", async () => {
     const reconcile = deferred<typeof report>(); const recovery = deferred<typeof recovered>();
     vi.mocked(runReconciler).mockReturnValue(fromDatabaseCall(() => reconcile.promise, "reconcile"));
     vi.mocked(runStartupRecovery).mockReturnValue(fromDatabaseCall(() => recovery.promise, "recovery"));
@@ -122,12 +138,12 @@ describe("reconnect readiness event control", () => {
     h.wake.mockImplementation(() => { expect(h.readiness.state.ready).toBe(false); });
     h.emit("shardReady"); h.emit("shardReady"); await setImmediate();
     expect(h.readiness.state).toStrictEqual({ ready: false, reason: "replaying" });
-    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(h.client, h.context, { scope: "reconnect" });
-    expect(runStartupRecovery).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
-    reconcile.resolve(report); await setImmediate();
     expect(runStartupRecovery).toHaveBeenCalledExactlyOnceWith(h.client, h.context);
+    expect(runReconciler).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
+    recovery.resolve(recovered); await setImmediate();
+    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(h.client, h.context, { scope: "reconnect" });
     expect(h.wake).not.toHaveBeenCalled(); expect(h.readiness.state.ready).toBe(false);
-    h.emit("shardReady"); recovery.resolve(recovered); await setImmediate();
+    h.emit("shardReady"); reconcile.resolve(report); await setImmediate();
     expect(runReconciler).toHaveBeenCalledOnce(); expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
     expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
   });
@@ -155,7 +171,7 @@ describe("reconnect readiness event control", () => {
     expect(h.wake).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ event: "reconnect.replay_failed", error }), "Reconnect replay failed.");
     h.emit("shardReady"); await setImmediate();
-    expect(runReconciler).toHaveBeenCalledTimes(2);
+    expect(runReconciler).toHaveBeenCalledTimes(phase === "recovery" ? 1 : 2);
     expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
   });
 });

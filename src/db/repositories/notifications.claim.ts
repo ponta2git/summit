@@ -1,7 +1,7 @@
 import type { ResultNotificationKind } from "@momo/db";
 import { supportedResultNotification } from "./notifications.supported.ts";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { discordNotifications as notifications, discordNotificationParts as parts, discordNotificationAttendance as attendance } from "../schema.ts";
 import type { Clock } from "../../time/index.ts";
 import { observeClaimLease, type ClaimLease } from "../../time/lease.ts";
@@ -11,6 +11,11 @@ import {
   cancelLockedNotifications, cancelNotification, loadResultCancellationReason, type NotificationDb,
   notificationStateColumns, type NotificationFamily
 } from "./notifications.storage.ts";
+import { sameAttendanceOwner } from "./outbox.owner.ts";
+
+const previousSharesOwner = sameAttendanceOwner({
+  sessionId: sql`previous.session_id`, weekKey: sql`previous.week_key`
+}, attendance);
 
 export const cancelAttendanceSuccessors = async (tx: NotificationDb, now: Date): Promise<number> => {
   const rows = await tx.select({ id: notifications.id }).from(notifications)
@@ -18,7 +23,8 @@ export const cancelAttendanceSuccessors = async (tx: NotificationDb, now: Date):
     .where(and(inArray(notifications.status, ["PENDING", "IN_FLIGHT"]), sql`EXISTS (
       SELECT 1 FROM discord_notification_attendance previous
       JOIN discord_notifications predecessor ON predecessor.id = previous.notification_id
-      WHERE previous.session_id = ${attendance.sessionId} AND predecessor.status = 'FAILED'
+      WHERE ${previousSharesOwner}
+        AND predecessor.status = 'FAILED'
         AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal})
     )`)).orderBy(notifications.id).limit(NOTIFICATION_MAINTENANCE_BATCH_SIZE)
     .for("update", { of: notifications, skipLocked: true });
@@ -76,13 +82,14 @@ const selectClaimCandidates = (
       .orderBy(notifications.nextAttemptAt, notifications.id).limit(limit).for("update", { skipLocked: true });
   }
   return query.innerJoin(attendance, eq(attendance.notificationId, notifications.id))
-    .where(and(due, isNotNull(attendance.sessionId), sql`NOT EXISTS (
+    .where(and(due, sql`NOT EXISTS (
       SELECT 1 FROM discord_notification_attendance previous
       JOIN discord_notifications predecessor ON predecessor.id = previous.notification_id
-      WHERE previous.session_id = ${attendance.sessionId} AND predecessor.status IN ('PENDING','IN_FLIGHT','FAILED')
+      WHERE ${previousSharesOwner}
+        AND predecessor.status IN ('PENDING','IN_FLIGHT','FAILED')
         AND (previous.aggregate_revision, previous.ordinal) < (${attendance.aggregateRevision}, ${attendance.ordinal})
     )`))
-    .orderBy(notifications.nextAttemptAt, attendance.sessionId, attendance.aggregateRevision, attendance.ordinal, notifications.id)
+    .orderBy(notifications.nextAttemptAt, attendance.sessionId, attendance.weekKey, attendance.aggregateRevision, attendance.ordinal, notifications.id)
     .limit(limit).for("update", { of: notifications, skipLocked: true });
 };
 

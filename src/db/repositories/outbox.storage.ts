@@ -1,12 +1,25 @@
-import { and, eq, getTableColumns, isNotNull, type SQL } from "drizzle-orm";
+import { and, eq, isNotNull, type SQL } from "drizzle-orm";
 import type { DbLike } from "../rows.ts";
 import { discordNotifications, discordNotificationAttendance, discordNotificationParts } from "../schema.ts";
 import type { AttendanceNotificationRow } from "./outbox.types.ts";
 
 // why: application の attendance DTO へ、共有配送と業務関連を一度だけ組み立てる。
 const attendanceNotificationColumns = {
-  ...getTableColumns(discordNotifications),
+  id: discordNotifications.id,
+  kind: discordNotifications.kind,
+  payload: discordNotifications.payload,
+  dedupeKey: discordNotifications.dedupeKey,
+  status: discordNotifications.status,
+  attemptCount: discordNotifications.attemptCount,
+  lastError: discordNotifications.lastError,
+  claimExpiresAt: discordNotifications.claimExpiresAt,
+  claimToken: discordNotifications.claimToken,
+  nextAttemptAt: discordNotifications.nextAttemptAt,
+  deliveredAt: discordNotifications.deliveredAt,
+  createdAt: discordNotifications.createdAt,
+  updatedAt: discordNotifications.updatedAt,
   sessionId: discordNotificationAttendance.sessionId,
+  weekKey: discordNotificationAttendance.weekKey,
   aggregateRevision: discordNotificationAttendance.aggregateRevision,
   ordinal: discordNotificationAttendance.ordinal,
   deliveredMessageId: discordNotificationParts.deliveredMessageId
@@ -26,10 +39,9 @@ export const findAttendanceNotificationRows = async (
     .where(and(
       eq(discordNotifications.family, "attendance"),
       isNotNull(discordNotifications.payload),
-      isNotNull(discordNotificationAttendance.sessionId),
       condition
     ));
   return rows.sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime()
-    || (left.sessionId ?? "").localeCompare(right.sessionId ?? "")
+    || (left.sessionId ?? left.weekKey ?? "").localeCompare(right.sessionId ?? right.weekKey ?? "")
     || left.aggregateRevision - right.aggregateRevision || left.ordinal - right.ordinal);
 };
