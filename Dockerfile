@@ -64,5 +64,6 @@ COPY --from=production-deps /app/summit/node_modules ./node_modules
 COPY --from=summit-build /app/summit/dist ./dist
 
 # The application needs no write access to its code or package tree.
+RUN chmod -R go-w /app
 USER node
 CMD ["node", "dist/index.js"]
