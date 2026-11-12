@@ -1,7 +1,7 @@
 # Build context: parent directory (..)
 # Usage: cd .. && fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only
 
-FROM node:26.13.0-bookworm-slim AS base
+FROM node:26.13.1-bookworm-slim AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -41,7 +41,7 @@ COPY summit/package.json summit/pnpm-lock.yaml summit/pnpm-workspace.yaml summit
 RUN pnpm install --prod --frozen-lockfile
 
 # ── runtime ────────────────────────────────────────────────────────────────────
-FROM node:26.13.0-bookworm-slim AS runtime
+FROM node:26.13.1-bookworm-slim AS runtime
 # Runtime needs Node only. Remove the bundled package manager and apply the
 # available Debian security update before switching to the application user.
 RUN apt-get update \
@@ -64,5 +64,6 @@ COPY --from=production-deps /app/summit/node_modules ./node_modules
 COPY --from=summit-build /app/summit/dist ./dist
 
 # The application needs no write access to its code or package tree.
+RUN chmod -R go-w /app
 USER node
 CMD ["node", "dist/index.js"]
