@@ -4,7 +4,9 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { identityLayout } from "../../src/db/identities.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../../src/db/schema.ts";
+// why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+// skipcq: JS-E1007
+import * as schema from "../../src/db/schema.ts"; // skipcq: JS-C1003
 import { discordNotifications as notifications, discordNotificationParts as parts,
   discordNotificationSettings as settings, matchDrafts, matches } from "../../src/db/schema.ts";
 import { completeNotificationPart } from "../../src/db/repositories/notifications.delivery.ts";
@@ -49,7 +51,7 @@ const at = (milliseconds: number): Date => new Date(now.getTime() + milliseconds
     expect(await h.port.begin(id, 1, claimToken, now)).toBe(false);
     // Independent roots model competing processes; a single process rejects duplicate owner producers before SQL.
     const competitor = makeResultNotificationsPort(drizzle(h.client, { schema, casing: "snake_case" }), checkNotificationAdmission, repositoryClock);
-    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), competitor.begin(id, 0, claimToken, at(1))])).sort())
+    expect((await Promise.all([h.port.begin(id, 0, claimToken, at(1)), competitor.begin(id, 0, claimToken, at(1))])).sort((left, right) => Number(left) - Number(right)))
       .toEqual([false, true]);
     expect(await h.port.begin(id, 1, claimToken, at(2))).toBe(false);
     expect(await h.db.select({ partNo: parts.partNo, status: parts.status, attemptCount: parts.attemptCount,

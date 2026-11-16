@@ -1,3 +1,4 @@
+import { runLocalCommand } from "./runLocalCommand.ts";
 // why: 開発中の実 Discord + ローカル Postgres 手動テスト用 CLI。本番 DB では一切動作しない。
 //   業務仕様の週次 cron (金 21:30 / 土 00:00) を待たず、DB を直接操作して締切を巻き戻し、
 //   bot 再起動時の startup recovery 経由で settle を発火させる。
@@ -147,11 +148,7 @@ const run = async (): Promise<void> => {
   }
 };
 
-void run()
-  .catch((error: unknown) => {
-    logger.error({ error }, "Dev scenario failed.");
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closeDb();
-  });
+await runLocalCommand(run, closeDb, error => {
+  process.exitCode = 1;
+  logger.error({ error }, "Dev scenario failed.");
+});

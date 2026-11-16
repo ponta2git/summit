@@ -1,4 +1,6 @@
 import { envSchema } from "./envSchema.ts";
+import { writeSync } from "node:fs";
+import { reportSafely } from "./runtime/diagnostics.ts";
 
 // jst: 起動時の値だけを読む。local file は package command が明示的に注入する。
 process.env["TZ"] ??= "Asia/Tokyo";
@@ -11,8 +13,9 @@ if (!result.success) {
   const details = result.error.issues
     .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
     .join("\n");
-  process.stderr.write(`Invalid environment variables:\n${details}\n`);
-  // why: env 不備は遅延 throw せず即停止する（fly restart ループ回避）。
+  reportSafely(() => { writeSync(process.stderr.fd, `Invalid environment variables:\n${details}\n`); });
+  // why: 同期stderrの後、設定不備で依存moduleを評価しない。bootstrapのimport契約変更時に再評価する。
+  // skipcq: JS-0263
   process.exit(1);
 }
 

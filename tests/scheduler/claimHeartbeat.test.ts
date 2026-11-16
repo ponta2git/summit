@@ -1,7 +1,7 @@
 import { setImmediate } from "node:timers/promises";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { settledCall } from "../../src/runtime/effect.ts";

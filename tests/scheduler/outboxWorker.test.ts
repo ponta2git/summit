@@ -1,5 +1,5 @@
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { runEffect } from "../helpers/assertions.ts";
 import { ChannelType } from "discord.js";
 import { setImmediate } from "node:timers/promises";

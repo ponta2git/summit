@@ -1,6 +1,6 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 
 import { AppError, InvariantViolationError } from "../errors/index.ts";
 import { errorFromCause } from "../runtime/cause.ts";
@@ -42,6 +42,8 @@ export const runSchedulerBatchEffect = <TItem, TValue>(
       const identity = identify(item);
       const exit = yield* Effect.exit(Effect.suspend(() => run(item)));
       if (Exit.isSuccess(exit)) {
+        // why: 既定 mapper は引数を使わないが、注入 mapper は TValue を集計する（schedulerBatch.test.ts）。analyzer の型推論更新時に再評価する。
+        // skipcq: JS-W1038
         succeeded += successCount(exit.value);
         continue;
       }

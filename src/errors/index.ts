@@ -1,13 +1,10 @@
-const APP_ERROR_CODES = [
-  "INVARIANT_VIOLATION",
-  "VALIDATION",
-  "NOT_FOUND",
-  "DISCORD_API",
-  "DATABASE",
-  "SHUTDOWN"
-] as const;
-
-type AppErrorCode = (typeof APP_ERROR_CODES)[number];
+type AppErrorCode =
+  | "INVARIANT_VIOLATION"
+  | "VALIDATION"
+  | "NOT_FOUND"
+  | "DISCORD_API"
+  | "DATABASE"
+  | "SHUTDOWN";
 
 interface AppErrorOptions {
   cause?: unknown;

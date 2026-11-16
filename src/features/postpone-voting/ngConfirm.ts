@@ -1,4 +1,5 @@
-import * as Result from "effect/Result";
+import { assertNever } from "../../util/assertNever.ts";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,
@@ -6,7 +7,7 @@ import {
   ButtonStyle,
   type ButtonInteraction
 } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
@@ -101,7 +102,8 @@ const recordNgAndApplyStep = Effect.fnUntraced(function* (
   logger.info({ sessionId: context.sessionId, weekKey: context.session.weekKey,
     userId: context.interaction.user.id, memberId: context.memberId, choice: "POSTPONE_NG" },
     "Postpone NG response recorded via confirmation.");
-  switch (result.kind) {
+  const kind = result.kind;
+  switch (kind) {
     case "transitioned":
       context.deps.wakeScheduler?.("postpone_ng_confirmed");
       return yield* applyPostponeTransition(context.deps.client, context.context, result);
@@ -113,14 +115,19 @@ const recordNgAndApplyStep = Effect.fnUntraced(function* (
       yield* Effect.fromResult(guardSessionPostponeVoting(result.session));
       return;
     case "session_not_found":
+      // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+      // skipcq: JS-W1042
       yield* Effect.fromResult(guardSessionExists(undefined));
       return;
     case "member_not_found":
+      // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+      // skipcq: JS-W1042
       yield* Effect.fromResult(guardRegisteredMemberId(undefined));
       return;
     case "deadline_passed":
       yield* Effect.fromResult(guardSessionPostponeDeadlineOpen(result.session, now));
       return;
+    default: return assertNever(kind, "postpone confirmation result");
   }
 });
 

@@ -58,6 +58,8 @@ export const getOutboxMetrics = async (db: DbLike, now: Date): Promise<OutboxMet
     return date === null ? null : Math.max(0, now.getTime() - date.getTime());
   };
   return {
+    // why: SQL generic types do not coerce driver values; normalize aggregates at this boundary.
+    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion
     pending: Number(row?.pending ?? 0), inFlight: Number(row?.inFlight ?? 0), failed: Number(row?.failed ?? 0),
     oldestPendingAgeMs: age(row?.oldestPending ?? null, "oldest pending notification"),
     oldestFailedAgeMs: age(row?.oldestFailed ?? null, "oldest failed notification")

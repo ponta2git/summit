@@ -34,6 +34,8 @@ export const createResultNotificationRecorder = (options: {
     }
   }) } };
   return createResultNotificationRuntime({
+    // why: recording replaces only the exercised SDK boundary; production uses a real Client.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     client: boundary as Client, context: { ports: makeRealPorts(options.db,
       payload => assertNewNotificationPartLimit(payload, options.webOrigin)), clock: systemClock },
     host: "127.0.0.1", port: options.port ?? 0, token: options.token, operationsToken: options.operationsToken,

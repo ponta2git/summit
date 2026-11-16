@@ -1,5 +1,5 @@
-import * as Effect from "effect/Effect";
-import * as Result from "effect/Result";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 
 import { deliverSinglePost, type SinglePostDefinition } from "../../src/notifications/delivery/strategies/singlePost.ts";

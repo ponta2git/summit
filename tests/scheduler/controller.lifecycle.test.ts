@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { setImmediate } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSchedulerController } from "../../src/scheduler/controller.ts";
@@ -11,7 +11,9 @@ import { deferred } from "../helpers/deferred.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-const okTask = (): SchedulerEffect<void> => Effect.succeed(undefined);
+const okTask = (): SchedulerEffect<void> => Effect.void;
+// why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+// skipcq: JS-W1042
 const options = (context: ReturnType<typeof createTestAppContext>) => ({ client: stubClient(undefined), context, logger,
   runDeadlineTick: vi.fn(okTask), runPostponeDeadlineTick: vi.fn(okTask), runReminderTick: vi.fn(okTask) });
 

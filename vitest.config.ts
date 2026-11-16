@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 // invariant: 親プロセスの任意設定や local file を unit へ持ち込まない。
 for (const key of Object.keys(process.env)) {
   if (key.startsWith("RESULT_NOTIFICATION_") || key === "FLY_IMAGE_REF" || key === "GIT_SHA") {
+    // why: process.envはキーの不在が契約。undefined代入では文字列になるため削除し、fixture分離の変更時に再評価する。
+    // skipcq: JS-0320
     delete process.env[key];
   }
 }

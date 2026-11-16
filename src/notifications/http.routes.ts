@@ -8,6 +8,7 @@ import type { Clock } from "../time/index.ts";
 import { readNotificationBody, NotificationHttpError } from "./http.body.ts";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES } from "../config.ts";
 import { parseNotificationJson } from "../domain/resultNotificationPayload.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 
 interface NotificationHttpResult { readonly status: number; readonly body: unknown; }
 export interface NotificationHttpDeps {
@@ -53,7 +54,7 @@ const jsonBody = async (request: IncomingMessage): Promise<string> => {
 
 const safeWake = (deps: NotificationHttpDeps, reason: string): void => {
   try { deps.wake(reason); }
-  catch { deps.logger.warn({ event: "result_notification.wake_failed", reason }); }
+  catch { reportSafely(() => deps.logger.warn({ event: "result_notification.wake_failed", reason })); }
 };
 
 export const routeNotificationRequest = async (
@@ -63,7 +64,7 @@ export const routeNotificationRequest = async (
     const receipt = await deps.port.receive(await jsonBody(request), deps.clock.now());
     // The port only resolves after commit. Neither a disconnected caller nor a
     // lost wake can change the durable receipt into a delivery failure.
-    deps.logger.info({ event: "result_notification.received", ...receipt });
+    reportSafely(() => deps.logger.info({ event: "result_notification.received", ...receipt }));
     safeWake(deps, "receipt_committed");
     return { status: receipt.disposition === "accepted" ? 202 : 200, body: receipt };
   }
@@ -76,7 +77,7 @@ export const routeNotificationRequest = async (
       const parsed = z.object({ enabled: z.boolean() }).strict().safeParse(value);
       if (!parsed.success) { throw new NotificationHttpError(400, "invalid_input"); }
       const changed = await deps.port.setSetting(kind, parsed.data.enabled, deps.clock.now());
-      deps.logger.info({ event: "result_notification.setting_changed", ...changed });
+      reportSafely(() => deps.logger.info({ event: "result_notification.setting_changed", ...changed }));
       safeWake(deps, "setting_committed");
       return { status: 200, body: changed };
     }
@@ -96,7 +97,7 @@ export const routeNotificationRequest = async (
     if (target[2] && request.method === "POST") {
       const queued = await deps.port.retry(id, deps.clock.now());
       if (!queued) { throw new NotificationHttpError(409, "retry_ineligible"); }
-      deps.logger.info({ event: "result_notification.retry_queued", notificationId: id });
+      reportSafely(() => deps.logger.info({ event: "result_notification.retry_queued", notificationId: id }));
       safeWake(deps, "retry_committed");
       return { status: 200, body: { notificationId: id, queued: true } };
     }

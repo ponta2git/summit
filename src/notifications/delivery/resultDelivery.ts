@@ -1,6 +1,6 @@
 import type { Client, MessageCreateOptions } from "discord.js";
 import type { Logger } from "pino";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { ResultNotificationsPort } from "../../db/ports.resultNotifications.ts";
 import { OUTBOX_BACKOFF_MS_SEQUENCE, OUTBOX_CLAIM_DURATION_MS, RESULT_NOTIFICATION_HEARTBEAT_MS, RESULT_NOTIFICATION_SEND_TIMEOUT_MS } from "../../config.ts";
 import { DatabaseError, InvariantViolationError } from "../../errors/index.ts";
@@ -29,6 +29,8 @@ type DeliveryFailure = DatabaseError | DiscordDeliveryFailure;
 // invariant: timeout は待機だけを打ち切る。SDK の送信結果は不明として nonce / CAS で回復する。
 const boundedSend = <T>(io: ResultIoLedger, owner: ResultIoOwner, operation: "channel" | "send", partNo: number | null,
   canStart: () => boolean, send: () => Promise<T>): Effect.Effect<T | undefined, DiscordDeliveryFailure> =>
+  // why: 未取得を表すPromise<undefined>を保持。戻り型変更時に再評価。
+  // skipcq: JS-W1042
   promiseCall(() => canStart() ? io.run(owner, operation, partNo, send) : Promise.resolve(undefined)).pipe(
     Effect.catch(cause => cause instanceof InvariantViolationError ? Effect.die(cause) : Effect.fail(new DiscordDeliveryFailure(cause))), Effect.timeoutOrElse({
     duration: RESULT_NOTIFICATION_SEND_TIMEOUT_MS,
@@ -96,20 +98,20 @@ export const deliverPreparedResultNotification = (
       }); } catch { /* Logging cannot turn recoverable uncertainty into ownership loss. */ }
     }
   }, ownership => Effect.gen(function* () {
-    remainingMs = ownership.remainingMs;
+    remainingMs = () => ownership.remainingMs();
     if (!(yield* ownership.awaitOwnership())) { return; }
     if (!(yield* databaseCall(() => port.plan(entry.id, entry.claimToken, {
       count: notification.partCount, rendererVersion: notification.rendererVersion, context, now: clock.now()
     }, remainingMs)))) { return; }
     const shouldStop = (): boolean => ownership.state() === "lost" || deps.isStopping();
     if (!(yield* ownership.awaitOwnership())) { return; }
-    const channel = yield* boundedSend(deps.io, entry, "channel", null, ownership.canStart, () => getTextChannel(deps.client, context.channelId));
+    const channel = yield* boundedSend(deps.io, entry, "channel", null, () => ownership.canStart(), () => getTextChannel(deps.client, context.channelId));
     if (!channel) { return; }
     yield* deps.strategy<MessageCreateOptions, DeliveryFailure>({
-      parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop, awaitOwnership: ownership.awaitOwnership,
+      parts: notification.parts, partCount: notification.partCount, deliveredPartNos, shouldStop, awaitOwnership: () => ownership.awaitOwnership(),
       begin: partNo => databaseCall(() => port.begin(entry.id, partNo, entry.claimToken, clock.now(), remainingMs)),
       send: (partNo, body) => Effect.suspend(() => {
-        return boundedSend(deps.io, entry, "send", partNo, ownership.canStart, () => {
+        return boundedSend(deps.io, entry, "send", partNo, () => ownership.canStart(), () => {
           sending = true;
           return sendResultMessage(channel, { ...body, nonce: notificationNonce(entry.id, partNo), enforceNonce: true });
         });

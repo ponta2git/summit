@@ -1,5 +1,5 @@
 import type { MessageCreateOptions } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import { settledCall } from "../../../runtime/effect.ts";
 
@@ -30,6 +30,8 @@ export const deliverSinglePost: SinglePostStrategy = Effect.fnUntraced(function*
   { body, channel, definition }: SinglePostInput<Receipt>,
   execution: { readonly isStopping: () => boolean }
 ): Effect.fn.Return<void, unknown> {
+  // why: 未取得を表すPromise<undefined>を保持。戻り型変更時に再評価。
+  // skipcq: JS-W1042
   const sent = yield* settledCall(() => execution.isStopping() ? Promise.resolve(undefined) :
     channel.send({ ...body, nonce: definition.nonce, enforceNonce: true }));
   if (!sent) { return; }

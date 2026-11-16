@@ -32,7 +32,7 @@ import { isIntegration } from "./_support.ts";
     expect(messages).toHaveLength(1);
     expect(messages[0]?.channelId).toBe("recorded-channel");
     expect(messages[0]?.body.content).toContain("物件収益: 画像を読み取れませんでした。");
-    expect(messages[0]?.body.content).not.toMatch(/成功|要確認/);
+    expect(messages[0]?.body.content).not.toMatch(/成功|要確認/u);
     expect(messages[0]?.body.content).toContain("<https://momo.example.test/review/draft-1>");
     expect(messages[0]?.body.allowedMentions).toStrictEqual({ parse: [], users: [], roles: [], repliedUser: false });
     runtime.stop(); await runtime.drain();

@@ -1,5 +1,5 @@
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setImmediate } from "node:timers/promises";
 
@@ -34,6 +34,8 @@ describe("isUnknownMessageError", () => {
       isUnknownMessageError(new Error("boom")),
       isUnknownMessageError({ code: 50001 }),
       isUnknownMessageError(null),
+      // why: unknownの欠損入力を明示的に検証。入力契約変更時に再評価。
+      // skipcq: JS-W1042
       isUnknownMessageError(undefined)
     ]).toStrictEqual([false, false, false, false]);
   });

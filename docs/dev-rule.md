@@ -66,6 +66,12 @@ Git index から対象一覧を得て、作業中の内容を読む。未追跡�
 
 ## 3. TypeScript の境界
 
+Oxlint は `oxlint-tsgolint` と `options.typeAware` を使い、型を解決した Promise 検査を行う。`void` だけで rejection の処理済みとは扱わず、`no-floating-promises` は `ignoreVoid: false` とする。依存 package の build 後に実行し、実際の外部 Promise を含む [lint 検証](../tests/verification/lint.test.ts) でエンジンの無効化・型解決漏れを検出する。
+
+`consistent-return` は Effect generator と `never` 終了の誤検知を避け、明示した戻り値型と TypeScript の `noImplicitReturns` に判定を委ねる。union の網羅性は `switch-exhaustiveness-check` と `assertNever` でも検証し、`void` 関数や既定値を返す default に新しい状態が紛れ込むのを防ぐ。test の `unbound-method` は spy の参照比較、`no-unsafe-type-assertion` は異常入力・SDK fake の構築と衝突するため適用しない。`no-explicit-any`・禁止 cast 検査・型検査は test にも維持する。汎用 assertion helper の戻り値専用型引数だけは `no-unnecessary-type-parameters` の対象外とする。本番の port は `this: void` で closure 契約を明示し、状態を持つ object の method は呼出元を保持する。
+
+その他の抑制は検証済みの境界・式の直前に理由を残す。同じ根拠が横断する namespace import の行単位 `skipcq` は、[品質モデル](./quality-assurance.md#静的解析と実行検証の分担)に対象・代替検証・再評価条件を集約する。DB driver 値の正規化、検証後の型復元、code point 数の測定を、lint の推奨だけで削除しない。
+
 - strict、exact optional property、unchecked indexed access、`erasableSyntaxOnly` を弱めない。外部入力は `unknown` から zod / guard で narrow し、`any` を使わない。
 - `as` は型情報を構造的に回復できない境界に限定する。二重 cast・`as never` で不一致を隠さない。必要な抑制には理由・範囲・撤去条件を残し、`@ts-ignore` を常用しない。
 - union は discriminant と `assertNever` で閉じる。public function / repository / service / handler は return type を明示し、config / DTO は readonly、constant map は `as const satisfies` を優先する。

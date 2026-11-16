@@ -1,5 +1,5 @@
 import type { Client, Message } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../../appContext.ts";
 import type { SessionRow } from "../../db/rows.ts";

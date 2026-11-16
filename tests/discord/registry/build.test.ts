@@ -11,7 +11,7 @@ const stubButtonHandler = vi.fn(async () => undefined);
 const stubCommandHandler = vi.fn(async () => undefined);
 
 const builder = (name: string): SlashCommandBuilder =>
-  new SlashCommandBuilder().setName(name).setDescription("test") as SlashCommandBuilder;
+  new SlashCommandBuilder().setName(name).setDescription("test");
 
 const moduleWithButton = (id: string, prefix: string): FeatureModule => ({
   id,

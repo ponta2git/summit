@@ -30,6 +30,14 @@ describe("notification performance harness", () => {
       .toMatchObject({ profile: false, profileOnly: true });
   });
 
+  it("accepts explicit measurement limits and all scenarios independent of flag order", () => {
+    expect(performanceOptions(["summit:perf", "--profile", "--rounds", "50", "--scenario", "all",
+      "--repetitions", "10", "--output", "/tmp/summit-limits"]))
+      .toStrictEqual({ image: "summit:perf", output: "/tmp/summit-limits", repetitions: 10, rounds: 50,
+        scenarios: ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"],
+        profile: true, profileOnly: false, databaseDiagnostics: false });
+  });
+
   it("runs database diagnostics separately from profiler measurements", () => {
     expect(performanceOptions(["summit:perf", "--output", "/tmp/diagnostics", "--database-diagnostics", "--scenario", "mixed"]))
       .toMatchObject({ databaseDiagnostics: true, profile: false, profileOnly: false, scenarios: ["mixed"] });
@@ -44,9 +52,17 @@ describe("notification performance harness", () => {
     ["summit:perf", "--output", "/tmp/result", "--repetitions", "11"],
     ["summit:perf", "--output", "/tmp/result", "--rounds", "1.5"],
     ["summit:perf", "--output", "/tmp/result", "--rounds", "51"],
+    ["summit:perf", "--output", "/tmp/result", "--rounds", "9007199254740992"],
+    ["summit:perf", "--output", "/tmp/result", "--output", "/tmp/other"],
+    ["summit:perf", "--output", "--profile"],
+    ["summit:perf", "--output", ""],
+    ["summit:perf", "--output", "bad\0path"],
+    ["summit:perf", "--output", "/tmp/result", "--unknown", "value"],
+    ["summit:perf", "--output", "/tmp/result", "--profile", "value"],
     ["summit:perf", "--output", "/tmp/result", "--profile", "--profile"],
     ["summit:perf", "--output", "/tmp/result", "--profile-only", "--profile"],
-    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--repetitions", "1"]
+    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--repetitions", "1"],
+    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--database-diagnostics"]
   ].map(args => ({ args })))("refuses unbounded or ambiguous options: $args", ({ args }) => {
     expect(() => performanceOptions(args)).toThrow("setup_or_measurement");
   });

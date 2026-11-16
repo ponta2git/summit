@@ -1,9 +1,9 @@
 import { setImmediate } from "node:timers/promises";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { promiseCall } from "../../src/runtime/effect.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deferred } from "../helpers/deferred.ts";
-import type * as Environment from "../../src/env.ts";
+import type * as Environment from "../../src/env.ts"; // skipcq: JS-C1003
 import type { ShutdownDeps } from "../../src/shutdown.ts";
 
 // why: bootstrapのcompositionを駆動し、停止が途中の起動やresource drainを追い越さないことを検証する。
@@ -107,6 +107,19 @@ describe("bootstrap shutdown ownership", () => {
       "interactions.drain", "reconnect.drain", "results.drain", "scheduler.drain", "asks.drain"]));
     expect(h.calls).not.toContain("database.close");
     gate.resolve(); await h.shutdown;
+    expect(h.calls.slice(-2)).toEqual(["database.close", "discord.destroy"]);
+  });
+
+  it("completes startup and resource shutdown when diagnostic sinks throw", async () => {
+    h.phase = ""; h.pending = Promise.resolve();
+    const { logger } = await import("../../src/logger.ts");
+    for (const method of ["info", "warn", "error"] as const) {
+      vi.spyOn(logger, method).mockImplementation(() => { throw new Error("diagnostics unavailable"); });
+    }
+    await import("../../src/index.ts"); await setImmediate();
+    expect(h.calls).toContain("scheduler.create");
+    expect(h.calls).toContain("ready");
+    h.signals.get("SIGTERM")?.(); await h.shutdown;
     expect(h.calls.slice(-2)).toEqual(["database.close", "discord.destroy"]);
   });
 });

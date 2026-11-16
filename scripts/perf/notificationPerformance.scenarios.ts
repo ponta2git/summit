@@ -43,6 +43,8 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
   for (const mode of modes) {
     const value = fixture(0, mode);
     fixtureBytes[mode] = { jsonBytes: Buffer.byteLength(JSON.stringify(value)),
+      // invariant: the payload limit counts code points, not grapheme clusters.
+      // oxlint-disable-next-line typescript/no-misused-spread
       jsonbBytes: await canonicalCapacityBytes(client, value), nameCodePoints: [...value.data.gameTitleName].length };
   }
   if (scenario === "normal" || fairness) {

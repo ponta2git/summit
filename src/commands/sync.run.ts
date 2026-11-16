@@ -45,7 +45,7 @@ const boundedRequest = (request: RESTOptions["makeRequest"]): RESTOptions["makeR
 };
 
 /** Owns bounded HTTP reads and fail-fast rate limits for one guild, without background sweepers. */
-export const createCommandRest = (settings: SyncSettings, transport: Pick<RESTOptions, "makeRequest"> | undefined = undefined): CommandRest => {
+export const createCommandRest = (settings: SyncSettings, transport?: Pick<RESTOptions, "makeRequest">): CommandRest => {
   const rest = new REST({ version: "10", timeout: SYNC_REQUEST_TIMEOUT_MS, retries: 0, rejectOnRateLimit: () => true,
     hashSweepInterval: 0, handlerSweepInterval: 0, makeRequest: boundedRequest(transport?.makeRequest ?? DefaultRestOptions.makeRequest) })
     .setToken(settings.token);

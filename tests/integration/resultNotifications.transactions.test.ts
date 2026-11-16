@@ -173,7 +173,7 @@ const barrier = () => {
     const base = analysisNotification();
     const match = base.data.matches[0];
     if (!match) { throw new Error("Expected match fixture"); }
-    const note = "界" + "*".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192);
+    const note = `界${"*".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192)}`;
     const payload = { ...base, data: { ...base.data, matches: [{ ...match, note }] } };
     const raw = JSON.stringify(payload);
     await h.seedStoredNotification(payload);

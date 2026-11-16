@@ -1,6 +1,6 @@
 import type { AppContext } from "../../../appContext.ts";
 import { fromDatabaseCall } from "../../../errors/effect.ts";
-import type * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { DatabaseError } from "../../../errors/index.ts";
 import type { OutboxEntry } from "../../../db/ports.ts";
 import { OUTBOX_CLAIM_DURATION_MS } from "../../../config.ts";

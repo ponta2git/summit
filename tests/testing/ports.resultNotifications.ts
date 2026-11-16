@@ -5,6 +5,7 @@ import type { ClaimedResultNotification, ResultNotificationAdmissionCheck, Resul
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS } from "../../src/config.ts";
 import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
+import { assertNotificationClaimOptions, notificationPayloadFitsClaim } from "../../src/domain/notificationClaim.ts";
 import { observeClaimLease, notificationCommandNow } from "../../src/time/lease.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
   RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES,
@@ -89,11 +90,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
     claim: async options => {
       options = { ...options, now: notificationCommandNow(clock, options.now) };
       recordCall(calls, "claim", options);
-      if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
-        || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000
-        || (options.payloadBudgetBytes !== undefined && (!Number.isSafeInteger(options.payloadBudgetBytes) || options.payloadBudgetBytes < 0))) {
-        throw new Error("Invalid notification claim options");
-      }
+      assertNotificationClaimOptions(options);
       const expired = [...entries.values()].filter(n => n.claimExpiresAt && n.claimExpiresAt <= options.now)
         .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
       for (const n of expired) {
@@ -112,13 +109,14 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         const preferredIndex = preferredKind && oldest && oldest.payloadBytes <= payloadBudget - claimedBytes
           ? candidates.findIndex(n => n.kind === preferredKind) : -1;
         const preferred = candidates[preferredIndex];
-        const selectedIndex = preferred && (preferred.payloadBytes <= payloadBudget - claimedBytes
-          || (result.length === 0 && (options.allowOversizedPayload ?? true))) ? preferredIndex : 0;
+        const selectedIndex = preferred && notificationPayloadFitsClaim(preferred.payloadBytes, payloadBudget - claimedBytes,
+          result.length, options.allowOversizedPayload) ? preferredIndex : 0;
         const [n] = candidates.splice(selectedIndex, 1);
         if (!n) { break; }
         if (n.attemptCount >= n.maxAttempts) { n.status = "FAILED"; n.lastError = "attempt_limit"; n.terminalAt = options.now; continue; }
         const why = reason(n); if (why) { cancel(n, why, options.now); continue; }
-        if (n.payloadBytes > payloadBudget - claimedBytes && !(result.length === 0 && (options.allowOversizedPayload ?? true))) { break; }
+        if (!notificationPayloadFitsClaim(n.payloadBytes, payloadBudget - claimedBytes,
+          result.length, options.allowOversizedPayload)) { break; }
         const lease = observeClaimLease(clock, options.now, options.claimDurationMs);
         n.status = "IN_FLIGHT"; n.claimToken = randomUUID(); n.claimExpiresAt = lease.expiresAt; n.attemptCount += 1;
         result.push(structuredClone({ id: n.id, kind: n.kind, payload: n.payload, claimToken: n.claimToken, attemptCount: n.attemptCount,

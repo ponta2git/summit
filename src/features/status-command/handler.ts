@@ -1,6 +1,6 @@
-import * as Result from "effect/Result";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import { OUTBOX_STRANDED_ATTEMPTS_THRESHOLD } from "../../config.ts";
 import type {

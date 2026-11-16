@@ -14,6 +14,8 @@ vi.mock("../../src/notifications/http.ts", () => ({ createNotificationReceiver: 
 vi.mock("../../src/notifications/delivery/composition.result.ts", () => ({ createResultNotificationDispatcher: () => adapters.dispatcher }));
 
 const createRuntime = () => createResultNotificationRuntime({
+  // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+  // skipcq: JS-W1042
   client: stubClient(undefined), context: createTestAppContext(), host: "127.0.0.1", port: 0,
   token: "test-token", operationsToken: "test-ops-token", webOrigin: "https://example.com",
   channelId: "channel-1", canAccept: () => true

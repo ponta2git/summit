@@ -124,11 +124,11 @@ const analyze = async (): Promise<void> => {
     durations: Object.fromEntries(Object.entries(run.metrics.operationDurationsMs).filter(([key]) => key.startsWith("database."))
       .map(([key, values]) => [key, durationSummary(values)]))
   }));
-  await writeFile(output, JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios, databaseDiagnostics,
+  await writeFile(output, `${JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios, databaseDiagnostics,
     interpretation: { percentileMethod: "nearest-rank over pooled raw observations; event-loop histograms remain per-run",
       profilesExcludedFromBaseline: true, databaseDiagnosticsExcludedFromBaseline: true,
       samplingHeapMeasures: "estimated cumulative allocation including collected objects",
-      postGcHeapIncludesRecorderArrays: true, memoryTrace: "at most 500 bucket maxima from 50ms samples" } }, null, 2) + "\n", { flag: "wx" });
+      postGcHeapIncludesRecorderArrays: true, memoryTrace: "at most 500 bucket maxima from 50ms samples" } }, null, 2)}\n`, { flag: "wx" });
   console.log(`Analyzed ${runs.length} runs across ${scenarios.length} scenarios.`);
 };
 

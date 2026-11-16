@@ -151,6 +151,19 @@ export const resultNotificationContract = (
       ] });
     });
 
+    it.each([{ limit: 0 }, { claimDurationMs: 300_001 }, { payloadBudgetBytes: -1 }])(
+      "rejects invalid claim bounds before releasing an expired owner: %j", async invalid => {
+        const id = await receive();
+        await claim();
+        const before = await port.inspect(id);
+        // The DB adapter wraps internal errors; rejection and unchanged ownership are the public contract.
+        await expect(port.claim({ limit: 2, now: at(1_001), claimDurationMs: 1_000, ...invalid })).rejects.toThrow(Error);
+        expect(await port.inspect(id)).toEqual(before);
+        const [next] = await port.claim({ limit: 2, now: at(1_001), claimDurationMs: 1_000 });
+        expect(next).toMatchObject({ id, attemptCount: 2 });
+      }
+    );
+
     it("reserves a whole payload before claiming and leaves an over-budget item untouched", async () => {
       const id = await receive();
       const first = await claim();

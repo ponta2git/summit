@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Client } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../config.ts";

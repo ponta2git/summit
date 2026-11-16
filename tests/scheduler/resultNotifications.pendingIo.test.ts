@@ -26,7 +26,7 @@ describe("result dispatcher with SDK calls beyond the application timeout", () =
     await vi.advanceTimersByTimeAsync(20 * 60_000);
     expect(h.channel.send).toHaveBeenCalledTimes(2);
     expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(claims);
-    for (const id of ids.slice(0, 2)) { expect(await h.port.inspect(id!)).toMatchObject({ status: "PENDING", attemptCount: 1 }); }
+    for (const id of ids.slice(0, 2)) { expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 1 }); }
     expect(await h.port.inspect(ids[2]!)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     sent.resolve({ id: "late" }); await vi.advanceTimersByTimeAsync(1);
     await runtime.drain(); await vi.advanceTimersByTimeAsync(1);

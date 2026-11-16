@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../appContext.ts";
 import {
@@ -12,6 +12,7 @@ import { AppError, InvariantViolationError } from "../errors/index.ts";
 import { fromAppCall, fromDatabaseCall } from "../errors/effect.ts";
 import { logger as defaultLogger } from "../logger.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 import { reconcileMissingAsk } from "./reconciler.missingAsk.ts";
 import { reconcileOutboxClaims } from "./reconciler.outboxClaims.ts";
 import { createAttendanceDeliveryRuntime } from "../notifications/delivery/composition.attendance.ts";
@@ -64,6 +65,8 @@ export const createSchedulerController = (
   let stopped = false;
   const running = new Map<TimerKind, Promise<boolean>>();
   const attendance = createAttendanceDeliveryRuntime({ client, context, logger,
+    // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+    // skipcq: JS-0357
     onWake: reason => controller.wake(reason) });
 
   const runOwnedTick = (
@@ -86,7 +89,7 @@ export const createSchedulerController = (
     if (!handle) {return;}
     clearTimeout(handle);
     timers.delete(kind);
-    logger.debug({ event: "scheduler.timer_cancelled", timer: kind });
+    reportSafely(() => logger.debug({ event: "scheduler.timer_cancelled", timer: kind }));
   };
 
   const clearAllTimers = (): void => {
@@ -108,15 +111,18 @@ export const createSchedulerController = (
     const handle = setTimeout(() => {
       timers.delete(kind);
       void runOwnedTick(kind, run)
-        .finally(() => controller.wake(`${kind}_timer_fired`));
+        // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+        // skipcq: JS-0357
+        .finally(() => controller.wake(`${kind}_timer_fired`))
+        .catch(() => reportSafely(() => logger.error({ event: "scheduler.timer_failed", timer: kind })));
     }, delayMs);
     timers.set(kind, handle);
-    logger.info({
+    reportSafely(() => logger.info({
       event: "scheduler.timer_scheduled",
       timer: kind,
       targetAt: at.toISOString(),
       delayMs
-    });
+    }));
   };
 
   const runDueSessionWork = async (): Promise<{ readonly didRun: boolean; readonly failed: boolean }> => {
@@ -188,7 +194,9 @@ export const createSchedulerController = (
     if (delay === undefined) { return; }
     recoveryTimer = setTimeout(() => {
       recoveryTimer = undefined;
-      void recompute("recovery_retry");
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
+      void recompute("recovery_retry").catch(() => reportSafely(() => logger.error({ event: "scheduler.recovery_failed" })));
     }, delay);
   };
 
@@ -201,7 +209,7 @@ export const createSchedulerController = (
 
     recomputeInFlight = (async () => {
       const startedAt = performance.now();
-      logger.info({ event: "scheduler.recompute_started", reason });
+      reportSafely(() => logger.info({ event: "scheduler.recompute_started", reason }));
       try {
         const { didRun, failed } = await runDueSessionWork();
         if (!stopped) {
@@ -216,20 +224,20 @@ export const createSchedulerController = (
           clearTimeout(recoveryTimer);
           recoveryTimer = undefined;
         }
-        logger.info({
+        reportSafely(() => logger.info({
           event: "scheduler.recompute_finished",
           reason,
           elapsedMs: performance.now() - startedAt,
           didRun
-        });
+        }));
       } catch (error: unknown) {
-        logger.error({
+        reportSafely(() => logger.error({
           event: "scheduler.recompute_failed",
           reason,
           elapsedMs: performance.now() - startedAt,
           error,
           ...(error instanceof AppError ? { errorCode: error.code } : {})
-        });
+        }));
         retryRecompute();
       }
     })()
@@ -237,6 +245,8 @@ export const createSchedulerController = (
         recomputeInFlight = undefined;
         if (recomputeQueued && !stopped) {
           recomputeQueued = false;
+          // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+          // skipcq: JS-0357
           controller.wake("queued_recompute");
         }
       });
@@ -247,11 +257,11 @@ export const createSchedulerController = (
   const controller: SchedulerController = {
     wake: (reason) => {
       if (stopped) {return;}
-      logger.info({ event: "scheduler.wake_requested", reason });
+      reportSafely(() => logger.info({ event: "scheduler.wake_requested", reason }));
       if (wakeTimer) {return;}
       wakeTimer = setTimeout(() => {
         wakeTimer = undefined;
-        void recompute(reason);
+        void recompute(reason).catch(() => reportSafely(() => logger.error({ event: "scheduler.wake_failed", reason })));
       }, SCHEDULER_WAKE_DEBOUNCE_MS);
     },
     stop: () => {

@@ -1,5 +1,5 @@
 import type { Client, Message } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../../appContext.ts";
 import type { SessionRow } from "../../db/rows.ts";
@@ -14,13 +14,19 @@ import { askMessages } from "../ask-session/messages.ts";
 import { renderPostponeBody } from "./render.ts";
 import { buildPostponeMessageViewModel } from "./viewModel.ts";
 import { postponeMessages } from "./messages.ts";
+import { assertNever } from "../../util/assertNever.ts";
 
 const displayOptions = (session: SessionRow): { readonly disabled: boolean; readonly footerText?: string } => {
-  switch (session.status) {
+  const status = session.status;
+  switch (status) {
     case "POSTPONE_VOTING": return { disabled: false };
     case "POSTPONED": return { disabled: true, footerText: postponeMessages.postpone.footerDecided };
     case "SKIPPED": return { disabled: true, footerText: askMessages.ask.footerSkipped };
-    default: return { disabled: true, footerText: postponeMessages.postpone.footerCancelled };
+    case "ASKING":
+    case "CANCELLED":
+    case "COMPLETED":
+    case "DECIDED": return { disabled: true, footerText: postponeMessages.postpone.footerCancelled };
+    default: return assertNever(status, "postpone display status");
   }
 };
 

@@ -52,8 +52,14 @@ describe("notification capacity verification contract", () => {
     expect(validateNewNotification(value)).toStrictEqual(value);
     expect(value.data.matches).toHaveLength(50);
     expect(value.data.seasons).toHaveLength(16);
+    // invariant: schema limits are Unicode code points, not grapheme clusters.
+    // oxlint-disable-next-line typescript/no-misused-spread
     expect([...value.data.gameTitleName]).toHaveLength(256);
+    // invariant: schema limits are Unicode code points, not grapheme clusters.
+    // oxlint-disable-next-line typescript/no-misused-spread
     expect([...value.data.matches[0]!.players[0].displayName]).toHaveLength(32);
+    // invariant: schema limits are Unicode code points, not grapheme clusters.
+    // oxlint-disable-next-line typescript/no-misused-spread
     expect([...value.data.matches[0]!.note!]).toHaveLength(150);
     const plan = resultNotificationRenderers.analysis_completed.plan(value, "https://results.example.com");
     expect(plan.partCount).toBeGreaterThan(50);

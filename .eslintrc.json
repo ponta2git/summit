@@ -1,0 +1,34 @@
+{
+  "root": true,
+  "overrides": [
+    {
+      "files": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+      "rules": {
+        "no-void": "off",
+        "require-await": "off",
+        "@typescript-eslint/require-await": "off",
+        "consistent-return": "off",
+        "@typescript-eslint/consistent-return": "off",
+        "@typescript-eslint/no-invalid-void-type": "off",
+        "id-length": "off"
+      }
+    },
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "@typescript-eslint/no-non-null-assertion": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/discord/ask/send.test.ts",
+        "tests/scheduler/tickRunner.test.ts",
+        "tests/scheduler/outboxMetrics.test.ts"
+      ],
+      "rules": {
+        "no-empty-function": "off",
+        "@typescript-eslint/no-empty-function": "off"
+      }
+    }
+  ]
+}

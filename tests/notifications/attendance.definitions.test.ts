@@ -1,6 +1,6 @@
-import * as Effect from "effect/Effect";
-import * as Cause from "effect/Cause";
-import * as Exit from "effect/Exit";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 
 import { OUTBOX_CLAIM_DURATION_MS } from "../../src/config.ts";
@@ -76,6 +76,8 @@ describe("attendance notification definitions", () => {
 
   it("keeps the reminder unacknowledged when its registered business confirmation cannot persist the held event", async () => {
     const { ctx, entry, channel, client, execution } = await claimNotification("reminder", true);
+    // why: 未取得の戻り値を注入する必須引数。mock契約変更時に再評価。
+    // skipcq: JS-W1042
     vi.spyOn(ctx.ports.heldEvents, "completeDecidedSessionAsHeld").mockResolvedValue(undefined);
     const delivered = vi.spyOn(ctx.ports.outbox, "markDelivered");
     await runEffect(deliverOutboxEntry(client, ctx, entry, execution, {

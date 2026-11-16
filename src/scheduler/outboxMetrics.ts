@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { AppContext } from "../appContext.ts";
 import {
   OUTBOX_METRICS_PENDING_AGE_WARN_MS,

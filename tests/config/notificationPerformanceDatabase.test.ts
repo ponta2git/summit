@@ -53,8 +53,8 @@ const setup = (enabled = true) => {
   };
   const original = { $client: client };
   // Evaluate the exact container source with explicit public dependencies and a deterministic clock.
-  const factory = runInNewContext(notificationPerformanceDatabase.replace(/^import .+;$/gm, "")
-    + "\ncreatePerformanceDatabase;", { AsyncLocalStorage, diagnosticDrizzle: drizzle,
+  const factory = runInNewContext(`${notificationPerformanceDatabase.replace(/^import .+;$/gm, "")}\ncreatePerformanceDatabase;`,
+    { AsyncLocalStorage, diagnosticDrizzle: drizzle,
     process: { env: { PERF_DATABASE_DIAGNOSTICS: enabled ? "1" : undefined } },
     performance: { now: () => clock } }) as Factory;
   const diagnostics = factory({ db: original, schema: {}, record: (operation, milliseconds, failed) => {

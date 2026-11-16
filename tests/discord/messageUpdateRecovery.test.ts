@@ -1,6 +1,6 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 
 import { bestEffortMessageUpdate } from "../../src/discord/shared/messageUpdates.ts";

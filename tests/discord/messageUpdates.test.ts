@@ -1,5 +1,5 @@
-import * as Effect from "effect/Effect";
-import * as Result from "effect/Result";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { setImmediate } from "node:timers/promises";
 import { type ActionRowBuilder, type ButtonBuilder } from "discord.js";
 import { describe, expect, it } from "vitest";

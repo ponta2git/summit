@@ -1,14 +1,14 @@
 import { setImmediate } from "node:timers/promises";
-import * as Cause from "effect/Cause";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Result from "effect/Result";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Context from "effect/Context"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OUTBOX_HEARTBEAT_MS } from "../../src/config.ts";
 import { DatabaseError, InvariantViolationError } from "../../src/errors/index.ts";
-import * as effectRuntime from "../../src/runtime/effect.ts";
-import * as definitions from "../../src/notifications/delivery/definitions/attendance.ts";
+import * as effectRuntime from "../../src/runtime/effect.ts"; // skipcq: JS-C1003
+import * as definitions from "../../src/notifications/delivery/definitions/attendance.ts"; // skipcq: JS-C1003
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { deferred } from "../helpers/deferred.ts";

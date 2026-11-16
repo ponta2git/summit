@@ -1,5 +1,5 @@
 import { runPromiseResultBoundary } from "../../runtime/effect.ts";
-import * as Result from "effect/Result";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { MessageFlags, type ButtonInteraction } from "discord.js";
 
 import { logger } from "../../logger.ts";

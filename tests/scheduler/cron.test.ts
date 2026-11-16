@@ -1,5 +1,5 @@
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../src/scheduler/index.js";

@@ -28,6 +28,8 @@ describe("weekly recovery after old active work", () => {
     const old = buildSessionRow({ id: "previous-week", source: "manual", requestId: "previous-request",
       candidateDateIso: "2026-04-17", askMessageId: null });
     const context = createTestAppContext({ now: () => new Date(), seed: { sessions: [old] } });
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     const client = stubClient(undefined);
     controller = createSchedulerController({ client, context, logger,
       runDeadlineTick: () => runDeadlineTick(client, context),

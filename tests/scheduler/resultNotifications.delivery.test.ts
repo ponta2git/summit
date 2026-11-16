@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageFlags } from "discord.js";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { deliverPreparedResultNotification } from "../../src/notifications/delivery/resultDelivery.ts";
 import { prepareResultDelivery } from "../../src/notifications/delivery/definitions/result.ts";
 import { notificationNonce } from "../../src/notifications/delivery/deliveryNonce.ts";

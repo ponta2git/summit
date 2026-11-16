@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withClaimHeartbeat, type ClaimOwnership } from "../../src/notifications/delivery/claimHeartbeat.ts";
 import type { ClaimLease } from "../../src/time/lease.ts";

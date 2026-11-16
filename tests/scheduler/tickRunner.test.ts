@@ -82,4 +82,15 @@ describe("runTickSafely", () => {
 
     expect(logger.warn).not.toHaveBeenCalled();
   });
+
+  it("runs work and contains its failure even when every diagnostic sink throws", async () => {
+    const logger = makeLogger();
+    for (const sink of Object.values(logger)) {
+      sink.mockImplementation(() => { throw new Error("diagnostic sink unavailable"); });
+    }
+    const work = vi.fn(async () => { throw new Error("tick failed"); });
+    await expect(runTickSafely({ name: "failedSink", logger }, work)).resolves.toBeUndefined();
+    expect(work).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
 });
