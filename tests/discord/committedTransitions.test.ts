@@ -3,7 +3,7 @@ import { handleInteraction } from "../../src/discord/shared/dispatcher.ts";
 import { evaluateAndApplyDeadlineDecision } from "../../src/orchestration/askDeadline.ts";
 import { askMessages } from "../../src/features/ask-session/messages.ts";
 import { postponeMessages } from "../../src/features/postpone-voting/messages.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { asInteraction, buildButtonInteraction } from "../helpers/interaction.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { createDiscordTextFixture, createEditableMessage } from "../helpers/discord.ts";
@@ -40,8 +40,8 @@ describe("committed attendance transitions", () => {
       });
     }
     const fixture = createSettleDiscordFixture();
-    const editing = deferred<void>();
-    const release = deferred<void>();
+    const editing = deferredSignal();
+    const release = deferredSignal();
     const wakeScheduler = vi.fn();
     fixture.edit.mockImplementation(async () => {
       editing.resolve();

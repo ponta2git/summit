@@ -37,25 +37,25 @@ const cmdStatus = async (): Promise<void> => {
     console.log("(no sessions)");
     return;
   }
-  for (const s of all) {
-    const rs = await db
+  for (const session of all) {
+    const sessionResponses = await db
       .select(responseColumns(await identityLayout(db)))
       .from(responses)
-      .where(eq(responses.sessionId, nativeId(await identityLayout(db), sessions, s.id)));
+      .where(eq(responses.sessionId, nativeId(await identityLayout(db), sessions, session.id)));
     console.log(
-      `${s.createdAt.toISOString()}  ${s.status.padEnd(16)} ` +
-        `week=${s.weekKey} postponeCount=${s.postponeCount} ` +
-        `candidate=${s.candidateDateIso} deadline=${s.deadlineAt.toISOString()} ` +
-        `id=${s.id}`
+      `${session.createdAt.toISOString()}  ${session.status.padEnd(16)} ` +
+        `week=${session.weekKey} postponeCount=${session.postponeCount} ` +
+        `candidate=${session.candidateDateIso} deadline=${session.deadlineAt.toISOString()} ` +
+        `id=${session.id}`
     );
-    if (s.cancelReason) {
-      console.log(`    cancelReason: ${s.cancelReason}`);
+    if (session.cancelReason) {
+      console.log(`    cancelReason: ${session.cancelReason}`);
     }
-    if (s.decidedStartAt) {
-      console.log(`    decidedStartAt: ${s.decidedStartAt.toISOString()}`);
+    if (session.decidedStartAt) {
+      console.log(`    decidedStartAt: ${session.decidedStartAt.toISOString()}`);
     }
-    for (const r of rs) {
-      console.log(`    - member=${r.memberId} choice=${r.choice}`);
+    for (const response of sessionResponses) {
+      console.log(`    - member=${response.memberId} choice=${response.choice}`);
     }
   }
 };

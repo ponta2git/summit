@@ -8,7 +8,7 @@ import {
 import {
   createAskSession
 } from "../../src/db/repositories/sessions.js";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
 import { heldEventParticipants, sessions } from "../../src/db/schema.js";
 
@@ -114,7 +114,7 @@ describeDb("heldEvents repository contract (integration)", () => {
   // race: 並行 complete で 1 件の held_event に収束する。
   it("completeDecidedSessionAsHeld: concurrent completes converge to a single held_event", async () => {
     await decide();
-    const locked = deferred<number>(); const release = deferred<void>();
+    const locked = deferred<number>(); const release = deferredSignal();
     const blocker = db.transaction(async tx => {
       await tx.select().from(sessions).where(eq(sessions.legacyId, baseSession.id)).for("update");
       const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);

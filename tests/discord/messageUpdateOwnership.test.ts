@@ -7,7 +7,7 @@ import { fromDiscordCall } from "../../src/errors/effect.ts";
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.ts";
 import { updatePostponeMessage } from "../../src/features/postpone-voting/messageEditor.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { asTextChannel, createDiscordTextFixture, createEditableMessage } from "../helpers/discord.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
@@ -15,7 +15,7 @@ import { buildSessionRow } from "../testing/sessionScenario.ts";
 describe("message update ownership", () => {
   it("cancels a waiter without releasing the active update's lock or starting cancelled work", async () => {
     const context = createTestAppContext();
-    const entered = deferred<void>(); const release = deferred<void>();
+    const entered = deferredSignal(); const release = deferredSignal();
     const completed: string[] = [];
     const owner = runEffect(serializeMessageUpdate(context, "message", () => fromDiscordCall(async () => {
       entered.resolve(); await release.promise; completed.push("owner");
@@ -42,7 +42,7 @@ describe("message update ownership", () => {
     const session = buildSessionRow({ status: kind === "ask" ? "ASKING" : "POSTPONE_VOTING",
       askMessageId: "deleted-id", postponeMessageId: "deleted-id" });
     const context = createTestAppContext({ seed: { sessions: [session] } });
-    const lookingUp = deferred<void>(); const releaseLookup = deferred<void>();
+    const lookingUp = deferredSignal(); const releaseLookup = deferredSignal();
     const events: string[] = [];
     const fixture = createDiscordTextFixture();
     fixture.fetch.mockRejectedValue(Object.assign(new Error("Deleted message"), { code: 10008 }));
@@ -80,8 +80,8 @@ describe("message update ownership", () => {
     const session = buildSessionRow({ status: kind === "ask" ? "ASKING" : "POSTPONE_VOTING",
       askMessageId: "deleted-id", postponeMessageId: "deleted-id" });
     const context = createTestAppContext({ seed: { sessions: [session] } });
-    const sending = deferred<void>(); const releaseSend = deferred<void>();
-    const saving = deferred<void>(); const releaseSave = deferred<void>();
+    const sending = deferredSignal(); const releaseSend = deferredSignal();
+    const saving = deferredSignal(); const releaseSave = deferredSignal();
     const fixture = createDiscordTextFixture(async () => {
       sending.resolve(); await releaseSend.promise; return { id: "replacement-id" };
     });

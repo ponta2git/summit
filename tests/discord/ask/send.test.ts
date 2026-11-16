@@ -58,8 +58,8 @@ describe("sendAskMessage", () => {
     await shutdownGracefully({
       signal: "SIGTERM",
       stopScheduler: vi.fn(),
-      waitForInFlightSend: async () => {},
-      closeDb: async () => {},
+      waitForInFlightSend: async () => { /* why: この fixture に配送中の処理はない。 */ },
+      closeDb: async () => { /* why: in-memory ports は接続を所有しない。 */ },
       destroyClient: vi.fn()
     });
     const context = createTestAppContext({

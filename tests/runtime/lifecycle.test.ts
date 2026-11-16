@@ -1,7 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { drainResources, stopResources } from "../../src/runtime/lifecycle.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 
 describe("resource owner cleanup", () => {
   it("stops every producer before reporting a failed stop", () => {
@@ -16,7 +16,7 @@ describe("resource owner cleanup", () => {
 
   it("starts every drain after a synchronous throw and waits for every pending owner", async () => {
     const failure = new Error("drain failed before returning a Promise");
-    const pending = deferred<void>();
+    const pending = deferredSignal();
     const stillRunning = vi.fn(() => pending.promise);
     const last = vi.fn(async () => undefined);
     let completed = false;

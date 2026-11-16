@@ -19,6 +19,13 @@ describe("notification performance profile summaries", () => {
     expect(() => summarizeCpuProfile({ startTime: 0, endTime: 10, nodes: [], samples: [], timeDeltas: [10] })).toThrow("Invalid CPU");
   });
 
+  it("retains a zero-weight CPU sample without treating it as missing", () => {
+    const summary = summarizeCpuProfile({ startTime: 0, endTime: 0,
+      nodes: [{ id: 1, callFrame: frame("render") }], samples: [1], timeDeltas: [0] });
+    expect(summary).toMatchObject({ wallMs: 0, sampledMs: 0, idleMs: 0, samples: 1 });
+    expect(summary.functions).toMatchObject([{ functionName: "render", selfMs: 0, samples: 1, percentOfSamples: 0 }]);
+  });
+
   it("keeps anonymous functions at different columns or evaluated scripts separate", () => {
     const summary = summarizeCpuProfile({ startTime: 0, endTime: 60,
       nodes: [{ id: 1, callFrame: frame("") }, { id: 2, callFrame: { ...frame(""), columnNumber: 40 } },

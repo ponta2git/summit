@@ -10,25 +10,25 @@ import { InvariantViolationError } from "../../src/errors/index.ts";
 import { checkNotificationAdmission, createResultNotificationHarness } from "./_resultNotifications.ts";
 import { repositoryClock } from "./_notificationClock.ts";
 import { notificationNow, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { waitForLockWaiters } from "./locking.ts";
 import { isIntegration } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("notification admission across real transaction settlement", () => {
-  let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
+  let harness: Awaited<ReturnType<typeof createResultNotificationHarness>>;
   beforeEach(async () => {
-    h = await createResultNotificationHarness();
-    await h.port.receive(JSON.stringify(ocrReceiptPayload()), notificationNow);
+    harness = await createResultNotificationHarness();
+    await harness.port.receive(JSON.stringify(ocrReceiptPayload()), notificationNow);
   });
 
   it.each(["before_gate", "holding_gate", "after_update", "after_commit"] as const)(
     "retains ownership during %s response loss and permits the other family to renew", async phase => {
-      const reached = deferred<void>(); const release = deferred<void>(); const secondEntered = deferred<void>();
-      const releaseSecond = deferred<void>();
+      const reached = deferredSignal(); const release = deferredSignal(); const secondEntered = deferredSignal();
+      const releaseSecond = deferredSignal();
       let firstTransaction = true;
-      const transaction: typeof h.db.transaction = async (callback, config) => {
+      const transaction: typeof harness.db.transaction = async (callback, config) => {
         const first = firstTransaction; firstTransaction = false;
-        const value = await h.db.transaction(async tx => {
+        const value = await harness.db.transaction(async tx => {
           let statements = 0;
           const execute = <TRow extends Record<string, unknown>>(query: Parameters<typeof tx.execute>[0]) => {
             const gate = ++statements === 2;
@@ -48,7 +48,7 @@ import { isIntegration } from "./_support.ts";
         if (first && phase === "after_commit") { reached.resolve(); await release.promise; }
         return value;
       };
-      const db = new Proxy(h.db, { get: (target, key, receiver) => key === "transaction" ? transaction : Reflect.get(target, key, receiver) });
+      const db = new Proxy(harness.db, { get: (target, key, receiver) => key === "transaction" ? transaction : Reflect.get(target, key, receiver) });
       await identityLayout(db);
       const admission = notificationAdmissionFor(db);
       const first = notificationTransaction(db, "result", async tx => {
@@ -65,7 +65,7 @@ import { isIntegration } from "./_support.ts";
         { key: "third", operation: "claim" });
       try {
         if (phase === "before_gate" || phase === "after_commit") { await secondEntered.promise; }
-        else { await waitForLockWaiters(h.client, 1); }
+        else { await waitForLockWaiters(harness.client, 1); }
         expect(admission.snapshot()).toMatchObject({ result: 2, running: 2, waiting: 1 });
         expect(thirdStarted).toBe(false);
         expect(await notificationTransaction(db, "attendance", async tx => {
@@ -74,7 +74,7 @@ import { isIntegration } from "./_support.ts";
         expect(admission.snapshot()).toMatchObject({ result: 2, attendance: 0, waiting: 1 });
         let progress: { readonly lastError: string | null | undefined; readonly second: boolean; readonly third: boolean; readonly running: number } | undefined;
         if (phase === "after_commit") {
-          const [persisted] = await h.db.select({ lastError: discordNotifications.lastError }).from(discordNotifications);
+          const [persisted] = await harness.db.select({ lastError: discordNotifications.lastError }).from(discordNotifications);
           releaseSecond.resolve();
           progress = { lastError: persisted?.lastError, second: await second, third: await third, running: admission.snapshot().running };
         }
@@ -87,51 +87,51 @@ import { isIntegration } from "./_support.ts";
   );
 
   it("returns stopped queued begin/claim as no-ops without SQL or another delivery attempt", async () => {
-    const port = makeResultNotificationsPort(h.db, checkNotificationAdmission, repositoryClock);
+    const port = makeResultNotificationsPort(harness.db, checkNotificationAdmission, repositoryClock);
     const [claim] = await port.claim({ limit: 1, now: notificationNow, claimDurationMs: 30_000 });
     if (!claim) { throw new Error("Expected claim"); }
     await port.plan(claim.id, claim.claimToken, { count: 1, rendererVersion: 1,
       context: { channelId: "channel", webOrigin: "https://example.test" }, now: notificationNow });
     // Separate root handle represents this process's lifecycle; the fixture observer stays available after stop.
-    const db = new Proxy(h.db, {}); const stoppedPort = makeResultNotificationsPort(db, checkNotificationAdmission, repositoryClock);
-    const admission = notificationAdmissionFor(db); const release = deferred<void>(); const entered = deferred<void>();
+    const db = new Proxy(harness.db, {}); const stoppedPort = makeResultNotificationsPort(db, checkNotificationAdmission, repositoryClock);
+    const admission = notificationAdmissionFor(db); const release = deferredSignal(); const entered = deferredSignal();
     const first = notificationTransaction(db, "result", async () => { entered.resolve(); await release.promise; }, { key: "first", operation: "finalize" });
     await entered.promise;
     const second = notificationTransaction(db, "result", async () => undefined, { key: "second", operation: "finalize" });
-    await waitForLockWaiters(h.client, 1);
+    await waitForLockWaiters(harness.client, 1);
     const begin = stoppedPort.begin(claim.id, 0, claim.claimToken, notificationNow, () => 30_000);
     const nextClaim = stoppedPort.claim({ limit: 1, now: notificationNow, claimDurationMs: 30_000 });
     try {
       admission.stop(); expect(await begin).toBe(false); expect(await nextClaim).toEqual([]);
     } finally { release.resolve(); await Promise.all([first, second]); await admission.drain(); }
-    expect(await h.port.inspect(claim.id)).toMatchObject({ attemptCount: 1, parts: [{ status: "PENDING", attemptCount: 0 }] });
-    expect(await h.db.select({ status: discordNotifications.status }).from(discordNotifications).where(eq(discordNotifications.id, claim.id)))
+    expect(await harness.port.inspect(claim.id)).toMatchObject({ attemptCount: 1, parts: [{ status: "PENDING", attemptCount: 0 }] });
+    expect(await harness.db.select({ status: discordNotifications.status }).from(discordNotifications).where(eq(discordNotifications.id, claim.id)))
       .toEqual([{ status: "IN_FLIGHT" }]);
   });
 
   it("preserves an internal producer invariant through the port's driver-error sanitizer", async () => {
-    const admission = notificationAdmissionFor(h.db); const release = deferred<void>();
+    const admission = notificationAdmissionFor(harness.db); const release = deferredSignal();
     const first = admission.run({ family: "result", key: "result:claim", operation: "claim" }, () => release.promise);
     try {
-      await expect(h.port.claim({ limit: 1, now: notificationNow, claimDurationMs: 30_000 })).rejects.toBeInstanceOf(InvariantViolationError);
+      await expect(harness.port.claim({ limit: 1, now: notificationNow, claimDurationMs: 30_000 })).rejects.toBeInstanceOf(InvariantViolationError);
     } finally { release.resolve(); await first; }
   });
 
   it("coalesces reconnect and supervisor claim recovery on the same root handle", async () => {
-    const entered = deferred<void>(); const release = deferred<void>();
-    const holder = h.db.transaction(async tx => {
+    const entered = deferredSignal(); const release = deferredSignal();
+    const holder = harness.db.transaction(async tx => {
       await lockNotificationFamily(tx, "attendance"); entered.resolve(); await release.promise;
     });
     await entered.promise;
-    const reconnect = releaseExpiredOutboxClaims(h.db, notificationNow);
-    const supervisor = releaseExpiredOutboxClaims(h.db, new Date(notificationNow.getTime() + 1));
+    const reconnect = releaseExpiredOutboxClaims(harness.db, notificationNow);
+    const supervisor = releaseExpiredOutboxClaims(harness.db, new Date(notificationNow.getTime() + 1));
     try {
       expect(supervisor).toBe(reconnect);
-      await waitForLockWaiters(h.client, 1);
-      expect(notificationAdmissionFor(h.db).snapshot()).toMatchObject({ attendance: 1, waiting: 0 });
+      await waitForLockWaiters(harness.client, 1);
+      expect(notificationAdmissionFor(harness.db).snapshot()).toMatchObject({ attendance: 1, waiting: 0 });
     } finally { release.resolve(); await holder; }
     expect(await Promise.all([reconnect, supervisor])).toEqual([0, 0]);
-    const later = releaseExpiredOutboxClaims(h.db, notificationNow);
+    const later = releaseExpiredOutboxClaims(harness.db, notificationNow);
     expect(later).not.toBe(reconnect); expect(await later).toBe(0);
   });
 });

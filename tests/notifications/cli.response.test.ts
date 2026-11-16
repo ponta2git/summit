@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runNotificationCli } from "../../src/notifications/cli.run.ts";
 import { RESULT_NOTIFICATION_CLIENT_TIMEOUT_MS, RESULT_NOTIFICATION_RESPONSE_MAX_BYTES } from "../../src/notifications/config.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { operationsToken } from "./http.harness.ts";
 
 const environment = { RESULT_NOTIFICATION_OPERATIONS_TOKEN: operationsToken, RESULT_NOTIFICATION_URL: "http://127.0.0.1:8081" };
@@ -37,7 +37,7 @@ describe("notification CLI response boundary", () => {
 
   it("keeps the deadline through a stalled body and disposes the stream and timer", async () => {
     vi.useFakeTimers();
-    const reading = deferred<void>();
+    const reading = deferredSignal();
     const cancelled = vi.fn();
     const body = new ReadableStream<Uint8Array>({ pull() { reading.resolve(); }, cancel: cancelled });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { headers })));

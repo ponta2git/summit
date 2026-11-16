@@ -73,8 +73,13 @@ export const durationSummary = (values: readonly number[]) => {
   if (values.some(value => !Number.isFinite(value) || value < 0)) { throw new CapacityError("setup_or_measurement", "invalid_duration"); }
   if (values.length === 0) { return { count: 0, min: null, max: null, mean: null, p50: null, p95: null, p99: null, smallTailSample: true }; }
   const sorted = [...values].sort((left, right) => left - right);
-  const percentile = (fraction: number): number => sorted[Math.ceil(sorted.length * fraction) - 1]!;
-  return { count: values.length, min: sorted[0]!, max: sorted.at(-1)!,
+  const observedAtRank = (rank: number): number => {
+    const value = sorted[rank - 1];
+    if (value === undefined) { throw new CapacityError("setup_or_measurement", "invalid_duration"); }
+    return value;
+  };
+  return { count: values.length, min: observedAtRank(1), max: observedAtRank(sorted.length),
     mean: values.reduce((sum, value) => sum + value, 0) / values.length,
-    p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), smallTailSample: values.length < 100 };
+    p50: observedAtRank(Math.ceil(sorted.length * 0.5)), p95: observedAtRank(Math.ceil(sorted.length * 0.95)),
+    p99: observedAtRank(Math.ceil(sorted.length * 0.99)), smallTailSample: values.length < 100 };
 };

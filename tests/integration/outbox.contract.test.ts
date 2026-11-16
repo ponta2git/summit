@@ -6,7 +6,7 @@ import { enqueueOutbox } from "../../src/db/repositories/outbox.js";
 import { discordNotifications, discordNotificationParts } from "../../src/db/schema.js";
 
 import { createOutboxContractHarness } from "./_outboxContract.js";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { lockNotificationFamily } from "../../src/db/repositories/notifications.storage.ts";
 import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
 import { isIntegration } from "./_support.js";
@@ -94,7 +94,7 @@ describeDb("discord_outbox repository contract (integration)", () => {
     );
 
     const now = new Date("2026-04-24T12:35:00.000Z");
-    const locked = deferred<number>(); const release = deferred<void>();
+    const locked = deferred<number>(); const release = deferredSignal();
     const blocker = db.transaction(async tx => {
       await lockNotificationFamily(tx, "attendance");
       const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);
@@ -111,7 +111,7 @@ describeDb("discord_outbox repository contract (integration)", () => {
       await waitForLockWaiters(harness.client, 2);
     } finally { release.resolve(); await blocker; }
     const results = await Promise.all([first, second]);
-    const [winner, loser] = results.sort((a, b) => b.length - a.length);
+    const [winner, loser] = results.sort((left, right) => right.length - left.length);
     if (!winner) { throw new Error("Expected claim winner"); }
     expect(winner.map(row => ({ status: row.status, attemptCount: row.attemptCount })))
       .toStrictEqual([{ status: "IN_FLIGHT", attemptCount: 1 }]);

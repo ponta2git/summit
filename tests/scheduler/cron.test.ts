@@ -6,7 +6,7 @@ import { createAskScheduler, runReminderTick, runScheduledAskTick } from "../../
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
 import { logger } from "../../src/logger.js";
 import { callArgs, runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.js";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { asDiscordClient, createDiscordTextFixture } from "../helpers/discord.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createTestAppContext } from "../testing/index.js";
@@ -82,7 +82,7 @@ describe("ask scheduler", () => {
     const scheduler = createAskScheduler({ client: asDiscordClient({}), context, sendAsk, cronAdapter: { schedule } });
 
     const wrappedIndices = [0, 1, 2];
-    const terminalTicks = deferred<void>();
+    const terminalTicks = deferredSignal();
     let terminalTickCount = 0;
     const onTerminalTick = (args: readonly unknown[]): void => {
       const fields = args[0];
@@ -156,15 +156,15 @@ describe("ask scheduler", () => {
     await runEffect(runOutboxWorkerTick(client, ctx));
 
     expect(send).toHaveBeenCalledTimes(2);
-    const persistedDue = ctx.ports.sessions.listSessions().find((s) => s.id === dueSession.id);
+    const persistedDue = ctx.ports.sessions.listSessions().find((session) => session.id === dueSession.id);
     expect(persistedDue?.status).toBe("COMPLETED");
     const persistedLegacy = ctx.ports.sessions
       .listSessions()
-      .find((s) => s.id === alreadySentSession.id);
+      .find((session) => session.id === alreadySentSession.id);
     expect(persistedLegacy?.status).toBe("COMPLETED");
     const persistedFuture = ctx.ports.sessions
       .listSessions()
-      .find((s) => s.id === futureSession.id);
+      .find((session) => session.id === futureSession.id);
     expect(persistedFuture?.status).toBe("DECIDED");
   });
 });

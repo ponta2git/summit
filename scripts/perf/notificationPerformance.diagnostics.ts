@@ -64,7 +64,7 @@ class PerformanceDiagnosticError extends CapacityError {
   }
 }
 
-export const performanceStage = async <T>(stage: string, action: () => Promise<T>): Promise<T> => {
+export const performanceStage = async <T>(stage: string, action: () => T | PromiseLike<T>): Promise<T> => {
   try { return await action(); }
   catch (error) {
     // Inner fixed diagnostics have more evidence than their outer orchestration.

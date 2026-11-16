@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "../src/config.ts";
 import { setImmediate } from "node:timers/promises";
-import { deferred } from "./helpers/deferred.ts";
+import { deferredSignal } from "./helpers/deferred.ts";
 import { logger } from "../src/logger.ts";
 
 import {
@@ -64,8 +64,8 @@ describe("shutdown", () => {
   });
 
   it.each(["resolve", "reject"] as const)("awaits asynchronous Discord destruction even when it will %s", async outcome => {
-    const destruction = deferred<void>();
-    const started = deferred<void>();
+    const destruction = deferredSignal();
+    const started = deferredSignal();
     let completed = false;
     const shutdown = shutdownGracefully({ signal: "SIGTERM", stopScheduler: () => undefined,
       waitForInFlightSend: async () => undefined, closeDb: async () => undefined,

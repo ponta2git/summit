@@ -20,7 +20,7 @@ import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.pr
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 
 beforeEach(resetReconcilerHarness);
 
@@ -164,7 +164,7 @@ describe("probeDeletedMessagesAtStartup", () => {
   it("shares replacement ownership with an in-flight message update", async () => {
     const session = buildSessionRow({ askMessageId: "deleted-id" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    const entered = deferred<void>(); const release = deferred<void>(); let blocked = false;
+    const entered = deferredSignal(); const release = deferredSignal(); let blocked = false;
     setFetchImpl(async id => {
       if (id !== "deleted-id") { return makeMessage(id); }
       if (!blocked) { blocked = true; entered.resolve(); await release.promise; }

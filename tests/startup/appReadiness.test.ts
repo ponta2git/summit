@@ -47,15 +47,15 @@ describe("reconnect readiness event control", () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it("does not start deferred replay work when stopped immediately after a Gateway event", async () => {
-    const h = createHarness();
-    h.emit("shardReady");
-    h.lifecycle.stop();
-    await h.lifecycle.drain();
+    const harness = createHarness();
+    harness.emit("shardReady");
+    harness.lifecycle.stop();
+    await harness.lifecycle.drain();
     expect(runStartupRecovery).not.toHaveBeenCalled();
     expect(runReconciler).not.toHaveBeenCalled();
-    expect(h.wake).not.toHaveBeenCalled();
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
-    expect(h.listeners.size).toBe(0);
+    expect(harness.wake).not.toHaveBeenCalled();
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
+    expect(harness.listeners.size).toBe(0);
   });
 
   it.each(["recovery", "reconcile"] as const)("stops replay admission during %s and drains without starting another phase", async phase => {
@@ -63,55 +63,55 @@ describe("reconnect readiness event control", () => {
     const recovery = deferred<typeof recovered>();
     if (phase === "reconcile") { vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile")); }
     else { vi.mocked(runStartupRecovery).mockReturnValueOnce(fromDatabaseCall(() => recovery.promise, "recovery")); }
-    const h = createHarness(); h.emit("shardReady"); await setImmediate();
-    h.lifecycle.stop(); let drained = false;
-    const drain = h.lifecycle.drain().then(() => { drained = true; return undefined; }); await setImmediate();
-    try { expect(drained).toBe(false); expect(h.listeners.size).toBe(0); }
+    const harness = createHarness(); harness.emit("shardReady"); await setImmediate();
+    harness.lifecycle.stop(); let drained = false;
+    const drain = harness.lifecycle.drain().then(() => { drained = true; return undefined; }); await setImmediate();
+    try { expect(drained).toBe(false); expect(harness.listeners.size).toBe(0); }
     finally { reconcile.resolve(report); recovery.resolve(recovered); await drain; }
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "shutting_down" });
     expect(runStartupRecovery).toHaveBeenCalledOnce();
     expect(runReconciler).toHaveBeenCalledTimes(phase === "reconcile" ? 1 : 0);
-    expect(h.wake).not.toHaveBeenCalled();
+    expect(harness.wake).not.toHaveBeenCalled();
   });
 
   it("ignores shard events during initial startup", async () => {
-    const h = createHarness(false); h.emit("shardDisconnect"); h.emit("shardReady"); await setImmediate();
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "startup" });
-    expect(runReconciler).not.toHaveBeenCalled(); expect(runStartupRecovery).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
-    h.completeStartup(); h.emit("shardDisconnect");
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
+    const harness = createHarness(false); harness.emit("shardDisconnect"); harness.emit("shardReady"); await setImmediate();
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "startup" });
+    expect(runReconciler).not.toHaveBeenCalled(); expect(runStartupRecovery).not.toHaveBeenCalled(); expect(harness.wake).not.toHaveBeenCalled();
+    harness.completeStartup(); harness.emit("shardDisconnect");
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
   });
 
   it("keeps a connection lost during startup unready until it resumes", async () => {
-    const h = createHarness(false);
-    h.emit("shardReady"); h.emit("shardDisconnect"); h.completeStartup();
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
+    const harness = createHarness(false);
+    harness.emit("shardReady"); harness.emit("shardDisconnect"); harness.completeStartup();
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
     expect(runReconciler).not.toHaveBeenCalled();
-    h.emit("shardResume"); await h.lifecycle.drain();
-    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
-    expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
-    h.lifecycle.stop();
+    harness.emit("shardResume"); await harness.lifecycle.drain();
+    expect(harness.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(harness.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
+    harness.lifecycle.stop();
   });
 
   it("recovers readiness after a disconnected Gateway session resumes", async () => {
-    const h = createHarness(); h.completeStartup(); h.emit("shardDisconnect"); h.emit("shardResume");
+    const harness = createHarness(); harness.completeStartup(); harness.emit("shardDisconnect"); harness.emit("shardResume");
     await setImmediate();
-    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(h.client, h.context, { scope: "reconnect" });
-    expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
-    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(harness.client, harness.context, { scope: "reconnect" });
+    expect(harness.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
+    expect(harness.readiness.state).toStrictEqual({ ready: true, reason: undefined });
   });
 
   it.each(["success", "failure"] as const)("keeps readiness false if disconnected during replay %s", async outcome => {
     const reconcile = deferred<typeof report>();
     vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
-    const h = createHarness(); h.emit("shardReady"); await setImmediate(); h.emit("shardDisconnect");
+    const harness = createHarness(); harness.emit("shardReady"); await setImmediate(); harness.emit("shardDisconnect");
     if (outcome === "success") { reconcile.resolve(report); } else { reconcile.reject(new Error("disconnected")); }
     await setImmediate();
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "reconnecting" });
     expect(runReconciler).toHaveBeenCalledOnce();
-    h.emit("shardReady"); await setImmediate();
+    harness.emit("shardReady"); await setImmediate();
     expect(runReconciler).toHaveBeenCalledTimes(2);
-    expect(h.readiness.state.ready).toBe(true);
+    expect(harness.readiness.state.ready).toBe(true);
   });
 
   it.each(["success", "failure"] as const)("retains a resumed connection while an earlier replay ends in %s", async outcome => {
@@ -119,46 +119,46 @@ describe("reconnect readiness event control", () => {
     vi.mocked(runReconciler)
       .mockReturnValueOnce(fromDatabaseCall(() => first.promise, "first"))
       .mockReturnValueOnce(fromDatabaseCall(() => second.promise, "second"));
-    const h = createHarness(); h.emit("shardReady"); await setImmediate();
-    h.emit("shardDisconnect"); h.emit("shardResume");
+    const harness = createHarness(); harness.emit("shardReady"); await setImmediate();
+    harness.emit("shardDisconnect"); harness.emit("shardResume");
     expect(runReconciler).toHaveBeenCalledOnce();
     if (outcome === "success") { first.resolve(report); } else { first.reject(new Error("disconnected")); }
     await setImmediate();
     expect(runReconciler).toHaveBeenCalledTimes(2);
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "replaying" });
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "replaying" });
     second.resolve(report); await setImmediate();
-    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(harness.readiness.state).toStrictEqual({ ready: true, reason: undefined });
   });
 
   it("waits for recovery then reconcile, rejects overlapping replay and wakes before readiness", async () => {
     const reconcile = deferred<typeof report>(); const recovery = deferred<typeof recovered>();
     vi.mocked(runReconciler).mockReturnValue(fromDatabaseCall(() => reconcile.promise, "reconcile"));
     vi.mocked(runStartupRecovery).mockReturnValue(fromDatabaseCall(() => recovery.promise, "recovery"));
-    const h = createHarness();
-    h.wake.mockImplementation(() => { expect(h.readiness.state.ready).toBe(false); });
-    h.emit("shardReady"); h.emit("shardReady"); await setImmediate();
-    expect(h.readiness.state).toStrictEqual({ ready: false, reason: "replaying" });
-    expect(runStartupRecovery).toHaveBeenCalledExactlyOnceWith(h.client, h.context);
-    expect(runReconciler).not.toHaveBeenCalled(); expect(h.wake).not.toHaveBeenCalled();
+    const harness = createHarness();
+    harness.wake.mockImplementation(() => { expect(harness.readiness.state.ready).toBe(false); });
+    harness.emit("shardReady"); harness.emit("shardReady"); await setImmediate();
+    expect(harness.readiness.state).toStrictEqual({ ready: false, reason: "replaying" });
+    expect(runStartupRecovery).toHaveBeenCalledExactlyOnceWith(harness.client, harness.context);
+    expect(runReconciler).not.toHaveBeenCalled(); expect(harness.wake).not.toHaveBeenCalled();
     recovery.resolve(recovered); await setImmediate();
-    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(h.client, h.context, { scope: "reconnect" });
-    expect(h.wake).not.toHaveBeenCalled(); expect(h.readiness.state.ready).toBe(false);
-    h.emit("shardReady"); reconcile.resolve(report); await setImmediate();
-    expect(runReconciler).toHaveBeenCalledOnce(); expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
-    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(runReconciler).toHaveBeenCalledExactlyOnceWith(harness.client, harness.context, { scope: "reconnect" });
+    expect(harness.wake).not.toHaveBeenCalled(); expect(harness.readiness.state.ready).toBe(false);
+    harness.emit("shardReady"); reconcile.resolve(report); await setImmediate();
+    expect(runReconciler).toHaveBeenCalledOnce(); expect(harness.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
+    expect(harness.readiness.state).toStrictEqual({ ready: true, reason: undefined });
   });
 
   it("debounces from successful completion and replays at the exact boundary", async () => {
     const reconcile = deferred<typeof report>();
     vi.mocked(runReconciler).mockReturnValueOnce(fromDatabaseCall(() => reconcile.promise, "reconcile"));
-    const h = createHarness(); h.emit("shardReady"); await setImmediate();
+    const harness = createHarness(); harness.emit("shardReady"); await setImmediate();
     vi.setSystemTime(epoch + 1_000); reconcile.resolve(report); await setImmediate();
     vi.setSystemTime(epoch + 1_000 + RECONNECT_REPLAY_DEBOUNCE_MS - 1);
-    h.emit("shardDisconnect"); h.emit("shardReady"); await setImmediate();
-    expect(runReconciler).toHaveBeenCalledOnce(); expect(h.readiness.state.ready).toBe(true);
+    harness.emit("shardDisconnect"); harness.emit("shardReady"); await setImmediate();
+    expect(runReconciler).toHaveBeenCalledOnce(); expect(harness.readiness.state.ready).toBe(true);
     vi.setSystemTime(epoch + 1_000 + RECONNECT_REPLAY_DEBOUNCE_MS);
-    h.emit("shardReady"); await setImmediate();
-    expect(runReconciler).toHaveBeenCalledTimes(2); expect(h.wake).toHaveBeenCalledTimes(2);
+    harness.emit("shardReady"); await setImmediate();
+    expect(runReconciler).toHaveBeenCalledTimes(2); expect(harness.wake).toHaveBeenCalledTimes(2);
   });
 
   it.each(["reconcile", "recovery", "synchronous throw"] as const)("releases the in-flight lock and does not debounce after %s failure", async phase => {
@@ -166,12 +166,12 @@ describe("reconnect readiness event control", () => {
     if (phase === "reconcile") { vi.mocked(runReconciler).mockReturnValueOnce(Effect.fail(error)); }
     if (phase === "recovery") { vi.mocked(runStartupRecovery).mockReturnValueOnce(Effect.fail(error)); }
     if (phase === "synchronous throw") { vi.mocked(runReconciler).mockImplementationOnce(() => { throw error; }); }
-    const h = createHarness(); h.emit("shardReady"); await setImmediate();
-    expect(h.readiness.state).toStrictEqual({ ready: true, reason: undefined });
-    expect(h.wake).not.toHaveBeenCalled();
+    const harness = createHarness(); harness.emit("shardReady"); await setImmediate();
+    expect(harness.readiness.state).toStrictEqual({ ready: true, reason: undefined });
+    expect(harness.wake).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ event: "reconnect.replay_failed", error }), "Reconnect replay failed.");
-    h.emit("shardReady"); await setImmediate();
+    harness.emit("shardReady"); await setImmediate();
     expect(runReconciler).toHaveBeenCalledTimes(phase === "recovery" ? 1 : 2);
-    expect(h.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
+    expect(harness.wake).toHaveBeenCalledExactlyOnceWith("reconnect_replay");
   });
 });

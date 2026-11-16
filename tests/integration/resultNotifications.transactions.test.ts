@@ -23,12 +23,12 @@ const barrier = () => {
 };
 
 (isIntegration ? describe : describe.skip)("result receipt transaction boundaries", () => {
-  let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
-  beforeEach(async () => { h = await createResultNotificationHarness(); });
+  let harness: Awaited<ReturnType<typeof createResultNotificationHarness>>;
+  beforeEach(async () => { harness = await createResultNotificationHarness(); });
 
   const waitForBlockedBy = async (pid: number) => {
     for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const [row] = await h.client`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+      const [row] = await harness.client`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
         WHERE ${pid} = ANY(pg_blocking_pids(pid))) AS blocked`;
       if (row?.["blocked"]) { return; }
       await setImmediate();
@@ -38,12 +38,12 @@ const barrier = () => {
 
   it("rolls back receipt, targets and parts together when its command fails after insertion", async () => {
     const payload = ocrReceiptPayload();
-    await expect(notificationTransaction(h.db, "result", async tx => {
+    await expect(notificationTransaction(harness.db, "result", async tx => {
       await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(payload), checkNotificationAdmission), now);
       throw new Error("abort receipt command");
     })).rejects.toThrow("abort receipt command");
-    expect(await h.countReceipts()).toBe(0);
-    const [counts] = await h.client`SELECT
+    expect(await harness.countReceipts()).toBe(0);
+    const [counts] = await harness.client`SELECT
       (SELECT count(*)::int FROM discord_notification_results) AS results,
       (SELECT count(*)::int FROM discord_notification_targets) AS targets`;
     expect({ ...counts }).toEqual({ results: 0, targets: 0 });
@@ -52,38 +52,38 @@ const barrier = () => {
   it("serializes OFF after receipt commit and exposes no receipt before commit", async () => {
     const inserted = barrier(); const commit = barrier(); let pid = 0;
     const payload = ocrReceiptPayload();
-    const receiving = notificationTransaction(h.db, "result", async tx => {
+    const receiving = notificationTransaction(harness.db, "result", async tx => {
       pid = Number((await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`))[0]?.pid);
       const result = await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(payload), checkNotificationAdmission), now);
       inserted.release(); await commit.promise; return result;
     });
     await inserted.promise;
-    const off = h.port.setSetting("ocr_completed", false, now);
-    try { await waitForBlockedBy(pid); expect(await h.countReceipts()).toBe(0); }
+    const off = harness.port.setSetting("ocr_completed", false, now);
+    try { await waitForBlockedBy(pid); expect(await harness.countReceipts()).toBe(0); }
     finally { commit.release(); }
     expect((await receiving).disposition).toBe("accepted"); await off;
-    expect(await h.port.inspect(payload.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "setting_off" });
+    expect(await harness.port.inspect(payload.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "setting_off" });
   });
 
   it("observes OFF/ON committed ahead of a delayed receipt and rejects its old generation", async () => {
     const changed = barrier(); const commit = barrier(); let pid = 0;
-    const settings = notificationTransaction(h.db, "result", async tx => {
+    const settings = notificationTransaction(harness.db, "result", async tx => {
       pid = Number((await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`))[0]?.pid);
       await setResultSetting(tx, "ocr_completed", false, now); await setResultSetting(tx, "ocr_completed", true, now);
       changed.release(); await commit.promise;
     });
     await changed.promise;
-    const receipt = h.port.receive(JSON.stringify(ocrReceiptPayload()), now);
+    const receipt = harness.port.receive(JSON.stringify(ocrReceiptPayload()), now);
     try { await waitForBlockedBy(pid); } finally { commit.release(); }
     await settings;
     expect(await receipt).toMatchObject({ disposition: "cancelled", status: "CANCELLED" });
-    expect(await h.port.inspect(ocrReceiptPayload().notificationId)).toMatchObject({ cancelReason: "stale_generation" });
+    expect(await harness.port.inspect(ocrReceiptPayload().notificationId)).toMatchObject({ cancelReason: "stale_generation" });
   });
 
   it("does not lock source rows during receipt; the source command then cancels atomically at its tail", async () => {
     const changed = barrier(); const finish = barrier();
     const payload = ocrReceiptPayload();
-    const source = h.db.transaction(async tx => {
+    const source = harness.db.transaction(async tx => {
       await tx.update(matchDrafts).set({ status: "cancelled" }).where(eq(matchDrafts.legacyId, payload.data.matchDraftId));
       changed.release(); await finish.promise;
       await lockNotificationFamily(tx, "result");
@@ -91,81 +91,81 @@ const barrier = () => {
     });
     await changed.promise;
     try {
-      expect((await h.port.receive(JSON.stringify(payload), now)).disposition).toBe("accepted");
-      expect(await h.port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING" });
+      expect((await harness.port.receive(JSON.stringify(payload), now)).disposition).toBe("accepted");
+      expect(await harness.port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING" });
     } finally { finish.release(); }
     await source;
-    expect(await h.port.inspect(payload.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "draft_unavailable" });
+    expect(await harness.port.inspect(payload.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "draft_unavailable" });
   });
 
   it("retains frozen B detail when live match notes and names change", async () => {
     const payload = analysisNotification();
-    await h.port.receive(JSON.stringify(payload), now);
-    await h.db.update(matches).set({ noteBody: "Edited after receipt", noteVersion: 1n,
+    await harness.port.receive(JSON.stringify(payload), now);
+    await harness.db.update(matches).set({ noteBody: "Edited after receipt", noteVersion: 1n,
       noteUpdatedAt: now, noteUpdatedByAccountId: fixtureId("momo_login_accounts", "result-account") }).where(eq(matches.legacyId, "match-1"));
-    const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
+    const [entry] = await harness.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
     expect(entry?.payload).toEqual(payload);
   });
 
   it("cancels a backlog atomically across batches while preserving delivered and started parts", async () => {
-    await notificationTransaction(h.db, "result", async tx => {
+    await notificationTransaction(harness.db, "result", async tx => {
       for (let index = 0; index < 300; index += 1) {
         const submissionId = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
         await receiveResultNotification(tx, prepareResultReceipt(JSON.stringify(ocrReceiptPayload(submissionId)), checkNotificationAdmission), now);
       }
     });
-    const [sending, unstarted, failed] = await h.port.claim({ limit: 3, now, claimDurationMs: 30_000 });
+    const [sending, unstarted, failed] = await harness.port.claim({ limit: 3, now, claimDurationMs: 30_000 });
     if (!sending || !unstarted || !failed) { throw new Error("Expected backlog claims"); }
     for (const entry of [sending, unstarted]) {
-      await h.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
+      await harness.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
         context: { webOrigin: "https://example.test", channelId: "channel" }, now });
     }
-    await h.port.begin(sending.id, 0, sending.claimToken, now);
-    await h.port.complete(sending.id, 0, sending.claimToken, "first-message", now);
-    await h.port.begin(sending.id, 1, sending.claimToken, now);
-    await h.port.fail(failed.id, failed.claimToken, "delivery_failed", null, now);
+    await harness.port.begin(sending.id, 0, sending.claimToken, now);
+    await harness.port.complete(sending.id, 0, sending.claimToken, "first-message", now);
+    await harness.port.begin(sending.id, 1, sending.claimToken, now);
+    await harness.port.fail(failed.id, failed.claimToken, "delivery_failed", null, now);
     const analysis = analysisNotification();
-    await h.port.receive(JSON.stringify(analysis), now);
+    await harness.port.receive(JSON.stringify(analysis), now);
 
-    await expect(notificationTransaction(h.db, "result", async tx => {
+    await expect(notificationTransaction(harness.db, "result", async tx => {
       await setResultSetting(tx, "ocr_completed", false, now);
       throw new Error("abort OFF after all batches");
     })).rejects.toThrow("abort OFF");
-    expect(await h.port.getSetting("ocr_completed")).toMatchObject({ enabled: true, generation: "0" });
-    expect((await h.client`SELECT id FROM discord_notifications WHERE status = 'CANCELLED'`).length).toBe(0);
+    expect(await harness.port.getSetting("ocr_completed")).toMatchObject({ enabled: true, generation: "0" });
+    expect((await harness.client`SELECT id FROM discord_notifications WHERE status = 'CANCELLED'`).length).toBe(0);
 
-    await h.port.setSetting("ocr_completed", false, now);
-    const [counts] = await h.client`SELECT count(*)::int AS total,
+    await harness.port.setSetting("ocr_completed", false, now);
+    const [counts] = await harness.client`SELECT count(*)::int AS total,
       count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled,
       count(*) FILTER (WHERE claim_token IS NOT NULL)::int AS claimed
       FROM discord_notifications WHERE kind = 'ocr_completed'`;
     expect({ ...counts }).toEqual({ total: 300, cancelled: 300, claimed: 1 });
-    expect(await h.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED", parts: [
+    expect(await harness.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED", parts: [
       { status: "DELIVERED", deliveredMessageId: "first-message" }, { status: "IN_FLIGHT" }
     ] });
-    expect(await h.port.inspect(unstarted.id)).toMatchObject({ status: "CANCELLED", parts: [
+    expect(await harness.port.inspect(unstarted.id)).toMatchObject({ status: "CANCELLED", parts: [
       { status: "CANCELLED" }, { status: "CANCELLED" }
     ] });
-    expect(await h.port.complete(sending.id, 1, sending.claimToken, "started-message", now)).toBe(true);
-    expect(await h.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED" });
-    expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING" });
+    expect(await harness.port.complete(sending.id, 1, sending.claimToken, "started-message", now)).toBe(true);
+    expect(await harness.port.inspect(sending.id)).toMatchObject({ status: "CANCELLED" });
+    expect(await harness.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING" });
     const expired = new Date(now.getTime() + 31 * 86_400_000);
-    await expect(notificationTransaction(h.db, "result", async tx => {
+    await expect(notificationTransaction(harness.db, "result", async tx => {
       await purgeNotifications(tx, "result", expired, { deliveredOlderThan: expired, failedOlderThan: expired });
       throw new Error("abort purge batch");
     })).rejects.toThrow("abort purge");
-    expect((await h.client`SELECT id FROM discord_notifications WHERE purged_at IS NOT NULL`).length).toBe(0);
-    expect(await h.port.prune(expired)).toBe(300);
-    expect(await h.port.prune(expired)).toBe(0);
-    expect(await h.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING", purgedAt: null });
-    expect(await h.port.receive(JSON.stringify(ocrReceiptPayload("00000000-0000-4000-8000-000000000000")), expired)).toMatchObject({ disposition: "duplicate", status: "CANCELLED" });
+    expect((await harness.client`SELECT id FROM discord_notifications WHERE purged_at IS NOT NULL`).length).toBe(0);
+    expect(await harness.port.prune(expired)).toBe(300);
+    expect(await harness.port.prune(expired)).toBe(0);
+    expect(await harness.port.inspect(analysis.notificationId)).toMatchObject({ status: "PENDING", purgedAt: null });
+    expect(await harness.port.receive(JSON.stringify(ocrReceiptPayload("00000000-0000-4000-8000-000000000000")), expired)).toMatchObject({ disposition: "duplicate", status: "CANCELLED" });
   });
 
   it("matches hashes produced by the historical SQL contract without losing decimals or escaped text", async () => {
     // Oracle values were checked against migration 0042 in momo-db's backup/restore test.
     const vectors = JSON.parse(readFileSync(new URL("./notification-hash-v1.json", import.meta.url), "utf8")) as { raw: string; hash: string }[];
     for (const vector of vectors) {
-      expect((await normalizeNotificationJson(h.db, vector.raw)).hash).toBe(vector.hash);
+      expect((await normalizeNotificationJson(harness.db, vector.raw)).hash).toBe(vector.hash);
     }
   });
 
@@ -176,15 +176,15 @@ const barrier = () => {
     const note = `界${"*".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192)}`;
     const payload = { ...base, data: { ...base.data, matches: [{ ...match, note }] } };
     const raw = JSON.stringify(payload);
-    await h.seedStoredNotification(payload);
-    expect(await h.port.receive(`  ${raw}\n`, now)).toMatchObject({ disposition: "duplicate", status: "PENDING" });
-    expect(await h.countReceipts()).toBe(1);
-    const [entry] = await h.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
+    await harness.seedStoredNotification(payload);
+    expect(await harness.port.receive(`  ${raw}\n`, now)).toMatchObject({ disposition: "duplicate", status: "PENDING" });
+    expect(await harness.countReceipts()).toBe(1);
+    const [entry] = await harness.port.claim({ limit: 1, now, claimDurationMs: 1_000 });
     expect(entry?.payload).toEqual(payload);
   });
 
   it("measures canonical JSON in UTF-8 bytes, including non-BMP characters", async () => {
-    const normalized = await normalizeNotificationJson(h.db, '{"text":"日本😀"}');
+    const normalized = await normalizeNotificationJson(harness.db, '{"text":"日本😀"}');
     expect({ text: normalized.text, bytes: normalized.bytes }).toEqual({ text: '{"text": "日本😀"}', bytes: 22 });
   });
 });

@@ -7,7 +7,7 @@ exclude_patterns = ["node_modules/**", "dist/**", "coverage/**"]
 name = "javascript"
 enabled = true
 
-  # why: 規則単位の調整は .eslintrc.json。代替gateと再評価条件は docs/quality-assurance.md。
+  # why: ESLint連携・Ignored Rules・行単位例外の範囲と代替gateは docs/quality-assurance.md。
   [analyzers.meta]
   environment = ["nodejs"]
   module_system = "es-modules"

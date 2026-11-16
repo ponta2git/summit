@@ -48,7 +48,7 @@ export interface CompleteDecidedSessionAsHeldResult {
  * idempotent: `held_events.session_id` unique + `onConflictDoNothing` で二重挿入防止。
  *   participants も複合 PK 衝突で no-op。
  */
-export const completeDecidedSessionAsHeld = async (
+export const completeDecidedSessionAsHeld = (
   db: DbLike,
   input: CompleteDecidedSessionAsHeldInput
 ): Promise<CompleteDecidedSessionAsHeldResult | undefined> => {

@@ -101,9 +101,9 @@ const match = z.object({
   matchId: id, sourceRevision: decimal, heldEventId: id, heldDateIso: date, matchNoInEvent: z.number().int().positive(),
   playedAt: timestamp, mapName: z.string(), seasonId: id, seasonName: z.string(), ownerName: z.string(),
   players: z.tuple([player, player, player, player]), ginjiTotal: integer, note: z.string().nullable()
-}).refine(value => new Set(value.players.map(p => p.memberId)).size === 4
-  && new Set(value.players.map(p => p.rank)).size === 4
-  && value.ginjiTotal === value.players.reduce((total, p) => total + p.ginjiCount, 0));
+}).refine(value => new Set(value.players.map(resultPlayer => resultPlayer.memberId)).size === 4
+  && new Set(value.players.map(resultPlayer => resultPlayer.rank)).size === 4
+  && value.ginjiTotal === value.players.reduce((total, resultPlayer) => total + resultPlayer.ginjiCount, 0));
 const envelope = {
   ...identitySchema.shape, occurredAt: timestamp, settingsGeneration: decimal
 };
@@ -132,7 +132,7 @@ const analysisSchema = z.object({ ...envelope, schemaVersion: z.literal(1), kind
   gameTitleId: id, gameTitleName: z.string(), disposition: z.enum(["published", "reused"]),
   previousAnalysis: analysisIdentity.nullable(), currentAnalysis: analysisIdentity,
   matches: collection(match), overall: ranks, seasons: collection(z.object({ seasonId: id, seasonName: z.string(), ranks }))
-}).refine(value => new Set(value.matches.map(m => m.matchId)).size === value.matches.length
+}).refine(value => new Set(value.matches.map(resultMatch => resultMatch.matchId)).size === value.matches.length
   && new Set(value.seasons.map(season => season.seasonId)).size === value.seasons.length
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();
 const notificationSchema = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]);

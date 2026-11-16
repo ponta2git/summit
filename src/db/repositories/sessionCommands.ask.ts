@@ -100,7 +100,7 @@ const applyAskCancellation = async (
   return settled;
 };
 
-export const submitAskResponse = async (
+export const submitAskResponse = (
   db: DbLike,
   input: SubmitAskResponseInput
 ): Promise<SubmitAskResponseResult> =>
@@ -147,7 +147,7 @@ export const submitAskResponse = async (
     };
   });
 
-export const settleAskingCancellation = async (
+export const settleAskingCancellation = (
   db: DbLike,
   input: SettleAskingCancellationInput
 ): Promise<SettleAskingCancellationResult> =>
@@ -163,7 +163,7 @@ export const settleAskingCancellation = async (
     };
   });
 
-export const settleAskingDeadline = async (
+export const settleAskingDeadline = (
   db: DbLike,
   input: SettleDeadlineInput
 ): Promise<AskingDeadlineResult> =>

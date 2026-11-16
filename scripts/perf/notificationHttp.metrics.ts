@@ -21,7 +21,7 @@ export const notificationHttpMeasurements = z.object({
 
 export const summarizeHttpDurations = (samples: readonly number[]): z.infer<typeof summary> => {
   if (samples.length === 0) { throw new Error("No HTTP observations"); }
-  const sorted = [...samples].sort((a, b) => a - b);
+  const sorted = [...samples].sort((leftSample, rightSample) => leftSample - rightSample);
   return summary.parse({ count: sorted.length, p50: sorted[Math.ceil(sorted.length * 0.5) - 1],
     p95: sorted[Math.ceil(sorted.length * 0.95) - 1], max: sorted.at(-1) });
 };

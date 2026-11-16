@@ -6,8 +6,8 @@ import { createResultNotificationHarness } from "./_resultNotifications.ts";
 import { isIntegration } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("result notification claim byte reservations", () => {
-  let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
-  beforeEach(async () => { h = await createResultNotificationHarness(); });
+  let harness: Awaited<ReturnType<typeof createResultNotificationHarness>>;
+  beforeEach(async () => { harness = await createResultNotificationHarness(); });
 
   const storedPayload = (jobId: string, note: string) => {
     const base = analysisNotification();
@@ -17,75 +17,75 @@ import { isIntegration } from "./_support.ts";
 
   it("measures JSONB UTF-8 bytes before hydrating and reserves the exact boundary", async () => {
     const payload = storedPayload("unicode", "界😀".repeat(20_000));
-    await h.seedStoredNotification(payload);
-    const [row] = await h.client`SELECT octet_length(payload::text) AS bytes, length(payload::text) AS characters
+    await harness.seedStoredNotification(payload);
+    const [row] = await harness.client`SELECT octet_length(payload::text) AS bytes, length(payload::text) AS characters
       FROM discord_notifications WHERE id = ${payload.notificationId}`;
     if (!row) { throw new Error("Expected stored notification"); }
     const bytes = Number(row["bytes"]);
     expect(bytes).toBeGreaterThan(Number(row["characters"]) * 2);
     const options = { limit: 2, now, claimDurationMs: 30_000, allowOversizedPayload: false };
-    expect(await h.port.claim({ ...options, payloadBudgetBytes: bytes - 1 })).toEqual([]);
-    expect(await h.port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
-    const [entry] = await h.port.claim({ ...options, payloadBudgetBytes: bytes });
+    expect(await harness.port.claim({ ...options, payloadBudgetBytes: bytes - 1 })).toEqual([]);
+    expect(await harness.port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    const [entry] = await harness.port.claim({ ...options, payloadBudgetBytes: bytes });
     expect(entry).toMatchObject({ payloadBytes: bytes, payload, attemptCount: 1 });
   });
 
   it("retains an oversized historical notification until an exclusive reservation is available", async () => {
     const legacy = storedPayload("a-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
     const normal = storedPayload("b-normal", "Short summary");
-    await h.seedStoredNotification(legacy);
-    await h.port.receive(JSON.stringify(normal), now);
+    await harness.seedStoredNotification(legacy);
+    await harness.port.receive(JSON.stringify(normal), now);
     const options = { limit: 2, now, claimDurationMs: 30_000, payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES };
-    const concurrent = await h.port.claim({ ...options, allowOversizedPayload: false });
+    const concurrent = await harness.port.claim({ ...options, allowOversizedPayload: false });
     expect(concurrent).toEqual([]);
-    expect(await h.port.inspect(legacy.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
-    const exclusive = await h.port.claim({ ...options, allowOversizedPayload: true });
+    expect(await harness.port.inspect(legacy.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    const exclusive = await harness.port.claim({ ...options, allowOversizedPayload: true });
     expect(exclusive.map(value => value.id)).toEqual([legacy.notificationId]);
     expect(exclusive[0]?.payloadBytes).toBeGreaterThan(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES);
     expect(exclusive[0]?.payload).toEqual(legacy);
-    expect(await h.port.inspect(normal.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect(await harness.port.inspect(normal.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     const [entry] = exclusive;
     if (!entry) { throw new Error("Expected legacy claim"); }
-    await h.port.fail(entry.id, entry.claimToken, "invalid_payload", null, now);
-    expect((await h.port.claim(options)).map(value => value.id)).toEqual([normal.notificationId]);
+    await harness.port.fail(entry.id, entry.claimToken, "invalid_payload", null, now);
+    expect((await harness.port.claim(options)).map(value => value.id)).toEqual([normal.notificationId]);
   });
 
   it("does not let kind preference overtake an older oversized payload or yield its exclusive claim", async () => {
     const legacy = storedPayload("a-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
-    await h.seedStoredNotification(legacy);
-    const ocr = ocrReceiptPayload(); await h.port.receive(JSON.stringify(ocr), now);
+    await harness.seedStoredNotification(legacy);
+    const ocr = ocrReceiptPayload(); await harness.port.receive(JSON.stringify(ocr), now);
     const options = { limit: 2, now, claimDurationMs: 30_000, preferredKind: "ocr_completed" as const,
       payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES };
-    expect(await h.port.claim({ ...options, allowOversizedPayload: false })).toEqual([]);
-    const [entry] = await h.port.claim({ ...options, allowOversizedPayload: true });
+    expect(await harness.port.claim({ ...options, allowOversizedPayload: false })).toEqual([]);
+    const [entry] = await harness.port.claim({ ...options, allowOversizedPayload: true });
     expect(entry?.id).toBe(legacy.notificationId);
     if (!entry) { throw new Error("Expected exclusive legacy claim"); }
-    await h.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
+    await harness.port.plan(entry.id, entry.claimToken, { count: 2, rendererVersion: 1,
       context: { channelId: "channel", webOrigin: "https://momo.example.com" }, now });
-    await h.port.begin(entry.id, 0, entry.claimToken, now);
-    await h.port.complete(entry.id, 0, entry.claimToken, "legacy-part", now);
-    expect(await h.port.yield(entry.id, entry.claimToken, now)).toBe(false);
-    expect(await h.port.inspect(entry.id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
-    expect(await h.port.inspect(ocr.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    await harness.port.begin(entry.id, 0, entry.claimToken, now);
+    await harness.port.complete(entry.id, 0, entry.claimToken, "legacy-part", now);
+    expect(await harness.port.yield(entry.id, entry.claimToken, now)).toBe(false);
+    expect(await harness.port.inspect(entry.id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await harness.port.inspect(ocr.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
   });
 
   it("claims an older fitting row when the preferred kind does not fit the retained owner's remaining budget", async () => {
-    const older = ocrReceiptPayload(); await h.port.receive(JSON.stringify(older), now);
+    const older = ocrReceiptPayload(); await harness.port.receive(JSON.stringify(older), now);
     const legacy = storedPayload("younger-preferred", "x".repeat(400 * 1024));
-    await h.seedStoredNotification(legacy);
-    await h.client`UPDATE discord_notifications SET next_attempt_at = ${new Date(now.getTime() + 1).toISOString()}
+    await harness.seedStoredNotification(legacy);
+    await harness.client`UPDATE discord_notifications SET next_attempt_at = ${new Date(now.getTime() + 1).toISOString()}
       WHERE id = ${legacy.notificationId}`;
     const younger = ocrReceiptPayload("22222222-2222-4222-8222-222222222222");
-    await h.port.receive(JSON.stringify(younger), new Date(now.getTime() + 2));
+    await harness.port.receive(JSON.stringify(younger), new Date(now.getTime() + 2));
     const options = { limit: 1, now: new Date(now.getTime() + 3), claimDurationMs: 30_000,
       payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - 200 * 1024,
       allowOversizedPayload: false, preferredKind: "analysis_completed" as const };
-    expect((await h.port.claim(options)).map(entry => entry.id)).toEqual([older.notificationId]);
-    expect(await h.port.inspect(legacy.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect((await harness.port.claim(options)).map(entry => entry.id)).toEqual([older.notificationId]);
+    expect(await harness.port.inspect(legacy.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     // Once the large row is oldest, younger small work must wait for capacity to drain.
-    expect(await h.port.claim({ ...options, preferredKind: "ocr_completed" })).toEqual([]);
-    expect(await h.port.inspect(younger.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
-    expect((await h.port.claim({ ...options, payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
+    expect(await harness.port.claim({ ...options, preferredKind: "ocr_completed" })).toEqual([]);
+    expect(await harness.port.inspect(younger.notificationId)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect((await harness.port.claim({ ...options, payloadBudgetBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
       allowOversizedPayload: true })).map(entry => entry.id)).toEqual([legacy.notificationId]);
   });
 
@@ -93,11 +93,11 @@ import { isIntegration } from "./_support.ts";
     const exhausted = storedPayload("a-exhausted", "Short summary");
     const cancelled = { ...storedPayload("b-stale-generation", "Short summary"), settingsGeneration: "1" };
     const ready = storedPayload("c-ready", "Short summary");
-    for (const payload of [exhausted, cancelled, ready]) { await h.seedStoredNotification(payload); }
-    await h.client`UPDATE discord_notifications SET attempt_count = max_attempts WHERE id = ${exhausted.notificationId}`;
-    const entries = await h.port.claim({ limit: 1, now, claimDurationMs: 30_000, allowOversizedPayload: false });
+    for (const payload of [exhausted, cancelled, ready]) { await harness.seedStoredNotification(payload); }
+    await harness.client`UPDATE discord_notifications SET attempt_count = max_attempts WHERE id = ${exhausted.notificationId}`;
+    const entries = await harness.port.claim({ limit: 1, now, claimDurationMs: 30_000, allowOversizedPayload: false });
     expect(entries.map(entry => entry.id)).toEqual([ready.notificationId]);
-    expect(await h.port.inspect(exhausted.notificationId)).toMatchObject({ status: "FAILED", lastError: "attempt_limit" });
-    expect(await h.port.inspect(cancelled.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "stale_generation" });
+    expect(await harness.port.inspect(exhausted.notificationId)).toMatchObject({ status: "FAILED", lastError: "attempt_limit" });
+    expect(await harness.port.inspect(cancelled.notificationId)).toMatchObject({ status: "CANCELLED", cancelReason: "stale_generation" });
   });
 });

@@ -23,7 +23,8 @@ export const createResultNotificationRecorder = (options: {
   let ordinal = 0;
   const messages = { cache: new LimitedCollection<string, { readonly id: string }>({ maxSize: 200 }) };
   // why: Discord SDK の network boundary だけを置換する。DB と dispatcher は実装を使う。
-  const boundary: unknown = { channels: { fetch: async (channelId: string) => ({
+  // why: networkを使わずDiscord fetchのPromise契約を再現する。SDK境界変更時に再評価する。
+  const boundary: unknown = { channels: { fetch: async (channelId: string) => ({ // skipcq: JS-0116
     type: ChannelType.GuildText, isSendable: () => true, messages,
     send: async (body: MessageCreateOptions) => {
       const messageId = `recorded-${++ordinal}`;

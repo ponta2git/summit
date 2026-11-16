@@ -32,8 +32,8 @@ describe("member identity reconciliation (integration)", () => {
     expect(first.find(member => member.userId === replacement.userId)?.id).not.toBe("member-1");
     expect(first.find(member => member.id === "member-1")).toMatchObject(existingMembers[0]!);
     await reconcileMembers([...inputs].reverse(), db);
-    expect((await findFixtureMembers()).sort((a, b) => a.id.localeCompare(b.id)))
-      .toStrictEqual(first.sort((a, b) => a.id.localeCompare(b.id)));
+    expect((await findFixtureMembers()).sort((left, right) => left.id.localeCompare(right.id)))
+      .toStrictEqual(first.sort((left, right) => left.id.localeCompare(right.id)));
   });
 
   it("updates explicit names and preserves DB-owned names and existing IDs", async () => {
@@ -54,7 +54,7 @@ describe("member identity reconciliation (integration)", () => {
       { userId: "333333333333333333", displayName: "Must roll back", syncDisplayName: true },
       { userId: "777777777777777777", displayName: "x".repeat(33), syncDisplayName: true }
     ], db)).rejects.toMatchObject({ cause: { code: "22001" } });
-    expect((await findFixtureMembers()).sort((a, b) => a.id.localeCompare(b.id)))
-      .toStrictEqual(before.sort((a, b) => a.id.localeCompare(b.id)));
+    expect((await findFixtureMembers()).sort((left, right) => left.id.localeCompare(right.id)))
+      .toStrictEqual(before.sort((left, right) => left.id.localeCompare(right.id)));
   });
 });

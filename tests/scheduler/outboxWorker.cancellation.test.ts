@@ -1,7 +1,7 @@
 import { runEffect } from "../helpers/assertions.ts";
 import { describe, expect, it } from "vitest";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
-import { deferred } from "../helpers/deferred.js";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.js";
@@ -17,7 +17,7 @@ describe("outbox send-start cancellation boundary", () => {
       payload: { kind: "send_message", channelId: session.channelId, renderer: "ask_body", target: "askMessageId" }
     });
     const { channel, sentMessages } = stubChannel();
-    const channelRequested = deferred<void>();
+    const channelRequested = deferredSignal();
     const channelReady = deferred<typeof channel>();
     const client = stubClient(channel, async () => {
       channelRequested.resolve();

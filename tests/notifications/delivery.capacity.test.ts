@@ -7,12 +7,12 @@ import { describe, expect, it, vi } from "vitest";
 import { createDeliveryCapacity } from "../../src/notifications/delivery/capacity.ts";
 import { settledCall } from "../../src/runtime/effect.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 
 describe("delivery capacity ownership", () => {
   it("reserves count and bytes together until the owned work settles", async () => {
     const capacity = createDeliveryCapacity({ slots: 2, payloadBytes: 100 });
-    const release = deferred<void>();
+    const release = deferredSignal();
     try {
       await runEffect(capacity.start("first-source", 40, () => settledCall(() => release.promise)));
       await runEffect(capacity.start("another-source", 60, () => settledCall(() => release.promise)));
@@ -26,7 +26,7 @@ describe("delivery capacity ownership", () => {
 
   it("admits an oversized reservation only while idle and excludes other work until it settles", async () => {
     const capacity = createDeliveryCapacity({ slots: 2, payloadBytes: 100 });
-    const release = deferred<void>();
+    const release = deferredSignal();
     try {
       await runEffect(capacity.start("historical", 150, () => settledCall(() => release.promise)));
       expect(capacity.snapshot()).toEqual({ slots: 1, payloadBytes: -50, activeIds: ["historical"], allowOversized: false });
@@ -38,7 +38,7 @@ describe("delivery capacity ownership", () => {
 
   it("takes the drain snapshot when executed, including work started after the drain Effect was constructed", async () => {
     const capacity = createDeliveryCapacity({ slots: 1 });
-    const drain = capacity.drain(); const release = deferred<void>();
+    const drain = capacity.drain(); const release = deferredSignal();
     await runEffect(capacity.start("late-start", 0, () => settledCall(() => release.promise)));
     capacity.stop();
     let drained = false;
@@ -66,7 +66,7 @@ describe("delivery capacity ownership", () => {
 
   it("keeps capacity reserved until an already-started cleanup actually settles", async () => {
     const capacity = createDeliveryCapacity({ slots: 1, payloadBytes: 100 });
-    const started = deferred<void>(); const cleanup = deferred<void>();
+    const started = deferredSignal(); const cleanup = deferredSignal();
     const fiber = await runEffect(capacity.start("cleanup", 80, () => Effect.void.pipe(Effect.ensuring(
       settledCall(() => { started.resolve(); return cleanup.promise; }).pipe(Effect.orDie)
     ))));
@@ -90,7 +90,7 @@ describe("delivery capacity ownership", () => {
 
   it("reserves atomically when competing starts would individually fit the same byte budget", async () => {
     const capacity = createDeliveryCapacity({ slots: 8, payloadBytes: 100 });
-    const release = deferred<void>();
+    const release = deferredSignal();
     try {
       const exits = await runEffect(Effect.all(Array.from({ length: 8 }, (_, index) => Effect.exit(
         capacity.start(`competing-${index}`, 60, () => settledCall(() => release.promise))

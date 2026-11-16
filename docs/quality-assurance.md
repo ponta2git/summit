@@ -101,31 +101,40 @@ DeepSource の重大度や件数は調査の入口とし、既存規約への一
 
 例外は問題のある規則と最小の対象範囲に限定し、理由・代替検証・撤去条件を code または本節へ残す。全件除外・重大度引下げ・空の catch で合格にせず、同じ誤検知が横断する場合は規則の適用範囲を設定で管理する。型や analyzer の更新、対象 API / module の変更、代替検証の失敗で再評価する。DeepSource の抑制方式は [公式仕様](https://docs.deepsource.com/docs/platform/dashboard/repository/issues)を使い、抑制後も別規則の検査対象は維持する。
 
-DeepSource が ESLint 設定の明示的な無効化を読む[公式連携](https://docs.deepsource.com/docs/platform/reference/core-analyzers#eslint-rules--plugins)を使い、[`.eslintrc.json`](../.eslintrc.json)を解析間の調整に限定する。通常の lint command と規則の正本は引き続き [`.oxlintrc.json`](../.oxlintrc.json)。ESLint の別実行系・推奨設定・file 除外は追加しない。共通の規則は root の `rules`、test 固有の例外は `overrides` に分ける。source は TypeScript に統一し、別言語の source を追加する際は委譲先の型検査と適用範囲を再評価する。設定の読み込みと対応規則の反映は対象 commit の DeepSource 再解析で確認し、ローカル lint の合格をその代わりにしない。
+DeepSource の調整には [`.eslintrc.json`](../.eslintrc.json) の ESLint 連携、repository の `Ignored Rules`、code の行単位 `skipcq` を使う。通常の lint command と規則の正本は [`.oxlintrc.json`](../.oxlintrc.json)。source は TypeScript に統一し、`src/`・`scripts/`・`tests/` を型検査と lint の対象にする。別言語や対象外 directory に source を追加する際は、代替検証と例外範囲を再評価する。[ESLint 連携の公式仕様](https://docs.deepsource.com/docs/platform/reference/core-analyzers#eslint-rules--plugins)があっても、個々の規則に設定が反映されたとは扱わない。対象 commit の default branch 全体解析で active な指摘と設定範囲を照合し、PR の新規指摘ゼロやローカル lint の合格をその代わりにしない。
 
-| ESLint 連携の範囲 | 委譲する規則 | 残す検証 |
+ESLint 連携は TypeScript の契約と衝突する次の4keyに限定する。
+
+| `.eslintrc.json` の root 規則 | 判断と代替検証 |
+|---|---|
+| `no-void` | `void` 演算子の有無と Promise の所有権は別に検証する。rejection handler を確認し、型情報を使う `no-floating-promises` (`ignoreVoid: false`)・`no-misused-promises` と owner の settlement test を維持 |
+| `consistent-return`、`@typescript-eslint/consistent-return` | Effect generator・`never` 終了を含む戻り値を、明示型と strict typecheck・`noImplicitReturns` で検証。union の状態漏れは `switch-exhaustiveness-check` と `assertNever` で検出 |
+| `@typescript-eslint/no-invalid-void-type` | port の `this: void` は closure 契約、`Effect<void>` は値を使わない成功、`void \| Promise<void>` は同期・非同期 cleanup を表す。型検査に加えて `unbound-method` と同期 throw・非同期 reject・全 owner の settlement test で用途を確認。通常の値や field を `void` 型にする判断は別途 review |
+
+`Ignored Rules` に設定した対象範囲と代替検証は次のとおり。
+
+| 対象範囲 | DeepSource 規則 | 残す検証 |
 |---|---|---|
-| repository の TypeScript | `no-void` | 型情報を使う `no-floating-promises` (`ignoreVoid: false`)・`no-misused-promises`、owner の rejection / settlement test |
-| 同上 | `require-await` と TypeScript 版、`consistent-return` と TypeScript 版、`no-invalid-void-type` | Promise / Effect の明示した戻り型、strict typecheck・`noImplicitReturns`、同期 throw・非同期 reject の境界 test。`void` の generic / `this` / cleanup union と意図した Promise interface を保持する |
-| 同上 | `id-length` | [命名規約](./dev-rule.md#5-naming)と責務の review。文字数だけで `db`・`tx`・`ctx` 等の意味を変えない |
-| `tests/**/*.ts` | TypeScript の `no-non-null-assertion` | fixture の成立条件と拒否経路の test。production の同規則は oxlint で error のまま維持 |
-| `send.test.ts`・`tickRunner.test.ts`・`outboxMetrics.test.ts` の3file | `no-empty-function` と TypeScript 版 | 完了済み I/O fake、空の仕事を持つ tick、spy で観測する log の代替だけを許容。対象は設定に完全な path で列挙し、production の handler に適用しない |
+| `tests/**` | `JS-0116` (`await` 不在) | Promise interface を再現する fake の明示型、strict typecheck、同期 throw・非同期 reject の境界 test。production の occurrence は個別に review し、必要な `async` だけ行単位の理由を残す |
+| `tests/**` | `JS-0339` (nonnull) | fixture の成立条件と拒否経路の test。production の同規則は oxlint で error のまま維持 |
 
-この連携では、未使用 code、switch の網羅性、宣言前参照、export 解決、終了処理を一括無効化しない。規則の意味が変わる analyzer 更新、Promise / Effect 契約や fake の用途変更、代替 gate の失敗時には各設定を再評価する。
+未使用 code、switch の網羅性、宣言前参照、export 解決、終了処理を一括無効化しない。規則の意味が変わる analyzer 更新、Promise / Effect 契約や fake の用途変更、代替 gate の失敗時には各設定を再評価する。
 
 規則ごとの判断は次の境界に合わせる。個別 occurrence が条件を満たさない場合は例外を広げず修正する。
 
 | DeepSource 規則 | Summit での判断と代替根拠 |
 |---|---|
 | `JS-0098` (`void` 演算子) | `void` は reject の処理ではない。rejection handler と owner による追跡を確認し、型情報を使った Promise 検査と settlement test で守る。演算子の削除だけを修正としない |
-| `JS-0333` (`void` 型)、`JS-0116` (`await` 不在) | `Effect.Effect<void>` と同期・非同期 cleanup の union は契約を表す。[lifecycle](../src/runtime/lifecycle.ts)の `async` は同期 throw を reject 化し全 owner を drain するため必要。Promise interface の fake も `async` を機械的に外さない |
+| `JS-0333` (`void` 型) | 値を返す待合せは `deferred<T>()`、値を持たない完了通知は [deferredSignal](../tests/helpers/deferred.ts)に分け、`Deferred<void>` と引数なしの `resolve()` 契約を保つ。戻り型・generic・closure・cleanup の用途を確認し、`void` を一律に `undefined` へ置換しない |
+| `JS-0116` (`await` 不在) | 不要な `async` は戻り型と例外契約を照合して外す。[lifecycle](../src/runtime/lifecycle.ts)の `async` は同期 throw を reject 化し全 owner を drain するため必要。Promise interface の fake も `async` を機械的に外さない |
 | `JS-W1042` (末尾 `undefined`) | [容量台帳](../src/notifications/delivery/capacity.ts)の `Deferred.succeed(completed, undefined)`、必須 fallback・guard 入力・欠損を注入する fixture は、行単位の理由付き抑制で保持。`Promise<undefined>` / `Effect<undefined>` を `void` へ変えて union を広げない。値を使わない成功 Effect は `Effect.void`、任意引数の真の冗長値は削除できる |
 | `JS-0045` (return の統一)、`JS-0047` (default) | 戻り値は明示型と `noImplicitReturns`、union の網羅性は `switch-exhaustiveness-check` と `assertNever` で検証する。[同期 protocol](../src/commands/sync.protocol.ts)等の閉じた union は全 case と `assertNever` の default を持つ。`void` 関数や成功値を返す default にも状態漏れがないことを [lint probe](../tests/verification/lint.test.ts) の違反例で確認する |
 | `JS-0357` (宣言前参照) | 宣言順と実行順を区別する。module 初期化後だけ呼ばれる関数と、[配送 runtime](../src/notifications/delivery/resultRuntime.ts)等の初期化後の timer / settlement callback を確認した行だけ `skipcq` で保持する。callback の登録・呼出しが初期化中へ変わる時は再評価し、TDZ や同期呼出しを抑制で隠さない |
 | `JS-C1003` (namespace)、`JS-C1001` (import path) | Effect 公開 subpath、Drizzle schema 全体、test の型参照・spy に必要な namespace import の行だけ `skipcq` で保持する。未使用・存在しない export は型検査・Knip・oxlint の import 検査を維持し、将来の import を一括除外しない。native ESM に必要な `index.ts` は保持し、同じ directory への迂回は短縮。[開発規約](./dev-rule.md#3-typescript-の境界)、build と runtime image で検証 |
 | `JS-E1007` (export 解決) | sibling の `@momo/db` を [schema](../src/db/schema.ts)から再exportする契約を、固定 sibling revision の typecheck・canonical CI・runtime image で照合。analyzer の解決限界を理由に schema を複製しない |
-| `JS-C1002` (短い名前) | `db`、`tx`、`ctx`、`sql` や局所 index は役割が一貫する場合に許容。長さではなく責務と意味で名前を review し、公開 API に曖昧な略語を増やさない |
-| `JS-0339` (nonnull)、`JS-0321` (空関数) | production の nonnull 禁止は維持。test の fixture 取得や境界 fake は不変条件・拒否経路を確認して範囲を限定する。空の handler で実エラーを握り潰す実装は許容しない |
+| `JS-C1002` (短い名前) | fixture の `h` は `harness`、member・response・session や比較対象は役割を表す名前へ改める。局所 index や generic の慣用名は用途を確認する。型検査や文字数だけで名前の明確さを保証せず、責務と意味を review |
+| `JS-0339` (nonnull) | production の nonnull 禁止は oxlint の error として維持。test の fixture 取得では成立条件・拒否経路を確認し、production へ例外を広げない |
+| `JS-0321` (空関数) | 完了済み I/O fake、空の仕事を持つ tick、spy で観測する log の代替は、何を省略し何を test で観測するかを本体の理由コメントへ残す。空の handler で実エラーを握り潰す実装は許容しない |
 | `JS-0263` (`process.exit`)、`JS-0320` (動的 delete) | worker の強制終了・終了後の親回収、test 環境の allowlist 初期化など境界固有の用途を限定する。通常経路の drain・出力 flush を中断する終了、入力に由来する任意 property の削除は別途修正する |
 | `JS-R1005` (複雑度) | 分岐数だけで owner・transaction を分断しない。純粋な判断・準備・実行の責務を review し、到達可能な成功・拒否・回復と境界条件を test で確認。責務が増えた場合は再分割を評価 |
 | `JS-0246` (文字列結合)、`JS-0097` (escape)、`JS-0117` (Unicode regex) | 単純な値の埋込は template literal、不要な escape は削除。逐次構築や Buffer の作成方式を表記統一のために変えない。regex の match 集合、UTF-16 / code point、巨大 fixture の byte 数を境界 test・容量検証で確認する |

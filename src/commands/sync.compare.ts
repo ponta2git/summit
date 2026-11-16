@@ -27,7 +27,7 @@ const normalize = (value: unknown, depth = 0): unknown => {
   if (typeof value !== "object" || value === null) { return value; }
   return Object.fromEntries(Object.entries(value).filter(([key, item]) =>
     item !== undefined && key !== "name_localized" && key !== "description_localized"
-  ).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, normalize(item, depth + 1)]));
+  ).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey)).map(([key, item]) => [key, normalize(item, depth + 1)]));
 };
 
 const normalizeOptions = (value: unknown, depth = 0): unknown[] => {

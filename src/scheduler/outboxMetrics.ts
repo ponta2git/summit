@@ -27,19 +27,19 @@ export const runOutboxMetricsTick = (ctx: AppContext): SchedulerEffect<{
   return Effect.tap(fromDatabaseCall(
     () => ctx.ports.outbox.getMetrics(now),
     "Failed to read outbox metrics."
-  ), (m) => Effect.sync(() => {
+  ), (metrics) => Effect.sync(() => {
     const isWarn =
-      m.failed > 0 ||
-      m.pending > OUTBOX_METRICS_PENDING_WARN_DEPTH ||
-      (m.oldestPendingAgeMs !== null &&
-        m.oldestPendingAgeMs > OUTBOX_METRICS_PENDING_AGE_WARN_MS);
+      metrics.failed > 0 ||
+      metrics.pending > OUTBOX_METRICS_PENDING_WARN_DEPTH ||
+      (metrics.oldestPendingAgeMs !== null &&
+        metrics.oldestPendingAgeMs > OUTBOX_METRICS_PENDING_AGE_WARN_MS);
     const fields = {
       event: "outbox.metrics",
-      pending: m.pending,
-      inFlight: m.inFlight,
-      failed: m.failed,
-      oldestPendingAgeMs: m.oldestPendingAgeMs,
-      oldestFailedAgeMs: m.oldestFailedAgeMs
+      pending: metrics.pending,
+      inFlight: metrics.inFlight,
+      failed: metrics.failed,
+      oldestPendingAgeMs: metrics.oldestPendingAgeMs,
+      oldestFailedAgeMs: metrics.oldestFailedAgeMs
     };
     if (isWarn) {
       logger.warn(fields, "Outbox metrics: warn threshold exceeded.");

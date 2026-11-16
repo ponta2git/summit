@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { deliverSinglePost, type SinglePostDefinition } from "../../src/notifications/delivery/strategies/singlePost.ts";
 import { settledCall } from "../../src/runtime/effect.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 
 // A new notification can reuse this strategy without an attendance row or a capacity implementation.
 const definition = <Receipt>(
@@ -15,7 +15,7 @@ const definition = <Receipt>(
 
 describe("single-post delivery strategy", () => {
   it("acknowledges only after business confirmation and carries its typed receipt", async () => {
-    const confirming = deferred<void>(); const confirmed = deferred<{ canonicalMessageId: string }>();
+    const confirming = deferredSignal(); const confirmed = deferred<{ canonicalMessageId: string }>();
     const send = vi.fn(async () => ({ id: "accepted" }));
     const acknowledged: Array<{ messageId: string; canonicalMessageId: string }> = [];
     let stopping = false;

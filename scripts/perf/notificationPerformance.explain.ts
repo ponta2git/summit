@@ -46,7 +46,7 @@ type NodeSummary = {
   rowsRemovedByFilterPerLoop: number; rowsRemovedByIndexRecheckPerLoop: number;
   buffers: { sharedHit: number; sharedRead: number; sharedDirtied: number; sharedWritten: number; tempRead: number; tempWritten: number };
 };
-const summarizeNodes = (value: unknown, path = "0"): NodeSummary[] => {
+const summarizeNodes = (value: unknown, path = "0"): [NodeSummary, ...NodeSummary[]] => {
   const node = nodeSchema.parse(value);
   return [{ path, type: node["Node Type"], relation: node["Relation Name"] ?? null, index: node["Index Name"] ?? null,
     indexCondition: node["Index Cond"] ?? null, filter: node.Filter ?? null,
@@ -60,8 +60,9 @@ const summarizeNodes = (value: unknown, path = "0"): NodeSummary[] => {
 };
 const summarizeThree = (values: readonly number[]) => {
   assert.equal(values.length, 3);
-  const sorted = [...values].sort((left, right) => left - right);
-  return { count: 3, min: sorted[0]!, median: sorted[1]!, max: sorted[2]!, mean: values.reduce((sum, value) => sum + value, 0) / 3 };
+  const [min, median, max] = [...values].sort((left, right) => left - right);
+  assert.ok(min !== undefined && median !== undefined && max !== undefined, "Expected three performance observations");
+  return { count: 3, min, median, max, mean: values.reduce((sum, value) => sum + value, 0) / 3 };
 };
 
 /** These parents deliberately contain non-domain payload {}. Only SQL query
@@ -90,8 +91,8 @@ const seedFixture = async (client: postgres.Sql, fixture: Fixture): Promise<void
       (count(*) FILTER (WHERE status = 'DELIVERED'))::integer AS delivered,
       (count(*) FILTER (WHERE status = 'PENDING'))::integer AS pending
     FROM discord_notification_parts GROUP BY notification_id`;
-  assert.equal(rows.length, 1);
-  const row = rows[0]!;
+  const [row] = rows;
+  assert.ok(rows.length === 1 && row, "Expected one performance fixture");
   assert.equal(row.notification_id, fixture.id);
   assert.equal(row.count, fixture.partCount);
   assert.equal(row.delivered, fixture.frontier);
@@ -105,11 +106,13 @@ const capture = async (client: postgres.Sql, fixture: Fixture, operation: Operat
   for (let repetition = 0; repetition < 4; repetition += 1) {
     const rows = await client.unsafe<{ "QUERY PLAN": unknown }[]>(
       `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF, FORMAT JSON) ${statements[operation]}`, parameters(fixture, operation));
-    assert.equal(rows.length, 1);
-    const rawPlan = rows[0]!["QUERY PLAN"];
-    const document = planSchema.parse(rawPlan)[0]!;
+    const [row] = rows;
+    assert.ok(rows.length === 1 && row, "Expected one query plan row");
+    const rawPlan = row["QUERY PLAN"];
+    const [document] = planSchema.parse(rawPlan);
+    assert.ok(document, "Expected one query plan document");
     const nodes = summarizeNodes(document.Plan);
-    const root = nodes[0]!;
+    const root = nodes[0];
     assert.equal(root.actualLoops, 1);
     assert.equal(root.actualRowsPerLoop, expectedRows);
     samples.push({ repetition, warmup: repetition === 0, rawPlan, planningMs: document["Planning Time"],

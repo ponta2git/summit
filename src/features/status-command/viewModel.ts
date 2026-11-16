@@ -15,8 +15,8 @@ import {
 } from "./invariantChecks.ts";
 
 // jst: TZ=Asia/Tokyo 前提。date-fns format は getHours() 等を使うため TZ が反映される。
-const fmtJst = (d: Date): string => format(d, "MM-dd HH:mm");
-const fmtJstFull = (d: Date): string => format(d, "yyyy-MM-dd HH:mm");
+const fmtJst = (instant: Date): string => format(instant, "MM-dd HH:mm");
+const fmtJstFull = (instant: Date): string => format(instant, "yyyy-MM-dd HH:mm");
 
 interface StrandedCancelledEntry {
   readonly sessionId: string;
@@ -117,7 +117,7 @@ const buildNextEventAt = (
 
   if (candidates.length === 0) { return null; }
 
-  const earliest = candidates.reduce((a, b) => (a.getTime() < b.getTime() ? a : b));
+  const earliest = candidates.reduce((earliestDate, candidate) => (earliestDate.getTime() < candidate.getTime() ? earliestDate : candidate));
   return fmtJstFull(earliest);
 };
 
@@ -149,16 +149,16 @@ export const buildStatusViewModel = (input: {
   const nextEventAt = buildNextEventAt(sessions, now);
   const strandedCancelledWarning = checkStrandedCancelledSessions(strandedCancelledSessions) ?? null;
   const strandedOutboxWarning = checkStrandedOutboxEntries(strandedOutboxEntries) ?? null;
-  const perSessionWarnings = sessionVMs.reduce((sum, s) => sum + s.warnings.length, 0);
+  const perSessionWarnings = sessionVMs.reduce((sum, session) => sum + session.warnings.length, 0);
   const totalWarnings =
     perSessionWarnings +
     (strandedCancelledWarning !== null ? 1 : 0) +
     (strandedOutboxWarning !== null ? 1 : 0);
 
-  const strandedCancelled: StrandedCancelledEntry[] = strandedCancelledSessions.map((s) => ({
-    sessionId: s.id.slice(0, 8),
-    weekKey: s.weekKey,
-    candidateDateIso: s.candidateDateIso
+  const strandedCancelled: StrandedCancelledEntry[] = strandedCancelledSessions.map((session) => ({
+    sessionId: session.id.slice(0, 8),
+    weekKey: session.weekKey,
+    candidateDateIso: session.candidateDateIso
   }));
 
   return {
@@ -188,23 +188,23 @@ export const renderStatusText = (vm: StatusViewModel): string => {
   if (vm.sessions.length === 0) {
     lines.push("非終端セッション: なし");
   } else {
-    for (const s of vm.sessions) {
+    for (const session of vm.sessions) {
       lines.push("");
-      lines.push(`[${s.status}] ${s.sessionId}  week: ${s.weekKey}  postpone: ${s.postponeCount}`);
-      lines.push(`  候補日: ${s.candidateDateIso}  締切: ${s.deadlineAt}  順延期限: ${s.postponeDeadlineAt}`);
-      if (s.decidedStartAt) {
-        lines.push(`  開始確定: ${s.decidedStartAt}`);
+      lines.push(`[${session.status}] ${session.sessionId}  week: ${session.weekKey}  postpone: ${session.postponeCount}`);
+      lines.push(`  候補日: ${session.candidateDateIso}  締切: ${session.deadlineAt}  順延期限: ${session.postponeDeadlineAt}`);
+      if (session.decidedStartAt) {
+        lines.push(`  開始確定: ${session.decidedStartAt}`);
       }
-      if (s.reminderAt) {
-        const sentMark = s.reminderSentAt ? `（送信済 ${s.reminderSentAt}）` : "（未送信）";
-        lines.push(`  リマインド予定: ${s.reminderAt} ${sentMark}`);
+      if (session.reminderAt) {
+        const sentMark = session.reminderSentAt ? `（送信済 ${session.reminderSentAt}）` : "（未送信）";
+        lines.push(`  リマインド予定: ${session.reminderAt} ${sentMark}`);
       }
-      if (s.status === "DECIDED") {
-        lines.push(`  HeldEvent: ${s.heldEventExists ? "あり" : "なし"}`);
+      if (session.status === "DECIDED") {
+        lines.push(`  HeldEvent: ${session.heldEventExists ? "あり" : "なし"}`);
       }
-      lines.push(`  回答: ${s.responseCount}/${s.memberCountExpected}`);
-      for (const w of s.warnings) {
-        lines.push(`  ⚠ ${w.message}`);
+      lines.push(`  回答: ${session.responseCount}/${session.memberCountExpected}`);
+      for (const warning of session.warnings) {
+        lines.push(`  ⚠ ${warning.message}`);
       }
     }
   }

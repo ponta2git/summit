@@ -16,7 +16,7 @@ let applying = false;
 try {
   const options = parseSyncOptions(process.argv.slice(2));
   const { readSyncSettings } = await import("./sync.settings.ts");
-  const settings = options ? await readSyncSettings(options, process.env) : undefined;
+  const settings = options ? readSyncSettings(options, process.env) : undefined;
   if (!settings) { report = { status: "failed", reason: "invalid_settings" }; }
   else {
     applying = !settings.check;

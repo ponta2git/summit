@@ -112,8 +112,8 @@ export const createNotificationAdmission = (options: {
     while (running.size < NOTIFICATION_DB_GLOBAL_LIMIT) {
       const eligible = waiting.filter(job => counts[job.request.family] < NOTIFICATION_DB_FAMILY_LIMIT);
       const ordinary = eligible.find(job => !critical(job.request));
-      const urgent = eligible.filter(job => critical(job.request)).sort((a, b) =>
-        (a.request.remainingMs?.() ?? Infinity) - (b.request.remainingMs?.() ?? Infinity))[0];
+      const urgent = eligible.filter(job => critical(job.request)).sort((leftJob, rightJob) =>
+        (leftJob.request.remainingMs?.() ?? Infinity) - (rightJob.request.remainingMs?.() ?? Infinity))[0];
       const aged = ordinary !== undefined && now() - ordinary.queuedAt >= NOTIFICATION_DB_QUEUE_WAIT_MS;
       // An aged ordinary job gets one grant, not an uninterrupted drain of the ordinary queue.
       const next = aged && !(urgentOwed && urgent) ? ordinary : urgent ?? ordinary;

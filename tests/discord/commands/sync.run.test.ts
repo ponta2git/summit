@@ -2,7 +2,7 @@ import { HTTPError, RateLimitError } from "@discordjs/rest";
 import { describe, expect, it, vi } from "vitest";
 import { slashCommands } from "../../../src/commands/definitions.ts";
 import { runCommandSync } from "../../../src/commands/sync.run.ts";
-import { deferred } from "../../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../../helpers/deferred.ts";
 
 const settings = { production: true, check: false, token: "controlled-dummy-token", applicationId: "100000000000000001", guildId: "100000000000000002" };
 const makeRest = () => ({ read: vi.fn<(signal: AbortSignal) => Promise<unknown>>().mockResolvedValue(slashCommands),
@@ -27,7 +27,7 @@ describe("standalone command synchronization", () => {
   });
   it("overwrites exactly once and requires a matching read-back", async () => {
     const rest = makeRest(); rest.read.mockResolvedValueOnce([]).mockResolvedValueOnce(slashCommands);
-    const pending = deferred<unknown>(); const writing = deferred<void>();
+    const pending = deferred<unknown>(); const writing = deferredSignal();
     rest.overwrite.mockImplementation(() => { writing.resolve(); return pending.promise; });
     const result = runCommandSync(settings, new AbortController().signal, () => rest);
     await writing.promise;

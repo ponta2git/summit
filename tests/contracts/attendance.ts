@@ -32,152 +32,152 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
       const sessions = Array.from({ length: count }, (_, index) => buildSessionRow({
         id: `expiry-${index}`, status: "COMPLETED", candidateDateIso: new Date(Date.parse("2026-04-24T00:00:00Z") + index * 7 * 86_400_000).toISOString().slice(0, 10)
       }));
-      const h = await create({ sessions });
+      const harness = await create({ sessions });
       for (let start = 0; start < sessions.length; start += 32) {
-        await Promise.all(sessions.slice(start, start + 32).map(row => h.ports.outbox.enqueue(attendanceIntent(row.id))));
+        await Promise.all(sessions.slice(start, start + 32).map(row => harness.ports.outbox.enqueue(attendanceIntent(row.id))));
       }
       const now = new Date("2100-01-01T00:00:00Z");
       let claimed = 0;
       for (let batch = 0; batch < 3; batch += 1) {
-        claimed += (await h.ports.outbox.claimNextBatch({ limit: 100, now, claimDurationMs: 1_000 })).length;
+        claimed += (await harness.ports.outbox.claimNextBatch({ limit: 100, now, claimDurationMs: 1_000 })).length;
       }
       expect(claimed).toBe(count);
       const expiry = new Date(now.getTime() + 1_000);
-      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(NOTIFICATION_MAINTENANCE_BATCH_SIZE);
-      expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 2, failed: 0 });
-      expect(await h.ports.outbox.getNextDispatchAt()).toEqual(expiry);
-      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(2);
-      expect(await h.ports.outbox.releaseExpiredClaims(expiry)).toBe(0);
-      expect(await h.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: count, inFlight: 0, failed: 0 });
+      expect(await harness.ports.outbox.releaseExpiredClaims(expiry)).toBe(NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+      expect(await harness.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 2, failed: 0 });
+      expect(await harness.ports.outbox.getNextDispatchAt()).toEqual(expiry);
+      expect(await harness.ports.outbox.releaseExpiredClaims(expiry)).toBe(2);
+      expect(await harness.ports.outbox.releaseExpiredClaims(expiry)).toBe(0);
+      expect(await harness.ports.outbox.getMetrics(expiry)).toMatchObject({ pending: count, inFlight: 0, failed: 0 });
     });
 
     it("finishes a large failed chain in bounded cancellation passes without sending a successor", async () => {
       const session = makeSession();
-      const h = await create({ sessions: [session] });
+      const harness = await create({ sessions: [session] });
       const count = NOTIFICATION_MAINTENANCE_BATCH_SIZE * 2 + 5;
       for (let start = 0; start < count; start += 32) {
         await Promise.all(Array.from({ length: Math.min(32, count - start) }, (_, offset) =>
-          h.ports.outbox.enqueue(attendanceIntent(session.id, 0, start + offset))));
+          harness.ports.outbox.enqueue(attendanceIntent(session.id, 0, start + offset))));
       }
       const now = new Date("2100-01-01T00:00:00Z");
-      const [first] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      const [first] = await harness.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
       if (!first?.claimToken) { throw new Error("Expected predecessor claim"); }
-      expect(await h.ports.outbox.markFailed(first.id, { claimToken: first.claimToken, now, nextAttemptAt: null, error: "controlled_failure" })).toBe(true);
-      expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: count - 1 - NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 0, failed: 1 });
-      expect(await h.ports.outbox.getNextDispatchAt()).not.toBeNull();
-      expect(await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 })).toEqual([]);
-      expect(await h.ports.outbox.getNextDispatchAt()).toBeNull();
-      expect(await h.ports.outbox.getMetrics(now)).toMatchObject({ pending: 0, inFlight: 0, failed: 1 });
+      expect(await harness.ports.outbox.markFailed(first.id, { claimToken: first.claimToken, now, nextAttemptAt: null, error: "controlled_failure" })).toBe(true);
+      expect(await harness.ports.outbox.getMetrics(now)).toMatchObject({ pending: count - 1 - NOTIFICATION_MAINTENANCE_BATCH_SIZE, inFlight: 0, failed: 1 });
+      expect(await harness.ports.outbox.getNextDispatchAt()).not.toBeNull();
+      expect(await harness.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 })).toEqual([]);
+      expect(await harness.ports.outbox.getNextDispatchAt()).toBeNull();
+      expect(await harness.ports.outbox.getMetrics(now)).toMatchObject({ pending: 0, inFlight: 0, failed: 1 });
     });
 
     it("renews a live delivery across its original expiry and releases the lease after completion", async () => {
       const session = makeSession();
-      const h = await create({ sessions: [session] });
-      await h.ports.outbox.enqueue(attendanceIntent(session.id));
+      const harness = await create({ sessions: [session] });
+      await harness.ports.outbox.enqueue(attendanceIntent(session.id));
       const now = new Date("2100-01-01T00:00:00Z");
-      const [claim] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      const [claim] = await harness.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
       if (!claim?.claimToken) { throw new Error("Expected a live claim"); }
       const options = { claimToken: claim.claimToken, now: new Date(now.getTime() + 10_000), claimDurationMs: 30_000 };
-      expect(await h.ports.outbox.renewClaim(claim.id, options)).toMatchObject({ observedAt: options.now, expiresAt: new Date(options.now.getTime() + options.claimDurationMs) });
-      expect(await h.ports.outbox.releaseExpiredClaims(new Date(now.getTime() + 30_000))).toBe(0);
+      expect(await harness.ports.outbox.renewClaim(claim.id, options)).toMatchObject({ observedAt: options.now, expiresAt: new Date(options.now.getTime() + options.claimDurationMs) });
+      expect(await harness.ports.outbox.releaseExpiredClaims(new Date(now.getTime() + 30_000))).toBe(0);
       const afterOriginalExpiry = new Date(now.getTime() + 35_000);
-      expect(await h.ports.outbox.beginDelivery(claim.id, { ...options, now: afterOriginalExpiry })).toBe(true);
-      expect(await h.ports.outbox.markDelivered(claim.id, { ...options, now: afterOriginalExpiry, deliveredMessageId: "message" })).toBe(true);
-      expect(await h.ports.outbox.renewClaim(claim.id, { ...options, now: afterOriginalExpiry })).toBeNull();
-      expect(await h.ports.outbox.claimNextBatch({ limit: 1, now: new Date(now.getTime() + 60_000), claimDurationMs: 30_000 })).toEqual([]);
+      expect(await harness.ports.outbox.beginDelivery(claim.id, { ...options, now: afterOriginalExpiry })).toBe(true);
+      expect(await harness.ports.outbox.markDelivered(claim.id, { ...options, now: afterOriginalExpiry, deliveredMessageId: "message" })).toBe(true);
+      expect(await harness.ports.outbox.renewClaim(claim.id, { ...options, now: afterOriginalExpiry })).toBeNull();
+      expect(await harness.ports.outbox.claimNextBatch({ limit: 1, now: new Date(now.getTime() + 60_000), claimDurationMs: 30_000 })).toEqual([]);
     });
 
     it("never renews another owner's token or resurrects a claim at its expiry", async () => {
       const session = makeSession();
-      const h = await create({ sessions: [session] });
-      await h.ports.outbox.enqueue(attendanceIntent(session.id));
+      const harness = await create({ sessions: [session] });
+      await harness.ports.outbox.enqueue(attendanceIntent(session.id));
       const now = new Date("2100-01-01T00:00:00Z");
-      const [old] = await h.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
+      const [old] = await harness.ports.outbox.claimNextBatch({ limit: 1, now, claimDurationMs: 30_000 });
       if (!old?.claimToken) { throw new Error("Expected a live claim"); }
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: "00000000-0000-4000-8000-000000000001", now, claimDurationMs: 30_000 })).toBeNull();
+      expect(await harness.ports.outbox.renewClaim(old.id, { claimToken: "00000000-0000-4000-8000-000000000001", now, claimDurationMs: 30_000 })).toBeNull();
       const expiry = new Date(now.getTime() + 30_000);
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
-      const [current] = await h.ports.outbox.claimNextBatch({ limit: 1, now: expiry, claimDurationMs: 30_000 });
+      expect(await harness.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
+      const [current] = await harness.ports.outbox.claimNextBatch({ limit: 1, now: expiry, claimDurationMs: 30_000 });
       expect(current?.claimToken).not.toBe(old.claimToken);
-      expect(await h.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
+      expect(await harness.ports.outbox.renewClaim(old.id, { claimToken: old.claimToken, now: expiry, claimDurationMs: 30_000 })).toBeNull();
       expect(current?.attemptCount).toBe(2);
     });
 
     it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 0.5, 300_001])("rejects invalid lease duration %s", async claimDurationMs => {
-      const h = await create();
-      await expect(h.ports.outbox.renewClaim("missing", { claimToken: "token", now: attendanceNow, claimDurationMs })).rejects.toThrow("Invalid notification claim duration");
+      const harness = await create();
+      await expect(harness.ports.outbox.renewClaim("missing", { claimToken: "token", now: attendanceNow, claimDurationMs })).rejects.toThrow("Invalid notification claim duration");
     });
 
     it("repairs missing messages once at the current revision without changing the Session", async () => {
       const row = fridayPostponeVoting({ id: "session-1", revision: 4 });
-      const h = await create({ sessions: [row] });
-      const queued = await h.ports.sessionCommands.recoverMissingMessageIntents(row.id);
+      const harness = await create({ sessions: [row] });
+      const queued = await harness.ports.sessionCommands.recoverMissingMessageIntents(row.id);
       expect(queued.map(intent => ({ key: intent.dedupeKey, revision: intent.aggregateRevision, ordinal: intent.ordinal })))
         .toStrictEqual([{ key: "ask-body-session-1", revision: 4, ordinal: 32_766 },
           { key: "postpone-vote-session-1", revision: 4, ordinal: 32_767 }]);
-      expect(await h.ports.sessions.findSessionById(row.id)).toStrictEqual(row);
-      const after = await h.snapshot();
-      expect(await h.ports.sessionCommands.recoverMissingMessageIntents(row.id)).toStrictEqual([]);
-      expect(await h.snapshot()).toStrictEqual(after);
+      expect(await harness.ports.sessions.findSessionById(row.id)).toStrictEqual(row);
+      const after = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.recoverMissingMessageIntents(row.id)).toStrictEqual([]);
+      expect(await harness.snapshot()).toStrictEqual(after);
     });
 
     it("rolls back the first recovery intent when the second ordinal conflicts", async () => {
       const row = fridayPostponeVoting({ id: "session-1", revision: 4 });
-      const h = await create({ sessions: [row] });
-      await h.ports.outbox.enqueue(attendanceIntent(row.id, 4, 32_767));
-      const before = await h.snapshot();
-      await expect(h.ports.sessionCommands.recoverMissingMessageIntents(row.id)).rejects.toThrow(/./);
-      expect(await h.snapshot()).toStrictEqual(before);
+      const harness = await create({ sessions: [row] });
+      await harness.ports.outbox.enqueue(attendanceIntent(row.id, 4, 32_767));
+      const before = await harness.snapshot();
+      await expect(harness.ports.sessionCommands.recoverMissingMessageIntents(row.id)).rejects.toThrow(/./);
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it("does not repair closed, fully published or absent Sessions", async () => {
       const closed = { ...fridayPostponeVoting({ id: "closed" }), status: "SKIPPED" as const };
       const published = saturdayAsking({ id: "published", askMessageId: "ask-existing" });
-      const h = await create({ sessions: [closed, published] });
-      const before = await h.snapshot();
+      const harness = await create({ sessions: [closed, published] });
+      const before = await harness.snapshot();
       for (const id of [closed.id, published.id, "absent"]) {
-        expect(await h.ports.sessionCommands.recoverMissingMessageIntents(id)).toStrictEqual([]);
+        expect(await harness.ports.sessionCommands.recoverMissingMessageIntents(id)).toStrictEqual([]);
       }
-      expect(await h.snapshot()).toStrictEqual(before);
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it("creates a unique session, elects one canonical message and returns independent values", async () => {
-      const h = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" });
-      const created = await h.ports.sessions.createAskSession(row);
+      const harness = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" });
+      const created = await harness.ports.sessions.createAskSession(row);
       expect(created).toMatchObject({ id: row.id, status: "ASKING", revision: 0 });
-      expect(await h.ports.sessions.createAskSession({ ...row, id: "10000000-0000-4000-a000-000000000006" })).toBeUndefined();
-      expect(await h.ports.sessions.findSessionById(row.id))
+      expect(await harness.ports.sessions.createAskSession({ ...row, id: "10000000-0000-4000-a000-000000000006" })).toBeUndefined();
+      expect(await harness.ports.sessions.findSessionById(row.id))
         .toMatchObject({ id: row.id });
-      expect(await h.ports.sessions.backfillAskMessageId(row.id, "first")).toBe(true);
-      expect(await h.ports.sessions.backfillAskMessageId(row.id, "second")).toBe(false);
+      expect(await harness.ports.sessions.backfillAskMessageId(row.id, "first")).toBe(true);
+      expect(await harness.ports.sessions.backfillAskMessageId(row.id, "second")).toBe(false);
       created!.deadlineAt.setTime(0);
-      expect(await h.ports.sessions.findSessionById(row.id)).toMatchObject({ deadlineAt: row.deadlineAt, askMessageId: "first" });
+      expect(await harness.ports.sessions.findSessionById(row.id)).toMatchObject({ deadlineAt: row.deadlineAt, askMessageId: "first" });
     });
 
     it("rolls back session and all intents when the second ordered intent conflicts", async () => {
-      const h = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" }); const before = await h.snapshot();
+      const harness = await create(); const row = makeSession({ id: "10000000-0000-4000-a000-000000000005" }); const before = await harness.snapshot();
       const first = attendanceIntent(row.id);
-      await expect(h.ports.sessions.createAskSession({ ...row, outbox: [first, { ...first, dedupeKey: "different-key" }] })).rejects.toThrow(/./);
-      expect(await h.snapshot()).toStrictEqual(before);
+      await expect(harness.ports.sessions.createAskSession({ ...row, outbox: [first, { ...first, dedupeKey: "different-key" }] })).rejects.toThrow(/./);
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it("fences older interactions and preserves a pending fourth time response", async () => {
-      const h = await create({ sessions: [makeSession()], responses: attendanceResponses("T2330", ["m2", "m3", "m4"]) });
-      expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "T2200" }))
+      const harness = await create({ sessions: [makeSession()], responses: attendanceResponses("T2330", ["m2", "m3", "m4"]) });
+      expect(await harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "T2200" }))
         .toMatchObject({ kind: "accepted_pending", session: { revision: 1, status: "ASKING" } });
-      const before = await h.snapshot();
-      expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT", sourceInteractionId: "199" }))
+      const before = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT", sourceInteractionId: "199" }))
         .toMatchObject({ kind: "stale_interaction", response: { choice: "T2200", sourceInteractionId: "200" } });
-      expect(await h.snapshot()).toStrictEqual(before);
-      expect(await h.ports.responses.listResponses("session-1")).toHaveLength(4);
+      expect(await harness.snapshot()).toStrictEqual(before);
+      expect(await harness.ports.responses.listResponses("session-1")).toHaveLength(4);
     });
 
     it("records ABSENT, final state and the two ordered notices", async () => {
-      const h = await create({ sessions: [makeSession()] });
-      expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT" }))
+      const harness = await create({ sessions: [makeSession()] });
+      expect(await harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT" }))
         .toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "POSTPONE_VOTING", revision: 2,
           deadlineAt: new Date("2026-04-24T15:00:00Z"), updatedAt: attendanceNow } });
-      expect((await h.intents()).map(row => ({ revision: row.aggregateRevision, ordinal: row.ordinal, payload: row.payload })))
+      expect((await harness.intents()).map(row => ({ revision: row.aggregateRevision, ordinal: row.ordinal, payload: row.payload })))
         .toStrictEqual([
           { revision: 2, ordinal: 0, payload: { kind: "send_message", channelId: "223456789012345678", renderer: "settle_notice", extra: { reason: "absent", forceSuppressMentions: true } } },
           { revision: 2, ordinal: 1, payload: { kind: "send_message", channelId: "223456789012345678", renderer: "postpone_vote", target: "postponeMessageId", extra: {} } }
@@ -185,78 +185,78 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     });
 
     it("rolls back the response, revision, transition and first notice when the second notice fails", async () => {
-      const h = await create({ sessions: [makeSession()] });
-      await h.ports.outbox.enqueue(attendanceIntent("session-1", 2, 1));
-      const before = await h.snapshot();
-      await expect(h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT" })).rejects.toThrow(/./);
-      expect(await h.snapshot()).toStrictEqual(before);
+      const harness = await create({ sessions: [makeSession()] });
+      await harness.ports.outbox.enqueue(attendanceIntent("session-1", 2, 1));
+      const before = await harness.snapshot();
+      await expect(harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, choice: "ABSENT" })).rejects.toThrow(/./);
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it("decides exactly at the deadline using the latest time and records its announcement", async () => {
       const row = saturdayAsking({ id: "session-1" });
       const responses = attendanceResponses("T2300");
-      const h = await create({ sessions: [row], responses }); const before = await h.snapshot();
-      expect(await h.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, now: new Date(row.deadlineAt.getTime() - 1) }))
+      const harness = await create({ sessions: [row], responses }); const before = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, now: new Date(row.deadlineAt.getTime() - 1) }))
         .toMatchObject({ kind: "not_due" });
-      expect(await h.snapshot()).toStrictEqual(before);
-      expect(await h.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, now: row.deadlineAt }))
+      expect(await harness.snapshot()).toStrictEqual(before);
+      expect(await harness.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, now: row.deadlineAt }))
         .toMatchObject({ kind: "transitioned", outcome: "decided", session: { status: "DECIDED", revision: 1,
           decidedStartAt: new Date("2026-04-25T14:00:00Z"), reminderAt: new Date("2026-04-25T13:45:00Z"), updatedAt: row.deadlineAt } });
-      expect((await h.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["decided-announcement-session-1"]);
+      expect((await harness.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["decided-announcement-session-1"]);
     });
 
     it.each(["submit", "settle"] as const)("creates Saturday and its intent with the all-OK parent through %s", async mode => {
       const row = fridayPostponeVoting({ id: "session-1" });
       const responses = attendanceResponses("POSTPONE_OK", mode === "submit" ? ["m2", "m3", "m4"] : undefined);
-      const h = await create({ sessions: [row], responses });
+      const harness = await create({ sessions: [row], responses });
       const input = { ...attendanceInput, saturday: saturdayInput };
       const result = mode === "submit"
-        ? await h.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_OK" })
-        : await h.ports.sessionCommands.settlePostponeVoting(input);
+        ? await harness.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_OK" })
+        : await harness.ports.sessionCommands.settlePostponeVoting(input);
       expect(result).toMatchObject({ kind: "transitioned", outcome: "all_ok", session: { status: "POSTPONED", revision: 1 },
         saturdaySession: { id: "10000000-0000-4000-a000-000000000004", status: "ASKING", weekKey: "2026-W17", postponeCount: 1, deadlineAt: saturdayInput.deadlineAt } });
-      expect(await h.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toMatchObject({ status: "ASKING", revision: 0 });
-      expect(await h.intents()).toStrictEqual([{ sessionId: "10000000-0000-4000-a000-000000000004", dedupeKey: "ask-body-10000000-0000-4000-a000-000000000004", aggregateRevision: 0, ordinal: 0,
+      expect(await harness.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toMatchObject({ status: "ASKING", revision: 0 });
+      expect(await harness.intents()).toStrictEqual([{ sessionId: "10000000-0000-4000-a000-000000000004", dedupeKey: "ask-body-10000000-0000-4000-a000-000000000004", aggregateRevision: 0, ordinal: 0,
         payload: { kind: "send_message", channelId: row.channelId, renderer: "ask_body", target: "askMessageId", extra: {} } }]);
-      const before = await h.snapshot();
-      expect(await h.ports.sessionCommands.settlePostponeVoting(input)).toMatchObject({ kind: "closed" });
-      expect(await h.snapshot()).toStrictEqual(before);
+      const before = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.settlePostponeVoting(input)).toMatchObject({ kind: "closed" });
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it.each(["ng", "unanswered"] as const)("terminates postponement for %s without creating Saturday", async reason => {
-      const row = fridayPostponeVoting({ id: "session-1" }); const h = await create({ sessions: [row] });
+      const row = fridayPostponeVoting({ id: "session-1" }); const harness = await create({ sessions: [row] });
       const input = { ...attendanceInput, saturday: saturdayInput };
-      const result = reason === "ng" ? await h.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_NG" })
-        : await h.ports.sessionCommands.settlePostponeVoting({ ...input, now: row.deadlineAt });
+      const result = reason === "ng" ? await harness.ports.sessionCommands.submitPostponeVote({ ...input, choice: "POSTPONE_NG" })
+        : await harness.ports.sessionCommands.settlePostponeVoting({ ...input, now: row.deadlineAt });
       expect(result).toMatchObject({ kind: "transitioned", outcome: "cancelled", session: { status: "COMPLETED", revision: 1,
         cancelReason: reason === "ng" ? "postpone_ng" : "postpone_unanswered", deadlineAt: row.deadlineAt,
         updatedAt: reason === "ng" ? attendanceNow : row.deadlineAt } });
-      expect(await h.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toBeUndefined();
-      expect(await h.intents()).toStrictEqual([]);
+      expect(await harness.ports.sessions.findSessionById("10000000-0000-4000-a000-000000000004")).toBeUndefined();
+      expect(await harness.intents()).toStrictEqual([]);
     });
 
     it("records held participants once and keeps the losing completion side-effect free", async () => {
       const row = makeSession({ status: "DECIDED", decidedStartAt: new Date("2026-04-24T14:00:00Z") });
-      const h = await create({ sessions: [row] });
+      const harness = await create({ sessions: [row] });
       const input = { sessionId: row.id, reminderSentAt: new Date("2026-04-24T13:45:00Z"), memberIds: ["m1", "m2"] };
-      const result = await h.ports.heldEvents.completeDecidedSessionAsHeld(input);
+      const result = await harness.ports.heldEvents.completeDecidedSessionAsHeld(input);
       expect(result).toMatchObject({ session: { status: "COMPLETED", revision: 1, reminderSentAt: input.reminderSentAt },
         heldEvent: { sessionId: row.id, heldDateIso: row.candidateDateIso, startAt: row.decidedStartAt } });
       expect(result?.participants.map(participant => participant.memberId).sort()).toStrictEqual(["m1", "m2"]);
-      const before = await h.snapshot();
-      expect(await h.ports.heldEvents.completeDecidedSessionAsHeld({ ...input, memberIds: ["m3"] })).toBeUndefined();
-      expect(await h.snapshot()).toStrictEqual(before);
+      const before = await harness.snapshot();
+      expect(await harness.ports.heldEvents.completeDecidedSessionAsHeld({ ...input, memberIds: ["m3"] })).toBeUndefined();
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
 
     it("rejects closed, missing-member and expired commands without changing state", async () => {
       const asking = makeSession(); const voting = fridayPostponeVoting({ id: "voting" });
-      const h = await create({ sessions: [asking] });
-      const before = await h.snapshot();
-      expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, memberId: "missing", choice: "T2200" })).toMatchObject({ kind: "member_not_found" });
-      expect(await h.ports.sessionCommands.submitAskResponse({ ...attendanceInput, now: asking.deadlineAt, choice: "T2200" })).toMatchObject({ kind: "deadline_passed" });
-      expect(await h.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "closed" });
-      expect(await h.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, sessionId: "missing" })).toStrictEqual({ kind: "session_not_found" });
-      expect(await h.snapshot()).toStrictEqual(before);
+      const harness = await create({ sessions: [asking] });
+      const before = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, memberId: "missing", choice: "T2200" })).toMatchObject({ kind: "member_not_found" });
+      expect(await harness.ports.sessionCommands.submitAskResponse({ ...attendanceInput, now: asking.deadlineAt, choice: "T2200" })).toMatchObject({ kind: "deadline_passed" });
+      expect(await harness.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "closed" });
+      expect(await harness.ports.sessionCommands.settleAskingDeadline({ ...attendanceInput, sessionId: "missing" })).toStrictEqual({ kind: "session_not_found" });
+      expect(await harness.snapshot()).toStrictEqual(before);
       const votingHarness = await create({ sessions: [voting] });
       const votingBefore = await votingHarness.snapshot();
       expect(await votingHarness.ports.sessionCommands.submitPostponeVote({ ...attendanceInput, sessionId: voting.id, now: voting.deadlineAt, choice: "POSTPONE_OK", saturday: saturdayInput })).toMatchObject({ kind: "deadline_passed" });
@@ -266,14 +266,14 @@ export const attendanceContract = (label: string, create: (seed?: AttendanceSeed
     });
 
     it("settles unanswered Saturday directly and makes repeated cancellation a no-op", async () => {
-      const row = saturdayAsking({ id: "session-1" }); const h = await create({ sessions: [row] });
+      const row = saturdayAsking({ id: "session-1" }); const harness = await create({ sessions: [row] });
       const input = { sessionId: row.id, now: row.deadlineAt, reason: "deadline_unanswered" as const };
-      expect(await h.ports.sessionCommands.settleAskingCancellation(input))
+      expect(await harness.ports.sessionCommands.settleAskingCancellation(input))
         .toMatchObject({ kind: "transitioned", session: { status: "COMPLETED", cancelReason: "saturday_cancelled" } });
-      expect((await h.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["settle-notice-session-1-saturday_cancelled"]);
-      const before = await h.snapshot();
-      expect(await h.ports.sessionCommands.settleAskingCancellation(input)).toMatchObject({ kind: "closed" });
-      expect(await h.snapshot()).toStrictEqual(before);
+      expect((await harness.intents()).map(intent => intent.dedupeKey)).toStrictEqual(["settle-notice-session-1-saturday_cancelled"]);
+      const before = await harness.snapshot();
+      expect(await harness.ports.sessionCommands.settleAskingCancellation(input)).toMatchObject({ kind: "closed" });
+      expect(await harness.snapshot()).toStrictEqual(before);
     });
   });
 };

@@ -4,7 +4,7 @@ import { createResultNotificationDispatcher } from "../../src/notifications/deli
 import { notificationNonce } from "../../src/notifications/delivery/deliveryNonce.ts";
 import { RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, RESULT_NOTIFICATION_CONCURRENCY, RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
 import { notificationNow } from "../contracts/resultNotifications.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { resultWorkerHarness } from "./resultNotifications.harness.ts";
 
 describe("result notification dispatcher", () => {
@@ -18,201 +18,201 @@ describe("result notification dispatcher", () => {
   const tick = () => vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
 
   it("starts on the next timer turn and coalesces simultaneous wakes without delaying delivery", async () => {
-    const h = resultWorkerHarness(); const id = await h.enqueue("continuous-receipts", "Short summary");
-    dispatcher = createResultNotificationDispatcher(h);
+    const harness = resultWorkerHarness(); const id = await harness.enqueue("continuous-receipts", "Short summary");
+    dispatcher = createResultNotificationDispatcher(harness);
     for (let i = 0; i < 20; i += 1) { dispatcher.wake("receipt"); }
-    expect(h.channel.send).not.toHaveBeenCalled();
+    expect(harness.channel.send).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(0);
-    expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
-    expect(h.channel.send).toHaveBeenCalledOnce();
-    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(1);
+    expect((await harness.port.inspect(id))?.status).toBe("DELIVERED");
+    expect(harness.channel.send).toHaveBeenCalledOnce();
+    expect(harness.port.calls.filter(call => call.name === "claim")).toHaveLength(1);
   });
 
   it("continues filling free slots while a long delivery is pending and becomes idle after completion", async () => {
-    const h = resultWorkerHarness(); const longId = await h.enqueue("a-long", "Long summary");
+    const harness = resultWorkerHarness(); const longId = await harness.enqueue("a-long", "Long summary");
     const shortIds = [];
-    for (let i = 0; i < RESULT_NOTIFICATION_CONCURRENCY + 1; i += 1) { shortIds.push(await h.enqueue(`short-${i}`, "Short summary")); }
+    for (let i = 0; i < RESULT_NOTIFICATION_CONCURRENCY + 1; i += 1) { shortIds.push(await harness.enqueue(`short-${i}`, "Short summary")); }
     const release = deferred<{ id: string }>(); releases.push(() => release.resolve({ id: "long" }));
     let inFlight = 0; let peak = 0;
-    h.channel.send.mockImplementation(async body => {
+    harness.channel.send.mockImplementation(async body => {
       inFlight += 1; peak = Math.max(peak, inFlight);
       try { return body.nonce === notificationNonce(longId, 0) ? await release.promise : { id: String(body.nonce) }; }
       finally { inFlight -= 1; }
     });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("receipt");
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("receipt");
     await tick(); await tick(); await tick();
     expect(peak).toBeLessThanOrEqual(RESULT_NOTIFICATION_CONCURRENCY);
-    expect((await h.port.inspect(longId))?.status).toBe("IN_FLIGHT");
-    for (const id of shortIds) { expect((await h.port.inspect(id))?.status).toBe("DELIVERED"); }
+    expect((await harness.port.inspect(longId))?.status).toBe("IN_FLIGHT");
+    for (const id of shortIds) { expect((await harness.port.inspect(id))?.status).toBe("DELIVERED"); }
     release.resolve({ id: "long" }); await dispatcher.drain(); await tick();
-    const queries = h.port.calls.length;
+    const queries = harness.port.calls.length;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(h.port.calls).toHaveLength(queries);
+    expect(harness.port.calls).toHaveLength(queries);
   });
 
   it("hands off at a completed post so a late OCR can pass two active analyses", async () => {
-    const h = resultWorkerHarness();
-    const first = await h.enqueue("a-analysis"); const second = await h.enqueue("b-analysis");
+    const harness = resultWorkerHarness();
+    const first = await harness.enqueue("a-analysis"); const second = await harness.enqueue("b-analysis");
     const firstRelease = deferred<{ id: string }>(); const secondRelease = deferred<{ id: string }>();
     releases.push(() => firstRelease.resolve({ id: "analysis-first" }), () => secondRelease.resolve({ id: "analysis-second" }));
-    h.channel.send.mockImplementation(async body => {
+    harness.channel.send.mockImplementation(async body => {
       if (body.nonce === notificationNonce(first, 0)) { return firstRelease.promise; }
       if (body.nonce === notificationNonce(second, 0)) { return secondRelease.promise; }
       return { id: String(body.nonce) };
     });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
-    expect(h.channel.send).toHaveBeenCalledTimes(2);
-    const ocr = await h.enqueueOcr(); dispatcher.wake("receipt"); await tick();
-    expect(await h.port.inspect(ocr)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick();
+    expect(harness.channel.send).toHaveBeenCalledTimes(2);
+    const ocr = await harness.enqueueOcr(); dispatcher.wake("receipt"); await tick();
+    expect(await harness.port.inspect(ocr)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     firstRelease.resolve({ id: "analysis-first" }); await tick(); await tick();
-    expect(await h.port.inspect(ocr)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
-    expect(await h.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT" });
-    const nonces = h.channel.send.mock.calls.map(([body]) => body.nonce);
+    expect(await harness.port.inspect(ocr)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(await harness.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT" });
+    const nonces = harness.channel.send.mock.calls.map(([body]) => body.nonce);
     expect(nonces.indexOf(notificationNonce(ocr, 0))).toBeLessThan(nonces.indexOf(notificationNonce(first, 1)));
-    expect(await h.port.inspect(first)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(await harness.port.inspect(first)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
     secondRelease.resolve({ id: "analysis-second" }); await dispatcher.drain();
   });
 
   it("keeps a long analysis progressing through repeated OCR arrivals without consuming retry attempts", async () => {
-    const h = resultWorkerHarness(); const analysis = await h.enqueue("analysis", "x".repeat(24_000));
+    const harness = resultWorkerHarness(); const analysis = await harness.enqueue("analysis", "x".repeat(24_000));
     const ocrIds: string[] = []; let nextPart = 0;
-    h.channel.send.mockImplementation(async body => {
+    harness.channel.send.mockImplementation(async body => {
       if (body.nonce === notificationNonce(analysis, nextPart)) {
         nextPart += 1;
-        ocrIds.push(await h.enqueueOcr(`${String(nextPart).padStart(8, "0")}-2222-4222-8222-222222222222`));
+        ocrIds.push(await harness.enqueueOcr(`${String(nextPart).padStart(8, "0")}-2222-4222-8222-222222222222`));
         dispatcher?.wake("receipt");
       }
       return { id: String(body.nonce) };
     });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup");
     for (let i = 0; i < 30; i += 1) { await tick(); }
-    const state = await h.port.inspect(analysis);
+    const state = await harness.port.inspect(analysis);
     expect(state).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
     expect(state?.partCount).toBeGreaterThan(10);
     expect(nextPart).toBe(state?.partCount);
-    for (const id of ocrIds) { expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1 }); }
-    expect(h.port.calls.filter(call => call.name === "yield").length).toBeGreaterThan(10);
+    for (const id of ocrIds) { expect(await harness.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1 }); }
+    expect(harness.port.calls.filter(call => call.name === "yield").length).toBeGreaterThan(10);
   });
 
   it("retains a wake that arrives while the final idle query is in flight", async () => {
-    const h = resultWorkerHarness(); const entered = deferred<void>(); const release = deferred<void>();
-    releases.push(() => release.resolve()); const next = h.port.getNextDispatchAt; let pause = true;
-    h.port.getNextDispatchAt = async ids => { const value = await next(ids); if (pause) { pause = false; entered.resolve(); await release.promise; } return value; };
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    const harness = resultWorkerHarness(); const entered = deferredSignal(); const release = deferredSignal();
+    releases.push(() => release.resolve()); const next = harness.port.getNextDispatchAt; let pause = true;
+    harness.port.getNextDispatchAt = async ids => { const value = await next(ids); if (pause) { pause = false; entered.resolve(); await release.promise; } return value; };
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup");
     await tick(); await entered.promise;
-    const id = await h.enqueue("late", "Short summary"); dispatcher.wake("receipt");
+    const id = await harness.enqueue("late", "Short summary"); dispatcher.wake("receipt");
     release.resolve(); await Promise.resolve(); await tick(); await tick();
-    expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
+    expect((await harness.port.inspect(id))?.status).toBe("DELIVERED");
   });
 
   it("waits for retained bytes to be released before filling an otherwise free delivery slot", async () => {
-    const h = resultWorkerHarness();
-    const first = await h.enqueue("a-retained", "x".repeat(300 * 1_024));
-    const next = await h.enqueue("b-waiting", "x".repeat(250 * 1_024));
+    const harness = resultWorkerHarness();
+    const first = await harness.enqueue("a-retained", "x".repeat(300 * 1_024));
+    const next = await harness.enqueue("b-waiting", "x".repeat(250 * 1_024));
     const release = deferred<{ id: string }>(); releases.push(() => release.resolve({ id: "released" }));
-    h.channel.send.mockImplementation(async body => body.nonce === notificationNonce(first, 0) ? release.promise : { id: String(body.nonce) });
-    const claim = h.port.claim; const reservations: Array<{ available: number | undefined; total: number }> = [];
-    h.port.claim = async options => {
+    harness.channel.send.mockImplementation(async body => body.nonce === notificationNonce(first, 0) ? release.promise : { id: String(body.nonce) });
+    const claim = harness.port.claim; const reservations: Array<{ available: number | undefined; total: number }> = [];
+    harness.port.claim = async options => {
       const entries = await claim(options);
       reservations.push({ available: options.payloadBudgetBytes, total: entries.reduce((sum, entry) => sum + entry.payloadBytes, 0) });
       return entries;
     };
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
-    expect(await h.port.inspect(first)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
-    expect(await h.port.inspect(next)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick();
+    expect(await harness.port.inspect(first)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await harness.port.inspect(next)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     dispatcher.wake("receipt"); await tick();
     expect(reservations).toHaveLength(2);
     expect(reservations[0]?.total).toBeGreaterThan(300 * 1_024);
     expect(reservations[1]).toEqual({ available: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - (reservations[0]?.total ?? 0), total: 0 });
-    const claimCount = h.port.calls.filter(call => call.name === "claim").length;
+    const claimCount = harness.port.calls.filter(call => call.name === "claim").length;
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(claimCount);
+    expect(harness.port.calls.filter(call => call.name === "claim")).toHaveLength(claimCount);
     release.resolve({ id: "released" }); await dispatcher.drain(); await tick();
-    expect(await h.port.inspect(first)).toMatchObject({ status: "DELIVERED" });
-    expect(await h.port.inspect(next)).toMatchObject({ status: "DELIVERED" });
+    expect(await harness.port.inspect(first)).toMatchObject({ status: "DELIVERED" });
+    expect(await harness.port.inspect(next)).toMatchObject({ status: "DELIVERED" });
   });
 
   it("delivers one oversized historical payload alone and resumes normal work after it finishes", async () => {
-    const h = resultWorkerHarness();
-    const legacy = await h.enqueue("a-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
-    const normal = await h.enqueue("b-normal", "Short summary");
+    const harness = resultWorkerHarness();
+    const legacy = await harness.enqueue("a-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
+    const normal = await harness.enqueue("b-normal", "Short summary");
     const release = deferred<{ id: string }>(); releases.push(() => release.resolve({ id: "legacy-finished" }));
-    h.channel.send.mockImplementation(async body => body.nonce === notificationNonce(legacy, 0) ? release.promise : { id: String(body.nonce) });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
-    expect(await h.port.inspect(legacy)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
-    expect(await h.port.inspect(normal)).toMatchObject({ status: "PENDING", attemptCount: 0 });
-    const claimCount = h.port.calls.filter(call => call.name === "claim").length;
+    harness.channel.send.mockImplementation(async body => body.nonce === notificationNonce(legacy, 0) ? release.promise : { id: String(body.nonce) });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick();
+    expect(await harness.port.inspect(legacy)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await harness.port.inspect(normal)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    const claimCount = harness.port.calls.filter(call => call.name === "claim").length;
     dispatcher.wake("another_receipt"); await tick();
-    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(claimCount);
+    expect(harness.port.calls.filter(call => call.name === "claim")).toHaveLength(claimCount);
     release.resolve({ id: "legacy-finished" }); await dispatcher.drain(); await tick();
-    expect(await h.port.inspect(legacy)).toMatchObject({ status: "DELIVERED" });
-    expect(await h.port.inspect(normal)).toMatchObject({ status: "DELIVERED" });
+    expect(await harness.port.inspect(legacy)).toMatchObject({ status: "DELIVERED" });
+    expect(await harness.port.inspect(normal)).toMatchObject({ status: "DELIVERED" });
   });
 
   it("lets active work drain instead of letting small arrivals starve an older oversized payload", async () => {
-    const h = resultWorkerHarness();
-    const active = await h.enqueue("a-active", "Short summary");
+    const harness = resultWorkerHarness();
+    const active = await harness.enqueue("a-active", "Short summary");
     const activeRelease = deferred<{ id: string }>(); const legacyRelease = deferred<{ id: string }>();
     releases.push(() => activeRelease.resolve({ id: "active-finished" }), () => legacyRelease.resolve({ id: "legacy-finished" }));
     const legacyId = "result:analysis_completed:b-legacy";
-    h.channel.send.mockImplementation(async body => {
+    harness.channel.send.mockImplementation(async body => {
       if (body.nonce === notificationNonce(active, 0)) { return activeRelease.promise; }
       if (body.nonce === notificationNonce(legacyId, 0)) { return legacyRelease.promise; }
       return { id: String(body.nonce) };
     });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
-    await h.enqueue("b-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
-    const firstSmall = await h.enqueue("c-small", "Short summary");
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick();
+    await harness.enqueue("b-legacy", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
+    const firstSmall = await harness.enqueue("c-small", "Short summary");
     dispatcher.wake("receipt"); await tick();
-    const secondSmall = await h.enqueue("d-small", "Short summary");
+    const secondSmall = await harness.enqueue("d-small", "Short summary");
     dispatcher.wake("receipt"); await tick();
     for (const id of [legacyId, firstSmall, secondSmall]) {
-      expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+      expect(await harness.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     }
     activeRelease.resolve({ id: "active-finished" }); await dispatcher.drain(); await tick();
-    expect(await h.port.inspect(legacyId)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
-    for (const id of [firstSmall, secondSmall]) { expect(await h.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 0 }); }
+    expect(await harness.port.inspect(legacyId)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    for (const id of [firstSmall, secondSmall]) { expect(await harness.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 0 }); }
     legacyRelease.resolve({ id: "legacy-finished" }); await dispatcher.drain(); await tick();
-    for (const id of [legacyId, firstSmall, secondSmall]) { expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" }); }
+    for (const id of [legacyId, firstSmall, secondSmall]) { expect(await harness.port.inspect(id)).toMatchObject({ status: "DELIVERED" }); }
   });
 
   it("releases the byte reservation after a terminal delivery failure", async () => {
-    const h = resultWorkerHarness();
-    const failed = await h.enqueue("a-failed", "x".repeat(300 * 1_024));
-    const waiting = await h.enqueue("b-waiting", "x".repeat(250 * 1_024));
-    h.channel.send.mockRejectedValueOnce({ status: 403 });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick(); await tick();
-    expect(await h.port.inspect(failed)).toMatchObject({ status: "FAILED", lastError: "delivery_failed" });
-    expect(await h.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    const harness = resultWorkerHarness();
+    const failed = await harness.enqueue("a-failed", "x".repeat(300 * 1_024));
+    const waiting = await harness.enqueue("b-waiting", "x".repeat(250 * 1_024));
+    harness.channel.send.mockRejectedValueOnce({ status: 403 });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick(); await tick();
+    expect(await harness.port.inspect(failed)).toMatchObject({ status: "FAILED", lastError: "delivery_failed" });
+    expect(await harness.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
   });
 
   it("settles invalid preparation individually, delivers the rest of its batch, and releases its byte reservation", async () => {
-    const h = resultWorkerHarness();
-    const invalid = await h.enqueue("a-invalid", "x".repeat(300 * 1_024));
-    const sameBatch = await h.enqueue("b-valid", "Short summary");
-    const waiting = await h.enqueue("c-waiting", "x".repeat(300 * 1_024));
-    const claim = h.port.claim; const availableBudgets: Array<number | undefined> = [];
-    h.port.claim = async options => {
+    const harness = resultWorkerHarness();
+    const invalid = await harness.enqueue("a-invalid", "x".repeat(300 * 1_024));
+    const sameBatch = await harness.enqueue("b-valid", "Short summary");
+    const waiting = await harness.enqueue("c-waiting", "x".repeat(300 * 1_024));
+    const claim = harness.port.claim; const availableBudgets: Array<number | undefined> = [];
+    harness.port.claim = async options => {
       availableBudgets.push(options.payloadBudgetBytes);
       return (await claim(options)).map(entry => entry.id === invalid ? { ...entry, payload: {} } : entry);
     };
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick(); await tick();
-    expect(await h.port.inspect(invalid)).toMatchObject({ status: "FAILED", lastError: "invalid_payload" });
-    expect(await h.port.inspect(sameBatch)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
-    expect(await h.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick(); await tick();
+    expect(await harness.port.inspect(invalid)).toMatchObject({ status: "FAILED", lastError: "invalid_payload" });
+    expect(await harness.port.inspect(sameBatch)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
+    expect(await harness.port.inspect(waiting)).toMatchObject({ status: "DELIVERED", attemptCount: 1 });
     expect(availableBudgets.slice(0, 2)).toEqual([RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES]);
-    expect(h.channel.send.mock.calls.some(([body]) => body.nonce === notificationNonce(invalid, 0))).toBe(false);
+    expect(harness.channel.send.mock.calls.some(([body]) => body.nonce === notificationNonce(invalid, 0))).toBe(false);
   });
 
   it("drains a claim that settles after stop without starting delivery and leaves lease recovery intact", async () => {
-    const h = resultWorkerHarness(); const id = await h.enqueue("late-claim", "Short summary");
-    const entered = deferred<void>(); const release = deferred<void>(); releases.push(() => release.resolve());
-    const claim = h.port.claim;
-    h.port.claim = async options => { const result = await claim(options); entered.resolve(); await release.promise; return result; };
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick(); await entered.promise;
+    const harness = resultWorkerHarness(); const id = await harness.enqueue("late-claim", "Short summary");
+    const entered = deferredSignal(); const release = deferredSignal(); releases.push(() => release.resolve());
+    const claim = harness.port.claim;
+    harness.port.claim = async options => { const result = await claim(options); entered.resolve(); await release.promise; return result; };
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick(); await entered.promise;
     dispatcher.stop(); release.resolve(); await dispatcher.drain();
-    expect(h.channel.send).not.toHaveBeenCalled();
-    expect(await h.port.inspect(id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(harness.channel.send).not.toHaveBeenCalled();
+    expect(await harness.port.inspect(id)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
     const reclaimed = await claim({ limit: 1, now: new Date(notificationNow.getTime() + 300_000), claimDurationMs: 30_000 });
     expect(reclaimed).toHaveLength(1);
     expect(reclaimed[0]).toMatchObject({ id, attemptCount: 2 });
@@ -220,56 +220,56 @@ describe("result notification dispatcher", () => {
   });
 
   it("stops between entries in one claimed batch without treating the unstarted entry as a defect", async () => {
-    const h = resultWorkerHarness();
-    const first = await h.enqueue("a-stop-during-start", "Short summary");
-    const second = await h.enqueue("b-unstarted", "Short summary");
-    const plan = h.port.plan;
-    h.port.plan = vi.fn((...args: Parameters<typeof plan>) => { dispatcher?.stop(); return plan(...args); });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    const harness = resultWorkerHarness();
+    const first = await harness.enqueue("a-stop-during-start", "Short summary");
+    const second = await harness.enqueue("b-unstarted", "Short summary");
+    const plan = harness.port.plan;
+    harness.port.plan = vi.fn((...args: Parameters<typeof plan>) => { dispatcher?.stop(); return plan(...args); });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup");
     await tick(); await dispatcher.drain();
-    expect(h.port.plan).toHaveBeenCalledOnce();
-    expect(h.channel.send).not.toHaveBeenCalled();
-    expect(h.logger.error).not.toHaveBeenCalled();
-    expect(await h.port.inspect(first)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
-    expect(await h.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1, partCount: 0 });
-    const reclaimed = await h.port.claim({ limit: 2, now: new Date(notificationNow.getTime() + 300_000), claimDurationMs: 30_000 });
+    expect(harness.port.plan).toHaveBeenCalledOnce();
+    expect(harness.channel.send).not.toHaveBeenCalled();
+    expect(harness.logger.error).not.toHaveBeenCalled();
+    expect(await harness.port.inspect(first)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1 });
+    expect(await harness.port.inspect(second)).toMatchObject({ status: "IN_FLIGHT", attemptCount: 1, partCount: 0 });
+    const reclaimed = await harness.port.claim({ limit: 2, now: new Date(notificationNow.getTime() + 300_000), claimDurationMs: 30_000 });
     expect(reclaimed.map(entry => ({ id: entry.id, attempt: entry.attemptCount }))).toEqual([
       { id: first, attempt: 2 }, { id: second, attempt: 2 }
     ]);
   });
 
   it("coalesces wakes during a failed pump without bypassing database recovery backoff", async () => {
-    const h = resultWorkerHarness(); const entered = deferred<void>(); const release = deferred<void>();
+    const harness = resultWorkerHarness(); const entered = deferredSignal(); const release = deferredSignal();
     releases.push(() => release.resolve());
-    h.port.claim = vi.fn(async () => { entered.resolve(); await release.promise; throw new Error("unavailable"); });
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup");
+    harness.port.claim = vi.fn(async () => { entered.resolve(); await release.promise; throw new Error("unavailable"); });
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup");
     await vi.advanceTimersByTimeAsync(0); await entered.promise;
     for (let i = 0; i < 10; i += 1) { dispatcher.wake("receipt"); }
     release.resolve(); await vi.advanceTimersByTimeAsync(0);
-    expect(h.port.claim).toHaveBeenCalledTimes(1);
+    expect(harness.port.claim).toHaveBeenCalledTimes(1);
     dispatcher.wake("receipt_after_failure"); await vi.advanceTimersByTimeAsync(0);
-    expect(h.port.claim).toHaveBeenCalledTimes(1);
+    expect(harness.port.claim).toHaveBeenCalledTimes(1);
     const delay = RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS[0];
     await vi.advanceTimersByTimeAsync(delay);
-    expect(h.port.claim).toHaveBeenCalledTimes(2);
+    expect(harness.port.claim).toHaveBeenCalledTimes(2);
   });
 
   it.each(["claim", "getNextDispatchAt"] as const)("bounds consecutive %s failures, then recovers on a supervisor wake", async operation => {
-    const h = resultWorkerHarness();
-    const original = h.port[operation];
-    const failed = vi.fn(async () => { throw new Error("private DB value"); }); h.port[operation] = failed;
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("receipt"); await tick();
+    const harness = resultWorkerHarness();
+    const original = harness.port[operation];
+    const failed = vi.fn(async () => { throw new Error("private DB value"); }); harness.port[operation] = failed;
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("receipt"); await tick();
     for (const delay of RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS) { await vi.advanceTimersByTimeAsync(delay); }
     expect(failed).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1);
     await vi.advanceTimersByTimeAsync(3_600_000);
     expect(failed).toHaveBeenCalledTimes(RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1);
-    Object.assign(h.port, { [operation]: original });
-    const id = await h.enqueue("recover", "Short summary");
+    Object.assign(harness.port, { [operation]: original });
+    const id = await harness.enqueue("recover", "Short summary");
     dispatcher.wake("supervisor"); await tick(); await tick();
-    expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
-    expect(JSON.stringify(h.logger.warn.mock.calls)).not.toContain("private DB value");
+    expect((await harness.port.inspect(id))?.status).toBe("DELIVERED");
+    expect(JSON.stringify(harness.logger.warn.mock.calls)).not.toContain("private DB value");
     // A successful cycle restores the complete recovery budget for a later outage.
-    h.port[operation] = failed;
+    harness.port[operation] = failed;
     dispatcher.wake("supervisor"); await tick();
     for (const delay of RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS) { await vi.advanceTimersByTimeAsync(delay); }
     expect(failed).toHaveBeenCalledTimes(2 * (RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS.length + 1));
@@ -278,12 +278,12 @@ describe("result notification dispatcher", () => {
   });
 
   it("schedules a future retry once and does no DB work while waiting", async () => {
-    const h = resultWorkerHarness(); const id = await h.enqueue("backoff", "Short summary"); const claim = await h.claim();
-    await h.port.fail(id, claim.claimToken, "discord_unavailable", new Date(notificationNow.getTime() + 60_000), notificationNow);
-    dispatcher = createResultNotificationDispatcher(h); dispatcher.wake("startup"); await tick();
-    const queries = h.port.calls.length; await vi.advanceTimersByTimeAsync(59_000);
-    expect(h.port.calls).toHaveLength(queries);
+    const harness = resultWorkerHarness(); const id = await harness.enqueue("backoff", "Short summary"); const claim = await harness.claim();
+    await harness.port.fail(id, claim.claimToken, "discord_unavailable", new Date(notificationNow.getTime() + 60_000), notificationNow);
+    dispatcher = createResultNotificationDispatcher(harness); dispatcher.wake("startup"); await tick();
+    const queries = harness.port.calls.length; await vi.advanceTimersByTimeAsync(59_000);
+    expect(harness.port.calls).toHaveLength(queries);
     await vi.advanceTimersByTimeAsync(1_000); await tick();
-    expect((await h.port.inspect(id))?.status).toBe("DELIVERED");
+    expect((await harness.port.inspect(id))?.status).toBe("DELIVERED");
   });
 });

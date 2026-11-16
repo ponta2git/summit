@@ -17,7 +17,7 @@ import { MEMBER_COUNT_EXPECTED } from "../../src/config.js";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { asDiscordMessage } from "../helpers/discord.ts";
 
 beforeEach(resetReconcilerHarness);
@@ -98,7 +98,7 @@ describe("stranded CANCELLED Discord cleanup", () => {
     const session = buildSessionRow({ id: "committed-recovery", status: "CANCELLED", askMessageId: "ask-recovery",
       cancelReason: "deadline_unanswered" });
     const ctx = createTestAppContext({ now: new Date("2026-04-24T12:45:00.000Z"), seed: { sessions: [session] } });
-    const editing = deferred<void>(); const edit = deferred<never>();
+    const editing = deferredSignal(); const edit = deferred<never>();
     setFetchImpl(async id => asDiscordMessage({ id, edit: async () => { editing.resolve(); return edit.promise; } }));
     let finished = false;
     const recovery = Promise.resolve(runEffect(reconcileStrandedCancelled(client, ctx)))
