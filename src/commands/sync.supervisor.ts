@@ -9,7 +9,8 @@ interface SupervisorOptions {
 }
 
 /** Owns one worker through exit and IPC shutdown; a forcibly terminated apply remains uncertain. */
-export const superviseCommandSync = async (
+// why: 入力拒否とchild完了を同じPromise APIで返す。supervisorの戻り値契約変更時に再評価する。
+export const superviseCommandSync = async ( // skipcq: JS-0116
   args: readonly string[], environment: Readonly<NodeJS.ProcessEnv>, options: SupervisorOptions = {}
 ): Promise<SyncReport> => {
   if (isFlyEnvironment(environment)) { return { status: "failed", reason: "fly_environment" }; }

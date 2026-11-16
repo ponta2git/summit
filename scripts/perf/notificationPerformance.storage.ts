@@ -70,7 +70,7 @@ export const withPerformanceDatabase = async <T>(adminUrl: string, run: (context
   let cleanupFailed = false;
   try {
     options.signal?.throwIfAborted();
-    await performanceStage("database_create", async () => admin`CREATE DATABASE ${admin(name)}`);
+    await performanceStage("database_create", () => admin`CREATE DATABASE ${admin(name)}`);
     options.signal?.throwIfAborted();
     client = connect(url);
     const owned = client;

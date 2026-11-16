@@ -42,7 +42,8 @@ export const authorizeNotificationRequest = (request: IncomingMessage, deps: Not
   return path;
 };
 
-const jsonBody = async (request: IncomingMessage): Promise<string> => {
+// why: header検証の同期throwもbody読取と同じPromise拒否にする。HTTP境界のerror契約変更時に再評価する。
+const jsonBody = async (request: IncomingMessage): Promise<string> => { // skipcq: JS-0116
   if (request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json") {
     throw new NotificationHttpError(400, "invalid_content_type");
   }

@@ -7,7 +7,7 @@ import { createIntegrationDb, isIntegration, seedBaseMembers, truncatePerTestTab
 import { fixtureSession, fixtureResponse } from "./canonicalFixture.ts";
 import { fridayPostponeVoting } from "../testing/sessionScenario.ts";
 import { makeResponse } from "../testing/fixtures.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
 
 (isIntegration ? describe : describe.skip)("session creation arbitration", () => {
@@ -41,7 +41,7 @@ import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
   it("rolls back creation when an outside writer disables the schedule after admission reads it", async () => {
     const weekKey = "2026-W17";
     await db.insert(weeklyAskSchedules).values({ weekKey });
-    const locked = deferred<number>(); const release = deferred<void>();
+    const locked = deferred<number>(); const release = deferredSignal();
     const blocker = db.transaction(async tx => {
       await tx.update(weeklyAskSchedules).set({ disabledAt: now, disabledBy: "outside-writer" })
         .where(eq(weeklyAskSchedules.weekKey, weekKey));
@@ -69,7 +69,7 @@ import { waitForBlockedBy, waitForLockWaiters } from "./locking.ts";
     await db.insert(responses).values(["m2", "m3", "m4"].map(memberId => fixtureResponse(makeResponse({
       id: `vote-${memberId}`, sessionId: parent.id, memberId, choice: "POSTPONE_OK"
     }))));
-    const locked = deferred<number>(); const release = deferred<void>();
+    const locked = deferred<number>(); const release = deferredSignal();
     const blocker = db.transaction(async tx => {
       await tx.select().from(sessions).where(eq(sessions.legacyId, parent.id)).for("update");
       const [backend] = await tx.execute<{ pid: number }>(sql`SELECT pg_backend_pid() AS pid`);

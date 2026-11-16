@@ -85,7 +85,7 @@ export const createFakeOutboxMaintenance = (
           ((entry.status === "PENDING" || entry.status === "IN_FLIGHT") &&
             entry.attemptCount >= threshold)
       )
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id))
       .map(({ id, sessionId, weekKey, status, attemptCount, createdAt, dedupeKey }) =>
         ({ id, sessionId, ...(weekKey === undefined ? {} : { weekKey }), status, attemptCount, createdAt: new Date(createdAt), dedupeKey }));
   },

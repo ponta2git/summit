@@ -6,7 +6,7 @@ import { CRON_ASK_SCHEDULE, CRON_OUTBOX_RETENTION_SCHEDULE, CRON_SCHEDULER_SUPER
   SCHEDULER_RECOVERY_BACKOFF_MS } from "../../src/config.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 describe("cron callback lifetime", () => {
@@ -82,7 +82,7 @@ describe("cron callback lifetime", () => {
 
   it.each([CRON_ASK_SCHEDULE, CRON_OUTBOX_RETENTION_SCHEDULE, CRON_SCHEDULER_SUPERVISOR_SCHEDULE])(
     "keeps %s pending until its work completes and includes it in shutdown drain", async expression => {
-      const context = createTestAppContext(); const pending = deferred<void>(); const callbacks = new Map<string, () => void | Promise<void>>();
+      const context = createTestAppContext(); const pending = deferredSignal(); const callbacks = new Map<string, () => void | Promise<void>>();
       const sendAsk = vi.fn(async () => { await pending.promise; return { status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }; });
       const prune = context.ports.outbox.prune;
       context.ports.outbox.prune = async (...args) => { await pending.promise; return prune(...args); };

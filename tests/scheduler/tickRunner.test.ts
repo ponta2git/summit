@@ -22,7 +22,7 @@ describe("runTickSafely", () => {
   it("logs tick_started and tick_finished on success, no error log", async () => {
     const logger = makeLogger();
 
-    await runTickSafely({ name: "testTick", logger: asLogger(logger) }, async () => {});
+    await runTickSafely({ name: "testTick", logger: asLogger(logger) }, async () => { /* why: 時間とログだけを検証する、成功済みの tick。 */ });
 
     expect(loggedEvents(logger.info)).toStrictEqual([
       "scheduler.tick_started",
@@ -61,7 +61,7 @@ describe("runTickSafely", () => {
       return callCount === 1 ? 0 : TICK_DURATION_WARN_MS + 1;
     };
 
-    await runTickSafely({ name: "slowTick", logger: asLogger(logger), nowFn }, async () => {});
+    await runTickSafely({ name: "slowTick", logger: asLogger(logger), nowFn }, async () => { /* why: 時間とログだけを検証する、成功済みの tick。 */ });
 
     const warnFields = callArg<{ event: string; tick: string }>(logger.warn);
     expect({ event: warnFields.event, tick: warnFields.tick }).toStrictEqual({
@@ -78,7 +78,7 @@ describe("runTickSafely", () => {
     const logger = makeLogger();
     const nowFn = (): number => 0;
 
-    await runTickSafely({ name: "fastTick", logger: asLogger(logger), nowFn }, async () => {});
+    await runTickSafely({ name: "fastTick", logger: asLogger(logger), nowFn }, async () => { /* why: 時間とログだけを検証する、成功済みの tick。 */ });
 
     expect(logger.warn).not.toHaveBeenCalled();
   });

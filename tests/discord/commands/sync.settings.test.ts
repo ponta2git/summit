@@ -6,25 +6,25 @@ const environment = { DISCORD_TOKEN: "controlled-dummy-token", DISCORD_APPLICATI
 const production = { production: true, check: true };
 
 describe("command sync settings", () => {
-  it("needs only explicit Discord credentials in production and ignores Bot YAML/DB settings", async () => {
-    expect(await readSyncSettings(production, { ...environment, DATABASE_URL: "invalid", SUMMIT_CONFIG_YAML: "invalid: [" }))
+  it("needs only explicit Discord credentials in production and ignores Bot YAML/DB settings", () => {
+    expect(readSyncSettings(production, { ...environment, DATABASE_URL: "invalid", SUMMIT_CONFIG_YAML: "invalid: [" }))
       .toStrictEqual({ ...production, token: environment.DISCORD_TOKEN, applicationId: environment.DISCORD_APPLICATION_ID, guildId: environment.DISCORD_GUILD_ID });
   });
-  it.each(Object.keys(environment))("rejects missing %s without falling back to local configuration", async key => {
-    expect(await readSyncSettings(production, { ...environment, [key]: undefined, SUMMIT_CONFIG_YAML: "discord: {guildId: '100000000000000002'}" })).toBeUndefined();
+  it.each(Object.keys(environment))("rejects missing %s without falling back to local configuration", key => {
+    expect(readSyncSettings(production, { ...environment, [key]: undefined, SUMMIT_CONFIG_YAML: "discord: {guildId: '100000000000000002'}" })).toBeUndefined();
   });
-  it.each(["", "bad", "100000000000000001/commands", " 100000000000000001"])("rejects an invalid target ID", async id => {
-    expect(await readSyncSettings(production, { ...environment, DISCORD_GUILD_ID: id })).toBeUndefined();
+  it.each(["", "bad", "100000000000000001/commands", " 100000000000000001"])("rejects an invalid target ID", id => {
+    expect(readSyncSettings(production, { ...environment, DISCORD_GUILD_ID: id })).toBeUndefined();
   });
-  it("preserves the legacy development token/YAML input without requiring a database", async () => {
+  it("preserves the legacy development token/YAML input without requiring a database", () => {
     const token = `${Buffer.from(environment.DISCORD_APPLICATION_ID).toString("base64url")}.dummy.signature`;
-    expect(await readSyncSettings({ production: false, check: false }, { DISCORD_TOKEN: token,
+    expect(readSyncSettings({ production: false, check: false }, { DISCORD_TOKEN: token,
       SUMMIT_CONFIG_YAML: "discord: {guildId: '100000000000000002'}" }))
       .toStrictEqual({ production: false, check: false, token, applicationId: environment.DISCORD_APPLICATION_ID, guildId: environment.DISCORD_GUILD_ID });
   });
-  it("rejects malformed legacy YAML and whitespace in a token", async () => {
-    expect(await readSyncSettings({ production: false, check: false }, { DISCORD_TOKEN: "dummy", SUMMIT_CONFIG_YAML: "invalid: [" })).toBeUndefined();
-    expect(await readSyncSettings(production, { ...environment, DISCORD_TOKEN: "PRIVATE\nVALUE" })).toBeUndefined();
+  it("rejects malformed legacy YAML and whitespace in a token", () => {
+    expect(readSyncSettings({ production: false, check: false }, { DISCORD_TOKEN: "dummy", SUMMIT_CONFIG_YAML: "invalid: [" })).toBeUndefined();
+    expect(readSyncSettings(production, { ...environment, DISCORD_TOKEN: "PRIVATE\nVALUE" })).toBeUndefined();
   });
   it("accepts only the documented switches", () => {
     expect(parseSyncOptions(["--production", "--check"])).toStrictEqual(production);

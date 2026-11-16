@@ -136,7 +136,6 @@ export const handleInteraction = async (
   if (interaction.isButton()) {
     await interaction.deferUpdate();
     await handleButton(interaction, deps, registry);
-    return;
   }
 };
 

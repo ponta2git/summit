@@ -31,7 +31,7 @@ interface PruneOutboxResult {
 }
 
 /** Purge delivery detail while retaining the permanent dedupe identity. */
-export const pruneOutbox = async (
+export const pruneOutbox = (
   db: DbLike,
   options: { readonly deliveredOlderThan: Date; readonly failedOlderThan: Date }
 ): Promise<PruneOutboxResult> => pruneNotificationBatches(db, "attendance", systemClock.now(), options);

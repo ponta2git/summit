@@ -235,7 +235,7 @@ const verifyTaxonomyRows = async (): Promise<void> => {
   }
 };
 
-const verifyNoBackupArtifacts = async (allFiles: readonly string[]): Promise<void> => {
+const verifyNoBackupArtifacts = (allFiles: readonly string[]): void => {
   for (const absolutePath of allFiles) {
     const projectPath = displayPath(absolutePath);
     if (
@@ -427,7 +427,7 @@ const main = async (): Promise<void> => {
   await verifyAdapters(agentsContent);
   await verifyTaxonomyRows();
 
-  await verifyNoBackupArtifacts(allFiles);
+  verifyNoBackupArtifacts(allFiles);
   await verifyNoLegacyMarkers(allFiles);
   await verifyMarkdownLinks(allFiles);
 

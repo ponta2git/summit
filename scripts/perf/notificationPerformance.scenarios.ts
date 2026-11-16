@@ -138,7 +138,7 @@ export const runPerformanceScenario = async (session: CapacitySession, client: p
   });
   const elapsedMilliseconds = performance.now() - started;
   const rawProbe = await control("/finish");
-  const metrics = await performanceStage("capacity_metrics_schema", async () => capacityMetrics.parse(rawProbe));
+  const metrics = await performanceStage("capacity_metrics_schema", () => capacityMetrics.parse(rawProbe));
   const rowsAfter = await databaseRows(client);
   await performanceStage("persistence_contract", async () => {
   assert.equal(metrics.deliveredNotifications, expectedNotifications);

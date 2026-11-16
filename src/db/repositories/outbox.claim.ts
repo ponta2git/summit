@@ -11,7 +11,7 @@ import { notificationCommandNow } from "../../time/lease.ts";
 import { notificationNotStarted } from "../notificationControl.ts";
 
 /** Claim attendance notifications through the shared delivery contract. */
-export const claimNextOutboxBatch = async (
+export const claimNextOutboxBatch = (
   db: DbLike,
   options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number },
   clock: Clock = systemClock

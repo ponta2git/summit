@@ -11,7 +11,7 @@ import * as effectRuntime from "../../src/runtime/effect.ts"; // skipcq: JS-C100
 import * as definitions from "../../src/notifications/delivery/definitions/attendance.ts"; // skipcq: JS-C1003
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
@@ -51,7 +51,7 @@ describe("outbox Effect composition", () => {
     ctx.ports.responses.listResponses = id => { seen.responses.push(bridgeContext); return responses(id); };
     ctx.ports.members.listMembers = () => { seen.members.push(bridgeContext); return members(); };
     ctx.ports.outbox.renewClaim = (...args) => { seen.heartbeat.push(bridgeContext); return renew(...args); };
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); let sends = 0;
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>(); let sends = 0;
     channel.send.mockImplementation(async payload => {
       if (++sends === 2) { sending.resolve(); }
       return { ...await sent.promise, payload };
@@ -93,7 +93,7 @@ describe("outbox Effect composition", () => {
   it("selects the first input failure after a later delivery has already failed", async () => {
     const { ctx, channel, client } = await createBatch();
     const firstId = ctx.ports.outbox.listEntries().find(entry => entry.sessionId === "first")!.id;
-    const firstFailed = deferred<boolean>(); const secondFailed = deferred<void>();
+    const firstFailed = deferred<boolean>(); const secondFailed = deferredSignal();
     const firstError = new Error("first finalization failed"); const secondError = new Error("second finalization failed");
     channel.send.mockRejectedValue(new Error("Discord failed"));
     ctx.ports.outbox.markFailed = (id) => {
@@ -120,7 +120,7 @@ describe("outbox Effect composition", () => {
     vi.spyOn(definitions, "prepareAttendanceNotification").mockImplementation((context, entry, claimToken) =>
       entry.sessionId === "first" ? Effect.failCause(cause) : render(context, entry, claimToken));
     const failed = vi.spyOn(ctx.ports.outbox, "markFailed");
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>();
     channel.send.mockImplementation(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     let settled = false;
     const tick = runEffect(Effect.result(runOutboxWorkerTick(client, ctx))).then(result => { settled = true; return result; });
@@ -158,7 +158,7 @@ describe("outbox Effect composition", () => {
   it("drains the other attendance query before persisting a renderer query failure", async () => {
     const { ctx, channel, client } = await createBatch("ask_body");
     ctx.ports.responses.listResponses = async () => { throw new Error("query failed"); };
-    const reading = deferred<void>(); const members = deferred<Awaited<ReturnType<typeof ctx.ports.members.listMembers>>>();
+    const reading = deferredSignal(); const members = deferred<Awaited<ReturnType<typeof ctx.ports.members.listMembers>>>();
     ctx.ports.members.listMembers = () => { reading.resolve(); return members.promise; };
     const failed = vi.spyOn(ctx.ports.outbox, "markFailed");
     let settled = false;

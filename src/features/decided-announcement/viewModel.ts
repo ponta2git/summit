@@ -36,8 +36,8 @@ export const buildDecidedAnnouncementViewModel = (
   const hh = String(session.decidedStartAt.getHours()).padStart(2, "0");
   const mm = String(session.decidedStartAt.getMinutes()).padStart(2, "0");
 
-  const memberById = new Map(members.map((m) => [m.id, m] as const));
-  const userIdToMember = new Map(members.map((m) => [m.userId, m] as const));
+  const memberById = new Map(members.map((member) => [member.id, member] as const));
+  const userIdToMember = new Map(members.map((member) => [member.userId, member] as const));
   const choiceByUserId = new Map<string, string>();
   for (const response of responses) {
     const member = memberById.get(response.memberId);

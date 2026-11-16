@@ -1,7 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultNotificationRuntime } from "../../src/notifications/runtime.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { stubClient } from "../scheduler/outboxWorker.harness.ts";
 
@@ -25,7 +25,7 @@ describe("notification runtime ownership", () => {
   beforeEach(() => { vi.resetAllMocks(); });
 
   it("waits for delivery drain after HTTP drain fails", async () => {
-    const failure = new Error("receiver close failed"); const sending = deferred<void>();
+    const failure = new Error("receiver close failed"); const sending = deferredSignal();
     adapters.receiver.drain.mockRejectedValue(failure);
     adapters.dispatcher.drain.mockReturnValue(sending.promise);
     let drained = false;

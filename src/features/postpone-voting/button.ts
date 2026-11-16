@@ -219,7 +219,7 @@ export const handlePostponeButton = async (
   }));
 
   await Result.match(result, {
-    onSuccess: async (context) => {
+    onSuccess: (context) => {
       logger.info(
         {
           interactionId: interaction.id,

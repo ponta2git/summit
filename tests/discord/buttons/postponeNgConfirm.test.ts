@@ -187,7 +187,7 @@ describe("postpone_ng confirmation button — confirm", () => {
     await handleInteraction(asInteraction(interaction), buildDeps(client, ctx));
 
     const memberResponses = (await ctx.ports.responses.listResponses(testSessionId)).filter(
-      (r) => r.memberId === seededMembers[0]!.id
+      (candidateResponse) => candidateResponse.memberId === seededMembers[0]!.id
     );
     expect(memberResponses).toStrictEqual([{
       ...postponeResponse(0, "POSTPONE_OK"),

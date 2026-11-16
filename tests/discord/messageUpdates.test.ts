@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { updateAskMessage } from "../../src/features/ask-session/messageEditor.ts";
 import { refreshPostponeMessage } from "../../src/features/postpone-voting/messageRefresh.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createDiscordTextFixture, createEditableMessage } from "../helpers/discord.ts";
 import { asButtonInteraction, buildButtonInteraction } from "../helpers/interaction.ts";
 import { createTestAppContext } from "../testing/index.ts";
@@ -20,7 +20,7 @@ describe("message updates from persisted state", () => {
   it("serializes edits so an older in-flight render cannot finish after a closed render", async () => {
     const session = buildSessionRow({ askMessageId: "ask-id" });
     const context = createTestAppContext({ seed: { sessions: [session] } });
-    const entered = deferred<void>(); const release = deferred<void>();
+    const entered = deferredSignal(); const release = deferredSignal();
     const written: unknown[] = []; let calls = 0;
     const message = createEditableMessage("ask-id", async payload => {
       calls += 1;
@@ -57,7 +57,7 @@ describe("message updates from persisted state", () => {
     const firstSession = buildSessionRow({ id: "first", askMessageId: "first-message" });
     const secondSession = buildSessionRow({ id: "second", candidateDateIso: "2026-05-01", askMessageId: "second-message" });
     const context = createTestAppContext({ seed: { sessions: [firstSession, secondSession] } });
-    const entered = deferred<void>(); const release = deferred<void>();
+    const entered = deferredSignal(); const release = deferredSignal();
     const edited: string[] = [];
     const fixture = createDiscordTextFixture();
     fixture.fetch.mockImplementation(async id => createEditableMessage(id, async () => {
@@ -76,7 +76,7 @@ describe("message updates from persisted state", () => {
   it("allows a queued closed render to recover after an earlier Discord edit fails", async () => {
     const session = buildSessionRow({ askMessageId: "ask-id" });
     const context = createTestAppContext({ seed: { sessions: [session] } });
-    const entered = deferred<void>(); const release = deferred<void>();
+    const entered = deferredSignal(); const release = deferredSignal();
     const written: unknown[] = []; let attempts = 0;
     const message = createEditableMessage("ask-id", async payload => {
       attempts += 1;

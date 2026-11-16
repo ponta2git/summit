@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { computeOutboxBackoff } from "../../src/notifications/delivery/attendanceDelivery.js";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.js";
-import { deferred } from "../helpers/deferred.js";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.js";
@@ -21,7 +21,7 @@ describe("outbox worker delivery", () => {
         aggregateRevision: 0, ordinal: 0, payload: { kind: "send_message", channelId: session.channelId,
           renderer: "settle_notice", extra: { reason: "absent", forceSuppressMentions: true } } });
     }
-    const completion = deferred<{ id: string }>(); const failed = deferred<void>();
+    const completion = deferred<{ id: string }>(); const failed = deferredSignal();
     const { channel } = stubChannel();
     channel.send.mockRejectedValueOnce(new Error("Discord failed")).mockImplementationOnce(async body => ({ ...await completion.promise, payload: body }));
     ctx.ports.outbox.markFailed = async () => { failed.resolve(); throw new Error("Database failed"); };
@@ -60,7 +60,7 @@ describe("outbox worker delivery", () => {
     }
 
     const firstSendDone = deferred<{ readonly id: string }>();
-    const secondSendStarted = deferred<void>();
+    const secondSendStarted = deferredSignal();
     let sendCount = 0;
     const channel = {
       type: ChannelType.GuildText,

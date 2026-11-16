@@ -16,7 +16,7 @@ let output: string | undefined;
 let currentRun: { scenario: PerformanceScenario; repetition: number; profiled: boolean } | undefined;
 const verify = async (signal: AbortSignal): Promise<void> => {
   const options = performanceOptions(process.argv.slice(2));
-  const adminUrl = await performanceStage("configuration", async () => requireLocalTestUrl(process.env["TEST_DATABASE_URL"]).href);
+  const adminUrl = await performanceStage("configuration", () => requireLocalTestUrl(process.env["TEST_DATABASE_URL"]).href);
   await performanceStage("output_directory", () => createPerformanceOutput(options.output));
   output = options.output;
   const provenance = await performanceStage("provenance", () => performanceProvenance(options.image));
@@ -44,7 +44,7 @@ const verify = async (signal: AbortSignal): Promise<void> => {
         env: { PERF_PROFILE: profiled ? "1" : "0", PERF_DATABASE_DIAGNOSTICS: options.databaseDiagnostics ? "1" : "0" }
       }, session => performanceStage("workload", () => runPerformanceScenario(session, client, { scenario, rounds: options.rounds,
         ...(legacyBytes === undefined ? {} : { legacyBytes }) }))));
-      return performanceStage("result", () => savePerformanceResult(output!, `${scenario}-${profiled ? "profile" : repetition.toString().padStart(2, "0")}`,
+      return performanceStage("result", () => savePerformanceResult(options.output, `${scenario}-${profiled ? "profile" : repetition.toString().padStart(2, "0")}`,
         { scenario, repetition, profiled, rounds: options.rounds, imageId: provenance.image.id, postgresVersion: version }, result));
     }, { signal }));
     summaries.push(summary);

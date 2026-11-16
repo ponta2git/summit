@@ -50,7 +50,8 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
 
   const closeResources = Effect.gen(function* () {
     yield* attempt(promiseCall(deps.closeDb), "Database close failed during shutdown.");
-    yield* attempt(promiseCall(async () => deps.destroyClient()), "Discord client destroy failed during shutdown.");
+    // why: destroyClientのvoid/Promiseと同期throwを単一のPromise境界にする。adapter契約変更時に再評価する。
+    yield* attempt(promiseCall(async () => deps.destroyClient()), "Discord client destroy failed during shutdown."); // skipcq: JS-0116
   });
 
   await runPromiseBoundary(Effect.gen(function* () {

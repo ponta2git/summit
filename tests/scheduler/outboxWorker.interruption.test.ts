@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
@@ -22,7 +22,7 @@ const createWorker = async () => {
 describe("outbox fiber interruption", () => {
   it.each(["render", "channel", "begin"] as const)("drains %s I/O after interruption without starting a send or recording a retry", async phase => {
     const { ctx, channel, session } = await createWorker();
-    const entered = deferred<void>(); const released = deferred<void>();
+    const entered = deferredSignal(); const released = deferredSignal();
     const pause = async <T>(value: T): Promise<T> => { entered.resolve(); await released.promise; return value; };
     if (phase === "render") {
       const find = ctx.ports.sessions.findSessionById;
@@ -53,8 +53,8 @@ describe("outbox fiber interruption", () => {
 
   it("keeps an accepted send through message backfill and delivery finalization after interruption", async () => {
     const { ctx, channel, session } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
-    const finalizing = deferred<void>(); const finalized = deferred<void>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>();
+    const finalizing = deferredSignal(); const finalized = deferredSignal();
     channel.send.mockImplementation(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     const markDelivered = ctx.ports.outbox.markDelivered;
     ctx.ports.outbox.markDelivered = async (...args) => {
@@ -83,8 +83,8 @@ describe("outbox fiber interruption", () => {
 
   it.each(["send", "finalization"] as const)("persists a %s failure before releasing an interrupted delivery", async phase => {
     const { ctx, channel, session } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
-    const recording = deferred<void>(); const recorded = deferred<void>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>();
+    const recording = deferredSignal(); const recorded = deferredSignal();
     channel.send.mockImplementation(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     if (phase === "finalization") { ctx.ports.outbox.markDelivered = async () => { throw new Error("write failed"); }; }
     const markFailed = ctx.ports.outbox.markFailed;

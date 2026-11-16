@@ -15,3 +15,6 @@ export const deferred = <T>(): Deferred<T> => {
   });
   return { promise, resolve, reject };
 };
+
+/** A value-free barrier for observing arrival or releasing pending work. */
+export const deferredSignal = (): Deferred<void> => deferred();

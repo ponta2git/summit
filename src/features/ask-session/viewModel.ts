@@ -54,12 +54,12 @@ const computeAskFooter = (
   // why: ASKING 中に全員が時刻スロットで回答済み（absent 0 名）なら開始見込みを末尾に出す。
   //   確定は締切到達まで行わない。@see requirements/base.md §4.2 §4.3
   if (session.status === "ASKING") {
-    const userIdByMemberId = new Map(members.map((m) => [m.id, m.userId]));
+    const userIdByMemberId = new Map(members.map((member) => [member.id, member.userId]));
     const choiceByUserId = new Map<string, AskResponseChoice>();
-    for (const r of responses) {
-      const userId = userIdByMemberId.get(r.memberId);
-      if (userId && (r.choice === "ABSENT" || isSlotKey(r.choice))) {
-        choiceByUserId.set(userId, r.choice);
+    for (const response of responses) {
+      const userId = userIdByMemberId.get(response.memberId);
+      if (userId && (response.choice === "ABSENT" || isSlotKey(response.choice))) {
+        choiceByUserId.set(userId, response.choice);
       }
     }
     const timeChoices: SlotKey[] = [];
@@ -92,9 +92,9 @@ export const buildAskMessageViewModel = (
   responses: ReadonlyArray<ViewModelResponseInput>,
   members: ReadonlyArray<ViewModelMemberInput>
 ): AskMessageViewModel => {
-  const memberLookup = new Map(members.map((m) => [m.id, m.userId]));
+  const memberLookup = new Map(members.map((member) => [member.id, member.userId]));
   const displayNameByUserId = new Map(
-    members.map((m) => [m.userId, m.displayName])
+    members.map((member) => [member.userId, member.displayName])
   );
 
   const responsesByUserId = new Map<string, AskResponseChoice>();

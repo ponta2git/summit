@@ -19,30 +19,30 @@ const shortId = (id: string): string => id.slice(0, 8);
 const SESSION_INVARIANTS = {
   askingPastDeadline: {
     kind: "asking_past_deadline",
-    predicate: (s, { now }) => s.status === "ASKING" && s.deadlineAt <= now,
-    message: (s) =>
-      `ASKING session ${shortId(s.id)} has passed deadline but is not yet settled.`
+    predicate: (session, { now }) => session.status === "ASKING" && session.deadlineAt <= now,
+    message: (session) =>
+      `ASKING session ${shortId(session.id)} has passed deadline but is not yet settled.`
   },
 
   askingNullMessageId: {
     kind: "asking_null_message_id",
-    predicate: (s) => s.status === "ASKING" && s.askMessageId === null,
-    message: (s) =>
-      `ASKING session ${shortId(s.id)} has no askMessageId (Discord send may have failed).`
+    predicate: (session) => session.status === "ASKING" && session.askMessageId === null,
+    message: (session) =>
+      `ASKING session ${shortId(session.id)} has no askMessageId (Discord send may have failed).`
   },
 
   decidedReminderCompletionMismatch: {
     kind: "decided_reminder_completion_mismatch",
-    predicate: (s) => s.status === "DECIDED" && s.reminderSentAt !== null,
-    message: (s) =>
-      `DECIDED session ${shortId(s.id)} has reminderSentAt set before completion.`
+    predicate: (session) => session.status === "DECIDED" && session.reminderSentAt !== null,
+    message: (session) =>
+      `DECIDED session ${shortId(session.id)} has reminderSentAt set before completion.`
   },
 
   postponeVotingPastDeadline: {
     kind: "postpone_voting_past_deadline",
-    predicate: (s, { now }) => s.status === "POSTPONE_VOTING" && s.deadlineAt <= now,
-    message: (s) =>
-      `POSTPONE_VOTING session ${shortId(s.id)} has passed deadline but is not yet settled.`
+    predicate: (session, { now }) => session.status === "POSTPONE_VOTING" && session.deadlineAt <= now,
+    message: (session) =>
+      `POSTPONE_VOTING session ${shortId(session.id)} has passed deadline but is not yet settled.`
   }
 } as const satisfies Record<string, SessionInvariant>;
 
@@ -63,7 +63,7 @@ export const checkStrandedCancelledSessions = (
   strandedSessions: readonly SessionRow[]
 ): InvariantWarning | undefined => {
   if (strandedSessions.length === 0) {return undefined;}
-  const ids = strandedSessions.map((s) => shortId(s.id)).join(", ");
+  const ids = strandedSessions.map((session) => shortId(session.id)).join(", ");
   return {
     kind: "stranded_cancelled",
     message: `${strandedSessions.length} session(s) stuck in CANCELLED (reconciler may not have run): [${ids}]`
@@ -81,8 +81,8 @@ export const checkStrandedOutboxEntries = (
   entries: readonly OutboxDiagnostic[]
 ): InvariantWarning | undefined => {
   if (entries.length === 0) {return undefined;}
-  const oldest = entries.reduce((a, b) =>
-    a.createdAt.getTime() <= b.createdAt.getTime() ? a : b
+  const oldest = entries.reduce((oldestEntry, candidate) =>
+    oldestEntry.createdAt.getTime() <= candidate.createdAt.getTime() ? oldestEntry : candidate
   );
   return {
     kind: "outbox_stranded",
@@ -97,5 +97,5 @@ export const collectInvariantWarnings = (
   const ctx: CheckCtx = { now };
   return Object.values(SESSION_INVARIANTS)
     .map((inv) => evaluate(inv, session, ctx))
-    .filter((w): w is InvariantWarning => w !== undefined);
+    .filter((warning): warning is InvariantWarning => warning !== undefined);
 };

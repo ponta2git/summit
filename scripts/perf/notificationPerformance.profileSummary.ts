@@ -40,12 +40,14 @@ export const summarizeCpuProfile = (input: unknown): CpuProfileSummary => {
   const nodes = new Map(profile.nodes.map(node => [node.id, location(node.callFrame)]));
   if (nodes.size !== profile.nodes.length) { throw new Error("Duplicate CPU profile node"); }
   const functions = new Map<string, { frame: Frame; microseconds: number; samples: number }>();
-  for (let index = 0; index < profile.samples.length; index++) {
-    const callFrame = nodes.get(profile.samples[index]!);
+  for (const [index, nodeId] of profile.samples.entries()) {
+    const delta = profile.timeDeltas[index];
+    if (delta === undefined) { throw new Error("Missing CPU profile time delta"); }
+    const callFrame = nodes.get(nodeId);
     if (!callFrame) { throw new Error("Missing CPU profile node"); }
     const key = keyOf(callFrame);
     const aggregate = functions.get(key) ?? { frame: callFrame, microseconds: 0, samples: 0 };
-    aggregate.microseconds += profile.timeDeltas[index]!;
+    aggregate.microseconds += delta;
     aggregate.samples++;
     functions.set(key, aggregate);
   }
@@ -68,8 +70,9 @@ export const summarizeHeapProfile = (input: unknown): HeapProfileSummary => {
   const functions = new Map<string, { frame: Frame; bytes: number }>();
   const ids = new Set<number>();
   const pending = [profile.head];
-  while (pending.length) {
-    const node = pending.pop()!;
+  while (true) {
+    const node = pending.pop();
+    if (!node) { break; }
     if (ids.has(node.id)) { throw new Error("Duplicate heap profile node"); }
     ids.add(node.id);
     const callFrame = location(node.callFrame);

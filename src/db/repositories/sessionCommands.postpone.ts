@@ -17,7 +17,7 @@ import type {
   SubmitPostponeVoteResult
 } from "./sessionCommands.types.ts";
 
-export const submitPostponeVote = async (
+export const submitPostponeVote = (
   db: DbLike,
   input: SubmitPostponeVoteInput
 ): Promise<SubmitPostponeVoteResult> =>
@@ -76,7 +76,7 @@ export const submitPostponeVote = async (
     };
   });
 
-export const settlePostponeVoting = async (
+export const settlePostponeVoting = (
   db: DbLike,
   input: SettlePostponeVotingInput
 ): Promise<SettlePostponeVotingResult> =>

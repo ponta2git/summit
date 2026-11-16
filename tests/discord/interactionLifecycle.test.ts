@@ -5,12 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { registerInteractionHandlers } from "../../src/discord/shared/dispatcher.ts";
 import { asDiscordClient } from "../helpers/discord.ts";
 import { asInteraction, buildAskInteraction } from "../helpers/interaction.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 
 describe("interaction lifetime", () => {
   it("stops accepting new work and drains an already acknowledged handler", async () => {
-    const client = new EventEmitter(); const entered = deferred<void>(); const release = deferred<void>();
+    const client = new EventEmitter(); const entered = deferredSignal(); const release = deferredSignal();
     const handle = vi.fn(async (interaction: ChatInputCommandInteraction) => {
       await interaction.deferReply(); entered.resolve(); await release.promise;
     });

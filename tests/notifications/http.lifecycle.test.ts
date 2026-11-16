@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { request as createHttpRequest } from "node:http";
 import { RESULT_NOTIFICATION_MAX_BODY_BYTES, RESULT_NOTIFICATION_MAX_RECEIPTS, RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS } from "../../src/config.ts";
 import { notificationNow, ocrReceiptPayload } from "../contracts/resultNotifications.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifications.ts";
 import { createHttpHarness, operationsToken, receiverToken } from "./http.harness.ts";
 
@@ -23,7 +23,7 @@ describe("notification receipt lifetime", () => {
   });
 
   it("cannot acknowledge before the durable receipt resolves, and drain waits for that receipt", async () => {
-    const fake = port(); const receive = fake.receive; const entered = deferred<void>(); const release = deferred<void>();
+    const fake = port(); const receive = fake.receive; const entered = deferredSignal(); const release = deferredSignal();
     releases.push(() => release.resolve());
     fake.receive = async (...args) => { entered.resolve(); await release.promise; return receive(...args); };
     harness = await createHttpHarness({ port: fake });
@@ -42,7 +42,7 @@ describe("notification receipt lifetime", () => {
 
   it("keeps timed-out DB work within the receipt limit until the commands actually finish", async () => {
     vi.useFakeTimers();
-    const fake = port(); const receive = fake.receive; const entered = deferred<void>(); const release = deferred<void>();
+    const fake = port(); const receive = fake.receive; const entered = deferredSignal(); const release = deferredSignal();
     releases.push(() => release.resolve());
     let started = 0;
     fake.receive = async (...args) => { started += 1; if (started === RESULT_NOTIFICATION_MAX_RECEIPTS) { entered.resolve(); }
@@ -60,7 +60,7 @@ describe("notification receipt lifetime", () => {
   });
 
   it("preserves a committed receipt when the caller disconnects before its response", async () => {
-    const fake = port(); const receive = fake.receive; const committed = deferred<void>(); const release = deferred<void>();
+    const fake = port(); const receive = fake.receive; const committed = deferredSignal(); const release = deferredSignal();
     releases.push(() => release.resolve());
     fake.receive = async (...args) => { const receipt = await receive(...args); committed.resolve(); await release.promise; return receipt; };
     harness = await createHttpHarness({ port: fake });
@@ -75,7 +75,7 @@ describe("notification receipt lifetime", () => {
 
   it("holds both maximum body reservations after timeout, while allowing bodyless inspection", async () => {
     vi.useFakeTimers();
-    const fake = port(); const entered = deferred<void>(); const release = deferred<void>();
+    const fake = port(); const entered = deferredSignal(); const release = deferredSignal();
     releases.push(() => release.resolve());
     let calls = 0;
     fake.receive = async () => {
@@ -106,7 +106,7 @@ describe("notification receipt lifetime", () => {
     harness = await createHttpHarness();
     const incoming = [];
     for (let index = 0; index < 2; index += 1) {
-      const started = deferred<void>();
+      const started = deferredSignal();
       harness.receiver.server.once("request", () => started.resolve());
       const pending = createHttpRequest(`${harness.origin}/internal/discord-notifications`, {
         method: "POST", headers: { authorization: `Bearer ${receiverToken}`, "content-type": "application/json" }

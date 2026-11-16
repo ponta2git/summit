@@ -124,7 +124,7 @@ export const latestChoice = (
   choices: readonly SlotKey[]
 ): SlotKey | undefined => {
   if (choices.length === 0) {return undefined;}
-  return [...choices].sort((a, b) => CHOICE_RANK[b] - CHOICE_RANK[a])[0];
+  return [...choices].sort((leftChoice, rightChoice) => CHOICE_RANK[rightChoice] - CHOICE_RANK[leftChoice])[0];
 };
 
 /**

@@ -12,7 +12,7 @@ export const releaseExpiredFakeOutboxClaims = (
 ): number => {
   const expired = [...byId.values()].filter(entry => (entry.status === "IN_FLIGHT" || entry.status === "CANCELLED")
     && entry.claimExpiresAt !== null && entry.claimExpiresAt <= now)
-    .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+    .sort((leftEntry, rightEntry) => leftEntry.id.localeCompare(rightEntry.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
   for (const entry of expired) {
     const status = entry.status === "CANCELLED" ? "CANCELLED" : entry.attemptCount >= OUTBOX_MAX_ATTEMPTS ? "FAILED" : "PENDING";
     byId.set(entry.id, { ...entry, status, claimExpiresAt: null, claimToken: null,
@@ -30,7 +30,7 @@ export const cancelFailedFakeOutboxSuccessors = (
     && entries.some(previous => sameOutboxOwner(previous, entry) && previous.status === "FAILED"
       && (previous.aggregateRevision < entry.aggregateRevision
         || (previous.aggregateRevision === entry.aggregateRevision && previous.ordinal < entry.ordinal))))
-    .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+    .sort((leftEntry, rightEntry) => leftEntry.id.localeCompare(rightEntry.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
   for (const entry of successors) {
     const sending = sendingTokens.get(entry.id) === entry.claimToken;
     reasons.set(entry.id, "predecessor_failed");

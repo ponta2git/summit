@@ -7,7 +7,7 @@ import { registerInteractionHandlers } from "../../src/discord/shared/dispatcher
 import { rejectMessages } from "../../src/features/interaction-reject/messages.ts";
 import { asDiscordClient } from "../helpers/discord.ts";
 import { asInteraction, buildAskInteraction, buildButtonInteraction } from "../helpers/interaction.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 
 const buttonRegistry = (handle: (interaction: ButtonInteraction) => Promise<void>) => ({
@@ -20,9 +20,9 @@ describe("bounded interaction admission", () => {
   it("bounds both handler and rejection I/O during a burst and drains both after stop", async () => {
     const client = new EventEmitter();
     const context = createTestAppContext();
-    const ack = deferred<void>();
-    const releaseHandlers = deferred<void>();
-    const releaseRejections = deferred<void>();
+    const ack = deferredSignal();
+    const releaseHandlers = deferredSignal();
+    const releaseRejections = deferredSignal();
     const databaseRead = vi.spyOn(context.ports.members, "listMembers");
     const handle = vi.fn(async () => { await databaseRead(); await releaseHandlers.promise; });
     const registration = registerInteractionHandlers(asDiscordClient(client), context, { registry: buttonRegistry(handle) });
@@ -72,7 +72,7 @@ describe("bounded interaction admission", () => {
 
   it("releases failed rejection slots and accepts new work after handler settlement", async () => {
     const client = new EventEmitter();
-    const release = deferred<void>();
+    const release = deferredSignal();
     const handle = vi.fn(async () => { await release.promise; });
     const registration = registerInteractionHandlers(asDiscordClient(client), createTestAppContext(), { registry: buttonRegistry(handle) });
     try {

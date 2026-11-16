@@ -42,7 +42,7 @@ export const performancePost = (
   });
 };
 
-export const performanceControl = async (session: CapacitySession, path: string): Promise<unknown> => {
+export const performanceControl = (session: CapacitySession, path: string): Promise<unknown> => {
   const operation = path.startsWith("/wait/") ? "wait" : ["/reset", "/gc", "/finish", "/stats", "/wake"].includes(path)
     ? path.slice(1) : "barrier";
   return performanceStage(`control_${operation}`, async () => {

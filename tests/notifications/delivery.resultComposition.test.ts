@@ -11,7 +11,7 @@ describe("result delivery composition", () => {
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
   it("delivers a replaced definition through the injected strategy and the real dispatcher ownership path", async () => {
-    const h = resultWorkerHarness(); const id = await h.enqueue("registered-definition", "Original payload");
+    const harness = resultWorkerHarness(); const id = await harness.enqueue("registered-definition", "Original payload");
     const definitions: ResultNotificationDefinitions = {
       ...resultNotificationDefinitions,
       analysis_completed: { strategy: "resumable", renderer: {
@@ -27,26 +27,26 @@ describe("result delivery composition", () => {
       strategies.push(delivery.partCount);
       return deliverResumable(delivery);
     });
-    const dispatcher = createResultNotificationDispatcher({ ...h, strategy,
+    const dispatcher = createResultNotificationDispatcher({ ...harness, strategy,
       prepareNotification: (entry, context) => prepareResultDelivery(entry, context, definitions)
     });
     try {
-      expect(h.channel.send).not.toHaveBeenCalled();
+      expect(harness.channel.send).not.toHaveBeenCalled();
       dispatcher.wake("receipt");
-      expect(h.channel.send).not.toHaveBeenCalled();
+      expect(harness.channel.send).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(0);
       await dispatcher.drain();
       expect(strategies).toEqual([2]);
-      expect(h.channel.send.mock.calls.map(([body]) => body.content)).toEqual([
+      expect(harness.channel.send.mock.calls.map(([body]) => body.content)).toEqual([
         "Registered result: registered-definition", "Registered link: https://momo.example.com"
       ]);
-      expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1, rendererVersion: 7, partCount: 2,
+      expect(await harness.port.inspect(id)).toMatchObject({ status: "DELIVERED", attemptCount: 1, rendererVersion: 7, partCount: 2,
         parts: [
           { partNo: 0, status: "DELIVERED", deliveredMessageId: "message-1" },
           { partNo: 1, status: "DELIVERED", deliveredMessageId: "message-2" }
         ]
       });
-      expect(h.logger.error).not.toHaveBeenCalled();
+      expect(harness.logger.error).not.toHaveBeenCalled();
     } finally { dispatcher.stop(); await dispatcher.drain(); }
   });
 });

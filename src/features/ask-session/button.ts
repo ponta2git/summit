@@ -191,7 +191,7 @@ export const handleAskButton = async (
   }));
 
   await Result.match(result, {
-    onSuccess: async (context) => {
+    onSuccess: (context) => {
       logger.info(
         {
           userId: interaction.user.id,
