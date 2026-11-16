@@ -67,6 +67,8 @@ export const createNotificationAdmission = (options: {
     fullSince = running.size === NOTIFICATION_DB_GLOBAL_LIMIT ? (fullSince ?? now()) : undefined;
     if (running.size === 0) { clearTimeout(monitorTimer); monitorTimer = undefined; }
     else if (!monitorTimer) {
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       monitorTimer = setTimeout(monitor, NOTIFICATION_PENDING_WARN_AFTER_MS); monitorTimer.unref();
     }
   };
@@ -135,7 +137,12 @@ export const createNotificationAdmission = (options: {
         if (keys.has(request.key) || keys.size >= NOTIFICATION_DB_MAX_PRODUCERS) {
           throw new NotificationAdmissionInvariantError("Notification database producer bound exceeded.");
         }
-      } catch (error: unknown) { rejectWork(error); return; }
+      } catch (error: unknown) {
+        // why: Preserve the original admission failure, including a caller's remainingMs throw.
+        // Re-evaluate if that callback's error contract becomes restricted to Error.
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors
+        rejectWork(error); return;
+      }
       keys.add(request.key);
       const job: Waiting = {
         request, queuedAt: now(), reject: rejectWork,
@@ -149,7 +156,13 @@ export const createNotificationAdmission = (options: {
             release(); updateMonitor(); pump();
           };
           void Promise.resolve().then(() => { assertCanStart(request); return work(); }).then(
-            value => { settle(); resolve(value); return undefined; }, error => { settle(); rejectWork(error); return undefined; }
+            value => { settle(); resolve(value); return undefined; }, error => {
+              settle();
+              // why: Release the permit and forward the driver's original rejection unchanged.
+              // Re-evaluate if the work callback's rejection contract becomes restricted to Error.
+              // oxlint-disable-next-line typescript/prefer-promise-reject-errors
+              rejectWork(error); return undefined;
+            }
           );
         }
       };

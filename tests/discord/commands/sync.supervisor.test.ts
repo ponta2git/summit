@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type * as ChildProcessModule from "node:child_process";
+import type * as ChildProcessModule from "node:child_process"; // skipcq: JS-C1003
 import { once } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

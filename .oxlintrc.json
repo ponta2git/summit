@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
   "plugins": [
     "import",
     "node",
@@ -42,9 +45,17 @@
     "promise/no-return-in-finally": "error",
     "typescript/ban-ts-comment": "error",
     "typescript/consistent-type-imports": "error",
+    "typescript/consistent-return": "off",
     "typescript/no-empty-object-type": "error",
     "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "ignoreVoid": false
+      }
+    ],
     "typescript/no-misused-promises": "error",
+    "typescript/switch-exhaustiveness-check": "error",
     "typescript/no-namespace": "error",
     "typescript/no-require-imports": "error",
     "typescript/no-unsafe-function-type": "error",
@@ -53,13 +64,18 @@
   },
   "overrides": [
     {
-      "files": ["src/**/*.ts"],
+      "files": [
+        "src/**/*.ts"
+      ],
       "rules": {
         "typescript/no-non-null-assertion": "error"
       }
     },
     {
-      "files": ["src/**/*.ts", "tests/**/*.ts"],
+      "files": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+      ],
       "rules": {
         "no-console": "error",
         "node/no-process-env": "error"
@@ -78,6 +94,24 @@
       ],
       "rules": {
         "node/no-process-env": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/**/*.ts"
+      ],
+      "rules": {
+        "typescript/unbound-method": "off",
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/helpers/assertions.ts",
+        "tests/helpers/discord.ts"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-type-parameters": "off"
       }
     }
   ]

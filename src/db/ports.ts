@@ -102,7 +102,7 @@ export interface CurrentWeekStatusSnapshot {
  * 個別 port の汎用 batch API を増やさず、status query の結合知識をここへ隠す。
  */
 export interface StatusPort {
-  loadCurrentWeekSnapshot(weekKey: string): Promise<CurrentWeekStatusSnapshot>;
+  loadCurrentWeekSnapshot(this: void, weekKey: string): Promise<CurrentWeekStatusSnapshot>;
 }
 
 /**
@@ -113,10 +113,10 @@ export interface StatusPort {
  * transitions belong to {@link SessionCommandsPort}, which owns aggregate locking.
  */
 export interface SessionsPort {
-  createAskSession(input: CreateAskSessionInput): Promise<SessionRow | undefined>;
-  findSessionById(id: string): Promise<SessionRow | undefined>;
-  updateAskMessageId(id: string, messageId: string): Promise<void>;
-  updatePostponeMessageId(id: string, messageId: string): Promise<void>;
+  createAskSession(this: void, input: CreateAskSessionInput): Promise<SessionRow | undefined>;
+  findSessionById(this: void, id: string): Promise<SessionRow | undefined>;
+  updateAskMessageId(this: void, id: string, messageId: string): Promise<void>;
+  updatePostponeMessageId(this: void, id: string, messageId: string): Promise<void>;
   /**
    * Back-fill `ask_message_id` atomically only if currently NULL (CAS-on-NULL).
    *
@@ -125,31 +125,31 @@ export interface SessionsPort {
    * An expired claimant and its replacement can both reach Discord, so this elects one
    * canonical message without overwriting it. Intent finalization is fenced separately.
    */
-  backfillAskMessageId(id: string, messageId: string): Promise<boolean>;
+  backfillAskMessageId(this: void, id: string, messageId: string): Promise<boolean>;
   /**
    * Back-fill `postpone_message_id` atomically only if currently NULL (CAS-on-NULL).
    *
    * @remarks
    * See {@link SessionsPort.backfillAskMessageId} for rationale.
    */
-  backfillPostponeMessageId(id: string, messageId: string): Promise<boolean>;
-  findDueAskingSessions(now: Date): Promise<readonly SessionRow[]>;
-  findDuePostponeVotingSessions(now: Date): Promise<readonly SessionRow[]>;
-  findDueReminderSessions(now: Date): Promise<readonly SessionRow[]>;
-  findDueStartupRecoverySessions(now: Date): Promise<readonly SessionRow[]>;
-  getSchedulerSessionHints(now: Date): Promise<SchedulerSessionHints>;
-  findMessageRecoveryCandidates(): Promise<readonly SessionRow[]>;
+  backfillPostponeMessageId(this: void, id: string, messageId: string): Promise<boolean>;
+  findDueAskingSessions(this: void, now: Date): Promise<readonly SessionRow[]>;
+  findDuePostponeVotingSessions(this: void, now: Date): Promise<readonly SessionRow[]>;
+  findDueReminderSessions(this: void, now: Date): Promise<readonly SessionRow[]>;
+  findDueStartupRecoverySessions(this: void, now: Date): Promise<readonly SessionRow[]>;
+  getSchedulerSessionHints(this: void, now: Date): Promise<SchedulerSessionHints>;
+  findMessageRecoveryCandidates(this: void): Promise<readonly SessionRow[]>;
   /**
    * Returns sessions currently in `CANCELLED` status (startup reconciler target).
    *
    * @remarks
    * `CANCELLED` は短命中間状態。通常時は空。crash 由来の宙づり回収に使う。
    */
-  findStrandedCancelledSessions(): Promise<readonly SessionRow[]>;
+  findStrandedCancelledSessions(this: void): Promise<readonly SessionRow[]>;
 }
 
 export interface ResponsesPort {
-  listResponses(sessionId: string): Promise<readonly ResponseRow[]>;
+  listResponses(this: void, sessionId: string): Promise<readonly ResponseRow[]>;
 }
 
 /**
@@ -161,24 +161,24 @@ export interface ResponsesPort {
  * instead of composing ResponsesPort + SessionsPort writes.
  */
 export interface SessionCommandsPort {
-  createSession(input: CreateSessionInput): Promise<CreateSessionResult>;
+  createSession(this: void, input: CreateSessionInput): Promise<CreateSessionResult>;
   /** Session lock後に現在状態を検証し、新規作成した欠落message intentだけを返す。 */
-  recoverMissingMessageIntents(sessionId: string): Promise<readonly EnqueueOutboxInput[]>;
-  cancelWeekAtomically(input: CancelWeekInput): Promise<CancelWeekResult>;
-  submitAskResponse(input: SubmitAskResponseInput): Promise<SubmitAskResponseResult>;
-  settleAskingCancellation(
+  recoverMissingMessageIntents(this: void, sessionId: string): Promise<readonly EnqueueOutboxInput[]>;
+  cancelWeekAtomically(this: void, input: CancelWeekInput): Promise<CancelWeekResult>;
+  submitAskResponse(this: void, input: SubmitAskResponseInput): Promise<SubmitAskResponseResult>;
+  settleAskingCancellation(this: void,
     input: SettleAskingCancellationInput
   ): Promise<SettleAskingCancellationResult>;
-  settleAskingDeadline(input: SettleDeadlineInput): Promise<AskingDeadlineResult>;
-  submitPostponeVote(input: SubmitPostponeVoteInput): Promise<SubmitPostponeVoteResult>;
-  settlePostponeVoting(
+  settleAskingDeadline(this: void, input: SettleDeadlineInput): Promise<AskingDeadlineResult>;
+  submitPostponeVote(this: void, input: SubmitPostponeVoteInput): Promise<SubmitPostponeVoteResult>;
+  settlePostponeVoting(this: void,
     input: SettlePostponeVotingInput
   ): Promise<SettlePostponeVotingResult>;
 }
 
 export interface MembersPort {
-  findMemberIdByUserId(userId: string): Promise<string | undefined>;
-  listMembers(): Promise<readonly MemberRow[]>;
+  findMemberIdByUserId(this: void, userId: string): Promise<string | undefined>;
+  listMembers(this: void): Promise<readonly MemberRow[]>;
 }
 
 /**
@@ -189,10 +189,10 @@ export interface MembersPort {
  * `completeDecidedSessionAsHeld` (DECIDED→COMPLETED CAS と同一 tx)。
  */
 export interface HeldEventsPort {
-  completeDecidedSessionAsHeld(
+  completeDecidedSessionAsHeld(this: void,
     input: CompleteDecidedSessionAsHeldInput
   ): Promise<CompleteDecidedSessionAsHeldResult | undefined>;
-  findBySessionId(sessionId: string): Promise<HeldEventRow | undefined>;
+  findBySessionId(this: void, sessionId: string): Promise<HeldEventRow | undefined>;
 }
 
 /**
@@ -205,20 +205,20 @@ export interface HeldEventsPort {
  * aggregateRevision / ordinal、claim 所有権は claimToken で fence する。
  */
 export interface OutboxPort {
-  enqueue(input: EnqueueOutboxInput): Promise<EnqueueResult>;
-  claimNextBatch(options: {
+  enqueue(this: void, input: EnqueueOutboxInput): Promise<EnqueueResult>;
+  claimNextBatch(this: void, options: {
     readonly limit: number;
     readonly now: Date;
     readonly claimDurationMs: number;
   }): Promise<readonly OutboxEntry[]>;
-  beginDelivery(id: string, options: { readonly claimToken: string; readonly now: Date }, remainingMs?: () => number): Promise<boolean>;
+  beginDelivery(this: void, id: string, options: { readonly claimToken: string; readonly now: Date }, remainingMs?: () => number): Promise<boolean>;
   /** Extend only a live claim; expired or replaced owners cannot regain delivery rights. */
-  renewClaim(id: string, options: {
+  renewClaim(this: void, id: string, options: {
     readonly claimToken: string;
     readonly now: Date;
     readonly claimDurationMs: number;
   }, remainingMs?: () => number): Promise<ClaimLease | null>;
-  markDelivered(
+  markDelivered(this: void,
     id: string,
     options: {
       readonly claimToken: string;
@@ -227,7 +227,7 @@ export interface OutboxPort {
     },
     remainingMs?: () => number
   ): Promise<boolean>;
-  markFailed(
+  markFailed(this: void,
     id: string,
     options: {
       readonly error: string;
@@ -237,13 +237,13 @@ export interface OutboxPort {
     },
     remainingMs?: () => number
   ): Promise<boolean>;
-  requeueFailedChains(now: Date): Promise<{
+  requeueFailedChains(this: void, now: Date): Promise<{
     readonly deadLettersRequeued: number;
     readonly successorsRequeued: number;
   }>;
-  releaseExpiredClaims(now: Date): Promise<number>;
-  findStranded(attemptsThreshold: number): Promise<readonly OutboxDiagnostic[]>;
-  prune(options: {
+  releaseExpiredClaims(this: void, now: Date): Promise<number>;
+  findStranded(this: void, attemptsThreshold: number): Promise<readonly OutboxDiagnostic[]>;
+  prune(this: void, options: {
     readonly deliveredOlderThan: Date;
     readonly failedOlderThan: Date;
   }): Promise<{
@@ -251,14 +251,14 @@ export interface OutboxPort {
     readonly failedPruned: number;
     readonly cancelledPruned: number;
   }>;
-  getMetrics(now: Date): Promise<{
+  getMetrics(this: void, now: Date): Promise<{
     readonly pending: number;
     readonly inFlight: number;
     readonly failed: number;
     readonly oldestPendingAgeMs: number | null;
     readonly oldestFailedAgeMs: number | null;
   }>;
-  getNextDispatchAt(): Promise<Date | null>;
+  getNextDispatchAt(this: void): Promise<Date | null>;
 }
 
 /**

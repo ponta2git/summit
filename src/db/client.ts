@@ -2,7 +2,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { env } from "../env.ts";
-import * as schema from "./schema.ts";
+// why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+// skipcq: JS-E1007
+import * as schema from "./schema.ts"; // skipcq: JS-C1003
 
 /**
  * Production postgres.js client for the Drizzle DB handle.

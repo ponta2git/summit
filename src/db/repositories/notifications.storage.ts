@@ -72,6 +72,8 @@ export const cancelNotification = async (
 ): Promise<boolean> => {
   const row = await lockNotification(tx, id);
   if (!row || row.status === "DELIVERED" || row.status === "CANCELLED" || row.purgedAt) { return false; }
+  // why: Module initialization completes before this function executes.
+  // skipcq: JS-0357
   await cancelLockedNotifications(tx, [id], reason, now);
   return true;
 };
@@ -89,6 +91,8 @@ export const cancelMatchingResultNotifications = async (
       after === undefined ? undefined : gt(notifications.id, after)
     )).orderBy(notifications.id).limit(batchSize).for("update");
     if (rows.length === 0) { return; }
+    // why: Module initialization completes before this function executes.
+    // skipcq: JS-0357
     await cancelLockedNotifications(tx, rows.map(row => row.id), reason, now);
     if (rows.length < batchSize) { return; }
     after = rows.at(-1)?.id;

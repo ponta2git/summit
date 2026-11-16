@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSchedulerController, type SchedulerController } from "../../src/scheduler/controller.ts";
 import { SCHEDULER_MIN_TIMER_DELAY_MS, SCHEDULER_RECOVERY_BACKOFF_MS, SCHEDULER_WAKE_DEBOUNCE_MS } from "../../src/config.ts";
@@ -10,6 +10,8 @@ import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
 const ok = () => Effect.void;
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 const createController = (context: ReturnType<typeof createTestAppContext>) => createSchedulerController({
+  // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+  // skipcq: JS-W1042
   client: stubClient(undefined), context, logger, runDeadlineTick: ok, runPostponeDeadlineTick: ok, runReminderTick: ok
 });
 
@@ -36,11 +38,37 @@ describe("scheduler transient-failure recovery", () => {
     expect(hints).toHaveBeenCalledTimes(SCHEDULER_RECOVERY_BACKOFF_MS.length + 1);
   });
 
+  it("keeps wake, retry, due work and stop independent of failed diagnostic sinks", async () => {
+    const context = createTestAppContext({ now: new Date("2026-04-25T12:00:00Z") });
+    const hints = { nextAskingDeadlineAt: context.clock.now() as Date | null, nextPostponeDeadlineAt: null, nextReminderAt: null };
+    const readHints = vi.spyOn(context.ports.sessions, "getSchedulerSessionHints")
+      .mockRejectedValueOnce(new Error("temporary database outage")).mockResolvedValue(hints);
+    const deadline = vi.fn(() => Effect.sync(() => { hints.nextAskingDeadlineAt = null; }));
+    const failDiagnostic = (): void => { throw new Error("diagnostic sink unavailable"); };
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
+    controller = createSchedulerController({ client: stubClient(undefined), context,
+      logger: { info: failDiagnostic, warn: failDiagnostic, error: failDiagnostic, debug: failDiagnostic },
+      runDeadlineTick: deadline, runPostponeDeadlineTick: ok, runReminderTick: ok });
+    controller.wake("diagnostics_down");
+    await vi.advanceTimersByTimeAsync(SCHEDULER_WAKE_DEBOUNCE_MS);
+    expect(readHints).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(SCHEDULER_RECOVERY_BACKOFF_MS[0]);
+    expect(deadline).toHaveBeenCalledOnce();
+    expect(hints.nextAskingDeadlineAt).toBeNull();
+    controller.stop();
+    await controller.drain();
+    await vi.advanceTimersByTimeAsync(3_600_000);
+    expect(deadline).toHaveBeenCalledOnce();
+  });
+
   it("bounds failing due ticks and recovers on a later explicit wake", async () => {
     const context = createTestAppContext({ now: new Date("2026-04-25T12:00:00Z") });
     const hints = { nextAskingDeadlineAt: context.clock.now() as Date | null, nextPostponeDeadlineAt: null, nextReminderAt: null };
     context.ports.sessions.getSchedulerSessionHints = async () => hints;
     const deadline = vi.fn<() => Effect.Effect<void, DatabaseError>>(() => Effect.fail(new DatabaseError("deadline unavailable")));
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     controller = createSchedulerController({ client: stubClient(undefined), context, logger,
       runDeadlineTick: deadline, runPostponeDeadlineTick: ok, runReminderTick: ok });
     await controller.recompute("due");

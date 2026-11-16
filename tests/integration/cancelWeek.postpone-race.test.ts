@@ -48,7 +48,7 @@ describeDb("cancel_week and Saturday creation (integration)", () => {
       await waitForBlockedBy(client, pid);
       cancelled = cancelWeekAtomically(db, {
         weekKey: friday.weekKey,
-        channelId: friday.channelId!, invokerUserId: "333333333333333333", suppressMentions: true, now
+        channelId: friday.channelId, invokerUserId: "333333333333333333", suppressMentions: true, now
       });
       await waitForLockWaiters(client, 2);
     } finally {

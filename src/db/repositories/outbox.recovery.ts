@@ -64,6 +64,8 @@ export const requeueFailedOutboxChains = async (
         `);
         if (!counts) { throw new Error("Missing outbox recovery counts"); }
         return { counts, last: ids.at(-1), full: ids.length === NOTIFICATION_MAINTENANCE_BATCH_SIZE };
+      // why: 停止時のfallbackは必須引数。終了契約変更時に再評価。
+      // skipcq: JS-W1042
       }, { key: "recovery:chains", operation: "maintenance" }), undefined);
       if (!batch) { break; }
       total.deadLettersRequeued += batch.counts.deadLettersRequeued;

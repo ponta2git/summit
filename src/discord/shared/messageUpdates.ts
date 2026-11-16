@@ -1,5 +1,5 @@
-import * as Effect from "effect/Effect";
-import * as Semaphore from "effect/Semaphore";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Semaphore from "effect/Semaphore"; // skipcq: JS-C1003
 import type { AppContext } from "../../appContext.ts";
 import type { AppError } from "../../errors/index.ts";
 import { logger } from "../../logger.ts";

@@ -1,6 +1,6 @@
 import { setImmediate } from "node:timers/promises";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Fiber from "effect/Fiber"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 import { serializeMessageUpdate } from "../../src/discord/shared/messageUpdates.ts";
 import { fromDiscordCall } from "../../src/errors/effect.ts";

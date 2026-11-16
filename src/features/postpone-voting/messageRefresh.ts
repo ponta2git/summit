@@ -1,5 +1,5 @@
 import type { ButtonInteraction, Client } from "discord.js";
-import type * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { AppContext } from "../../appContext.ts";
 import type { AppError } from "../../errors/index.ts";
 import { updatePostponeMessage } from "./messageEditor.ts";

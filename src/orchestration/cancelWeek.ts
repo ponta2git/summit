@@ -1,5 +1,5 @@
 import type { Client } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { AppContext } from "../appContext.ts";
 import type { CancelWeekResult } from "../db/ports.ts";
 import type { AppError } from "../errors/index.ts";

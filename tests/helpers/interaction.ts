@@ -58,12 +58,12 @@ export const buildButtonInteraction = (customId: string, override: ButtonOverrid
 });
 
 export const asInteraction = (interaction: unknown): Interaction =>
-  interaction as unknown as Interaction;
+  interaction as Interaction;
 
 export const asChatInputCommandInteraction = (
   interaction: unknown
 ): ChatInputCommandInteraction =>
-  interaction as unknown as ChatInputCommandInteraction;
+  interaction as ChatInputCommandInteraction;
 
 export const asButtonInteraction = (interaction: unknown): ButtonInteraction =>
-  interaction as unknown as ButtonInteraction;
+  interaction as ButtonInteraction;

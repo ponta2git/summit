@@ -4,6 +4,8 @@ export class InvalidCommandResponseError extends Error {
 
 const object = (value: unknown): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) { throw new InvalidCommandResponseError(); }
+  // invariant: the object/null/array guard establishes this JSON record boundary.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return value as Record<string, unknown>;
 };
 

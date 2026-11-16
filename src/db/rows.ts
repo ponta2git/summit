@@ -46,7 +46,8 @@ export const assertEnum = <T extends string>(
   value: string,
   label: string
 ): T => {
-  if ((allowed as readonly string[]).includes(value)) { return value as T; }
+  const matched = allowed.find(candidate => candidate === value);
+  if (matched !== undefined) { return matched; }
   throw new Error(`Invalid ${label}: "${value}". Expected one of: ${allowed.join(", ")}`);
 };
 

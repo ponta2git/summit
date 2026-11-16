@@ -48,7 +48,7 @@ describe("envSchema", () => {
       { ...notifications, RESULT_NOTIFICATION_OPERATIONS_TOKEN: notifications.RESULT_NOTIFICATION_TOKEN },
       { ...notifications, RESULT_NOTIFICATION_TOKEN: "short" },
       { ...notifications, RESULT_NOTIFICATION_TOKEN: " ".repeat(32) },
-      { ...notifications, RESULT_NOTIFICATION_TOKEN: "p".repeat(32) + "\r\n" },
+      { ...notifications, RESULT_NOTIFICATION_TOKEN: `${"p".repeat(32)}\r\n` },
       { ...notifications, RESULT_NOTIFICATION_OPERATIONS_TOKEN: "界".repeat(32) },
       { ...notifications, RESULT_NOTIFICATION_OPERATIONS_TOKEN: "o".repeat(513) },
       { ...notifications, RESULT_NOTIFICATION_BIND_HOST: "0.0.0.0" },

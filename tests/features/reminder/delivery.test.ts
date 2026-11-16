@@ -123,7 +123,7 @@ describe("sendReminderForSession", () => {
 
   it("omits the mention line when development suppression is enabled", async () => {
     const originalFlag = appConfig.dev.suppressMentions;
-    (appConfig.dev as { suppressMentions: boolean }).suppressMentions = true;
+    appConfig.dev.suppressMentions = true;
     try {
       const session = decidedSession();
       const ctx = createTestAppContext({
@@ -137,7 +137,7 @@ describe("sendReminderForSession", () => {
 
       expect(sentPayload(send)).toStrictEqual({ content: reminderBody, nonce: expect.any(String), enforceNonce: true });
     } finally {
-      (appConfig.dev as { suppressMentions: boolean }).suppressMentions = originalFlag;
+      appConfig.dev.suppressMentions = originalFlag;
     }
   });
 });

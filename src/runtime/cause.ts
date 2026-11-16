@@ -1,5 +1,5 @@
-import * as Cause from "effect/Cause";
-import * as Result from "effect/Result";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { InvariantViolationError } from "../errors/index.ts";
 
 /** Recover only typed failures; a concurrent defect or interruption must still propagate. */

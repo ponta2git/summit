@@ -26,6 +26,6 @@ export const buildNotificationLinks = (webOrigin: string): NotificationLinks => 
   return {
     draft: (id) => link(`/review/${encodeURIComponent(requireWellFormedId(id))}`),
     match: (id) => link(`/matches/${encodeURIComponent(requireWellFormedId(id))}`),
-    analysis: (gameTitleId) => link(`/analytics/series?${new URLSearchParams({ gameTitleId: requireWellFormedId(gameTitleId) })}`)
+    analysis: (gameTitleId) => link(`/analytics/series?${new URLSearchParams({ gameTitleId: requireWellFormedId(gameTitleId) }).toString()}`)
   };
 };

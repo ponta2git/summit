@@ -1,4 +1,4 @@
-import type * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { ResultNotificationKind } from "@momo/db";
 import type { ClaimedResultNotification, ResultNotificationsPort } from "../../../db/ports.resultNotifications.ts";
 import { OUTBOX_CLAIM_DURATION_MS } from "../../../config.ts";

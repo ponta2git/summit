@@ -33,7 +33,7 @@ const postRaw = (session: CapacitySession, raw: string, options: { wireBytes?: n
       const code = ["ECONNRESET", "EPIPE", "ABORT_ERR"].includes(error.code ?? "") ? error.code : "unknown";
       reject(new CapacityError("setup_or_measurement", `http_${code}`));
     };
-    const call = request(session.receiverOrigin + "/internal/discord-notifications", {
+    const call = request(`${session.receiverOrigin}/internal/discord-notifications`, {
       method: "POST", signal: session.signal, headers: { authorization: `Bearer ${session.token}`,
         "content-type": "application/json", ...(options.chunked ? {} : { "content-length": body.length }) }
     }, response => {

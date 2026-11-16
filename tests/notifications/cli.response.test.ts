@@ -76,7 +76,7 @@ describe("notification CLI response boundary", () => {
 
   it("rejects an unusable token before constructing a request", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
-    for (const token of [" ".repeat(32), "x".repeat(32) + "\r\n", "界".repeat(32), "x".repeat(513)]) {
+    for (const token of [" ".repeat(32), `${"x".repeat(32)}\r\n`, "界".repeat(32), "x".repeat(513)]) {
       await expect(runNotificationCli(["settings", "ocr_completed"], { ...environment, RESULT_NOTIFICATION_OPERATIONS_TOKEN: token }))
         .rejects.toThrow("A valid RESULT_NOTIFICATION_OPERATIONS_TOKEN");
     }

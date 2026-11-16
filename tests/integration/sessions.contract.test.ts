@@ -62,7 +62,7 @@ describeDb("sessions repository contract (integration)", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(Error);
-    const causeMessage = String(
+    const causeMessage = (
       (caught as { cause?: { constraint_name?: string; message?: string } }).cause
         ?.constraint_name ??
         (caught as { cause?: { message?: string } }).cause?.message ??

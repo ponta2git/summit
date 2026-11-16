@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultIoLedger } from "../../src/notifications/delivery/resultIo.ts";
 import { createDeliveryCapacity } from "../../src/notifications/delivery/capacity.ts";

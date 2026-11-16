@@ -1,7 +1,7 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
+import * as Fiber from "effect/Fiber"; // skipcq: JS-C1003
 import { AppError, InvariantViolationError } from "../../errors/index.ts";
 import { errorFromCause } from "../../runtime/cause.ts";
 import { createDeliveryCapacity, type DeliveryBudget, type DeliveryCapacity } from "./capacity.ts";
@@ -22,8 +22,12 @@ const startAttendanceBatch = Effect.fnUntraced(function* <Claim extends { readon
   const batch = yield* batchSource.claim(capacity.snapshot());
   const claimed = batch.length;
   const fibers = yield* Effect.forEach(batch, entry => Effect.suspend(() => {
+    // why: 未取得を表すEffect<undefined>を保持。戻り型変更時に再評価。
+    // skipcq: JS-W1042
     if (isStopping()) { return Effect.succeed(undefined); }
     const task = prepareDeliveryTask({ id: entry.id, payloadBytes: 0 }, () => batchSource.prepareTask(entry));
+    // why: 未取得を表すEffect<undefined>を保持。戻り型変更時に再評価。
+    // skipcq: JS-W1042
     if (isStopping()) { return Effect.succeed(undefined); }
     return capacity.start(task.id, task.payloadBytes,
       execution => task.run({ ...execution, isStopping: () => isStopping() || execution.isStopping() }));

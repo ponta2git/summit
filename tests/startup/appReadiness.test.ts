@@ -1,5 +1,5 @@
 import { setImmediate } from "node:timers/promises";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { fromDatabaseCall } from "../../src/errors/effect.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppReadiness, registerReconnectReplayHandlers } from "../../src/startup/appReadiness.ts";

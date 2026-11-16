@@ -3,7 +3,9 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import * as schema from "../../src/db/schema.js";
+// why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+// skipcq: JS-E1007
+import * as schema from "../../src/db/schema.ts"; // skipcq: JS-C1003
 
 import { requireLocalTestUrl } from "./databaseLifecycle.ts";
 
@@ -38,6 +40,8 @@ export const createIntegrationDb = (options: { readonly maxConnections?: number 
 export const seedBaseMembers = async (
   db: ReturnType<typeof drizzle<typeof schema>>
 ): Promise<void> => {
+  // why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+  // skipcq: JS-E1007
   await db.insert(schema.members).values([
     { id: "m1", userId: "333333333333333333", displayName: "Member1" },
     { id: "m2", userId: "444444444444444444", displayName: "Member2" },

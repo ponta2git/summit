@@ -36,6 +36,8 @@ const STATUS_NOW = new Date("2026-04-25T12:30:00.000Z");
 
 const buildDeps = (context: AppContext): InteractionHandlerDeps => ({
   context,
+  // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+  // skipcq: JS-W1042
   client: createClientWithChannel(undefined),
   sendAsk: vi.fn(async () => ({ status: "skipped" as const, weekKey: "2026-W17", reason: "duplicate" as const }))
 });

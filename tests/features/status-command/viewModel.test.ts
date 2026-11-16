@@ -4,7 +4,6 @@ import {
   buildStatusViewModel,
   renderStatusText
 } from "../../../src/features/status-command/viewModel.js";
-import type { SessionRow } from "../../../src/db/ports.js";
 import { makeOutboxEntry, makeSession, makeResponse } from "../../testing/fixtures.js";
 
 const NOW = new Date("2026-04-25T12:30:00.000Z"); // 21:30 JST (Asia/Tokyo)
@@ -81,7 +80,7 @@ describe("buildStatusViewModel", () => {
   });
 
   it("marks DECIDED session heldEventExists as false when no HeldEvent", () => {
-    const session = makeSession({ status: "DECIDED" } as Partial<SessionRow>);
+    const session = makeSession({ status: "DECIDED" });
 
     const vm = buildStatusViewModel({
       now: NOW, weeklyAuto: "pending",
@@ -94,7 +93,7 @@ describe("buildStatusViewModel", () => {
   });
 
   it("marks DECIDED session heldEventExists as true when HeldEvent present", () => {
-    const session = makeSession({ status: "DECIDED" } as Partial<SessionRow>);
+    const session = makeSession({ status: "DECIDED" });
     const heldEvent = {
       id: "held-1",
       sessionId: session.id,
@@ -233,7 +232,7 @@ describe("renderStatusText", () => {
     expect(rendered).toContain("現在時刻: 2026-04-25 21:30 JST  weekKey: 2026-W17");
     expect(rendered).toContain("[ASKING]");
     expect(rendered).toContain("1000 件");
-    expect(rendered).toMatch(/診断 \d+ 行を省略/);
+    expect(rendered).toMatch(/診断 \d+ 行を省略/u);
     expect(rendered).toContain("次のイベント予定: 2026-04-25 22:00");
     expect(rendered).toContain(`⚠ 合計 ${vm.totalWarnings} 件の invariant 警告`);
     expect(rendered.endsWith("\n```" )).toBe(true);

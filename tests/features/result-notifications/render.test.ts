@@ -47,7 +47,7 @@ describe("fixed result notification rendering", () => {
       "総資産: 読み取りの制限時間を超えました。", "物件収益: 画像を受け付けられませんでした。",
       "事件簿: 読み取りが中止されました。", "", "下書きを確認: <https://results.example.com/review/draft-1>"
     ].join("\n"));
-    expect(rendered.parts[0]?.content).not.toMatch(/成功|要確認|件数|作品:|開催日:|試合番号:/);
+    expect(rendered.parts[0]?.content).not.toMatch(/成功|要確認|件数|作品:|開催日:|試合番号:/u);
   });
 
   it("bounds escaped context against the longest accepted link without dropping failures", () => {
@@ -205,14 +205,14 @@ describe("fixed result notification rendering", () => {
   it("keeps the original renderer's exact content, splits, numbering and message options", () => {
     const original = analysisNotification();
     const mixed = { ...original, data: { ...original.data,
-      gameTitleName: "界" + "a".repeat(1_897) + "😀*",
+      gameTitleName: `界${"a".repeat(1_897)}😀*`,
       seasons: original.data.seasons.map(season => ({ ...season, seasonName: "季節😀*".repeat(500) })),
       overall: [
         { ...original.data.overall[0], displayName: "名\\😀".repeat(800) },
         original.data.overall[1], original.data.overall[2], original.data.overall[3]
       ] as const,
       matches: original.data.matches.map(match => ({ ...match,
-        ownerName: "a".repeat(1_890) + "\nowner",
+        ownerName: `${"a".repeat(1_890)}\nowner`,
         players: [match.players[0], match.players[1], { ...match.players[2], displayName: "凪*".repeat(1_000) }, match.players[3]] as const,
         note: "[x] `raw` *text* 😀 @everyone <@123>\\\n".repeat(300)
       }))
@@ -244,7 +244,7 @@ describe("fixed result notification rendering", () => {
 
   it("streams the prior 8 MiB Markdown case with intact Unicode and bounded messages", () => {
     const original = analysisNotification();
-    const title = "界" + "*".repeat(8 * 1024 * 1024 - 8_192);
+    const title = `界${"*".repeat(8 * 1024 * 1024 - 8_192)}`;
     const plan = planNotification({ ...original, data: { ...original.data, gameTitleName: title, matches: [] } }, origin);
     let received = 0;
     let escapedStars = 0;

@@ -34,7 +34,7 @@ export const capacityAnalysis = (
       mapName: name, seasonName: name, ownerName: displayName,
       players: four(playerIndex => ({
         memberId: capacityId("member", playerIndex), displayName,
-        rank: (playerIndex + 1) as 1 | 2 | 3 | 4, ginjiCount: 0
+        rank: ([1, 2, 3, 4] as const)[playerIndex], ginjiCount: 0
       })),
       ginjiTotal: 0, note: normal ? "週末の試合メモ。" : point.repeat(150)
     }))
@@ -45,7 +45,7 @@ const capacityLegacyAnalysis = (): AnalysisCompletedNotification => {
   const base = analysisNotification();
   const sourceJobId = "capacity-legacy";
   return { ...base, sourceJobId, notificationId: `result:analysis_completed:${sourceJobId}`, data: {
-    ...base.data, matches: [], gameTitleName: "界" + "*".repeat(8 * 1024 * 1024 - 8_192)
+    ...base.data, matches: [], gameTitleName: `界${"*".repeat(8 * 1024 * 1024 - 8_192)}`
   } };
 };
 

@@ -1,7 +1,8 @@
-import * as Result from "effect/Result";
+import { assertNever } from "../../util/assertNever.ts";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
@@ -102,15 +103,20 @@ const resolvePostponeCommandResult = (
   now: Date
 ): Result.Result<PostponePipelineRecorded, AppError> =>
   Result.gen(function* () {
-    switch (result.kind) {
+    const kind = result.kind;
+    switch (kind) {
       case "accepted_pending":
       case "stale_interaction":
       case "transitioned":
         return { ...context, commandResult: result };
       case "session_not_found":
+        // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+        // skipcq: JS-W1042
         yield* guardSessionExists(undefined);
         return unreachableGuardSuccess();
       case "member_not_found":
+        // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+        // skipcq: JS-W1042
         yield* guardRegisteredMemberId(undefined);
         return unreachableGuardSuccess();
       case "deadline_passed":
@@ -119,6 +125,7 @@ const resolvePostponeCommandResult = (
       case "closed":
         yield* guardSessionPostponeVoting(result.session);
         return unreachableGuardSuccess();
+      default: return assertNever(kind, "postpone response result");
     }
   });
 

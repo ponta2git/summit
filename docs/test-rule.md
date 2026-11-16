@@ -93,6 +93,8 @@ arbitrary sleep や wall-clock 待ちを使わず、deferred promise・barrier�
 | 検証 script / CI / agent harness code | 正常入力、違反検出、検査自体の失敗、適用する品質 gate |
 | production Dockerfile / package closure | 実 image build、非 root、code 権限、runtime import、dev tool 除外 |
 
+lint engine / 設定変更時は [lint gate の回帰](../tests/verification/lint.test.ts) で、外部 package の Promise 放置・async callback の誤用・default を持つ `void` 関数の union case 漏れを拒否し、処理済み rejection と this-free port の受渡しを許可することを確認する。実行した規則名だけで型解決・検出力を保証した扱いにしない。
+
 ## 7. Integration test の環境
 
 `INTEGRATION_DB=1` と localhost guard を維持し、明示された `TEST_DATABASE_URL` だけを使う。local secret file や通常の `DATABASE_URL` を管理接続へ流用しない。test role には一時 DB の作成権限が必要。

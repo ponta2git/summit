@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "../src/config.ts";
 import { setImmediate } from "node:timers/promises";
 import { deferred } from "./helpers/deferred.ts";
+import { logger } from "../src/logger.ts";
 
 import {
   isShuttingDown,
@@ -109,6 +110,20 @@ describe("shutdown", () => {
       closeDb: () => fail("database"),
       destroyClient: () => { order.push("discord"); }
     })).toBe(true);
+    expect(order).toEqual(["stop", "drain", "database", "discord"]);
+  });
+
+  it("finishes every cleanup and contains duplicate signals when diagnostic sinks fail", async () => {
+    for (const method of ["info", "warn", "error"] as const) {
+      vi.spyOn(logger, method).mockImplementation(() => { throw new Error("diagnostics unavailable"); });
+    }
+    const order: string[] = [];
+    const fail = (stage: string): never => { order.push(stage); throw new Error(stage); };
+    const deps = { signal: "SIGTERM" as const,
+      stopScheduler: () => fail("stop"), waitForInFlightSend: () => fail("drain"), closeDb: () => fail("database"),
+      destroyClient: () => { order.push("discord"); } };
+    await expect(shutdownGracefully(deps)).resolves.toBe(true);
+    await expect(shutdownGracefully(deps)).resolves.toBe(false);
     expect(order).toEqual(["stop", "drain", "database", "discord"]);
   });
 });

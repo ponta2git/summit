@@ -1,7 +1,7 @@
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as References from "effect/References";
-import * as Result from "effect/Result";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
+import * as References from "effect/References"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { errorFromCause, findExpectedError } from "./cause.ts";
 
 /** Foreign I/O starts inside the Effect; synchronous throws and rejections share its error channel. */

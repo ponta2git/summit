@@ -1,5 +1,5 @@
 import type { MessageCreateOptions } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { z } from "zod";
 
 import type { AppContext } from "../../appContext.ts";
@@ -46,6 +46,8 @@ export const renderAskOutbox = Effect.fnUntraced(function* ({ ctx, entry }: Rend
   if (sessionId === null) { return undefined; }
   const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session) {return undefined;}
+  // why: Module initialization completes before this function executes.
+  // skipcq: JS-0357
   const [responses, members] = yield* loadAttendance(ctx, session.id);
   return renderAskBody(buildAskMessageViewModel(session, responses, members));
 });
@@ -67,6 +69,8 @@ export const renderPostponeOutbox = Effect.fnUntraced(function* ({ ctx, entry }:
   if (sessionId === null) { return undefined; }
   const session = yield* settledCall(() => ctx.ports.sessions.findSessionById(sessionId));
   if (!session) {return undefined;}
+  // why: Module initialization completes before this function executes.
+  // skipcq: JS-0357
   const [responses, members] = yield* loadAttendance(ctx, session.id);
   return renderPostponeBody(buildPostponeMessageViewModel(session, responses, members, {
     disabled: session.status !== "POSTPONE_VOTING"
@@ -80,6 +84,8 @@ export const renderDecidedOutbox = Effect.fnUntraced(function* ({ ctx, entry }: 
   if (!session || (session.status !== "DECIDED" && session.status !== "COMPLETED") || !session.decidedStartAt) {
     return undefined;
   }
+  // why: Module initialization completes before this function executes.
+  // skipcq: JS-0357
   const [responses, members] = yield* loadAttendance(ctx, session.id);
   const vm = buildDecidedAnnouncementViewModel(session, responses, members);
   return vm ? renderDecidedAnnouncement(vm) : undefined;

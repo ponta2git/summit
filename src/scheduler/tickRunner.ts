@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { runPromiseBoundary } from "../runtime/effect.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 
 import { TICK_DURATION_WARN_MS } from "../config.ts";
 import { AppError, type AppError as AppErrorType } from "../errors/index.ts";
@@ -26,24 +27,24 @@ export const runTickSafely = async (
   const { name, logger, nowFn = () => performance.now() } = options;
 
   const start = nowFn();
-  logger.info({ event: "scheduler.tick_started", tick: name });
+  reportSafely(() => logger.info({ event: "scheduler.tick_started", tick: name }));
 
   try {
     await fn();
     const elapsedMs = nowFn() - start;
-    logger.info({ event: "scheduler.tick_finished", tick: name, elapsedMs });
+    reportSafely(() => logger.info({ event: "scheduler.tick_finished", tick: name, elapsedMs }));
     if (elapsedMs > TICK_DURATION_WARN_MS) {
-      logger.warn({ event: "scheduler.tick_slow", tick: name, elapsedMs });
+      reportSafely(() => logger.warn({ event: "scheduler.tick_slow", tick: name, elapsedMs }));
     }
   } catch (err: unknown) {
     const elapsedMs = nowFn() - start;
-    logger.error({
+    reportSafely(() => logger.error({
       event: "scheduler.tick_failed",
       tick: name,
       elapsedMs,
       err,
       ...(err instanceof AppError ? { errorCode: err.code } : {})
-    });
+    }));
   }
 };
 

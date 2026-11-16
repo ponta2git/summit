@@ -14,40 +14,57 @@ interface PerformanceOptions {
   readonly scenarios: readonly PerformanceScenario[];
 }
 
-export const performanceOptions = (args: readonly string[]): PerformanceOptions => {
-  const [image, ...flags] = args;
-  if (!image || !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) { throw new CapacityError("setup_or_measurement", "arguments"); }
-  let output: string | undefined;
-  let repetitions = 3;
-  let rounds = 10;
-  let profile = false;
-  let profileOnly = false;
-  let databaseDiagnostics = false;
-  let scenarios: readonly PerformanceScenario[] = performanceScenarios;
+const booleanFlags = new Set(["--profile", "--profile-only", "--database-diagnostics"]);
+const valueFlags = new Set(["--output", "--scenario", "--repetitions", "--rounds"]);
+
+/** Own token consumption and reject ambiguous flags before interpreting their values. */
+const readPerformanceFlags = (flags: readonly string[]) => {
+  const values = new Map<string, string>();
   const seen = new Set<string>();
   for (let index = 0; index < flags.length; index++) {
     const name = flags[index];
     if (!name || seen.has(name)) { throw new CapacityError("setup_or_measurement", "arguments"); }
     seen.add(name);
-    if (name === "--profile") { profile = true; continue; }
-    if (name === "--profile-only") { profileOnly = true; continue; }
-    if (name === "--database-diagnostics") { databaseDiagnostics = true; continue; }
+    if (booleanFlags.has(name)) { continue; }
+    if (!valueFlags.has(name)) { throw new CapacityError("setup_or_measurement", "arguments"); }
     const value = flags[++index];
     if (value === undefined || value.startsWith("--")) { throw new CapacityError("setup_or_measurement", "arguments"); }
-    if (name === "--output" && value.length > 0 && !value.includes("\0")) { output = resolve(value); }
-    else if (name === "--scenario" && value === "all") { scenarios = performanceScenarios; }
-    else if (name === "--scenario" && performanceScenarios.some(scenario => scenario === value)) { scenarios = [value as PerformanceScenario]; }
-    else if ((name === "--repetitions" || name === "--rounds") && /^[1-9][0-9]*$/.test(value)) {
-      const number = Number(value);
-      if (!Number.isSafeInteger(number) || number > (name === "--repetitions" ? 10 : 50)) { throw new CapacityError("setup_or_measurement", "arguments"); }
-      if (name === "--repetitions") { repetitions = number; } else { rounds = number; }
-    } else { throw new CapacityError("setup_or_measurement", "arguments"); }
+    values.set(name, value);
   }
-  if (!output || (profile && profileOnly) || (profileOnly && seen.has("--repetitions"))
+  return { values, seen };
+};
+
+const measurementCount = (value: string | undefined, fallback: number, maximum: number): number => {
+  if (value === undefined) { return fallback; }
+  const count = Number(value);
+  if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(count) || count > maximum) {
+    throw new CapacityError("setup_or_measurement", "arguments");
+  }
+  return count;
+};
+
+const selectedScenarios = (value: string | undefined): readonly PerformanceScenario[] => {
+  if (value === undefined || value === "all") { return performanceScenarios; }
+  const scenario = performanceScenarios.find(candidate => candidate === value);
+  if (scenario === undefined) { throw new CapacityError("setup_or_measurement", "arguments"); }
+  return [scenario];
+};
+
+export const performanceOptions = (args: readonly string[]): PerformanceOptions => {
+  const [image, ...flags] = args;
+  if (!image || !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) { throw new CapacityError("setup_or_measurement", "arguments"); }
+  const { values, seen } = readPerformanceFlags(flags);
+  const output = values.get("--output");
+  const profile = seen.has("--profile");
+  const profileOnly = seen.has("--profile-only");
+  const databaseDiagnostics = seen.has("--database-diagnostics");
+  if (!output || output.includes("\0") || (profile && profileOnly) || (profileOnly && seen.has("--repetitions"))
     || (databaseDiagnostics && (profile || profileOnly))) {
     throw new CapacityError("setup_or_measurement", "arguments");
   }
-  return { image, output, repetitions, rounds, profile, profileOnly, databaseDiagnostics, scenarios };
+  return { image, output: resolve(output), repetitions: measurementCount(values.get("--repetitions"), 3, 10),
+    rounds: measurementCount(values.get("--rounds"), 10, 50), scenarios: selectedScenarios(values.get("--scenario")),
+    profile, profileOnly, databaseDiagnostics };
 };
 
 /** Nearest-rank percentiles retain actual observations; small tails remain

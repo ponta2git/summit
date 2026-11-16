@@ -107,6 +107,8 @@ const handleButton = async (
 export const handleInteraction = async (
   interaction: Interaction,
   deps: InteractionHandlerDeps,
+  // why: Module initialization completes before this function executes.
+  // skipcq: JS-0357
   registry: FeatureRegistry = defaultRegistry
 ): Promise<void> => {
   const readyState = deps.getReadyState?.() ?? { ready: true, reason: undefined };
@@ -134,10 +136,6 @@ export const handleInteraction = async (
   if (interaction.isButton()) {
     await interaction.deferUpdate();
     await handleButton(interaction, deps, registry);
-    return;
-  }
-
-  if (interaction.isAutocomplete()) {
     return;
   }
 };

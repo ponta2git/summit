@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultDeliveryRuntime } from "../../src/notifications/delivery/resultRuntime.ts";
 import { createResultDeliverySource, type ResultDeliverySource } from "../../src/notifications/delivery/sources/result.ts";
@@ -13,10 +13,10 @@ import { resultWorkerHarness } from "../scheduler/resultNotifications.harness.ts
 
 describe("result pump progress and observation", () => {
   let runtime: DeliveryRuntime | undefined;
-  const releases: Array<() => void> = [];
+  const releases: Array<() => void | Promise<void>> = [];
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(notificationNow); });
   afterEach(async () => {
-    runtime?.stop(); releases.splice(0).forEach(release => release());
+    runtime?.stop(); await Promise.all(releases.splice(0).map(async release => { await release(); }));
     await runtime?.drain(); runtime = undefined; vi.clearAllTimers(); vi.useRealTimers();
   });
   const source = (): ResultDeliverySource => ({ claim: () => Effect.succeed([]), nextDispatchAt: () => Effect.succeed(null),
@@ -25,8 +25,9 @@ describe("result pump progress and observation", () => {
   it("starts older fitting work despite a preferred large row and a never-settling retained SDK owner", async () => {
     const h = resultWorkerHarness(); await h.enqueueOcr(); const previous = await h.claim(); await h.deliver(previous);
     const selected = createResultDeliverySource(h.port, h.clock); selected.claimed(previous);
-    const held = deferred<void>(); releases.push(() => held.resolve());
-    void h.io.run({ id: "retained-sdk", payloadBytes: 200 * 1024 }, "send", 0, () => held.promise);
+    const held = deferred<void>();
+    const retained = h.io.run({ id: "retained-sdk", payloadBytes: 200 * 1024 }, "send", 0, () => held.promise);
+    releases.push(async () => { held.resolve(); await retained; });
     await vi.advanceTimersByTimeAsync(1);
     const older = await h.enqueueOcr("22222222-2222-4222-8222-222222222222");
     await vi.advanceTimersByTimeAsync(1);
@@ -43,8 +44,9 @@ describe("result pump progress and observation", () => {
 
   it("schedules an item that becomes due during dispatch lookup while an SDK owner remains retained", async () => {
     const h = resultWorkerHarness(); await h.enqueue("due", "short"); const entry = await h.claim();
-    const held = deferred<void>(); releases.push(() => held.resolve());
-    void h.io.run({ id: "retained", payloadBytes: 1 }, "send", 0, () => held.promise);
+    const held = deferred<void>();
+    const retained = h.io.run({ id: "retained", payloadBytes: 1 }, "send", 0, () => held.promise);
+    releases.push(async () => { held.resolve(); await retained; });
     const dueAt = new Date(notificationNow.getTime() + 10); const started: string[] = [];
     const claim = vi.fn<ResultDeliverySource["claim"]>().mockReturnValueOnce(Effect.succeed([]))
       .mockReturnValueOnce(Effect.succeed([entry])).mockReturnValue(Effect.succeed([]));
@@ -60,8 +62,9 @@ describe("result pump progress and observation", () => {
   });
 
   it("makes at most one extra claim for an over-budget item that crossed its due time", async () => {
-    const h = resultWorkerHarness(); const held = deferred<void>(); releases.push(() => held.resolve());
-    void h.io.run({ id: "retained", payloadBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - 1 }, "send", 0, () => held.promise);
+    const h = resultWorkerHarness(); const held = deferred<void>();
+    const retained = h.io.run({ id: "retained", payloadBytes: RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES - 1 }, "send", 0, () => held.promise);
+    releases.push(async () => { held.resolve(); await retained; });
     const dueAt = new Date(notificationNow.getTime() + 10);
     const claim = vi.fn<ResultDeliverySource["claim"]>().mockReturnValue(Effect.succeed([]));
     const next = vi.fn<ResultDeliverySource["nextDispatchAt"]>().mockImplementationOnce(() => Effect.sync(() => {

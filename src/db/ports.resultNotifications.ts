@@ -2,6 +2,7 @@ import type { DiscordNotificationReceipt, DiscordResultNotification } from "@mom
 import type { ResultNotificationKind } from "@momo/db";
 import type { NotificationStatus, ResultDeliveryError } from "../domain/notification.ts";
 import type { ClaimLease } from "../time/lease.ts";
+import type { NotificationClaimOptions } from "../domain/notificationClaim.ts";
 
 export interface ResultDeliveryContext {
   readonly webOrigin: string;
@@ -57,23 +58,22 @@ export type ResultNotificationAdmissionCheck = (payload: DiscordResultNotificati
 
 /** Application commands own receipt, cancellation, delivery and retry aggregates. */
 export interface ResultNotificationsPort {
-  receive(rawJson: string, now: Date): Promise<DiscordNotificationReceipt>;
+  receive(this: void, rawJson: string, now: Date): Promise<DiscordNotificationReceipt>;
   /** The caller subtracts active payloads from its budget and permits oversized history only while idle. */
-  claim(options: { readonly limit: number; readonly now: Date; readonly claimDurationMs: number; readonly excludeIds?: readonly string[];
-    readonly payloadBudgetBytes?: number; readonly allowOversizedPayload?: boolean; readonly preferredKind?: ResultNotificationKind }): Promise<readonly ClaimedResultNotification[]>;
-  plan(id: string, token: string, options: {
+  claim(this: void, options: NotificationClaimOptions): Promise<readonly ClaimedResultNotification[]>;
+  plan(this: void, id: string, token: string, options: {
     readonly count: number; readonly rendererVersion: number; readonly context: ResultDeliveryContext; readonly now: Date;
   }, remainingMs?: () => number): Promise<boolean>;
-  begin(id: string, partNo: number, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
-  complete(id: string, partNo: number, token: string, messageId: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  begin(this: void, id: string, partNo: number, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  complete(this: void, id: string, partNo: number, token: string, messageId: string, now: Date, remainingMs?: () => number): Promise<boolean>;
   /** Release only between completed parts when the other kind is due; a handoff does not consume a retry. */
-  yield(id: string, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
-  fail(id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date, remainingMs?: () => number): Promise<boolean>;
-  renew(id: string, token: string, now: Date, claimDurationMs: number, remainingMs?: () => number): Promise<ClaimLease | null>;
-  getNextDispatchAt(excludeIds?: readonly string[]): Promise<Date | null>;
-  inspect(id: string): Promise<ResultNotificationState | null>;
-  retry(id: string, now: Date): Promise<boolean>;
-  prune(now: Date): Promise<number>;
-  getSetting(kind: ResultNotificationKind): Promise<ResultNotificationSetting>;
-  setSetting(kind: ResultNotificationKind, enabled: boolean, now: Date): Promise<ResultNotificationSetting>;
+  yield(this: void, id: string, token: string, now: Date, remainingMs?: () => number): Promise<boolean>;
+  fail(this: void, id: string, token: string, error: ResultDeliveryError, nextAttemptAt: Date | null, now: Date, remainingMs?: () => number): Promise<boolean>;
+  renew(this: void, id: string, token: string, now: Date, claimDurationMs: number, remainingMs?: () => number): Promise<ClaimLease | null>;
+  getNextDispatchAt(this: void, excludeIds?: readonly string[]): Promise<Date | null>;
+  inspect(this: void, id: string): Promise<ResultNotificationState | null>;
+  retry(this: void, id: string, now: Date): Promise<boolean>;
+  prune(this: void, now: Date): Promise<number>;
+  getSetting(this: void, kind: ResultNotificationKind): Promise<ResultNotificationSetting>;
+  setSetting(this: void, kind: ResultNotificationKind, enabled: boolean, now: Date): Promise<ResultNotificationSetting>;
 }

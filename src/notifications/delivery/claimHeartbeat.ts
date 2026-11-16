@@ -1,7 +1,7 @@
-import * as Cause from "effect/Cause";
-import * as Deferred from "effect/Deferred";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Deferred from "effect/Deferred"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { settledCall } from "../../runtime/effect.ts";
 import type { Clock } from "../../time/index.ts";
 import { claimLeaseRemainingMs, monotonicNow, type ClaimLease } from "../../time/lease.ts";

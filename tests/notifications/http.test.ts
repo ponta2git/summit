@@ -91,4 +91,32 @@ describe("internal notification HTTP boundary", () => {
     expect(JSON.stringify(harness.logger.warn.mock.calls)).not.toContain("canary");
     expect(JSON.stringify(harness.logger.warn.mock.calls)).not.toContain(receiverToken);
   });
+
+  it("preserves committed receipts and wakes when diagnostic sinks throw", async () => {
+    harness = await createHttpHarness();
+    harness.logger.info.mockImplementation(() => { throw new Error("diagnostic sink unavailable"); });
+    harness.logger.warn.mockImplementation(() => { throw new Error("diagnostic sink unavailable"); });
+    const payload = ocrReceiptPayload();
+    const accepted = await post(payload);
+    expect(accepted.status).toBe(202);
+    expect(await accepted.json()).toEqual({ notificationId: payload.notificationId, disposition: "accepted", status: "PENDING" });
+    expect(harness.wake).toHaveBeenCalledExactlyOnceWith("receipt_committed");
+
+    harness.wake.mockImplementation(() => { throw new Error("wake unavailable"); });
+    const duplicate = await post(payload);
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toMatchObject({ disposition: "duplicate" });
+    expect(await harness.port.inspect(payload.notificationId)).toMatchObject({ status: "PENDING" });
+  });
+
+  it("still returns a bounded failure response when error diagnostics throw", async () => {
+    harness = await createHttpHarness();
+    // why: Inject a rejected Promise; use a synchronous fake only when testing synchronous failure.
+    // skipcq: JS-0116
+    harness.port.receive = async () => { throw new Error("database unavailable"); };
+    harness.logger.warn.mockImplementation(() => { throw new Error("diagnostic sink unavailable"); });
+    const response = await post(ocrReceiptPayload());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "unavailable" });
+  });
 });

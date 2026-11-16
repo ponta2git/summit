@@ -104,6 +104,8 @@ export const createResultIoLedger = (options: {
       if (!timer) { timer = setTimeout(monitor, NOTIFICATION_PENDING_WARN_AFTER_MS); timer.unref(); }
       let work: Promise<T>;
       try { work = Promise.resolve(call()); }
+      // why: SDK の同期 throw と非同期 reject を同じ値で伝播する。SDK 境界の error 契約を変更したら再評価する。
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors
       catch (error: unknown) { work = Promise.reject(error); }
       return work.then(value => { settle(entry, true); return value; }, error => { settle(entry, false); throw error; });
     }

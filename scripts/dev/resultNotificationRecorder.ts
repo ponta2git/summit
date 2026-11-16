@@ -2,8 +2,11 @@ import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import * as schema from "../../src/db/schema.ts";
+// why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+// skipcq: JS-E1007
+import * as schema from "../../src/db/schema.ts"; // skipcq: JS-C1003
 import { logger } from "../../src/logger.ts";
+import { reportSafely } from "../../src/runtime/diagnostics.ts";
 import { requireRecorderDatabase } from "./resultNotificationRecorder.config.ts";
 
 const database = requireRecorderDatabase(process.env["TEST_DATABASE_URL"]);
@@ -33,16 +36,21 @@ const runtime = createResultNotificationRecorder({
 });
 let closing: Promise<void> | undefined;
 let readyOwned = false;
-const close = (): Promise<void> => closing ??= (async () => {
-  const errors: unknown[] = [];
-  try { runtime.stop(); } catch (error) { errors.push(error); }
-  try { await runtime.drain(); } catch (error) { errors.push(error); }
-  const released = await Promise.allSettled([client.end({ timeout: 5 }), readyOwned ? rm(readyPath, { force: true }) : Promise.resolve()]);
-  for (const result of released) { if (result.status === "rejected") { errors.push(result.reason); } }
-  if (errors.length > 0) { throw new Error("Recorder resource cleanup failed."); }
-})();
+const close = (): Promise<void> => {
+  closing ??= (async () => {
+    const errors: unknown[] = [];
+    try { runtime.stop(); } catch (error) { errors.push(error); }
+    try { await runtime.drain(); } catch (error) { errors.push(error); }
+    const released = await Promise.allSettled([client.end({ timeout: 5 }), readyOwned ? rm(readyPath, { force: true }) : Promise.resolve()]);
+    for (const result of released) { if (result.status === "rejected") { errors.push(result.reason); } }
+    if (errors.length > 0) { throw new Error("Recorder resource cleanup failed."); }
+  })();
+  return closing;
+};
 const stop = (): void => { void close().then(() => { process.exitCode = 0; return undefined; }, () => {
-  logger.error({ event: "notification_recorder.cleanup_failed" }); process.exitCode = 1; return undefined;
+  process.exitCode = 1;
+  reportSafely(() => logger.error({ event: "notification_recorder.cleanup_failed" }));
+  return undefined;
 }); };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);

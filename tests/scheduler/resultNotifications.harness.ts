@@ -4,7 +4,7 @@ import { createFakeResultNotificationsPort } from "../testing/ports.resultNotifi
 import { analysisNotification, ocrNotification } from "../features/result-notifications/fixtures.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
 import { deliverPreparedResultNotification } from "../../src/notifications/delivery/resultDelivery.ts";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { deliverResumable } from "../../src/notifications/delivery/strategies/resumable.ts";
 import { runEffect } from "../helpers/assertions.ts";
 import { prepareResultDelivery } from "../../src/notifications/delivery/definitions/result.ts";

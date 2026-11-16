@@ -1,3 +1,4 @@
+import { assertNever } from "../util/assertNever.ts";
 import { z } from "zod";
 import { buildDiscordNotificationId, isNotificationSourceJobId, type DiscordResultNotification } from "@momo/db/notifications";
 import { isIsoDate, isUtcMillisecondTimestamp } from "../time/index.ts";
@@ -76,13 +77,15 @@ const rankComparison = z.object({
   delta: z.number().min(-3).max(3).nullable(),
   comparison: z.enum(["comparable", "initial", "empty", "incomparable", "reused"])
 }).refine(rank => {
-  switch (rank.comparison) {
+  const comparison = rank.comparison;
+  switch (comparison) {
     case "comparable": return rank.before !== null && rank.before.matchCount > 0 && rank.after.matchCount > 0 && rank.delta !== null;
     case "initial": return rank.before === null && rank.delta === null;
     case "empty":
     case "incomparable": return rank.delta === null;
     case "reused": return rank.before?.matchCount === rank.after.matchCount
       && rank.before.averageRank === rank.after.averageRank && (rank.delta === 0 || rank.after.matchCount === 0);
+    default: return assertNever(comparison, "rank comparison");
   }
 });
 const ranks = z.tuple([rankComparison, rankComparison, rankComparison, rankComparison])

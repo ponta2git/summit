@@ -20,6 +20,8 @@ const toLegacyDisplayNamePosition = (index: number): LegacyDisplayNamePosition =
   if (!(position in LEGACY_DISPLAY_NAME_BY_POSITION)) {
     throw new Error(`members must contain exactly ${MEMBER_COUNT_EXPECTED} entries.`);
   }
+  // invariant: the own fixed numeric map was checked above; TypeScript cannot narrow numeric keys.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return position as LegacyDisplayNamePosition;
 };
 

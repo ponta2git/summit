@@ -2,7 +2,7 @@
 // Each tick is wrapped by `runTickSafely` for failure isolation; literal schedules
 // live in src/config.ts (CRON_*). @see docs/architecture.md
 
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import cron, { type ScheduledTask } from "node-cron";
 import type { Client } from "discord.js";
 
@@ -23,6 +23,7 @@ import {
 import { evaluateAndApplyDeadlineDecision, settlePostponeVotingSession } from "../orchestration/index.ts";
 import { sendReminderForSession } from "../features/reminder/send.ts";
 import { logger } from "../logger.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 import { runOutboxMetricsTick } from "./outboxMetrics.ts";
 import { runOutboxRetentionTick } from "./outboxRetention.ts";
 import {
@@ -260,8 +261,8 @@ export const createAskScheduler = (deps: AskSchedulerDeps): AppScheduler => {
     for (const task of tasks) {
       void track(async () => {
         try { await task.stop(); }
-        catch (error: unknown) { logger.error({ error }, "Failed to stop cron task."); }
-      });
+        catch (error: unknown) { reportSafely(() => logger.error({ error }, "Failed to stop cron task.")); }
+      }).catch(() => reportSafely(() => logger.error({ event: "scheduler.stop_failed" })));
     }
   };
   try {
