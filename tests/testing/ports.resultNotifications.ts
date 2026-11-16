@@ -87,6 +87,8 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       const n = store(payload, canonical, now);
       return { notificationId: n.id, disposition: n.status === "CANCELLED" ? "cancelled" : "accepted", status: n.status };
     },
+    // why: Match the real Promise port, including rejection on invalid options; revisit if the port becomes synchronous.
+    // skipcq: JS-0116
     claim: async options => {
       options = { ...options, now: notificationCommandNow(clock, options.now) };
       recordCall(calls, "claim", options);

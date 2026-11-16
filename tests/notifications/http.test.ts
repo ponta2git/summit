@@ -111,6 +111,8 @@ describe("internal notification HTTP boundary", () => {
 
   it("still returns a bounded failure response when error diagnostics throw", async () => {
     harness = await createHttpHarness();
+    // why: Inject a rejected Promise; use a synchronous fake only when testing synchronous failure.
+    // skipcq: JS-0116
     harness.port.receive = async () => { throw new Error("database unavailable"); };
     harness.logger.warn.mockImplementation(() => { throw new Error("diagnostic sink unavailable"); });
     const response = await post(ocrReceiptPayload());
