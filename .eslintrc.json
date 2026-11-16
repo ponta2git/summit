@@ -1,20 +1,19 @@
 {
   "root": true,
+  "rules": {
+    "no-void": "off",
+    "require-await": "off",
+    "@typescript-eslint/require-await": "off",
+    "consistent-return": "off",
+    "@typescript-eslint/consistent-return": "off",
+    "@typescript-eslint/no-invalid-void-type": "off",
+    "id-length": "off"
+  },
   "overrides": [
     {
-      "files": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
-      "rules": {
-        "no-void": "off",
-        "require-await": "off",
-        "@typescript-eslint/require-await": "off",
-        "consistent-return": "off",
-        "@typescript-eslint/consistent-return": "off",
-        "@typescript-eslint/no-invalid-void-type": "off",
-        "id-length": "off"
-      }
-    },
-    {
-      "files": ["tests/**/*.ts"],
+      "files": [
+        "tests/**/*.ts"
+      ],
       "rules": {
         "@typescript-eslint/no-non-null-assertion": "off"
       }

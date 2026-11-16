@@ -101,11 +101,11 @@ DeepSource の重大度や件数は調査の入口とし、既存規約への一
 
 例外は問題のある規則と最小の対象範囲に限定し、理由・代替検証・撤去条件を code または本節へ残す。全件除外・重大度引下げ・空の catch で合格にせず、同じ誤検知が横断する場合は規則の適用範囲を設定で管理する。型や analyzer の更新、対象 API / module の変更、代替検証の失敗で再評価する。DeepSource の抑制方式は [公式仕様](https://docs.deepsource.com/docs/platform/dashboard/repository/issues)を使い、抑制後も別規則の検査対象は維持する。
 
-DeepSource が ESLint 設定の明示的な無効化を読む[公式連携](https://docs.deepsource.com/docs/platform/reference/core-analyzers#eslint-rules--plugins)を使い、[`.eslintrc.json`](../.eslintrc.json)を解析間の調整に限定する。通常の lint command と規則の正本は引き続き [`.oxlintrc.json`](../.oxlintrc.json)。ESLint の別実行系・推奨設定・file 除外は追加しない。設定の読み込みと対応規則の反映は対象 commit の DeepSource 再解析で確認し、ローカル lint の合格をその代わりにしない。
+DeepSource が ESLint 設定の明示的な無効化を読む[公式連携](https://docs.deepsource.com/docs/platform/reference/core-analyzers#eslint-rules--plugins)を使い、[`.eslintrc.json`](../.eslintrc.json)を解析間の調整に限定する。通常の lint command と規則の正本は引き続き [`.oxlintrc.json`](../.oxlintrc.json)。ESLint の別実行系・推奨設定・file 除外は追加しない。共通の規則は root の `rules`、test 固有の例外は `overrides` に分ける。source は TypeScript に統一し、別言語の source を追加する際は委譲先の型検査と適用範囲を再評価する。設定の読み込みと対応規則の反映は対象 commit の DeepSource 再解析で確認し、ローカル lint の合格をその代わりにしない。
 
 | ESLint 連携の範囲 | 委譲する規則 | 残す検証 |
 |---|---|---|
-| `src`・`scripts`・`tests` の TypeScript | `no-void` | 型情報を使う `no-floating-promises` (`ignoreVoid: false`)・`no-misused-promises`、owner の rejection / settlement test |
+| repository の TypeScript | `no-void` | 型情報を使う `no-floating-promises` (`ignoreVoid: false`)・`no-misused-promises`、owner の rejection / settlement test |
 | 同上 | `require-await` と TypeScript 版、`consistent-return` と TypeScript 版、`no-invalid-void-type` | Promise / Effect の明示した戻り型、strict typecheck・`noImplicitReturns`、同期 throw・非同期 reject の境界 test。`void` の generic / `this` / cleanup union と意図した Promise interface を保持する |
 | 同上 | `id-length` | [命名規約](./dev-rule.md#5-naming)と責務の review。文字数だけで `db`・`tx`・`ctx` 等の意味を変えない |
 | `tests/**/*.ts` | TypeScript の `no-non-null-assertion` | fixture の成立条件と拒否経路の test。production の同規則は oxlint で error のまま維持 |

@@ -200,8 +200,8 @@ export const createSchedulerController = (
     }, delay);
   };
 
-  const recompute = async (reason: string): Promise<void> => {
-    if (stopped) {return;}
+  const recompute = (reason: string): Promise<void> => {
+    if (stopped) { return Promise.resolve(); }
     if (recomputeInFlight) {
       recomputeQueued = true;
       return recomputeInFlight;
