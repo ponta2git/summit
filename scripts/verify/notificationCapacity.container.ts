@@ -12,7 +12,7 @@ const execute = promisify(execFile);
 const docker = async (args: readonly string[]): Promise<string> =>
   (await execute("docker", [...args], { timeout: 10_000, maxBuffer: 64 * 1024 })).stdout.trim();
 
-export const withCapacityContainer = async <T>(options: {
+interface CapacityContainerOptions {
   readonly image: string;
   readonly memoryMiB: number;
   readonly databaseUrl: string;
@@ -24,12 +24,61 @@ export const withCapacityContainer = async <T>(options: {
   readonly deadlineMs?: number;
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
-}, run: (session: CapacitySession) => Promise<T>): Promise<T> => {
+}
+
+const assertContainerOptions = (options: CapacityContainerOptions): void => {
   if ((options.cpus !== undefined && (!Number.isFinite(options.cpus) || options.cpus <= 0 || options.cpus > 64))
     || (options.deadlineMs !== undefined && (!Number.isSafeInteger(options.deadlineMs) || options.deadlineMs < 1 || options.deadlineMs > 3_600_000))
     || Object.entries(options.env ?? {}).some(([key, value]) => !/^PERF_[A-Z0-9_]+$/.test(key) || value.includes("\0") || value.length > 128)) {
     throw new CapacityError("setup_or_measurement", "container_options");
   }
+};
+
+/** Keep the isolated Docker launch configuration separate from process ownership. */
+const containerLaunch = (options: CapacityContainerOptions, name: string, token: string) => {
+  const url = new URL(options.databaseUrl);
+  url.hostname = "host.docker.internal";
+  return {
+    args: ["run", "--pull=never", "--name", name, "--read-only", "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges", "--memory", `${options.memoryMiB}m`, "--memory-swap", `${options.memoryMiB}m`,
+      ...(options.cpus === undefined ? [] : ["--cpus", String(options.cpus)]),
+      ...(process.platform === "linux" ? ["--add-host", "host.docker.internal=host-gateway"] : []),
+      "--publish", "127.0.0.1::8000", "--publish", "127.0.0.1::8001", "--env", "TZ=Asia/Tokyo",
+      "--env", "DISCORD_TOKEN=offline-capacity-token", "--env", "DATABASE_URL", "--env", "SUMMIT_CONFIG_YAML",
+      "--env", "PROBE_TOKEN", "--env", "RESULT_NOTIFICATION_TOKEN", "--env", "RESULT_NOTIFICATION_OPERATIONS_TOKEN",
+      "--env", "RESULT_NOTIFICATION_WEB_ORIGIN=https://results.example.com",
+      ...Object.keys(options.env ?? {}).flatMap(key => ["--env", key]),
+      "--entrypoint", "node", "-i", options.image, "--expose-gc", "--input-type=module", "-"],
+    env: { ...process.env, DATABASE_URL: url.href, SUMMIT_CONFIG_YAML: options.configuration, PROBE_TOKEN: token,
+      RESULT_NOTIFICATION_TOKEN: token, RESULT_NOTIFICATION_OPERATIONS_TOKEN: randomUUID() + randomUUID(), ...options.env }
+  };
+};
+
+const dockerReportsOom = (state: string): boolean => {
+  try {
+    const parsed = z.object({ OOMKilled: z.boolean() }).safeParse(JSON.parse(state));
+    return parsed.success && parsed.data.OOMKilled;
+  } catch { return false; }
+};
+
+/** Preserve failure precedence and redact arbitrary driver/assertion values. */
+const containerFailure = (error: unknown, oom: boolean, timedOut: boolean, signal?: AbortSignal): CapacityError => {
+  if (!oom && signal?.aborted) {
+    return signal.reason instanceof CapacityError ? signal.reason : new CapacityError("setup_or_measurement", "interrupted");
+  }
+  if (!oom && !timedOut && error instanceof CapacityError) { return error; }
+  const detail = error instanceof CapacityError ? error.detail : error instanceof AssertionError
+    ? `assert_${error.operator}_${typeof error.actual === "number" ? error.actual : "value"}_${typeof error.expected === "number" ? error.expected : "value"}`
+    : undefined;
+  return new CapacityError(oom ? "oom" : timedOut ? "timeout"
+    : error instanceof CapacityError ? error.code : "setup_or_measurement", detail);
+};
+
+export const withCapacityContainer = async <T>(
+  options: CapacityContainerOptions,
+  run: (session: CapacitySession) => Promise<T>
+): Promise<T> => {
+  assertContainerOptions(options);
   const name = `summit-capacity-check-${randomUUID()}`;
   const token = randomUUID() + randomUUID();
   const deadline = new AbortController();
@@ -43,22 +92,8 @@ export const withCapacityContainer = async <T>(options: {
     deadline.signal.throwIfAborted();
     await docker(["image", "inspect", "--format", "{{.Id}}", options.image]);
     deadline.signal.throwIfAborted();
-    const url = new URL(options.databaseUrl);
-    url.hostname = "host.docker.internal";
-    const child = spawn("docker", ["run", "--pull=never", "--name", name, "--read-only", "--cap-drop", "ALL",
-      "--security-opt", "no-new-privileges", "--memory", `${options.memoryMiB}m`, "--memory-swap", `${options.memoryMiB}m`,
-      ...(options.cpus === undefined ? [] : ["--cpus", String(options.cpus)]),
-      ...(process.platform === "linux" ? ["--add-host", "host.docker.internal=host-gateway"] : []),
-      "--publish", "127.0.0.1::8000", "--publish", "127.0.0.1::8001", "--env", "TZ=Asia/Tokyo",
-      "--env", "DISCORD_TOKEN=offline-capacity-token", "--env", "DATABASE_URL", "--env", "SUMMIT_CONFIG_YAML",
-      "--env", "PROBE_TOKEN", "--env", "RESULT_NOTIFICATION_TOKEN", "--env", "RESULT_NOTIFICATION_OPERATIONS_TOKEN",
-      "--env", "RESULT_NOTIFICATION_WEB_ORIGIN=https://results.example.com",
-      ...Object.keys(options.env ?? {}).flatMap(key => ["--env", key]),
-      "--entrypoint", "node", "-i", options.image, "--expose-gc", "--input-type=module", "-"], {
-      stdio: ["pipe", "pipe", "pipe"], signal: deadline.signal, env: { ...process.env,
-        DATABASE_URL: url.href, SUMMIT_CONFIG_YAML: options.configuration, PROBE_TOKEN: token,
-        RESULT_NOTIFICATION_TOKEN: token, RESULT_NOTIFICATION_OPERATIONS_TOKEN: randomUUID() + randomUUID(), ...options.env }
-    });
+    const launch = containerLaunch(options, name, token);
+    const child = spawn("docker", launch.args, { stdio: ["pipe", "pipe", "pipe"], signal: deadline.signal, env: launch.env });
     started = true;
     // Never print child errors: driver errors can include configuration/payloads.
     let tail = "";
@@ -92,20 +127,7 @@ export const withCapacityContainer = async <T>(options: {
     return value;
   } catch (error) {
     const state = started ? await docker(["inspect", "--format", "{{json .State}}", name]).catch(() => "null") : "null";
-    let oom = heapOutOfMemory;
-    try {
-      const parsed = z.object({ OOMKilled: z.boolean() }).safeParse(JSON.parse(state));
-      oom ||= parsed.success && parsed.data.OOMKilled;
-    } catch { /* Malformed Docker output is a measurement failure. */ }
-    if (!oom && options.signal?.aborted) {
-      throw options.signal.reason instanceof CapacityError ? options.signal.reason : new CapacityError("setup_or_measurement", "interrupted");
-    }
-    if (!oom && !deadline.signal.aborted && error instanceof CapacityError) { throw error; }
-    const detail = error instanceof CapacityError ? error.detail : error instanceof AssertionError
-      ? `assert_${error.operator}_${typeof error.actual === "number" ? error.actual : "value"}_${typeof error.expected === "number" ? error.expected : "value"}`
-      : undefined;
-    throw new CapacityError(oom ? "oom" : deadline.signal.aborted ? "timeout"
-      : error instanceof CapacityError ? error.code : "setup_or_measurement", detail);
+    throw containerFailure(error, heapOutOfMemory || dockerReportsOom(state), deadline.signal.aborted, options.signal);
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", interrupt);

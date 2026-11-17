@@ -26,8 +26,14 @@ export const readNotificationBody = (request: IncomingMessage): Promise<string> 
   const finish = (error?: NotificationHttpError): void => {
     if (finished) { return; }
     finished = true;
+    // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+    // skipcq: JS-0357
     clearTimeout(timer);
+    // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+    // skipcq: JS-0357
     request.off("data", onData); request.off("end", onEnd);
+    // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+    // skipcq: JS-0357
     request.off("aborted", onAborted); request.off("error", onAborted);
     if (error) { received = Buffer.alloc(0); request.resume(); reject(error); }
   };

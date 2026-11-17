@@ -1,3 +1,4 @@
+import { assertNever } from "../util/assertNever.ts";
 import { z } from "zod";
 import { buildDiscordNotificationId, isNotificationSourceJobId, type DiscordResultNotification } from "@momo/db/notifications";
 import { isIsoDate, isUtcMillisecondTimestamp } from "../time/index.ts";
@@ -76,13 +77,15 @@ const rankComparison = z.object({
   delta: z.number().min(-3).max(3).nullable(),
   comparison: z.enum(["comparable", "initial", "empty", "incomparable", "reused"])
 }).refine(rank => {
-  switch (rank.comparison) {
+  const comparison = rank.comparison;
+  switch (comparison) {
     case "comparable": return rank.before !== null && rank.before.matchCount > 0 && rank.after.matchCount > 0 && rank.delta !== null;
     case "initial": return rank.before === null && rank.delta === null;
     case "empty":
     case "incomparable": return rank.delta === null;
     case "reused": return rank.before?.matchCount === rank.after.matchCount
       && rank.before.averageRank === rank.after.averageRank && (rank.delta === 0 || rank.after.matchCount === 0);
+    default: return assertNever(comparison, "rank comparison");
   }
 });
 const ranks = z.tuple([rankComparison, rankComparison, rankComparison, rankComparison])
@@ -98,9 +101,9 @@ const match = z.object({
   matchId: id, sourceRevision: decimal, heldEventId: id, heldDateIso: date, matchNoInEvent: z.number().int().positive(),
   playedAt: timestamp, mapName: z.string(), seasonId: id, seasonName: z.string(), ownerName: z.string(),
   players: z.tuple([player, player, player, player]), ginjiTotal: integer, note: z.string().nullable()
-}).refine(value => new Set(value.players.map(p => p.memberId)).size === 4
-  && new Set(value.players.map(p => p.rank)).size === 4
-  && value.ginjiTotal === value.players.reduce((total, p) => total + p.ginjiCount, 0));
+}).refine(value => new Set(value.players.map(resultPlayer => resultPlayer.memberId)).size === 4
+  && new Set(value.players.map(resultPlayer => resultPlayer.rank)).size === 4
+  && value.ginjiTotal === value.players.reduce((total, resultPlayer) => total + resultPlayer.ginjiCount, 0));
 const envelope = {
   ...identitySchema.shape, occurredAt: timestamp, settingsGeneration: decimal
 };
@@ -129,7 +132,7 @@ const analysisSchema = z.object({ ...envelope, schemaVersion: z.literal(1), kind
   gameTitleId: id, gameTitleName: z.string(), disposition: z.enum(["published", "reused"]),
   previousAnalysis: analysisIdentity.nullable(), currentAnalysis: analysisIdentity,
   matches: collection(match), overall: ranks, seasons: collection(z.object({ seasonId: id, seasonName: z.string(), ranks }))
-}).refine(value => new Set(value.matches.map(m => m.matchId)).size === value.matches.length
+}).refine(value => new Set(value.matches.map(resultMatch => resultMatch.matchId)).size === value.matches.length
   && new Set(value.seasons.map(season => season.seasonId)).size === value.seasons.length
   && (value.disposition !== "reused" || JSON.stringify(value.previousAnalysis) === JSON.stringify(value.currentAnalysis))) }).strict();
 const notificationSchema = z.discriminatedUnion("kind", [ocrSchema, analysisSchema]);

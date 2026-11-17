@@ -1,3 +1,4 @@
+import { runLocalCommand } from "./runLocalCommand.ts";
 // why: 開発中の実 Discord + ローカル Postgres 手動テスト用 CLI。本番 DB では一切動作しない。
 //   業務仕様の週次 cron (金 21:30 / 土 00:00) を待たず、DB を直接操作して締切を巻き戻し、
 //   bot 再起動時の startup recovery 経由で settle を発火させる。
@@ -36,25 +37,25 @@ const cmdStatus = async (): Promise<void> => {
     console.log("(no sessions)");
     return;
   }
-  for (const s of all) {
-    const rs = await db
+  for (const session of all) {
+    const sessionResponses = await db
       .select(responseColumns(await identityLayout(db)))
       .from(responses)
-      .where(eq(responses.sessionId, nativeId(await identityLayout(db), sessions, s.id)));
+      .where(eq(responses.sessionId, nativeId(await identityLayout(db), sessions, session.id)));
     console.log(
-      `${s.createdAt.toISOString()}  ${s.status.padEnd(16)} ` +
-        `week=${s.weekKey} postponeCount=${s.postponeCount} ` +
-        `candidate=${s.candidateDateIso} deadline=${s.deadlineAt.toISOString()} ` +
-        `id=${s.id}`
+      `${session.createdAt.toISOString()}  ${session.status.padEnd(16)} ` +
+        `week=${session.weekKey} postponeCount=${session.postponeCount} ` +
+        `candidate=${session.candidateDateIso} deadline=${session.deadlineAt.toISOString()} ` +
+        `id=${session.id}`
     );
-    if (s.cancelReason) {
-      console.log(`    cancelReason: ${s.cancelReason}`);
+    if (session.cancelReason) {
+      console.log(`    cancelReason: ${session.cancelReason}`);
     }
-    if (s.decidedStartAt) {
-      console.log(`    decidedStartAt: ${s.decidedStartAt.toISOString()}`);
+    if (session.decidedStartAt) {
+      console.log(`    decidedStartAt: ${session.decidedStartAt.toISOString()}`);
     }
-    for (const r of rs) {
-      console.log(`    - member=${r.memberId} choice=${r.choice}`);
+    for (const response of sessionResponses) {
+      console.log(`    - member=${response.memberId} choice=${response.choice}`);
     }
   }
 };
@@ -147,11 +148,7 @@ const run = async (): Promise<void> => {
   }
 };
 
-void run()
-  .catch((error: unknown) => {
-    logger.error({ error }, "Dev scenario failed.");
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closeDb();
-  });
+await runLocalCommand(run, closeDb, error => {
+  process.exitCode = 1;
+  logger.error({ error }, "Dev scenario failed.");
+});

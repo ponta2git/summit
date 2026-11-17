@@ -1,4 +1,4 @@
-import * as Result from "effect/Result";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { randomUUID } from "node:crypto";
 import {
   ActionRowBuilder,

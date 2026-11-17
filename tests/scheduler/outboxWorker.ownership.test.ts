@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OUTBOX_CLAIM_DURATION_MS, OUTBOX_HEARTBEAT_MS } from "../../src/config.ts";
 import { runOutboxWorkerTick } from "../../src/notifications/delivery/composition.attendance.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
@@ -24,7 +24,7 @@ describe("outbox delivery ownership", () => {
 
   it("renews slow sends through their final commit and prevents an expired-claim replay", async () => {
     const { context, channel } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>();
     channel.send.mockImplementationOnce(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     const tick = runEffect(runOutboxWorkerTick(stubClient(channel), context));
     try {
@@ -43,7 +43,7 @@ describe("outbox delivery ownership", () => {
 
   it.each(["render", "channel", "begin"] as const)("does not send when ownership is lost during %s", async phase => {
     const { context, channel } = await createWorker();
-    const entered = deferred<void>(); const released = deferred<void>();
+    const entered = deferredSignal(); const released = deferredSignal();
     const pause = async <T>(value: T): Promise<T> => { entered.resolve(); await released.promise; return value; };
     if (phase === "render") {
       const find = context.ports.sessions.findSessionById;
@@ -65,7 +65,7 @@ describe("outbox delivery ownership", () => {
 
   it("records a send already started before a synchronous renewal failure", async () => {
     const { context, channel } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>();
     channel.send.mockImplementationOnce(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     context.ports.outbox.renewClaim = () => { throw new Error("renewal unavailable"); };
     const tick = runEffect(runOutboxWorkerTick(stubClient(channel), context));
@@ -77,7 +77,7 @@ describe("outbox delivery ownership", () => {
 
   it("retains a pending renewal after delivery finishes until that database operation settles", async () => {
     const { context, channel } = await createWorker();
-    const sending = deferred<void>(); const sent = deferred<{ id: string }>(); const renewed = deferred<ClaimLease | null>();
+    const sending = deferredSignal(); const sent = deferred<{ id: string }>(); const renewed = deferred<ClaimLease | null>();
     channel.send.mockImplementationOnce(async payload => { sending.resolve(); return { ...await sent.promise, payload }; });
     context.ports.outbox.renewClaim = vi.fn(() => renewed.promise);
     let finished = false;

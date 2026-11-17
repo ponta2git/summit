@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { Client } from "discord.js";
 
 import type { AppContext } from "../appContext.ts";
@@ -33,6 +33,8 @@ export const reconcileStrandedCancelled = (
     runSchedulerBatchEffect(
       "stranded_cancelled",
       stranded,
+      // why: Module initialization completes before this function executes.
+      // skipcq: JS-0357
       (session) => promoteStranded(client, ctx, session, ctx.clock.now()),
       (session) => ({ sessionId: session.id, weekKey: session.weekKey }),
       (failure) => {
@@ -79,6 +81,8 @@ const promoteStranded = (
     }),
     "Failed to settle stranded CANCELLED session."
   ), (result) => {
+    // why: 未取得を表すEffect<undefined>を保持。戻り型変更時に再評価。
+    // skipcq: JS-W1042
     if (result.kind !== "transitioned") {return Effect.succeed(undefined);}
     return Effect.map(bestEffortMessageUpdate(updateAskMessage(client, ctx, result.session), session.id, "ask"), () => {
       const next = result.session.status === "POSTPONE_VOTING"

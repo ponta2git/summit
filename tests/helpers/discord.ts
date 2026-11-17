@@ -12,13 +12,13 @@ type SendImpl = (payload: unknown) => Promise<SendResult>;
 type EditImpl = (payload: unknown) => Promise<unknown>;
 
 export const asDiscordClient = (client: unknown): Client =>
-  client as unknown as Client;
+  client as Client;
 
 export const asDiscordMessage = (message: unknown): Message =>
-  message as unknown as Message;
+  message as Message;
 
 export const asTextChannel = (channel: unknown): TextChannel =>
-  channel as unknown as TextChannel;
+  channel as TextChannel;
 
 export const createEditableMessage = (
   id: string,

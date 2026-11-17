@@ -1,4 +1,5 @@
 import { logger } from "../logger.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 
 type BootPhase = "boot_start" | "db_connect" | "reconcile" | "login" | "ready";
 
@@ -7,7 +8,7 @@ export const createBootPhaseLogger = (
   bootStartedAt: number
 ): ((phase: BootPhase, extra?: Record<string, unknown>) => void) =>
   (phase, extra = {}) => {
-    logger.info(
+    reportSafely(() => logger.info(
       {
         event: "boot.phase",
         phase,
@@ -16,5 +17,5 @@ export const createBootPhaseLogger = (
         ...extra
       },
       `Boot phase: ${phase}.`
-    );
+    ));
   };

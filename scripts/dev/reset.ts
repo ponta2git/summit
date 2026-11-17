@@ -1,3 +1,4 @@
+import { runLocalCommand } from "./runLocalCommand.ts";
 // why: 開発中の挙動確認で sessions / responses を空にしてやり直したいケースが頻出する。
 //   手で docker exec して TRUNCATE するのは事故の温床になるため、localhost 限定のガード付き
 //   スクリプトとして集約する。本番 (Neon) の DATABASE_URL では絶対に動かない。
@@ -45,11 +46,7 @@ const run = async (): Promise<void> => {
   );
 };
 
-void run()
-  .catch((error: unknown) => {
-    logger.error({ error }, "Dev reset failed.");
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closeDb();
-  });
+await runLocalCommand(run, closeDb, error => {
+  process.exitCode = 1;
+  logger.error({ error }, "Dev reset failed.");
+});

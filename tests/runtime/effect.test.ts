@@ -1,16 +1,16 @@
 import { setImmediate } from "node:timers/promises";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Result from "effect/Result";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
+import * as Fiber from "effect/Fiber"; // skipcq: JS-C1003
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 import { DatabaseError, InvariantViolationError } from "../../src/errors/index.ts";
 import { serializeLogError } from "../../src/logger.error.ts";
 import {
   catchExpectedError, promiseCall, runPromiseBoundary, runPromiseResultBoundary, settledCall
 } from "../../src/runtime/effect.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 
 describe("Effect / Promise boundary", () => {
   it("starts foreign I/O lazily and preserves synchronous and asynchronous failures", async () => {
@@ -91,8 +91,8 @@ describe("Effect / Promise boundary", () => {
   it("keeps parallel I/O owned after one call fails until its uncancellable sibling settles", async () => {
     const failed = deferred<never>();
     const blocked = deferred<number>();
-    const siblingStarted = deferred<void>();
-    const failureObserved = deferred<void>();
+    const siblingStarted = deferredSignal();
+    const failureObserved = deferredSignal();
     const failure = new DatabaseError("query failed");
     let finished = false;
     const pending = runPromiseBoundary(Effect.all([
@@ -112,8 +112,8 @@ describe("Effect / Promise boundary", () => {
   });
 
   it("does not release an interrupted owner's resource before a non-cancellable write settles", async () => {
-    const started = deferred<void>();
-    const write = deferred<void>();
+    const started = deferredSignal();
+    const write = deferredSignal();
     const events: string[] = [];
     const fiber = Effect.runFork(settledCall(async () => {
       started.resolve();

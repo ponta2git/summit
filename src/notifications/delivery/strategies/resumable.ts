@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 /** Stable ordered parts and sorted, unique delivered numbers from the persisted plan. */
 export interface ResumableDelivery<Part, E> {
@@ -19,9 +19,7 @@ export interface ResumableDelivery<Part, E> {
  * message even after stop. begin/complete false ends ownership; yield only after complete.
  * Preserve typed failures and defects. I/O adapters own actual settlement and send timeouts.
  */
-export interface ResumableStrategy {
-  <Part, E>(delivery: ResumableDelivery<Part, E>): Effect.Effect<void, E>;
-}
+export type ResumableStrategy = <Part, E>(delivery: ResumableDelivery<Part, E>) => Effect.Effect<void, E>;
 
 /** Resume missing parts in order and hand off ownership only after a completed part. */
 export const deliverResumable: ResumableStrategy = <Part, E>(delivery: ResumableDelivery<Part, E>): Effect.Effect<void, E> =>

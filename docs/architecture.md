@@ -174,6 +174,8 @@ YAML は Bot と同期 CLI の共通 [parser](../src/userConfig.yaml.ts) で byt
 
 log は pino の JSON stdout に統一する。外部 error の message / stack / URL / body / SQL bind をそのまま渡さず、固定の診断文、code / status、上限のある cause 分類へ変換する。AppError の内部 cause 保持と log への出力は区別する。DB に保存する failure reason も同じ扱いにする。key redact は追加防御であり、未加工 payload を出力する根拠にはしない。
 
+診断先の例外は、commit 済みの受付結果、scheduler の起動・回復、startup / shutdown の資源所有を変えない。[診断境界](../src/runtime/diagnostics.ts)で隔離し、故障した同じ logger へ再報告しない。設定不備で即時終了する bootstrap の stderr は同期書込で出力を完了させ、診断失敗時も fail-fast を維持する。
+
 Discord rate limit は route template と待ち時間を記録し、token や major parameter を除く。機密 URL も秘匿対象とし、redact path を狭める変更は review する。外部 healthcheck ping は追加せず、log / status の観測を使う。
 
 ## 8. 設計を再評価する条件

@@ -7,7 +7,7 @@ import { appConfig } from "../../../src/userConfig.js";
 import type { AppContext } from "../../../src/appContext.js";
 import type { InteractionHandlerDeps } from "../../../src/discord/shared/interactionHandlerDeps.js";
 import { callArg } from "../../helpers/assertions.js";
-import { deferred } from "../../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../../helpers/deferred.ts";
 import { createClientWithChannel } from "../../helpers/discord.js";
 import { asChatInputCommandInteraction } from "../../helpers/interaction.js";
 import { memberUserId } from "../../helpers/env.js";
@@ -36,6 +36,8 @@ const STATUS_NOW = new Date("2026-04-25T12:30:00.000Z");
 
 const buildDeps = (context: AppContext): InteractionHandlerDeps => ({
   context,
+  // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+  // skipcq: JS-W1042
   client: createClientWithChannel(undefined),
   sendAsk: vi.fn(async () => ({ status: "skipped" as const, weekKey: "2026-W17", reason: "duplicate" as const }))
 });
@@ -106,7 +108,7 @@ describe("handleStatusCommand", () => {
     expect(interaction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("メンバー")
     );
-    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
+    expect(ctx.ports.status.calls.some((portCall) => portCall.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it.each([
@@ -131,7 +133,7 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongChannel);
-    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
+    expect(ctx.ports.status.calls.some((portCall) => portCall.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it("rejects a wrong guild interaction ephemerally", async () => {
@@ -141,7 +143,7 @@ describe("handleStatusCommand", () => {
     await handleStatus(interaction, ctx);
 
     expect(interaction.editReply).toHaveBeenCalledWith(rejectMessages.reject.wrongGuild);
-    expect(ctx.ports.status.calls.some((c) => c.name === "loadCurrentWeekSnapshot")).toBe(false);
+    expect(ctx.ports.status.calls.some((portCall) => portCall.name === "loadCurrentWeekSnapshot")).toBe(false);
   });
 
   it.each(["throw", "reject"])("returns an internal error message on a DB %s", async mode => {
@@ -162,7 +164,7 @@ describe("handleStatusCommand", () => {
 
   it("keeps failed status reads in flight until their parallel outbox query settles", async () => {
     const ctx = createTestAppContext(); const interaction = buildInteraction();
-    const snapshot = deferred<never>(); const outbox = deferred<never[]>(); const started = deferred<void>();
+    const snapshot = deferred<never>(); const outbox = deferred<never[]>(); const started = deferredSignal();
     ctx.ports.status.loadCurrentWeekSnapshot = () => snapshot.promise;
     ctx.ports.outbox.findStranded = () => { started.resolve(); return outbox.promise; };
     const pending = handleStatus(interaction, ctx);

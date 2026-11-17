@@ -6,6 +6,7 @@ import { discordNotifications as notifications, discordNotificationParts as part
 import type { Clock } from "../../time/index.ts";
 import { observeClaimLease, type ClaimLease } from "../../time/lease.ts";
 import { afterDeliveryFailure } from "../../domain/notification.ts";
+import { assertNotificationClaimOptions, notificationPayloadFitsClaim, type NotificationClaimOptions } from "../../domain/notificationClaim.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES } from "../../notifications/config.ts";
 import {
   cancelLockedNotifications, cancelNotification, loadResultCancellationReason, type NotificationDb,
@@ -59,16 +60,6 @@ export const releaseExpiredNotificationClaims = async (
   return rows.length;
 };
 
-interface NotificationClaimOptions {
-  readonly limit: number;
-  readonly now: Date;
-  readonly claimDurationMs: number;
-  readonly excludeIds?: readonly string[];
-  readonly payloadBudgetBytes?: number;
-  readonly allowOversizedPayload?: boolean;
-  readonly preferredKind?: ResultNotificationKind;
-}
-
 /** Keep family-specific eligibility, ordering and parent locking in the candidate query. */
 const selectClaimCandidates = (
   tx: NotificationDb, family: NotificationFamily, due: SQL | undefined, limit: number, preferredKind?: ResultNotificationKind
@@ -93,14 +84,13 @@ const selectClaimCandidates = (
     .limit(limit).for("update", { of: notifications, skipLocked: true });
 };
 
+// why: Keep locking, cancellation, byte reservation and the lease transition in one transaction owner.
+// Claim/fairness contracts run against the real DB; reconsider this boundary when candidate scheduling changes.
+// skipcq: JS-R1005
 export const claimNotifications = async (
   tx: NotificationDb, family: NotificationFamily, options: NotificationClaimOptions, clock: Clock
 ): Promise<readonly { readonly id: string; readonly lease: ClaimLease }[]> => {
-  if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
-    || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000
-    || (options.payloadBudgetBytes !== undefined && (!Number.isSafeInteger(options.payloadBudgetBytes) || options.payloadBudgetBytes < 0))) {
-    throw new Error("Invalid notification claim options");
-  }
+  assertNotificationClaimOptions(options);
   await releaseExpiredNotificationClaims(tx, family, options.now);
   const due = and(eq(notifications.family, family), family === "result" ? supportedResultNotification() : undefined, eq(notifications.status, "PENDING"),
     lte(notifications.nextAttemptAt, options.now), isNull(notifications.purgedAt),
@@ -119,8 +109,8 @@ export const claimNotifications = async (
       && oldest.payloadBytes <= payloadBudget - claimedBytes) {
       const preferred = await selectClaimCandidates(tx, family, due, 1, preferredKind);
       const candidate = preferred[0];
-      if (candidate && (candidate.payloadBytes <= payloadBudget - claimedBytes
-        || (claimed.length === 0 && (options.allowOversizedPayload ?? true)))) { rows = preferred; }
+      if (candidate && notificationPayloadFitsClaim(candidate.payloadBytes, payloadBudget - claimedBytes,
+        claimed.length, options.allowOversizedPayload)) { rows = preferred; }
     }
     if (rows.length === 0) { break; }
     scanned += rows.length;
@@ -135,8 +125,8 @@ export const claimNotifications = async (
         if (reason) { await cancelNotification(tx, row.id, reason, options.now); continue; }
         // Keep the payload in PostgreSQL until its bytes are reserved. Do not
         // overtake a large older item: active deliveries drain so it can run alone.
-        if (row.payloadBytes > payloadBudget - claimedBytes
-          && !(claimed.length === 0 && (options.allowOversizedPayload ?? true))) { return claimed; }
+        if (!notificationPayloadFitsClaim(row.payloadBytes, payloadBudget - claimedBytes,
+          claimed.length, options.allowOversizedPayload)) { return claimed; }
       }
       const lease = observeClaimLease(clock, options.now, options.claimDurationMs);
       const [updated] = await tx.update(notifications).set({

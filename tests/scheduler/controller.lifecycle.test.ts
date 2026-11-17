@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { setImmediate } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSchedulerController } from "../../src/scheduler/controller.ts";
@@ -7,11 +7,13 @@ import { OUTBOX_WORKER_BATCH_LIMIT, SCHEDULER_MIN_TIMER_DELAY_MS, SCHEDULER_WAKE
 import { DatabaseError } from "../../src/errors/index.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import { stubChannel, stubClient } from "./outboxWorker.harness.ts";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-const okTask = (): SchedulerEffect<void> => Effect.succeed(undefined);
+const okTask = (): SchedulerEffect<void> => Effect.void;
+// why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+// skipcq: JS-W1042
 const options = (context: ReturnType<typeof createTestAppContext>) => ({ client: stubClient(undefined), context, logger,
   runDeadlineTick: vi.fn(okTask), runPostponeDeadlineTick: vi.fn(okTask), runReminderTick: vi.fn(okTask) });
 
@@ -41,7 +43,7 @@ describe("scheduler work ownership", () => {
 
   it("keeps a pending hint read in drain when its parallel query has already failed", async () => {
     const ctx = createTestAppContext();
-    const started = deferred<void>(); const next = deferred<Date | null>();
+    const started = deferredSignal(); const next = deferred<Date | null>();
     ctx.ports.sessions.getSchedulerSessionHints = async () => { throw new Error("query unavailable"); };
     ctx.ports.outbox.getNextDispatchAt = () => { started.resolve(); return next.promise; };
     const deps = options(ctx); const controller = createSchedulerController(deps);
@@ -62,7 +64,7 @@ describe("scheduler work ownership", () => {
     const ctx = createTestAppContext({ now: () => new Date() }); const deadline = new Date(now.getTime() + 1_000);
     const hints = { nextAskingDeadlineAt: deadline, nextPostponeDeadlineAt: null, nextReminderAt: null };
     ctx.ports.sessions.getSchedulerSessionHints = async () => hints;
-    const work = deferred<void>(); const deps = options(ctx);
+    const work = deferredSignal(); const deps = options(ctx);
     deps.runDeadlineTick.mockImplementation(() => Effect.tryPromise({ try: () => work.promise, catch: cause => new DatabaseError("tick", { cause }) }));
     const controller = createSchedulerController(deps);
     stopWork = () => controller.stop(); drainWork = () => controller.drain(); releaseWork = () => work.resolve();
@@ -120,7 +122,7 @@ describe("scheduler work ownership", () => {
         aggregateRevision: 0, ordinal: 0, payload: { kind: "send_message", channelId: session.channelId,
           renderer: "settle_notice", extra: { reason: "absent" } } });
     };
-    const readingIdle = deferred<void>(); const idle = deferred<Date | null>();
+    const readingIdle = deferredSignal(); const idle = deferred<Date | null>();
     const readNext = ctx.ports.outbox.getNextDispatchAt;
     let calls = 0;
     ctx.ports.outbox.getNextDispatchAt = async () => {

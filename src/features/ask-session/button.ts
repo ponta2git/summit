@@ -1,7 +1,8 @@
-import * as Result from "effect/Result";
+import { assertNever } from "../../util/assertNever.ts";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { randomUUID } from "node:crypto";
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { AppContext } from "../../appContext.ts";
 import { MEMBER_COUNT_EXPECTED } from "../../config.ts";
@@ -78,7 +79,8 @@ const resolveAskCommandResult = Effect.fnUntraced(function* (
   result: SubmitAskResponseResult,
   now: Date
 ): Effect.fn.Return<AskPipelineReady, AppError> {
-  switch (result.kind) {
+  const kind = result.kind;
+  switch (kind) {
     case "accepted_pending":
     case "transitioned":
       return context;
@@ -87,9 +89,13 @@ const resolveAskCommandResult = Effect.fnUntraced(function* (
         persistedInteractionId: result.response.sourceInteractionId }, "Ignored stale ask interaction.");
       return context;
     case "session_not_found":
+      // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+      // skipcq: JS-W1042
       yield* Effect.fromResult(guardSessionExists(undefined));
       return context;
     case "member_not_found":
+      // why: 必須入力へ欠損値を渡し既存の拒否を使う。guard契約変更時に再評価。
+      // skipcq: JS-W1042
       yield* Effect.fromResult(guardRegisteredMemberId(undefined));
       return context;
     case "deadline_passed":
@@ -98,6 +104,7 @@ const resolveAskCommandResult = Effect.fnUntraced(function* (
     case "closed":
       yield* Effect.fromResult(guardSessionAsking(result.session));
       return context;
+    default: return assertNever(kind, "ask response result");
   }
 });
 
@@ -184,7 +191,7 @@ export const handleAskButton = async (
   }));
 
   await Result.match(result, {
-    onSuccess: async (context) => {
+    onSuccess: (context) => {
       logger.info(
         {
           userId: interaction.user.id,

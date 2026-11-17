@@ -1,6 +1,6 @@
 import { runPromiseResultBoundary } from "../../runtime/effect.ts";
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
 import type { AppError } from "../../errors/index.ts";

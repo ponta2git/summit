@@ -33,7 +33,7 @@ export interface FakeResultEntry {
 export const semanticJson = (value: unknown): string => {
   if (Array.isArray(value)) { return `[${value.map(semanticJson).join(", ")}]`; }
   if (typeof value === "object" && value !== null) {
-    return `{${Object.entries(value).sort(([a], [b]) => Buffer.byteLength(a) - Buffer.byteLength(b) || Buffer.compare(Buffer.from(a), Buffer.from(b)))
+    return `{${Object.entries(value).sort(([leftKey], [rightKey]) => Buffer.byteLength(leftKey) - Buffer.byteLength(rightKey) || Buffer.compare(Buffer.from(leftKey), Buffer.from(rightKey)))
       .map(([key, child]) => `${JSON.stringify(key)}: ${semanticJson(child)}`).join(", ")}}`;
   }
   return JSON.stringify(value);

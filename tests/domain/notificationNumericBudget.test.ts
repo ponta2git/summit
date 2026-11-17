@@ -43,7 +43,7 @@ describe("notification numeric expansion budget", () => {
     expect(() => assertNotificationNumericBudget(`1e${exponent}`, 256 * 1024)).toThrow("payload_too_large");
     expect(() => assertNotificationNumericBudget(`1e-${exponent}`, 256 * 1024)).toThrow("payload_too_large");
     expect(() => assertNotificationNumericBudget(`0e${exponent}`, 1)).not.toThrow();
-    expect(() => assertNotificationNumericBudget("0." + "0".repeat(2_000) + "1e2001", 1)).not.toThrow();
+    expect(() => assertNotificationNumericBudget(`0.${"0".repeat(2_000)}1e2001`, 1)).not.toThrow();
   });
 
   it("counts discarded duplicate-key tokens as input work without changing their values or identity", () => {

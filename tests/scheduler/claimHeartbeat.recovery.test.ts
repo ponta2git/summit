@@ -1,11 +1,11 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withClaimHeartbeat, type ClaimOwnership } from "../../src/notifications/delivery/claimHeartbeat.ts";
 import type { ClaimLease } from "../../src/time/lease.ts";
 import type { Clock } from "../../src/time/index.ts";
 import { settledCall } from "../../src/runtime/effect.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 
 const epoch = Date.parse("2026-09-09T12:00:00Z");
 const clock: Clock = { now: () => new Date(), monotonicNow: () => performance.now() };
@@ -18,7 +18,7 @@ describe("claim heartbeat recovery and deadline", () => {
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
   it("pauses new work after a transient error and resumes the same owner after one confirmed retry", async () => {
-    const finish = deferred<void>(); const started = deferred<ClaimOwnership>(); const onLost = vi.fn();
+    const finish = deferredSignal(); const started = deferred<ClaimOwnership>(); const onLost = vi.fn();
     const renew = vi.fn<() => Promise<ClaimLease | null>>().mockRejectedValueOnce(new Error("response lost"))
       .mockResolvedValueOnce(leaseAt(11_000));
     const delivery = runEffect(withClaimHeartbeat({ lease: leaseAt(), clock, intervalMs: 10_000, renew, onLost }, ownership =>
@@ -37,7 +37,7 @@ describe("claim heartbeat recovery and deadline", () => {
   });
 
   it("expires independently of an unresponsive renewal and never revives on its late successful reply", async () => {
-    const finish = deferred<void>(); const started = deferred<ClaimOwnership>(); const renewal = deferred<ClaimLease | null>();
+    const finish = deferredSignal(); const started = deferred<ClaimOwnership>(); const renewal = deferred<ClaimLease | null>();
     const renew = vi.fn(() => renewal.promise); const onLost = vi.fn();
     let drained = false;
     const delivery = runEffect(withClaimHeartbeat({ lease: leaseAt(), clock, intervalMs: 10_000, renew, onLost }, ownership =>
@@ -70,7 +70,7 @@ describe("claim heartbeat recovery and deadline", () => {
   it("blocks new work when a renewal is overdue before its watchdog callback can run", async () => {
     let ms = 0;
     const controlled: Clock = { now: () => new Date(epoch + ms), monotonicNow: () => ms };
-    const renewal = deferred<ClaimLease | null>(); const finish = deferred<void>(); const started = deferred<ClaimOwnership>();
+    const renewal = deferred<ClaimLease | null>(); const finish = deferredSignal(); const started = deferred<ClaimOwnership>();
     const delivery = runEffect(withClaimHeartbeat({ lease: leaseAt(), clock: controlled, intervalMs: 10_000,
       renew: () => renewal.promise, onLost: vi.fn() }, owner => settledCall(() => { started.resolve(owner); return finish.promise; })));
     const owner = await started.promise;
@@ -100,7 +100,7 @@ describe("claim heartbeat recovery and deadline", () => {
 
   it("releases an uncertain ownership waiter on stop while still owning the pending DB operation", async () => {
     const stop = new AbortController(); const renewal = deferred<ClaimLease | null>();
-    const entered = deferred<void>(); const renew = vi.fn(() => { entered.resolve(); return renewal.promise; });
+    const entered = deferredSignal(); const renew = vi.fn(() => { entered.resolve(); return renewal.promise; });
     let waitResult: boolean | undefined; let drained = false;
     const delivery = runEffect(withClaimHeartbeat({ lease: leaseAt(), clock, intervalMs: 10_000, renew, onLost: vi.fn(), stopSignal: stop.signal }, owner =>
       Effect.gen(function* () {
@@ -115,7 +115,7 @@ describe("claim heartbeat recovery and deadline", () => {
   });
 
   it("bounds settled renewal retries to one, two, and four seconds", async () => {
-    const finish = deferred<void>(); const started = deferred<ClaimOwnership>();
+    const finish = deferredSignal(); const started = deferred<ClaimOwnership>();
     const attempts: number[] = []; const renew = vi.fn(async () => { attempts.push(performance.now()); throw new Error("offline"); });
     const delivery = runEffect(withClaimHeartbeat({ lease: leaseAt(), clock, intervalMs: 10_000, renew, onLost: vi.fn() }, owner =>
       settledCall(() => { started.resolve(owner); return finish.promise; })));

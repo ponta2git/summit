@@ -1,5 +1,5 @@
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { Client } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,10 +13,10 @@ import { callArgs, runEffect } from "../helpers/assertions.js";
 
 // why: orchestration 側の Discord 副作用を停止し、スケジューラ tick が ports 経由で正しく dispatch するかだけを検証する。
 vi.mock("../../src/orchestration/askDeadline.js", () => ({
-  evaluateAndApplyDeadlineDecision: vi.fn(() => Effect.succeed(undefined))
+  evaluateAndApplyDeadlineDecision: vi.fn(() => Effect.void)
 }));
 vi.mock("../../src/orchestration/postponeVoting.js", () => ({
-  settlePostponeVotingSession: vi.fn(() => Effect.succeed(undefined))
+  settlePostponeVotingSession: vi.fn(() => Effect.void)
 }));
 
 const askSettle = await import("../../src/orchestration/askDeadline.js");
@@ -219,7 +219,7 @@ describe("runPostponeDeadlineTick", () => {
 
     vi.mocked(postponeSettle.settlePostponeVotingSession)
       .mockReturnValueOnce(Effect.fail(new DiscordApiError("network failure")))
-      .mockReturnValueOnce(Effect.succeed(undefined));
+      .mockReturnValueOnce(Effect.void);
 
     const result = await runEffect(runPostponeDeadlineTick(client, ctx));
     expect(result).toMatchObject({ processed: 2, succeeded: 1, failures: [{ sessionId: "pv-fail" }] });

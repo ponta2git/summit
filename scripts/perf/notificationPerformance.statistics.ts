@@ -56,7 +56,9 @@ export const summarizePartDeciles = (
       for (const part of run.partOperations[operation]) {
         const count = counts.get(part.notificationOrdinal);
         if (!count) { throw new Error("Missing notification part count"); }
-        buckets[Math.min(9, Math.floor(part.partNo / count * 10))]![operation].push(part.durationMs);
+        const bucket = buckets[Math.min(9, Math.floor(part.partNo / count * 10))];
+        if (!bucket) { throw new Error("Invalid notification part bucket"); }
+        bucket[operation].push(part.durationMs);
       }
     }
   }

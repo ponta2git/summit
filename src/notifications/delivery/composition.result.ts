@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
-import type * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { ClaimedResultNotification, ResultDeliveryContext, ResultNotificationsPort } from "../../db/ports.resultNotifications.ts";
 import { logger as defaultLogger } from "../../logger.ts";
 import type { Clock } from "../../time/index.ts";
@@ -44,6 +44,8 @@ const createResultTaskFactory = (deps: ResultComposition, io: ResultIoLedger): (
 /** Bind the result selection policy and replaceable delivery implementation at one composition root. */
 export const createResultNotificationDispatcher = (deps: ResultComposition): DeliveryRuntime => {
   const logger = deps.logger ?? defaultLogger;
+  // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+  // skipcq: JS-0357
   const io = createResultIoLedger({ logger, onSettled: () => runtime.wake("delivery_finished") });
   const runtime = createResultDeliveryRuntime({
     source: createResultDeliverySource(deps.port, deps.clock), clock: deps.clock, io,

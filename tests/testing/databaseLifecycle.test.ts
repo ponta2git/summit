@@ -14,11 +14,11 @@ describe("disposable database ownership", () => {
     }
   });
   it("creates separate run identities and derives database URLs without changing the server", () => {
-    const a = newDatabasePrefix(); const b = newDatabasePrefix();
-    expect(a).toMatch(/^summit_test_[a-f0-9]{32}$/);
-    expect(a).not.toBe(b);
-    expect(databaseUrl("postgres://test:test@[::1]:5432/admin", `${a}_template`))
-      .toBe(`postgres://test:test@[::1]:5432/${a}_template`);
+    const firstPrefix = newDatabasePrefix(); const secondPrefix = newDatabasePrefix();
+    expect(firstPrefix).toMatch(/^summit_test_[a-f0-9]{32}$/);
+    expect(firstPrefix).not.toBe(secondPrefix);
+    expect(databaseUrl("postgres://test:test@[::1]:5432/admin", `${firstPrefix}_template`))
+      .toBe(`postgres://test:test@[::1]:5432/${firstPrefix}_template`);
   });
   it("refuses cleanup of arbitrary names before opening any connection", async () => {
     const client = postgres("postgres://test:test@localhost:1/test");

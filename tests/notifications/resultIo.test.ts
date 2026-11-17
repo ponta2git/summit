@@ -1,9 +1,9 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createResultIoLedger } from "../../src/notifications/delivery/resultIo.ts";
 import { createDeliveryCapacity } from "../../src/notifications/delivery/capacity.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 
 describe("physical result I/O ownership", () => {
   beforeEach(() => { vi.useFakeTimers(); });
@@ -64,7 +64,7 @@ describe("physical result I/O ownership", () => {
 
   it("bounds monitoring during a twenty-minute outage without retaining payloads or errors", async () => {
     const log = logger(); const io = createResultIoLedger({ logger: log });
-    const done = deferred<void>();
+    const done = deferredSignal();
     const work = ["a", "b"].map(id => io.run({ id, payloadBytes: 100 }, "send", 0, () => done.promise));
     await vi.advanceTimersByTimeAsync(20 * 60_000);
     expect(io.snapshot()).toEqual({ pending: 2, payloadBytes: 200, oldestAgeMs: 20 * 60_000 });

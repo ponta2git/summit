@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { Client } from "discord.js";
 
 import type { AppContext } from "../../appContext.ts";
@@ -65,7 +65,7 @@ const prepareDelivery = Effect.fnUntraced(function* (
       claimToken,
       now: ctx.clock.now(),
       nextAttemptAt: null
-    }, ownership.remainingMs));
+    }, () => ownership.remainingMs()));
     if (!marked) {
       logger.error(
         { event: "outbox.claim_lost", outboxId: entry.id, sessionId: entry.sessionId },
@@ -86,9 +86,11 @@ const prepareDelivery = Effect.fnUntraced(function* (
   }
 
   if (!(yield* ownership.awaitOwnership())) { return; }
+  // why: 未取得を表すPromise<undefined>を保持。戻り型変更時に再評価。
+  // skipcq: JS-W1042
   const channel = yield* settledCall(() => ownership.canStart() ? getTextChannel(client, notification.channelId) : Promise.resolve(undefined));
   if (!channel || !(yield* ownership.awaitOwnership()) || isStopping()) { return; }
-  const canSend = yield* settledCall(() => ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() }, ownership.remainingMs));
+  const canSend = yield* settledCall(() => ctx.ports.outbox.beginDelivery(entry.id, { claimToken, now: ctx.clock.now() }, () => ownership.remainingMs()));
   if (!canSend) {
     logger.info(
       { event: "outbox.send_not_started", outboxId: entry.id },
@@ -156,17 +158,21 @@ const deliverClaimedEntry = (
   ownership: ClaimOwnership,
   strategy: SinglePostStrategy
 ): Effect.Effect<void, unknown> => {
+  // why: 未取得を表すEffect<undefined>を保持。戻り型変更時に再評価。
+  // skipcq: JS-W1042
   const preparation = Effect.suspend(() => isStopping() ? Effect.succeed(undefined) : render).pipe(
     Effect.flatMap(notification => prepareDelivery(client, ctx, entry, claimToken, notification, isStopping, ownership))
   );
   return catchExpectedError(preparation,
-    error => recordDeliveryFailure(ctx, entry, claimToken, error, ownership.remainingMs).pipe(Effect.as(undefined))).pipe(
+    // why: 失敗処理後の未取得値を型に残す。戻り型変更時に再評価。
+    // skipcq: JS-W1042
+    error => recordDeliveryFailure(ctx, entry, claimToken, error, () => ownership.remainingMs()).pipe(Effect.as(undefined))).pipe(
     Effect.flatMap(prepared => Effect.gen(function* () {
       if (prepared === undefined || isStopping()) { return; }
       if (!(yield* ownership.awaitOwnership())) { return; }
       // invariant: send 開始後は中断要求があっても成功保存または失敗確定まで所有する。
       yield* catchExpectedError(strategy(prepared, { isStopping: () => isStopping() || !ownership.canStart() }),
-        error => recordDeliveryFailure(ctx, entry, claimToken, error, ownership.remainingMs)).pipe(Effect.uninterruptible);
+        error => recordDeliveryFailure(ctx, entry, claimToken, error, () => ownership.remainingMs())).pipe(Effect.uninterruptible);
     }))
   );
 };
@@ -202,6 +208,6 @@ export const deliverOutboxEntry = (
       } catch { /* Logging cannot turn recoverable uncertainty into ownership loss. */ }
     }
   }, ownership => deliverClaimedEntry(client, ctx, metadata, claimToken,
-    Effect.suspend(() => adapters.prepareNotification(ctx, entry, claimToken, undefined, ownership.remainingMs)),
+    Effect.suspend(() => adapters.prepareNotification(ctx, entry, claimToken, undefined, () => ownership.remainingMs())),
     () => execution.isStopping() || ownership.state() === "lost", ownership, adapters.strategy));
 };

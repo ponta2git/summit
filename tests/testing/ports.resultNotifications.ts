@@ -5,6 +5,7 @@ import type { ClaimedResultNotification, ResultNotificationAdmissionCheck, Resul
 import { OUTBOX_MAX_ATTEMPTS, OUTBOX_RETENTION_DELIVERED_MS, OUTBOX_RETENTION_FAILED_MS } from "../../src/config.ts";
 import { NotificationInputError, assertSupportedNotificationVersion, isSupportedResultNotification, parseNotificationJson, readNotificationIdentity, validateNewNotification, validateStoredNotification } from "../../src/domain/resultNotificationPayload.ts";
 import { ownsNotificationClaim, afterDeliveryFailure, parseNotificationWebOrigin } from "../../src/domain/notification.ts";
+import { assertNotificationClaimOptions, notificationPayloadFitsClaim } from "../../src/domain/notificationClaim.ts";
 import { observeClaimLease, notificationCommandNow } from "../../src/time/lease.ts";
 import { NOTIFICATION_MAINTENANCE_BATCH_SIZE, NOTIFICATION_RETENTION_MAX_BATCHES, RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES,
   RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES, RESULT_NOTIFICATION_MAX_OCR_JSONB_BYTES,
@@ -86,22 +87,20 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       const n = store(payload, canonical, now);
       return { notificationId: n.id, disposition: n.status === "CANCELLED" ? "cancelled" : "accepted", status: n.status };
     },
+    // why: Match the real Promise port, including rejection on invalid options; revisit if the port becomes synchronous.
+    // skipcq: JS-0116
     claim: async options => {
       options = { ...options, now: notificationCommandNow(clock, options.now) };
       recordCall(calls, "claim", options);
-      if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100
-        || !Number.isSafeInteger(options.claimDurationMs) || options.claimDurationMs < 1 || options.claimDurationMs > 300_000
-        || (options.payloadBudgetBytes !== undefined && (!Number.isSafeInteger(options.payloadBudgetBytes) || options.payloadBudgetBytes < 0))) {
-        throw new Error("Invalid notification claim options");
-      }
+      assertNotificationClaimOptions(options);
       const expired = [...entries.values()].filter(n => n.claimExpiresAt && n.claimExpiresAt <= options.now)
-        .sort((a, b) => a.id.localeCompare(b.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
+        .sort((left, right) => left.id.localeCompare(right.id)).slice(0, NOTIFICATION_MAINTENANCE_BATCH_SIZE);
       for (const n of expired) {
         resetClaim(n, options.now, options.now);
         if (n.status === "FAILED") { n.lastError = "attempt_limit"; }
       }
       const candidates = [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && n.status === "PENDING" && n.nextAttemptAt <= options.now && !options.excludeIds?.includes(n.id))
-        .sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime() || a.id.localeCompare(b.id));
+        .sort((left, right) => left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime() || left.id.localeCompare(right.id));
       const result: ClaimedResultNotification[] = [];
       const payloadBudget = options.payloadBudgetBytes ?? RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES;
       let claimedBytes = 0;
@@ -112,19 +111,20 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
         const preferredIndex = preferredKind && oldest && oldest.payloadBytes <= payloadBudget - claimedBytes
           ? candidates.findIndex(n => n.kind === preferredKind) : -1;
         const preferred = candidates[preferredIndex];
-        const selectedIndex = preferred && (preferred.payloadBytes <= payloadBudget - claimedBytes
-          || (result.length === 0 && (options.allowOversizedPayload ?? true))) ? preferredIndex : 0;
+        const selectedIndex = preferred && notificationPayloadFitsClaim(preferred.payloadBytes, payloadBudget - claimedBytes,
+          result.length, options.allowOversizedPayload) ? preferredIndex : 0;
         const [n] = candidates.splice(selectedIndex, 1);
         if (!n) { break; }
         if (n.attemptCount >= n.maxAttempts) { n.status = "FAILED"; n.lastError = "attempt_limit"; n.terminalAt = options.now; continue; }
         const why = reason(n); if (why) { cancel(n, why, options.now); continue; }
-        if (n.payloadBytes > payloadBudget - claimedBytes && !(result.length === 0 && (options.allowOversizedPayload ?? true))) { break; }
+        if (!notificationPayloadFitsClaim(n.payloadBytes, payloadBudget - claimedBytes,
+          result.length, options.allowOversizedPayload)) { break; }
         const lease = observeClaimLease(clock, options.now, options.claimDurationMs);
         n.status = "IN_FLIGHT"; n.claimToken = randomUUID(); n.claimExpiresAt = lease.expiresAt; n.attemptCount += 1;
         result.push(structuredClone({ id: n.id, kind: n.kind, payload: n.payload, claimToken: n.claimToken, attemptCount: n.attemptCount,
           payloadBytes: n.payloadBytes, lease,
           maxAttempts: n.maxAttempts, partCount: n.partCount, rendererVersion: n.rendererVersion, deliveryContext: n.deliveryContext,
-          deliveredPartNos: n.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo).sort((a, b) => a - b) }));
+          deliveredPartNos: n.parts.filter(part => part.status === "DELIVERED").map(part => part.partNo).sort((left, right) => left - right) }));
         claimedBytes += n.payloadBytes;
         if (preferredKind) { preferredKind = n.kind === "ocr_completed" ? "analysis_completed" : "ocr_completed"; }
         if (claimedBytes > payloadBudget || result.length === options.limit) { break; }
@@ -151,7 +151,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       const n = fenced(id, token, now); if (!n) { return false; }
       const why = reason(n); if (why) { cancel(n, why, now); return false; }
       const part = n.parts[partNo];
-      if (!part || part.status !== "PENDING" || n.parts.some(p => p.partNo < partNo && p.status !== "DELIVERED")) { return false; }
+      if (!part || part.status !== "PENDING" || n.parts.some(candidatePart => candidatePart.partNo < partNo && candidatePart.status !== "DELIVERED")) { return false; }
       n.parts[partNo] = { ...part, status: "IN_FLIGHT", attemptCount: part.attemptCount + 1 };
       return true;
     },
@@ -161,7 +161,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       if (!n || !part || part.status !== "IN_FLIGHT") { return false; }
       n.parts[partNo] = { ...part, status: "DELIVERED", deliveredMessageId: messageId };
       if (n.status === "CANCELLED") { n.claimToken = null; n.claimExpiresAt = null; }
-      else if (n.parts.every(p => p.status === "DELIVERED")) {
+      else if (n.parts.every(candidatePart => candidatePart.status === "DELIVERED")) {
         n.status = "DELIVERED"; n.terminalAt = now; n.claimToken = null; n.claimExpiresAt = null; n.lastError = null;
       }
       return true;
@@ -191,7 +191,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       recordCall(calls, "getNextDispatchAt", {});
       return [...entries.values()].filter(n => isSupportedResultNotification(n.kind, n.schemaVersion) && !excluded.includes(n.id) && !n.purgedAt)
         .map(n => n.status === "PENDING" ? n.nextAttemptAt : n.claimExpiresAt).filter((at): at is Date => at !== null)
-        .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+        .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
     },
     inspect: async id => {
       const n = entries.get(id); if (!n) { return null; }
@@ -212,7 +212,7 @@ export const createFakeResultNotificationsPort = (clock: FakeClock = DEFAULT_CLO
       for (const n of entries.values()) {
         if (count >= NOTIFICATION_MAINTENANCE_BATCH_SIZE * NOTIFICATION_RETENTION_MAX_BATCHES) { break; }
         const keep = n.status === "DELIVERED" ? OUTBOX_RETENTION_DELIVERED_MS : OUTBOX_RETENTION_FAILED_MS;
-        if (!n.terminalAt || n.purgedAt || n.claimToken || n.parts.some(p => p.status === "IN_FLIGHT") || now.getTime() - n.terminalAt.getTime() < keep) { continue; }
+        if (!n.terminalAt || n.purgedAt || n.claimToken || n.parts.some(candidatePart => candidatePart.status === "IN_FLIGHT") || now.getTime() - n.terminalAt.getTime() < keep) { continue; }
         n.payload = null; n.deliveryContext = null; n.parts = []; n.purgedAt = now; n.lastError = null; count += 1;
       }
       return count;

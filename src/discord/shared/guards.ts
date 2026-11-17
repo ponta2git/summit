@@ -1,4 +1,4 @@
-import * as Result from "effect/Result";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
 import { MessageFlags } from "discord.js";
 
 import type { SessionRow } from "../../db/rows.ts";

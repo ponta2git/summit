@@ -13,7 +13,7 @@ import { sessionColumns } from "../identityColumns.ts";
 import { insertIdentity } from "../identityInsert.ts";
 
 /** Insert one Session and its intents; database constraints resolve conflicting admission. */
-export const createAskSession = async (
+export const createAskSession = (
   db: DbLike,
   input: CreateAskSessionInput
 ): Promise<SessionRow | undefined> =>

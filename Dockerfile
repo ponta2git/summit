@@ -2,6 +2,8 @@
 # Usage: cd .. && fly deploy --config summit/fly.toml --dockerfile summit/Dockerfile --remote-only
 
 FROM node:26.13.1-bookworm-slim AS base
+# why: Debian更新を取り込み、復旧は検証済みimmutable imageを使う。固定方針はdocs/quality-assurance.md。
+# skipcq: DOK-DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -44,6 +46,8 @@ RUN pnpm install --prod --frozen-lockfile
 FROM node:26.13.1-bookworm-slim AS runtime
 # Runtime needs Node only. Remove the bundled package manager and apply the
 # available Debian security update before switching to the application user.
+# why: Debian更新を取り込む。固定方針と再評価条件はdocs/quality-assurance.md。
+# skipcq: DOK-DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && apt-get install -y --no-install-recommends --only-upgrade perl-base \

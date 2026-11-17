@@ -6,6 +6,7 @@ import { authorizeNotificationRequest, routeNotificationRequest, type Notificati
 import { isPrivateNotificationBind, RESULT_NOTIFICATION_BODY_BUDGET_BYTES } from "./config.ts";
 import { createNotificationHttpServer } from "./http.connections.ts";
 import { NotificationNotStartedError } from "../errors/index.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 
 const respond = (response: ServerResponse, status: number, value: unknown, reusable = false): void => {
   if (response.destroyed || response.writableEnded) { return; }
@@ -28,7 +29,7 @@ export const createNotificationReceiver = (deps: NotificationHttpDeps): Notifica
   let stopped = false;
   let starting: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
-  const { server, closeWaitingForHeaders } = createNotificationHttpServer((request, response) => {
+  const connections = createNotificationHttpServer((request, response) => {
     void (async () => {
       let deadline: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -58,12 +59,17 @@ export const createNotificationReceiver = (deps: NotificationHttpDeps): Notifica
           const status = { invalid_input: 400, unsupported_version: 422, identity_conflict: 409, payload_too_large: 413 }[error.code];
           respond(response, status, { error: error.code });
         } else {
-          deps.logger.warn({ event: "result_notification.receipt_unavailable" });
+          reportSafely(() => deps.logger.warn({ event: "result_notification.receipt_unavailable" }));
           respond(response, 503, { error: "unavailable" });
         }
       } finally { clearTimeout(deadline); }
-    })();
+    })().catch(() => {
+      // invariant: 応答の組立て自体が失敗しても未処理rejectを残さず、破損した応答は切断する。
+      reportSafely(() => deps.logger.error({ event: "result_notification.response_failed" }));
+      response.destroy();
+    });
   }, () => stopped);
+  const { server } = connections;
   return {
     server,
     start: async (host, port) => {
@@ -81,7 +87,7 @@ export const createNotificationReceiver = (deps: NotificationHttpDeps): Notifica
     stop: () => {
       if (stopped) { return; }
       stopped = true;
-      closeWaitingForHeaders();
+      connections.closeWaitingForHeaders();
       // race: 非同期listenの完了前にcloseすると、開始callbackが完了しない場合がある。
       closing = (starting ?? Promise.resolve()).catch(() => undefined)
         .then(() => new Promise<void>(resolve => { server.close(() => resolve()); }));

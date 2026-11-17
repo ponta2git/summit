@@ -24,9 +24,9 @@ export const savePerformanceResult = async (directory: string, filename: string,
   readonly scenario: PerformanceScenario; readonly repetition: number; readonly profiled: boolean;
   readonly rounds: number; readonly imageId: string; readonly postgresVersion: string;
 }, result: Awaited<ReturnType<typeof runPerformanceScenario>>) => {
-  const metrics = await performanceStage("metrics_schema", async () => performanceMetrics.parse(result.rawProbe));
+  const metrics = await performanceStage("metrics_schema", () => performanceMetrics.parse(result.rawProbe));
   const expectedConflicts = result.httpSamples.filter(sample => sample.kind === "conflict" && sample.status === 409).length;
-  const heapBaseline = await performanceStage("metrics_contract", async () => {
+  const heapBaseline = await performanceStage("metrics_contract", () => {
     const baseline = metrics.checkpoints["warm"] ?? metrics.checkpoints["baseline"];
     assert.ok(baseline);
     assert.equal(metrics.profileMode.enabled, run.profiled);
@@ -43,14 +43,14 @@ export const savePerformanceResult = async (directory: string, filename: string,
     }
     return baseline;
   });
-  const profiles = await performanceStage("profile_schema", async () =>
+  const profiles = await performanceStage("profile_schema", () =>
     z.object({ cpuProfile: z.unknown(), heapProfile: z.unknown() }).parse(result.rawProbe));
   const profileArtifacts: { cpu?: string; heap?: string } = {};
   if (run.profiled) {
-    const { cpu, heap } = await performanceStage("profile_schema", async () => ({
+    const { cpu, heap } = await performanceStage("profile_schema", () => ({
       cpu: cpuProfileSchema.parse(profiles.cpuProfile), heap: heapProfileSchema.parse(profiles.heapProfile)
     }));
-    await performanceStage("profile_contract", async () => {
+    await performanceStage("profile_contract", () => {
       assert.ok(cpu.nodes.length > 0 && (cpu.samples?.length ?? 0) > 0);
       assert.ok(heap.head.children.length > 0 && heap.samples.length > 0);
     });
@@ -58,7 +58,7 @@ export const savePerformanceResult = async (directory: string, filename: string,
     await writePerformanceArtifact(directory, profileArtifacts.cpu, cpu);
     await writePerformanceArtifact(directory, profileArtifacts.heap, heap);
   } else {
-    await performanceStage("profile_contract", async () => { assert.equal(profiles.cpuProfile, null); assert.equal(profiles.heapProfile, null); });
+    await performanceStage("profile_contract", () => { assert.equal(profiles.cpuProfile, null); assert.equal(profiles.heapProfile, null); });
   }
   const httpLatencyMs = Object.fromEntries((["analysis", "ocr", "conflict", "overload"] as const).map(kind => [kind, {
     unheld: durationSummary(result.httpSamples.filter(sample => sample.kind === kind && !sample.barrierHeld).map(sample => sample.milliseconds)),

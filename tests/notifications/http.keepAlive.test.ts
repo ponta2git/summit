@@ -6,7 +6,7 @@ import { RESULT_NOTIFICATION_BODY_TIMEOUT_MS, RESULT_NOTIFICATION_MAX_CONNECTION
   RESULT_NOTIFICATION_MAX_RECEIPTS, RESULT_NOTIFICATION_MAX_REQUESTS_PER_SOCKET,
   RESULT_NOTIFICATION_REQUEST_TIMEOUT_MS } from "../../src/notifications/config.ts";
 import { ocrReceiptPayload } from "../contracts/resultNotifications.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { createHttpHarness, operationsToken, receiverToken } from "./http.harness.ts";
 
 describe("notification HTTP keep-alive", () => {
@@ -111,7 +111,7 @@ describe("notification HTTP keep-alive", () => {
 
   it("bounds pipelined incomplete headers while the previous response is still pending", async () => {
     harness = await createHttpHarness();
-    const entered = deferred<void>(); const release = deferred<void>(); releases.push(() => release.resolve());
+    const entered = deferredSignal(); const release = deferredSignal(); releases.push(() => release.resolve());
     const getSetting = harness.port.getSetting;
     harness.port.getSetting = async kind => { entered.resolve(); await release.promise; return getSetting(kind); };
     // The parser deadline is checked every second, including a partial next request
@@ -125,7 +125,7 @@ describe("notification HTTP keep-alive", () => {
 
   it("preserves a pending pipelined response during shutdown after the preceding response finishes", async () => {
     harness = await createHttpHarness();
-    const entered = deferred<void>(); const release = deferred<void>(); releases.push(() => release.resolve());
+    const entered = deferredSignal(); const release = deferredSignal(); releases.push(() => release.resolve());
     const getSetting = harness.port.getSetting; let calls = 0;
     harness.port.getSetting = async kind => {
       calls += 1;
@@ -153,7 +153,7 @@ describe("notification HTTP keep-alive", () => {
 
   it("enforces the active command limit across pipelined requests on one socket", async () => {
     harness = await createHttpHarness();
-    const entered = deferred<void>(); const release = deferred<void>(); releases.push(() => release.resolve());
+    const entered = deferredSignal(); const release = deferredSignal(); releases.push(() => release.resolve());
     const getSetting = harness.port.getSetting; let calls = 0;
     harness.port.getSetting = async kind => {
       calls += 1; if (calls === RESULT_NOTIFICATION_MAX_RECEIPTS) { entered.resolve(); }

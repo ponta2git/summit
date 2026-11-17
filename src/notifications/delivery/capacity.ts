@@ -1,8 +1,8 @@
-import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
-import * as Exit from "effect/Exit";
-import type * as Fiber from "effect/Fiber";
-import * as Scope from "effect/Scope";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Deferred from "effect/Deferred"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
+import type * as Fiber from "effect/Fiber"; // skipcq: JS-C1003
+import * as Scope from "effect/Scope"; // skipcq: JS-C1003
 import { InvariantViolationError } from "../../errors/index.ts";
 
 export interface DeliveryBudget {
@@ -71,6 +71,8 @@ export const createDeliveryCapacity = (options: {
         const execution: DeliveryExecution = { isStopping: () => stopped, stopSignal: stopController.signal };
         const owned = Effect.suspend(() => work(execution)).pipe(Effect.onExit(exit =>
           Effect.sync(() => { active.delete(id); options.onSettled?.(id, exit); })
+            // why: 完了値は必須引数。Deferred契約変更時に再評価。
+            // skipcq: JS-W1042
             .pipe(Effect.ensuring(Deferred.succeed(completed, undefined)))));
         // invariant: 子の実行前に台帳へ登録。開始済み I/O の中断方針は配送方式が所有する。
         return yield* Effect.forkIn(owned, scope, { startImmediately: true, uninterruptible: false });

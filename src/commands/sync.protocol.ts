@@ -1,3 +1,4 @@
+import { assertNever } from "../util/assertNever.ts";
 export const SYNC_DEADLINE_MS = 60_000;
 export const SYNC_EXIT_GRACE_MS = 5_000;
 export const SYNC_REQUEST_TIMEOUT_MS = 10_000;
@@ -48,10 +49,12 @@ export const parseSyncReport = (value: unknown): SyncReport | undefined => {
 export const getSyncExitCode = (report: SyncReport): number => {
   if (report.reason === "deadline_exceeded") { return 124; }
   if (report.reason === "cancelled") { return 130; }
-  switch (report.status) {
+  const status = report.status;
+  switch (status) {
     case "matched": case "synced": return 0;
     case "different": return 2;
     case "unknown": return 3;
     case "failed": return 1;
+    default: return assertNever(status, "command sync status");
   }
 };

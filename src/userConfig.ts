@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { writeSync } from "node:fs";
 
 import { env } from "./env.ts";
 import { parseUserConfigYaml } from "./userConfig.yaml.ts";
+import { reportSafely } from "./runtime/diagnostics.ts";
 
 const discordId = z.string().regex(/^\d{17,20}$/);
 const hhmm = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
@@ -76,10 +78,14 @@ const loadAppConfig = (): AppConfig => {
     return buildAppConfig(parseUserConfigInput(input));
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      process.stderr.write(`Invalid user configuration:\n${formatConfigIssues(error)}\n`);
+      reportSafely(() => { writeSync(process.stderr.fd, `Invalid user configuration:\n${formatConfigIssues(error)}\n`); });
+      // why: 同期stderrの後、不正設定で依存moduleを評価しない。bootstrapのimport契約変更時に再評価する。
+      // skipcq: JS-0263
       process.exit(1);
     }
-    process.stderr.write("Invalid user configuration: configuration YAML could not be loaded\n");
+    reportSafely(() => { writeSync(process.stderr.fd, "Invalid user configuration: configuration YAML could not be loaded\n"); });
+    // why: YAML診断を同期出力してfail-fastする。bootstrapのimport契約変更時に再評価する。
+    // skipcq: JS-0263
     process.exit(1);
   }
 };

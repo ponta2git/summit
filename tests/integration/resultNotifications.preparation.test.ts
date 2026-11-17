@@ -11,14 +11,14 @@ import { notificationNow as now } from "../contracts/resultNotifications.ts";
 import { isIntegration } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("prepared receipt transactional precedence", () => {
-  let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
-  beforeEach(async () => { h = await createResultNotificationHarness(); });
+  let harness: Awaited<ReturnType<typeof createResultNotificationHarness>>;
+  beforeEach(async () => { harness = await createResultNotificationHarness(); });
 
   it.each([new NotificationInputError("payload_too_large"), new Error("private admission diagnostic")])(
     "preserves duplicate/conflict behavior when today's new-admission check fails", async failure => {
       const base = analysisNotification(); const raw = JSON.stringify(base);
-      await h.port.receive(raw, now);
-      const check = vi.fn(() => { throw failure; }); const port = makeResultNotificationsPort(h.db, check, repositoryClock);
+      await harness.port.receive(raw, now);
+      const check = vi.fn(() => { throw failure; }); const port = makeResultNotificationsPort(harness.db, check, repositoryClock);
       expect(await port.receive(raw, now)).toMatchObject({ disposition: "duplicate", status: "PENDING" });
       await expect(port.receive(JSON.stringify({ ...base, data: { ...base.data, gameTitleName: "changed" } }), now))
         .rejects.toMatchObject({ code: "identity_conflict" });
@@ -26,17 +26,17 @@ import { isIntegration } from "./_support.ts";
       const outcome = await port.receive(JSON.stringify(changed), now).catch(error => error);
       expect(outcome).toEqual(failure instanceof NotificationInputError ? new NotificationInputError("payload_too_large")
         : new Error("Notification database operation failed"));
-      expect(check).toHaveBeenCalledTimes(3); expect(await h.countReceipts()).toBe(1);
+      expect(check).toHaveBeenCalledTimes(3); expect(await harness.countReceipts()).toBe(1);
     }
   );
 
   it.each(["{invalid", JSON.stringify({ ...analysisNotification(), schemaVersion: 9 })])(
     "keeps database unavailability ahead of a staged input error", async raw => {
-      const transaction: typeof h.db.transaction = () => Promise.reject(new Error("database unavailable"));
-      const unavailable = new Proxy(h.db, { get: (target, key, receiver) => key === "transaction" ? transaction : Reflect.get(target, key, receiver) });
+      const transaction: typeof harness.db.transaction = () => Promise.reject(new Error("database unavailable"));
+      const unavailable = new Proxy(harness.db, { get: (target, key, receiver) => key === "transaction" ? transaction : Reflect.get(target, key, receiver) });
       const port = makeResultNotificationsPort(unavailable, checkNotificationAdmission, repositoryClock);
       await expect(port.receive(raw, now)).rejects.toThrow("Notification database operation failed");
-      expect(await h.countReceipts()).toBe(0);
+      expect(await harness.countReceipts()).toBe(0);
     }
   );
 
@@ -47,8 +47,8 @@ import { isIntegration } from "./_support.ts";
     const prepared = prepareResultReceipt(raw, checkNotificationAdmission);
     // Fault at the later metadata stage must not overtake the older JSONB budget check.
     const failure = { outcome: "unexpected", stage: "metadata" } as const;
-    await expect(notificationTransaction(h.db, "result", tx => receiveResultNotification(tx, { ...prepared, newAdmission: failure }, now)))
+    await expect(notificationTransaction(harness.db, "result", tx => receiveResultNotification(tx, { ...prepared, newAdmission: failure }, now)))
       .rejects.toMatchObject({ code: "payload_too_large" });
-    expect(await h.countReceipts()).toBe(0);
+    expect(await harness.countReceipts()).toBe(0);
   });
 });

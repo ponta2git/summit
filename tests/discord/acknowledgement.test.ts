@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleInteraction } from "../../src/discord/shared/dispatcher.ts";
 import { asInteraction, buildAskInteraction, buildButtonInteraction } from "../helpers/interaction.ts";
 import { createInteractionResponses } from "../helpers/interactionResponses.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { createMemberSeededContext, defaultInteractionDeps, successfulSendAsk } from "./interactions.harness.ts";
 
@@ -12,7 +12,7 @@ const now = new Date("2026-04-24T12:00:00Z");
 
 describe("interaction acknowledgement completion", () => {
   it("starts no button DB or Discord work until deferUpdate resolves", async () => {
-    const ack = deferred<void>(); const started = deferred<void>();
+    const ack = deferredSignal(); const started = deferredSignal();
     const context = createMemberSeededContext(buildSessionRow({ id: sessionId, askMessageId: "ask-message" }), now);
     const edit = vi.fn(async () => undefined);
     const interaction = { ...buildButtonInteraction(`ask:${sessionId}:t2200`, {
@@ -33,7 +33,7 @@ describe("interaction acknowledgement completion", () => {
   });
 
   it("starts no slash-command work until deferReply resolves", async () => {
-    const ack = deferred<void>(); const started = deferred<void>(); const sendAsk = successfulSendAsk();
+    const ack = deferredSignal(); const started = deferredSignal(); const sendAsk = successfulSendAsk();
     const interaction = buildAskInteraction({ acknowledge: () => { started.resolve(); return ack.promise; } });
     const handling = handleInteraction(asInteraction(interaction), defaultInteractionDeps(sendAsk));
     await Promise.race([started.promise, handling]); await setImmediate();

@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type * as AskRenderModule from "../../src/features/ask-session/render.js";
-import type * as AskViewModelModule from "../../src/features/ask-session/viewModel.js";
-import type * as PostponeRenderModule from "../../src/features/postpone-voting/render.js";
-import type * as PostponeViewModelModule from "../../src/features/postpone-voting/viewModel.js";
-import type * as UserConfigModule from "../../src/userConfig.js";
+import type * as AskRenderModule from "../../src/features/ask-session/render.js"; // skipcq: JS-C1003
+import type * as AskViewModelModule from "../../src/features/ask-session/viewModel.js"; // skipcq: JS-C1003
+import type * as PostponeRenderModule from "../../src/features/postpone-voting/render.js"; // skipcq: JS-C1003
+import type * as PostponeViewModelModule from "../../src/features/postpone-voting/viewModel.js"; // skipcq: JS-C1003
+import type * as UserConfigModule from "../../src/userConfig.js"; // skipcq: JS-C1003
 
 let askRender: typeof AskRenderModule;
 let askViewModel: typeof AskViewModelModule;

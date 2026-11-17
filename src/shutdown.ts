@@ -1,8 +1,9 @@
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Option from "effect/Option"; // skipcq: JS-C1003
 import { promiseCall, runPromiseBoundary } from "./runtime/effect.ts";
 import { errorFromCause } from "./runtime/cause.ts";
 import { logger } from "./logger.ts";
+import { reportSafely } from "./runtime/diagnostics.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./config.ts";
 
 // single-instance: プロセスローカルな shutdown フラグ。
@@ -37,19 +38,20 @@ const beginShutdown = (): boolean => {
  */
 export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> => {
   if (!beginShutdown()) {
-    logger.info({ signal: deps.signal }, "Shutdown already in progress.");
+    reportSafely(() => logger.info({ signal: deps.signal }, "Shutdown already in progress."));
     return false;
   }
 
-  logger.info({ signal: deps.signal }, "Shutdown started.");
+  reportSafely(() => logger.info({ signal: deps.signal }, "Shutdown started."));
   const attempt = <T, E>(effect: Effect.Effect<T, E>, message: string): Effect.Effect<void> =>
     Effect.asVoid(Effect.catchCause(effect, cause => Effect.sync(() => {
-      logger.error({ error: errorFromCause(cause), signal: deps.signal }, message);
+      reportSafely(() => logger.error({ error: errorFromCause(cause), signal: deps.signal }, message));
     })));
 
   const closeResources = Effect.gen(function* () {
     yield* attempt(promiseCall(deps.closeDb), "Database close failed during shutdown.");
-    yield* attempt(promiseCall(async () => deps.destroyClient()), "Discord client destroy failed during shutdown.");
+    // why: destroyClientのvoid/Promiseと同期throwを単一のPromise境界にする。adapter契約変更時に再評価する。
+    yield* attempt(promiseCall(async () => deps.destroyClient()), "Discord client destroy failed during shutdown."); // skipcq: JS-0116
   });
 
   await runPromiseBoundary(Effect.gen(function* () {
@@ -60,13 +62,13 @@ export const shutdownGracefully = async (deps: ShutdownDeps): Promise<boolean> =
       Effect.timeoutOption(SHUTDOWN_DRAIN_TIMEOUT_MS),
       Effect.tap(result => Effect.sync(() => {
         if (Option.isNone(result)) {
-          logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB.");
+          reportSafely(() => logger.warn({ event: "shutdown.drain_timeout", signal: deps.signal }, "Pending notifications remain recoverable from DB."));
         }
       }))
     ), "Waiting in-flight send failed during shutdown.");
   }).pipe(Effect.ensuring(closeResources)));
 
-  logger.info({ signal: deps.signal }, "Shutdown completed.");
+  reportSafely(() => logger.info({ signal: deps.signal }, "Shutdown completed."));
   return true;
 };
 

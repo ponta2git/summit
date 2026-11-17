@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCommandRest, runCommandSync } from "../../../src/commands/sync.run.ts";
 import { slashCommands } from "../../../src/commands/definitions.ts";
 import { SYNC_REQUEST_TIMEOUT_MS, SYNC_RESPONSE_MAX_BYTES } from "../../../src/commands/sync.protocol.ts";
-import { deferred } from "../../helpers/deferred.ts";
+import { deferredSignal } from "../../helpers/deferred.ts";
 
 const settings = { production: true, check: false, token: "controlled-dummy-token", applicationId: "100000000000000001", guildId: "100000000000000002" };
 const response = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
@@ -30,7 +30,7 @@ describe("real Discord REST adapter with an offline HTTP boundary", () => {
     expect(request).toHaveBeenCalledOnce();
   });
   it.each(["GET", "PUT"])("bounds a stalled %s request without retrying it", async method => {
-    vi.useFakeTimers(); const reached = deferred<void>();
+    vi.useFakeTimers(); const reached = deferredSignal();
     const request = vi.fn<RESTOptions["makeRequest"]>().mockImplementation((_url, { signal }) => new Promise((_resolve, reject) => {
       signal?.addEventListener("abort", () => reject(new DOMException("controlled timeout", "AbortError")), { once: true });
       reached.resolve();
@@ -44,7 +44,7 @@ describe("real Discord REST adapter with an offline HTTP boundary", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
   it("keeps the request deadline active while the response body is stalled", async () => {
-    vi.useFakeTimers(); const reading = deferred<void>();
+    vi.useFakeTimers(); const reading = deferredSignal();
     let source: ReadableStreamDefaultController<Uint8Array> | undefined;
     const cancelled = vi.fn();
     const body = new ReadableStream<Uint8Array>({

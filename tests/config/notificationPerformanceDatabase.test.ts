@@ -3,7 +3,7 @@ import { runInNewContext } from "node:vm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { describe, expect, it } from "vitest";
 import { notificationPerformanceDatabase } from "../../scripts/perf/notificationPerformance.database.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 
 interface TestDatabase {
   execute(query: string): Promise<unknown>;
@@ -53,8 +53,8 @@ const setup = (enabled = true) => {
   };
   const original = { $client: client };
   // Evaluate the exact container source with explicit public dependencies and a deterministic clock.
-  const factory = runInNewContext(notificationPerformanceDatabase.replace(/^import .+;$/gm, "")
-    + "\ncreatePerformanceDatabase;", { AsyncLocalStorage, diagnosticDrizzle: drizzle,
+  const factory = runInNewContext(`${notificationPerformanceDatabase.replace(/^import .+;$/gm, "")}\ncreatePerformanceDatabase;`,
+    { AsyncLocalStorage, diagnosticDrizzle: drizzle,
     process: { env: { PERF_DATABASE_DIAGNOSTICS: enabled ? "1" : undefined } },
     performance: { now: () => clock } }) as Factory;
   const diagnostics = factory({ db: original, schema: {}, record: (operation, milliseconds, failed) => {
@@ -68,11 +68,11 @@ const transactionOptions = { isolationLevel: "read committed" };
 
 describe("optional notification performance database diagnostics", () => {
   it("returns the original database and directly runs commands while disabled", async () => {
-    const h = setup(false);
-    expect(h.diagnostics.db).toBe(h.original);
-    expect(await h.diagnostics.run("begin", async () => "unchanged")).toBe("unchanged");
-    expect(h.diagnostics.metrics()).toEqual({ enabled: false, byCommand: {} });
-    expect(h.recorded).toEqual([]);
+    const harness = setup(false);
+    expect(harness.diagnostics.db).toBe(harness.original);
+    expect(await harness.diagnostics.run("begin", async () => "unchanged")).toBe("unchanged");
+    expect(harness.diagnostics.metrics()).toEqual({ enabled: false, byCommand: {} });
+    expect(harness.recorded).toEqual([]);
   });
 
   it("separates transaction entry, gate round trip and commit-inclusive hold without extra SQL", async () => {
@@ -96,44 +96,44 @@ describe("optional notification performance database diagnostics", () => {
   });
 
   it("does not invent acquired time or committed control statements when the gate fails", async () => {
-    const h = setup(); h.failGate();
-    await expect(h.diagnostics.run("claim", () => h.diagnostics.db.transaction(async tx => {
+    const harness = setup(); harness.failGate();
+    await expect(harness.diagnostics.run("claim", () => harness.diagnostics.db.transaction(async tx => {
       await tx.execute(gate);
     }, transactionOptions))).rejects.toThrow("Failed query");
-    expect(h.recorded).toEqual([
+    expect(harness.recorded).toEqual([
       { operation: "database.transactionEntry.claim", milliseconds: 5, failed: false },
       { operation: "database.gateCall.claim", milliseconds: 7, failed: true },
       { operation: "database.transactionWall.claim", milliseconds: 15, failed: true }
     ]);
-    expect(h.diagnostics.metrics().byCommand["claim"]).toEqual({ drizzleStatements: 2,
+    expect(harness.diagnostics.metrics().byCommand["claim"]).toEqual({ drizzleStatements: 2,
       committedTransactions: 0, failedTransactions: 1, estimatedCommittedBeginCommitStatements: 0 });
   });
 
   it("records a post-gate commit failure as failed while awaiting transaction settlement", async () => {
-    const h = setup(); h.failCommit();
-    await expect(h.diagnostics.run("complete", () => h.diagnostics.db.transaction(async tx => {
+    const harness = setup(); harness.failCommit();
+    await expect(harness.diagnostics.run("complete", () => harness.diagnostics.db.transaction(async tx => {
       await tx.execute(gate);
     }, transactionOptions))).rejects.toThrow("commit failed");
-    expect(h.recorded.slice(-2)).toEqual([
+    expect(harness.recorded.slice(-2)).toEqual([
       { operation: "database.transactionWall.complete", milliseconds: 15, failed: true },
       { operation: "database.gateHold.complete", milliseconds: 3, failed: true }
     ]);
-    expect(h.diagnostics.metrics().byCommand["complete"]).toMatchObject({ committedTransactions: 0,
+    expect(harness.diagnostics.metrics().byCommand["complete"]).toMatchObject({ committedTransactions: 0,
       failedTransactions: 1, estimatedCommittedBeginCommitStatements: 0 });
   });
 
   it("keeps interleaved commands separate, counts non-transaction reads and bounds command labels", async () => {
-    const h = setup();
-    const entered = deferred<void>(); const release = deferred<void>();
-    h.beforeQuery.set(gate, async () => { entered.resolve(); await release.promise; });
-    const claiming = h.diagnostics.run("claim", () => h.diagnostics.db.transaction(async tx => {
+    const harness = setup();
+    const entered = deferredSignal(); const release = deferredSignal();
+    harness.beforeQuery.set(gate, async () => { entered.resolve(); await release.promise; });
+    const claiming = harness.diagnostics.run("claim", () => harness.diagnostics.db.transaction(async tx => {
       await tx.execute(gate);
     }, transactionOptions));
     await entered.promise;
-    await h.diagnostics.run("getNextDispatchAt", () => h.diagnostics.db.execute("SELECT 1"));
-    await h.diagnostics.run("private-command-value", () => h.diagnostics.db.execute("SELECT 2"));
+    await harness.diagnostics.run("getNextDispatchAt", () => harness.diagnostics.db.execute("SELECT 1"));
+    await harness.diagnostics.run("private-command-value", () => harness.diagnostics.db.execute("SELECT 2"));
     release.resolve(); await claiming;
-    expect(h.diagnostics.metrics().byCommand).toEqual({
+    expect(harness.diagnostics.metrics().byCommand).toEqual({
       claim: { drizzleStatements: 2, committedTransactions: 1, failedTransactions: 0,
         estimatedCommittedBeginCommitStatements: 2 },
       getNextDispatchAt: { drizzleStatements: 1, committedTransactions: 0, failedTransactions: 0,
@@ -141,10 +141,10 @@ describe("optional notification performance database diagnostics", () => {
       other: { drizzleStatements: 1, committedTransactions: 0, failedTransactions: 0,
         estimatedCommittedBeginCommitStatements: 0 }
     });
-    const snapshot = h.diagnostics.metrics();
-    h.diagnostics.reset();
-    expect(h.diagnostics.metrics()).toEqual({ enabled: true, byCommand: {} });
+    const snapshot = harness.diagnostics.metrics();
+    harness.diagnostics.reset();
+    expect(harness.diagnostics.metrics()).toEqual({ enabled: true, byCommand: {} });
     expect(snapshot.byCommand["claim"]?.drizzleStatements).toBe(2);
-    expect(JSON.stringify([snapshot, h.recorded])).not.toContain("private-command-value");
+    expect(JSON.stringify([snapshot, harness.recorded])).not.toContain("private-command-value");
   });
 });

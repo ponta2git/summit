@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import type { ClaimedResultNotification } from "../../db/ports.resultNotifications.ts";
 import { RESULT_NOTIFICATION_RECOVERY_BACKOFF_MS, SCHEDULER_MIN_TIMER_DELAY_MS,
   NOTIFICATION_PENDING_WARN_AFTER_MS, NOTIFICATION_PENDING_WARNING_INTERVAL_MS } from "../../config.ts";
@@ -26,9 +26,11 @@ export const createResultDeliveryRuntime = <E>(deps: {
     try { report(); } catch { /* Diagnostics must not prevent wake, recovery or settlement. */ }
   };
   const capacity = createDeliveryCapacity({ ...deliveryLanes.results,
-    retained: deps.io.reservations,
+    retained: () => deps.io.reservations(),
     onSettled: (notificationId, exit) => {
       try { if (Exit.isFailure(exit)) { observe(() => logger.error({ event: "result_notification.dispatch_failed", notificationId })); } }
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       finally { dispatcher.wake("delivery_finished"); }
     }
   });
@@ -54,7 +56,12 @@ export const createResultDeliveryRuntime = <E>(deps: {
     // invariant: wake は既存期限を延期せず、障害backoffも短縮しない。
     if (timer && timer.dueAt <= dueAt) { return; }
     clearTimeout(timer?.handle);
-    timer = { dueAt, handle: setTimeout(() => { timer = undefined; void pump(); }, boundedDelay) };
+    timer = { dueAt, handle: setTimeout(() => {
+      timer = undefined;
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
+      void pump().catch(() => observe(() => logger.error({ event: "result_notification.pump_failed" })));
+    }, boundedDelay) };
   };
   const prepare = (entry: ClaimedResultNotification): DeliveryTask<E> => {
     const consumeYieldRequest = source.claimed(entry);

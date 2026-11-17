@@ -2,6 +2,63 @@ import { NotificationInputError } from "./notificationInput.ts";
 
 const digit = (code: number): boolean => code >= 48 && code <= 57;
 
+/** Skip JSON string contents so quoted digits and escaped quotes never become numeric tokens. */
+const afterQuotedString = (raw: string, start: number): number => {
+  let offset = start + 1;
+  while (offset < raw.length) {
+    const quoted = raw.charCodeAt(offset++);
+    if (quoted === 92) { offset += 1; }
+    else if (quoted === 34) { break; }
+  }
+  return offset;
+};
+
+/** Read E notation without letting an attacker-controlled exponent overflow arithmetic. */
+const readExponent = (raw: string, start: number, limit: number): { readonly value: number; readonly end: number } => {
+  let offset = start + 1;
+  const negative = raw.charCodeAt(offset) === 45;
+  if (negative || raw.charCodeAt(offset) === 43) { offset += 1; }
+  let value = 0;
+  while (digit(raw.charCodeAt(offset))) {
+    value = Math.min(limit, value * 10 + raw.charCodeAt(offset) - 48);
+    offset += 1;
+  }
+  return { value: negative ? -value : value, end: offset };
+};
+
+/** Count PostgreSQL's decimal text size directly from the token, without expanding or rounding it. */
+const readDecimalBudget = (raw: string, start: number, exponentLimit: number): { readonly bytes: number; readonly end: number } => {
+  let offset = start;
+  const negative = raw.charCodeAt(offset) === 45;
+  if (negative) { offset += 1; }
+  const integerStart = offset;
+  let firstNonZero = -1;
+  while (digit(raw.charCodeAt(offset))) {
+    if (firstNonZero < 0 && raw.charCodeAt(offset) !== 48) { firstNonZero = offset - integerStart; }
+    offset += 1;
+  }
+  const integerDigits = offset - integerStart;
+  let fractionDigits = 0;
+  if (raw.charCodeAt(offset) === 46) {
+    const fractionStart = ++offset;
+    while (digit(raw.charCodeAt(offset))) {
+      if (firstNonZero < 0 && raw.charCodeAt(offset) !== 48) { firstNonZero = integerDigits + offset - fractionStart; }
+      offset += 1;
+    }
+    fractionDigits = offset - fractionStart;
+  }
+  let exponent = 0;
+  if (raw.charCodeAt(offset) === 69 || raw.charCodeAt(offset) === 101) {
+    const token = readExponent(raw, offset, exponentLimit);
+    exponent = token.value;
+    offset = token.end;
+  }
+  // PostgreSQL drops a zero's sign and retains fractional scale, including trailing zeros.
+  const scale = Math.max(0, fractionDigits - exponent);
+  const integers = firstNonZero < 0 ? 1 : Math.max(1, integerDigits + exponent - firstNonZero);
+  return { bytes: integers + (scale > 0 ? scale + 1 : 0) + (negative && firstNonZero >= 0 ? 1 : 0), end: offset };
+};
+
 /** Bound decimal expansion work before PostgreSQL materializes jsonb::text. */
 export const assertNotificationNumericBudget = (raw: string, maximumBytes: number): void => {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) { throw new Error("Invalid notification numeric budget"); }
@@ -11,50 +68,11 @@ export const assertNotificationNumericBudget = (raw: string, maximumBytes: numbe
   const exponentLimit = Math.min(Number.MAX_SAFE_INTEGER, maximumBytes + raw.length + 1);
   while (offset < raw.length) {
     const character = raw.charCodeAt(offset);
-    if (character === 34) {
-      offset += 1;
-      while (offset < raw.length) {
-        const quoted = raw.charCodeAt(offset++);
-        if (quoted === 92) { offset += 1; }
-        else if (quoted === 34) { break; }
-      }
-      continue;
-    }
+    if (character === 34) { offset = afterQuotedString(raw, offset); continue; }
     if (character !== 45 && !digit(character)) { offset += 1; continue; }
-    const negative = character === 45;
-    if (negative) { offset += 1; }
-    const integerStart = offset;
-    let firstNonZero = -1;
-    while (digit(raw.charCodeAt(offset))) {
-      if (firstNonZero < 0 && raw.charCodeAt(offset) !== 48) { firstNonZero = offset - integerStart; }
-      offset += 1;
-    }
-    const integerDigits = offset - integerStart;
-    let fractionDigits = 0;
-    if (raw.charCodeAt(offset) === 46) {
-      const fractionStart = ++offset;
-      while (digit(raw.charCodeAt(offset))) {
-        if (firstNonZero < 0 && raw.charCodeAt(offset) !== 48) { firstNonZero = integerDigits + offset - fractionStart; }
-        offset += 1;
-      }
-      fractionDigits = offset - fractionStart;
-    }
-    let exponent = 0;
-    if (raw.charCodeAt(offset) === 69 || raw.charCodeAt(offset) === 101) {
-      offset += 1;
-      const negativeExponent = raw.charCodeAt(offset) === 45;
-      if (negativeExponent || raw.charCodeAt(offset) === 43) { offset += 1; }
-      while (digit(raw.charCodeAt(offset))) {
-        exponent = Math.min(exponentLimit, exponent * 10 + raw.charCodeAt(offset) - 48);
-        offset += 1;
-      }
-      if (negativeExponent) { exponent = -exponent; }
-    }
-    // PostgreSQL drops a zero's sign, expands E notation, and retains fractional
-    // scale, including trailing zeros. No numeric value is rounded or rewritten.
-    const scale = Math.max(0, fractionDigits - exponent);
-    const integers = firstNonZero < 0 ? 1 : Math.max(1, integerDigits + exponent - firstNonZero);
-    expandedBytes += integers + (scale > 0 ? scale + 1 : 0) + (negative && firstNonZero >= 0 ? 1 : 0);
+    const token = readDecimalBudget(raw, offset, exponentLimit);
+    offset = token.end;
+    expandedBytes += token.bytes;
     // invariant: 重複keyの破棄前のtokenも作業量へ計上する。canonical本文の上限はDB側で別に確認する。
     if (expandedBytes > maximumBytes) { throw new NotificationInputError("payload_too_large"); }
   }

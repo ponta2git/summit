@@ -38,9 +38,11 @@ await Promise.all(Object.keys(manifest.dependencies).map(name => import(entries[
 await import('@momo/db/notifications');
 await import('./dist/commands/definitions.js');
 await import('date-fns/locale/ja');
-for (const name of ['vitest', 'typescript', 'vite', 'oxlint', 'knip']) {
+for (const name of ['vitest', 'typescript', 'vite', 'oxlint', 'oxlint-tsgolint', 'knip']) {
   await assert.rejects(access('node_modules/' + name));
 }
+assert.equal(readdirSync('node_modules/.pnpm').some(name => name.includes('oxlint-tsgolint')), false,
+  'Type-aware lint engine and platform binaries must not enter the production dependency closure');
 console.log('Runtime image: non-root, read-only code, malloc arena limit, production dependencies and public subpath imports verified');
 `;
 

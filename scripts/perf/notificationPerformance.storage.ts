@@ -26,7 +26,7 @@ export const createPerformanceOutput = async (directory: string): Promise<void> 
 
 export const writePerformanceArtifact = async (directory: string, filename: string, value: unknown): Promise<void> => {
   if (!/^[a-z0-9][a-z0-9.-]*$/.test(filename)) { throw new CapacityError("setup_or_measurement", "artifact_name"); }
-  await performanceStage("persist", () => writeFile(join(directory, filename), JSON.stringify(value, null, 2) + "\n", { flag: "wx", mode: 0o600 }));
+  await performanceStage("persist", () => writeFile(join(directory, filename), `${JSON.stringify(value, null, 2)}\n`, { flag: "wx", mode: 0o600 }));
 };
 
 export const performanceProvenance = async (image: string) => {
@@ -70,7 +70,7 @@ export const withPerformanceDatabase = async <T>(adminUrl: string, run: (context
   let cleanupFailed = false;
   try {
     options.signal?.throwIfAborted();
-    await performanceStage("database_create", async () => admin`CREATE DATABASE ${admin(name)}`);
+    await performanceStage("database_create", () => admin`CREATE DATABASE ${admin(name)}`);
     options.signal?.throwIfAborted();
     client = connect(url);
     const owned = client;

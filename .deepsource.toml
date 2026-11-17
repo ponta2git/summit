@@ -1,0 +1,25 @@
+version = 1
+
+test_patterns = ["tests/**"]
+exclude_patterns = ["node_modules/**", "dist/**", "coverage/**"]
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  # why: ESLint連携・Ignored Rules・行単位例外の範囲と代替gateは docs/quality-assurance.md。
+  [analyzers.meta]
+  environment = ["nodejs"]
+  module_system = "es-modules"
+  dialect = "typescript"
+
+[[analyzers]]
+name = "docker"
+enabled = true
+
+[[analyzers]]
+name = "shell"
+enabled = true
+
+  [analyzers.meta]
+  dialect = "bash"

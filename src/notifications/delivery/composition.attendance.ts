@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { Logger } from "pino";
-import type * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { AppContext } from "../../appContext.ts";
 import type { OutboxEntry } from "../../db/ports.ts";
 import type { AppError } from "../../errors/index.ts";

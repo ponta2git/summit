@@ -1,8 +1,8 @@
-import * as Result from "effect/Result";
-import * as Cause from "effect/Cause";
-import * as Exit from "effect/Exit";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { runEffect } from "../helpers/assertions.ts";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { runSchedulerBatchEffect, type SchedulerEffect } from "../../src/scheduler/scheduler.types.ts";

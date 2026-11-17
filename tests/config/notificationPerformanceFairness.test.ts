@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assertLegacyQueueOrder, runFairnessScenario } from "../../scripts/perf/notificationPerformance.fairness.ts";
 
-const harness = () => {
+const createHarness = () => {
   const events: string[] = [];
   return {
     events,
@@ -17,27 +17,27 @@ const harness = () => {
 
 describe("notification fairness measurement", () => {
   it("records a short stream observation without treating two completed initial posts as a failure", async () => {
-    const h = harness();
-    const result = await runFairnessScenario({ ...h, scenario: "stream", rounds: 1 });
+    const harness = createHarness();
+    const result = await runFairnessScenario({ ...harness, scenario: "stream", rounds: 1 });
     expect(result).toMatchObject({ expectedNotifications: 4, analysisPartsAtArrivalEnd: 2, syntheticSendDelayMs: 5 });
-    expect(h.events).toEqual(["/send-delay/5", "/hold-delivery", "post:analysis", "post:analysis", "/wait/sends/2",
+    expect(harness.events).toEqual(["/send-delay/5", "/hold-delivery", "post:analysis", "post:analysis", "/wait/sends/2",
       "post:ocr", "/release-delivery", "post:ocr", "/stats", "/wait/delivered/4"]);
   });
 
   it("puts each mixed OCR behind two already started analyses and waits for each round to finish", async () => {
-    const h = harness();
-    const result = await runFairnessScenario({ ...h, scenario: "mixed", rounds: 2 });
+    const harness = createHarness();
+    const result = await runFairnessScenario({ ...harness, scenario: "mixed", rounds: 2 });
     expect(result.expectedNotifications).toBe(6);
-    expect(h.events).toEqual(["/send-delay/0", "/hold-delivery", "post:analysis", "post:analysis", "/wait/sends/2",
+    expect(harness.events).toEqual(["/send-delay/0", "/hold-delivery", "post:analysis", "post:analysis", "/wait/sends/2",
       "post:ocr", "/release-delivery", "/wait/delivered/3", "/hold-delivery", "post:analysis", "post:analysis", "/wait/sends/2",
       "post:ocr", "/release-delivery", "/wait/delivered/6"]);
   });
 
   it("queues the legacy payload before the later OCR while the first OCR still holds its slot", async () => {
-    const h = harness();
-    const result = await runFairnessScenario({ ...h, scenario: "legacyqueue", rounds: 1 });
+    const harness = createHarness();
+    const result = await runFairnessScenario({ ...harness, scenario: "legacyqueue", rounds: 1 });
     expect(result).toMatchObject({ expectedNotifications: 3, legacyJsonbBytes: 8_000_000 });
-    expect(h.events).toEqual(["/hold-delivery", "post:ocr", "/wait/sends/1", "seed:legacy", "post:ocr",
+    expect(harness.events).toEqual(["/hold-delivery", "post:ocr", "/wait/sends/1", "seed:legacy", "post:ocr",
       "/release-delivery", "/wait/delivered/3"]);
   });
 

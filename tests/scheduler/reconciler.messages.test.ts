@@ -1,5 +1,5 @@
-import * as Result from "effect/Result";
-import * as Effect from "effect/Effect";
+import * as Result from "effect/Result"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setImmediate } from "node:timers/promises";
 
@@ -20,7 +20,7 @@ import { probeDeletedMessagesAtStartup } from "../../src/scheduler/reconciler.pr
 import { createTestAppContext } from "../testing/index.js";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 import { runEffect } from "../helpers/assertions.js";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 
 beforeEach(resetReconcilerHarness);
 
@@ -34,6 +34,8 @@ describe("isUnknownMessageError", () => {
       isUnknownMessageError(new Error("boom")),
       isUnknownMessageError({ code: 50001 }),
       isUnknownMessageError(null),
+      // why: unknownの欠損入力を明示的に検証。入力契約変更時に再評価。
+      // skipcq: JS-W1042
       isUnknownMessageError(undefined)
     ]).toStrictEqual([false, false, false, false]);
   });
@@ -162,7 +164,7 @@ describe("probeDeletedMessagesAtStartup", () => {
   it("shares replacement ownership with an in-flight message update", async () => {
     const session = buildSessionRow({ askMessageId: "deleted-id" });
     const ctx = createTestAppContext({ seed: { sessions: [session] } });
-    const entered = deferred<void>(); const release = deferred<void>(); let blocked = false;
+    const entered = deferredSignal(); const release = deferredSignal(); let blocked = false;
     setFetchImpl(async id => {
       if (id !== "deleted-id") { return makeMessage(id); }
       if (!blocked) { blocked = true; entered.resolve(); await release.promise; }

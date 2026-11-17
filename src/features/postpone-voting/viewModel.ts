@@ -38,12 +38,12 @@ export const buildPostponeMessageViewModel = (
   const memberStatuses: PostponeMemberStatus[] =
     memberRows !== undefined
       ? appConfig.memberUserIds.map((userId) => {
-          const member = memberRows.find((m) => m.userId === userId);
+          const member = memberRows.find((candidate) => candidate.userId === userId);
           if (!member) {
             return { userId, displayLabel: userId, state: "unanswered" as const };
           }
           // race: 同一 memberId の重複回答はリスト末尾 (最新) を採用し last-write-wins に収束させる。
-          const memberResponses = responses?.filter((r) => r.memberId === member.id) ?? [];
+          const memberResponses = responses?.filter((response) => response.memberId === member.id) ?? [];
           const last = memberResponses[memberResponses.length - 1];
           const state =
             last?.choice === "POSTPONE_OK"

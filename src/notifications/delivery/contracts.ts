@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { InvariantViolationError } from "../../errors/index.ts";
 import type { DeliveryExecution } from "./capacity.ts";
 

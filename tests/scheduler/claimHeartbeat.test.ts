@@ -1,13 +1,13 @@
 import { setImmediate } from "node:timers/promises";
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "../../src/errors/index.ts";
 import { settledCall } from "../../src/runtime/effect.ts";
 import { withClaimHeartbeat } from "../../src/notifications/delivery/claimHeartbeat.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 import type { ClaimLease } from "../../src/time/lease.ts";
 
 const initialLease = () => ({ clock: { now: () => new Date() }, lease: {
@@ -19,8 +19,8 @@ describe("claim heartbeat ownership", () => {
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
   it.each(["lost", "uncertain"] as const)("closes ownership before a %s diagnostic throws and observes the child failure", async reason => {
-    const started = deferred<void>();
-    const delivery = deferred<void>();
+    const started = deferredSignal();
+    const delivery = deferredSignal();
     const diagnosticFailure = new Error("diagnostic failed");
     let isClaimLost = () => false;
     let lostDuringDiagnostic = false;
@@ -58,7 +58,7 @@ describe("claim heartbeat ownership", () => {
   });
 
   it("preserves both delivery failure and a concurrent heartbeat defect", async () => {
-    const started = deferred<void>(); const delivery = deferred<void>();
+    const started = deferredSignal(); const delivery = deferredSignal();
     const failure = new DatabaseError("delivery failed"); const defect = new Error("diagnostic failed");
     const pending = runEffect(Effect.exit(withClaimHeartbeat({ ...initialLease(), intervalMs: 10,
       renew: () => Promise.resolve(null), onLost: () => { throw defect; }
@@ -79,9 +79,9 @@ describe("claim heartbeat ownership", () => {
   });
 
   it.each(["success", "failure", "interruption"] as const)("retains a pending renewal through delivery %s", async mode => {
-    const started = deferred<void>();
-    const delivery = deferred<void>();
-    const renewing = deferred<void>();
+    const started = deferredSignal();
+    const delivery = deferredSignal();
+    const renewing = deferredSignal();
     const renewal = deferred<ClaimLease | null>();
     const failure = new DatabaseError("delivery failed");
     const controller = new AbortController();

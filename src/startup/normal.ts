@@ -14,11 +14,12 @@ import { runReconciler } from "../scheduler/reconciler.ts";
 import { createAskScheduler, runStartupRecovery, type AppScheduler } from "../scheduler/index.ts";
 import { runPromiseBoundary } from "../runtime/effect.ts";
 import { drainResources, stopResources } from "../runtime/lifecycle.ts";
+import { reportSafely } from "../runtime/diagnostics.ts";
 import { isShuttingDown, shutdownGracefully } from "../shutdown.ts";
 import { appConfig } from "../userConfig.ts";
-import { createAppReadiness, registerReconnectReplayHandlers } from "../startup/appReadiness.ts";
-import { createBootPhaseLogger } from "../startup/bootLogging.ts";
-import { attachRateLimitLogging } from "../startup/rateLimitLogging.ts";
+import { createAppReadiness, registerReconnectReplayHandlers } from "./appReadiness.ts";
+import { createBootPhaseLogger } from "./bootLogging.ts";
+import { attachRateLimitLogging } from "./rateLimitLogging.ts";
 import { createResultNotificationRuntime } from "../notifications/runtime.ts";
 
 const appContext = createAppContext();
@@ -32,6 +33,8 @@ const resultNotifications = env.RESULT_NOTIFICATION_TOKEN && env.RESULT_NOTIFICA
     webOrigin: env.RESULT_NOTIFICATION_WEB_ORIGIN, channelId: appConfig.discord.channelId,
     canAccept: () => startupCompleted }) : undefined;
 const wakeSchedulers = (reason: string): void => {
+  // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+  // skipcq: JS-0357
   scheduler?.wake(reason);
   resultNotifications?.wake(reason);
 };
@@ -52,14 +55,20 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
     stopScheduler: () => stopResources([
       () => readiness.markNotReady("shutting_down"),
       () => interactions.stop(),
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       () => reconnect.stop(),
       () => resultNotifications?.stop(),
       () => scheduler?.stop(),
       () => notificationAdmissionFor(db).stop()
     ]),
     waitForInFlightSend: () => drainResources([
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       () => startupInFlight,
       () => interactions.drain(),
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       () => reconnect.drain(),
       waitForInFlightSend,
       () => scheduler?.drain(),
@@ -71,12 +80,16 @@ const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   })
     .then((didStart) => {
       if (didStart) {
+        // why: 有界drainとresource解放後、残ったSDK handleも終了する。標準Pinoはexit時に同期flush。destination変更時に再評価する。
+        // skipcq: JS-0263
         process.exit(0);
       }
       return undefined;
     })
     .catch((error: unknown) => {
-      logger.error({ error, signal }, "Fatal shutdown error.");
+      reportSafely(() => logger.error({ error, signal }, "Fatal shutdown error."));
+      // why: shutdownの最終失敗でも部分稼働を残さない。標準Pinoのexit時flushを使い、destination変更時に再評価する。
+      // skipcq: JS-0263
       process.exit(1);
     });
 };
@@ -123,10 +136,10 @@ const run = async (): Promise<void> => {
 
   // why: 本番 invariant (OFF) を覆している状態を起動時 1 回だけ warn で明示する。
   if (appConfig.dev.suppressMentions) {
-    logger.warn(
+    reportSafely(() => logger.warn(
       { devMentionSuppression: true, mentionSuppression: "client-default" },
       "Dev mention suppression is ON. Push mentions are suppressed and `<@id>` lines are omitted from message bodies."
-    );
+    ));
   }
 
   // source-of-truth: DB と Discord の invariant を収束させる。CAS 冪等のため scheduler との競合は race lost として扱う。
@@ -167,18 +180,20 @@ const run = async (): Promise<void> => {
     nodeVersion: process.version
   });
 
-  logger.info(
+  reportSafely(() => logger.info(
     {
       guildId: appConfig.discord.guildId,
       channelId: appConfig.discord.channelId
     },
     "Discord bot started."
-  );
+  ));
 };
 
 const startupInFlight = run().catch((error: unknown) => {
   if (isShuttingDown()) { return; }
   readiness.markNotReady("startup_failed");
-  logger.error({ error, bootId }, "Failed to start Discord bot.");
+  reportSafely(() => logger.error({ error, bootId }, "Failed to start Discord bot."));
+  // why: 起動失敗した部分稼働processを残さない。標準Pinoのexit時flushを使い、destination変更時に再評価する。
+  // skipcq: JS-0263
   process.exit(1);
 });

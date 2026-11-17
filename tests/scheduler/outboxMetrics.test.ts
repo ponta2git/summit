@@ -58,8 +58,8 @@ describe("runOutboxMetricsTick", () => {
         createdAt: new Date(now.getTime() - 30_000)
       })
     );
-    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 
@@ -93,8 +93,8 @@ describe("runOutboxMetricsTick", () => {
         updatedAt: new Date(now.getTime() - 60_000)
       })
     );
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
+    const info = vi.spyOn(logger, "info").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 
@@ -125,8 +125,8 @@ describe("runOutboxMetricsTick", () => {
         createdAt: new Date(now.getTime() - OUTBOX_METRICS_PENDING_AGE_WARN_MS - 1)
       })
     );
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
+    const info = vi.spyOn(logger, "info").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 
@@ -155,8 +155,8 @@ describe("runOutboxMetricsTick", () => {
         createdAt: new Date(now.getTime() - OUTBOX_METRICS_PENDING_AGE_WARN_MS)
       })
     );
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
+    const info = vi.spyOn(logger, "info").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 
@@ -187,7 +187,7 @@ describe("runOutboxMetricsTick", () => {
         })
       );
     }
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 
@@ -199,8 +199,8 @@ describe("runOutboxMetricsTick", () => {
 
   it("emits zero-depth baseline at info level when outbox is empty", async () => {
     const ctx = createTestAppContext({ now: new Date("2026-04-25T01:00:00Z") });
-    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => { /* why: 出力を止め、spy の呼出内容で診断を検証する。 */ });
 
     await runEffect(runOutboxMetricsTick(ctx));
 

@@ -29,7 +29,7 @@ export const performancePost = (
       const code = ["ECONNRESET", "EPIPE", "ABORT_ERR"].includes(error.code ?? "") ? error.code : "unknown";
       reject(new CapacityError("setup_or_measurement", `http_${code}`));
     };
-    const call = request(session.receiverOrigin + "/internal/discord-notifications", { method: "POST", signal: session.signal,
+    const call = request(`${session.receiverOrigin}/internal/discord-notifications`, { method: "POST", signal: session.signal,
       headers: { authorization: `Bearer ${session.token}`, "content-type": "application/json",
         ...(options.chunked ? {} : { "content-length": body.length }) }
     }, response => {
@@ -42,7 +42,7 @@ export const performancePost = (
   });
 };
 
-export const performanceControl = async (session: CapacitySession, path: string): Promise<unknown> => {
+export const performanceControl = (session: CapacitySession, path: string): Promise<unknown> => {
   const operation = path.startsWith("/wait/") ? "wait" : ["/reset", "/gc", "/finish", "/stats", "/wake"].includes(path)
     ? path.slice(1) : "barrier";
   return performanceStage(`control_${operation}`, async () => {

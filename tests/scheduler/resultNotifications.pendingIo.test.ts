@@ -16,55 +16,55 @@ describe("result dispatcher with SDK calls beyond the application timeout", () =
   });
 
   it("holds two owners for twenty minutes, does no retry polling, then resumes when actual I/O settles", async () => {
-    const h = resultWorkerHarness();
-    const ids = [await h.enqueue("a", "short"), await h.enqueue("b", "short"), await h.enqueue("c", "short")];
+    const harness = resultWorkerHarness();
+    const ids = [await harness.enqueue("a", "short"), await harness.enqueue("b", "short"), await harness.enqueue("c", "short")];
     const sent = deferred<{ id: string }>(); releases.push(() => sent.resolve({ id: "late" }));
-    h.channel.send.mockImplementationOnce(() => sent.promise).mockImplementationOnce(() => sent.promise);
-    runtime = createResultNotificationDispatcher(h); runtime.wake("startup");
+    harness.channel.send.mockImplementationOnce(() => sent.promise).mockImplementationOnce(() => sent.promise);
+    runtime = createResultNotificationDispatcher(harness); runtime.wake("startup");
     await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_SEND_TIMEOUT_MS + 1);
-    const claims = h.port.calls.filter(call => call.name === "claim").length;
+    const claims = harness.port.calls.filter(call => call.name === "claim").length;
     await vi.advanceTimersByTimeAsync(20 * 60_000);
-    expect(h.channel.send).toHaveBeenCalledTimes(2);
-    expect(h.port.calls.filter(call => call.name === "claim")).toHaveLength(claims);
-    for (const id of ids.slice(0, 2)) { expect(await h.port.inspect(id!)).toMatchObject({ status: "PENDING", attemptCount: 1 }); }
-    expect(await h.port.inspect(ids[2]!)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect(harness.channel.send).toHaveBeenCalledTimes(2);
+    expect(harness.port.calls.filter(call => call.name === "claim")).toHaveLength(claims);
+    for (const id of ids.slice(0, 2)) { expect(await harness.port.inspect(id)).toMatchObject({ status: "PENDING", attemptCount: 1 }); }
+    expect(await harness.port.inspect(ids[2]!)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     sent.resolve({ id: "late" }); await vi.advanceTimersByTimeAsync(1);
     await runtime.drain(); await vi.advanceTimersByTimeAsync(1);
-    for (const id of ids) { expect(await h.port.inspect(id)).toMatchObject({ status: "DELIVERED" }); }
-    expect(h.logger.info.mock.calls.filter(([value]) => value.event === "result_notification.io_late_success")).toHaveLength(2);
+    for (const id of ids) { expect(await harness.port.inspect(id)).toMatchObject({ status: "DELIVERED" }); }
+    expect(harness.logger.info.mock.calls.filter(([value]) => value.event === "result_notification.io_late_success")).toHaveLength(2);
     // Existing nonce/CAS recovery still resends after settlement; no late success is persisted with an old token.
-    expect(h.port.calls.filter(call => call.name === "complete")).toHaveLength(3);
+    expect(harness.port.calls.filter(call => call.name === "complete")).toHaveLength(3);
   });
 
   it("retains an oversized historical reservation after timeout and drains actual I/O after stop", async () => {
-    const h = resultWorkerHarness();
-    await h.enqueue("a-large", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
-    const waiting = await h.enqueue("b-waiting", "short");
+    const harness = resultWorkerHarness();
+    await harness.enqueue("a-large", "x".repeat(RESULT_NOTIFICATION_CLAIM_BUDGET_BYTES));
+    const waiting = await harness.enqueue("b-waiting", "short");
     const sent = deferred<{ id: string }>(); releases.push(() => sent.resolve({ id: "late" }));
-    h.channel.send.mockImplementationOnce(() => sent.promise);
-    runtime = createResultNotificationDispatcher(h); runtime.wake("startup");
+    harness.channel.send.mockImplementationOnce(() => sent.promise);
+    runtime = createResultNotificationDispatcher(harness); runtime.wake("startup");
     await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_SEND_TIMEOUT_MS + 120_000);
-    expect(h.channel.send).toHaveBeenCalledOnce();
-    expect(await h.port.inspect(waiting)).toMatchObject({ status: "PENDING", attemptCount: 0 });
+    expect(harness.channel.send).toHaveBeenCalledOnce();
+    expect(await harness.port.inspect(waiting)).toMatchObject({ status: "PENDING", attemptCount: 0 });
     runtime.stop(); let drained = false;
     const drain = runtime.drain().then(() => { drained = true; return undefined; });
     await vi.advanceTimersByTimeAsync(0); expect(drained).toBe(false);
     sent.resolve({ id: "late" }); await drain;
     await vi.advanceTimersByTimeAsync(120_000);
-    expect(h.channel.send).toHaveBeenCalledOnce();
-    expect(h.port.calls.filter(call => call.name === "complete")).toHaveLength(0);
+    expect(harness.channel.send).toHaveBeenCalledOnce();
+    expect(harness.port.calls.filter(call => call.name === "complete")).toHaveLength(0);
   });
 
   it("does not continue to send after a channel lookup succeeds past its timeout", async () => {
-    const h = resultWorkerHarness(); await h.enqueue("lookup", "short");
-    const channel = await h.client.channels.fetch("channel-1");
+    const harness = resultWorkerHarness(); await harness.enqueue("lookup", "short");
+    const channel = await harness.client.channels.fetch("channel-1");
     const lookup = deferred<typeof channel>(); releases.push(() => lookup.resolve(channel));
-    vi.mocked(h.client.channels.fetch).mockImplementationOnce(() => lookup.promise);
-    runtime = createResultNotificationDispatcher(h); runtime.wake("startup");
+    vi.mocked(harness.client.channels.fetch).mockImplementationOnce(() => lookup.promise);
+    runtime = createResultNotificationDispatcher(harness); runtime.wake("startup");
     await vi.advanceTimersByTimeAsync(RESULT_NOTIFICATION_SEND_TIMEOUT_MS + 1);
-    expect(h.channel.send).not.toHaveBeenCalled();
+    expect(harness.channel.send).not.toHaveBeenCalled();
     runtime.stop(); lookup.resolve(channel); await runtime.drain();
-    expect(h.channel.send).not.toHaveBeenCalled();
-    expect(h.logger.info).toHaveBeenCalledWith(expect.objectContaining({ event: "result_notification.io_late_success", operation: "channel" }));
+    expect(harness.channel.send).not.toHaveBeenCalled();
+    expect(harness.logger.info).toHaveBeenCalledWith(expect.objectContaining({ event: "result_notification.io_late_success", operation: "channel" }));
   });
 });

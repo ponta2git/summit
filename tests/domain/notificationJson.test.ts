@@ -10,14 +10,14 @@ describe("notification JSON allocation boundary", () => {
   });
 
   it("accepts the depth boundary but rejects excessive nesting before allocation", () => {
-    const allowed = "[".repeat(64) + "0" + "]".repeat(64);
+    const allowed = `${"[".repeat(64)}0${"]".repeat(64)}`;
     expect(JSON.stringify(parseNotificationJson(allowed))).toBe(allowed);
     const parse = vi.spyOn(JSON, "parse");
-    expect(() => parseNotificationJson("[".repeat(65) + "0" + "]".repeat(65))).toThrow("payload_too_large");
+    expect(() => parseNotificationJson(`${"[".repeat(65)}0${"]".repeat(65)}`)).toThrow("payload_too_large");
     expect(parse).not.toHaveBeenCalled();
   });
 
-  it.each(["[" + "{},".repeat(500_000) + "{}]", "[" + "0,".repeat(1_000_000) + "0]"])(
+  it.each([`[${"{},".repeat(500_000)}{}]`, `[${"0,".repeat(1_000_000)}0]`])(
     "rejects excessive containers or primitive values before JSON.parse creates them", raw => {
       const parse = vi.spyOn(JSON, "parse");
       expect(() => parseNotificationJson(raw)).toThrow("payload_too_large");
@@ -29,7 +29,7 @@ describe("notification JSON allocation boundary", () => {
     const base = analysisNotification();
     const first = base.data.matches[0];
     if (!first) { throw new Error("Expected match fixture"); }
-    const note = "界" + "x".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192);
+    const note = `界${"x".repeat(RESULT_NOTIFICATION_LEGACY_MAX_JSONB_BYTES - 8_192)}`;
     const input = { ...base, data: { ...base.data, matches: [{ ...first, note }] } };
     const value = parseNotificationJson(JSON.stringify(input));
     const parsed = validateStoredNotification(value);

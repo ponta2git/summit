@@ -6,7 +6,7 @@ import { CRON_ASK_SCHEDULE, CRON_OUTBOX_RETENTION_SCHEDULE, CRON_SCHEDULER_SUPER
   SCHEDULER_RECOVERY_BACKOFF_MS } from "../../src/config.ts";
 import { createTestAppContext } from "../testing/index.ts";
 import { stubClient } from "./outboxWorker.harness.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferredSignal } from "../helpers/deferred.ts";
 import { buildSessionRow } from "../testing/sessionScenario.ts";
 
 describe("cron callback lifetime", () => {
@@ -21,6 +21,8 @@ describe("cron callback lifetime", () => {
     context.ports.outbox[failedOperation] = async () => { throw new Error("unavailable"); };
     const callbacks = new Map<string, () => void | Promise<void>>();
     const wakeResults = vi.fn();
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     const scheduler = createAskScheduler({ client: stubClient(undefined), context, wakeResultNotifications: wakeResults,
       cronAdapter: { schedule: (expression, callback) => { callbacks.set(expression, callback); return { stop: vi.fn() }; } } });
     try {
@@ -35,6 +37,8 @@ describe("cron callback lifetime", () => {
     const stops = [vi.fn(), vi.fn(() => { throw new Error("cleanup failed"); })];
     const callbacks: Array<() => void | Promise<void>> = [];
     const sendAsk = vi.fn(async () => ({ status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }));
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     expect(() => createAskScheduler({ client: stubClient(undefined), context: createTestAppContext(), sendAsk,
       cronAdapter: { schedule: (_expression, callback) => {
         const stop = stops[callbacks.length];
@@ -42,13 +46,15 @@ describe("cron callback lifetime", () => {
         callbacks.push(callback); return { stop };
       } }
     })).toThrow(failure);
-    await Promise.all(callbacks.map(callback => callback()));
+    await Promise.all(callbacks.map(async callback => { await callback(); }));
     for (const stop of stops) { expect(stop).toHaveBeenCalledOnce(); }
     expect(sendAsk).not.toHaveBeenCalled();
   });
 
   it("stops each registered producer once across repeated shutdown requests", async () => {
     const stop = vi.fn();
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     const scheduler = createAskScheduler({ client: stubClient(undefined), context: createTestAppContext(),
       cronAdapter: { schedule: () => ({ stop }) } });
     scheduler.stop(); scheduler.stop(); await scheduler.drain();
@@ -62,6 +68,8 @@ describe("cron callback lifetime", () => {
       decidedStartAt: new Date("2026-04-24T13:00:00Z") });
     const context = createTestAppContext({ seed: { sessions: [session] }, now });
     vi.spyOn(context.ports.outbox, "enqueue").mockRejectedValueOnce(new Error("transient enqueue failure"));
+    // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+    // skipcq: JS-W1042
     const scheduler = createAskScheduler({ client: stubClient(undefined), context,
       cronAdapter: { schedule: () => ({ stop: vi.fn() }) } });
     try {
@@ -74,7 +82,7 @@ describe("cron callback lifetime", () => {
 
   it.each([CRON_ASK_SCHEDULE, CRON_OUTBOX_RETENTION_SCHEDULE, CRON_SCHEDULER_SUPERVISOR_SCHEDULE])(
     "keeps %s pending until its work completes and includes it in shutdown drain", async expression => {
-      const context = createTestAppContext(); const pending = deferred<void>(); const callbacks = new Map<string, () => void | Promise<void>>();
+      const context = createTestAppContext(); const pending = deferredSignal(); const callbacks = new Map<string, () => void | Promise<void>>();
       const sendAsk = vi.fn(async () => { await pending.promise; return { status: "queued" as const, weekKey: "2026-W17", sessionId: "session-1" }; });
       const prune = context.ports.outbox.prune;
       context.ports.outbox.prune = async (...args) => { await pending.promise; return prune(...args); };
@@ -83,6 +91,8 @@ describe("cron callback lifetime", () => {
       const schedule = (expr: string, callback: () => void | Promise<void>): Pick<ScheduledTask, "stop"> => {
         callbacks.set(expr, callback); return { stop: vi.fn() };
       };
+      // why: 必須引数へchannelなしのfixtureを渡す。helper契約変更時に再評価。
+      // skipcq: JS-W1042
       const scheduler = createAskScheduler({ client: stubClient(undefined), context, sendAsk, cronAdapter: { schedule } });
       const callback = callbacks.get(expression); if (!callback) { throw new Error("Cron callback missing"); }
       const callbackResult = callback();

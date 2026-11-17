@@ -6,7 +6,11 @@ const run = async (): Promise<void> => {
   if (process.argv.length !== 2) { throw new Error("No arguments are supported"); }
   // invariant: loopbackとfake DBだけを使い、local設定・secretを読み込まない。
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith("RESULT_NOTIFICATION_") || key === "FLY_IMAGE_REF" || key === "GIT_SHA") { delete process.env[key]; }
+    if (key.startsWith("RESULT_NOTIFICATION_") || key === "FLY_IMAGE_REF" || key === "GIT_SHA") {
+      // why: process.envはキーの不在が契約。undefined代入では文字列になるため削除し、fixture分離の変更時に再評価する。
+      // skipcq: JS-0320
+      delete process.env[key];
+    }
   }
   Object.assign(process.env, { NODE_ENV: "test", DISCORD_TOKEN: "dummy-token",
     DATABASE_URL: "postgres://summit:summit@localhost:5433/summit",

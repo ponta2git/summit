@@ -7,14 +7,14 @@ import { createResultNotificationHarness } from "./_resultNotifications.ts";
 import { isIntegration } from "./_support.ts";
 
 (isIntegration ? describe : describe.skip)("result notification runtime with real PostgreSQL", () => {
-  let h: Awaited<ReturnType<typeof createResultNotificationHarness>>;
+  let harness: Awaited<ReturnType<typeof createResultNotificationHarness>>;
   let runtime: ReturnType<typeof createResultNotificationRecorder> | undefined;
-  beforeEach(async () => { h = await createResultNotificationHarness(); });
+  beforeEach(async () => { harness = await createResultNotificationHarness(); });
   afterEach(async () => { runtime?.stop(); await runtime?.drain(); });
 
   it("receives, persists OCR v2, renders once and records delivery without Discord login", async () => {
     const messages: RecordedNotification[] = [];
-    runtime = createResultNotificationRecorder({ db: h.db, token: receiverToken, operationsToken,
+    runtime = createResultNotificationRecorder({ db: harness.db, token: receiverToken, operationsToken,
       webOrigin: "https://momo.example.test", record: async message => { messages.push(message); } });
     await runtime.start();
     const address = runtime.address();
@@ -26,13 +26,13 @@ import { isIntegration } from "./_support.ts";
     });
     expect(response.status).toBe(202);
     // The observed DB terminal state is the barrier; no guessed delivery delay is used.
-    await expect.poll(async () => (await h.port.inspect(payload.notificationId))?.status).toBe("DELIVERED");
-    const [row] = await h.client`SELECT schema_version, renderer_version, part_count FROM discord_notifications WHERE id = ${payload.notificationId}`;
+    await expect.poll(async () => (await harness.port.inspect(payload.notificationId))?.status).toBe("DELIVERED");
+    const [row] = await harness.client`SELECT schema_version, renderer_version, part_count FROM discord_notifications WHERE id = ${payload.notificationId}`;
     expect({ ...row }).toStrictEqual({ schema_version: 2, renderer_version: 2, part_count: 1 });
     expect(messages).toHaveLength(1);
     expect(messages[0]?.channelId).toBe("recorded-channel");
     expect(messages[0]?.body.content).toContain("物件収益: 画像を読み取れませんでした。");
-    expect(messages[0]?.body.content).not.toMatch(/成功|要確認/);
+    expect(messages[0]?.body.content).not.toMatch(/成功|要確認/u);
     expect(messages[0]?.body.content).toContain("<https://momo.example.test/review/draft-1>");
     expect(messages[0]?.body.allowedMentions).toStrictEqual({ parse: [], users: [], roles: [], repliedUser: false });
     runtime.stop(); await runtime.drain();

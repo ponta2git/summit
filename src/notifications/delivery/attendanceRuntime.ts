@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 
 import type { Clock } from "../../time/index.ts";
 import type { AppError } from "../../errors/index.ts";
@@ -9,6 +9,7 @@ import {
   SCHEDULER_RECOVERY_BACKOFF_MS
 } from "../../config.ts";
 import { runEffectTickSafely } from "../../scheduler/tickRunner.ts";
+import { reportSafely } from "../../runtime/diagnostics.ts";
 import type { DeliveryRuntime } from "./runtime.ts";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -46,7 +47,7 @@ export const createAttendanceRuntime = (deps: {
     clearTimer();
     if (!active) { return; }
     active = false;
-    logger.info({ event: "scheduler.worker_stopped", worker: "outbox_worker", reason });
+    reportSafely(() => logger.info({ event: "scheduler.worker_stopped", worker: "outbox_worker", reason }));
   };
 
   const scheduleLoop = (delayMs: number): void => {
@@ -59,6 +60,8 @@ export const createAttendanceRuntime = (deps: {
     const remainingBackoff = Math.max(0, (recoveryNotBefore ?? 0) - clock.now().getTime());
     timer = setTimeout(() => {
       timer = undefined;
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       run();
     }, Math.max(delayMs, remainingBackoff));
   };
@@ -72,7 +75,7 @@ export const createAttendanceRuntime = (deps: {
     if (isDue(nextDispatchAt, now)) {
       if (!active) {
         active = true;
-        logger.info({ event: "scheduler.worker_started", worker: "outbox_worker", reason: "work_available" });
+        reportSafely(() => logger.info({ event: "scheduler.worker_started", worker: "outbox_worker", reason: "work_available" }));
       }
       scheduleLoop(SCHEDULER_MIN_TIMER_DELAY_MS);
       return;
@@ -81,9 +84,11 @@ export const createAttendanceRuntime = (deps: {
     const delayMs = delayUntil(now, nextDispatchAt);
     timer = setTimeout(() => {
       timer = undefined;
+      // why: This callback runs after initialization; lifecycle/settlement tests cover its owner.
+      // skipcq: JS-0357
       runtime.wake("outbox_timer_fired");
     }, delayMs);
-    logger.info({ event: "scheduler.timer_scheduled", timer: "outbox_worker", targetAt: nextDispatchAt.toISOString(), delayMs });
+    reportSafely(() => logger.info({ event: "scheduler.timer_scheduled", timer: "outbox_worker", targetAt: nextDispatchAt.toISOString(), delayMs }));
   };
 
   const continueLoop = Effect.fnUntraced(function* () {

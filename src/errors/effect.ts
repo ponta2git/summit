@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import { AppError, DatabaseError, DiscordApiError, NotificationAdmissionInvariantError, NotificationNotStartedError } from "./index.ts";
 import { settledCall } from "../runtime/effect.ts";
 

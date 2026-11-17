@@ -10,9 +10,9 @@ export interface SyncSettings extends SyncOptions {
 const validId = (value: unknown): value is string => typeof value === "string" && /^\d{17,20}$/.test(value);
 
 /** Validates injected settings only; production requires explicit IDs and never loads local config. */
-export const readSyncSettings = async (
+export const readSyncSettings = (
   options: SyncOptions, environment: Readonly<NodeJS.ProcessEnv>
-): Promise<SyncSettings | undefined> => {
+): SyncSettings | undefined => {
   const token = environment["DISCORD_TOKEN"];
   if (!token || token.trim() !== token || /\s/.test(token)) { return undefined; }
   let applicationId = environment["DISCORD_APPLICATION_ID"];

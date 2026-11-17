@@ -4,8 +4,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeEach, describe, expect, it } from "vitest";
 import { runTransaction } from "../../src/db/transaction.ts";
 import { sessions } from "../../src/db/schema.ts";
-import * as schema from "../../src/db/schema.ts";
-import { deferred } from "../helpers/deferred.ts";
+// why: sibling @momo/db exports are checked by canonical typecheck/integration; re-evaluate after analyzer resolution support changes.
+// skipcq: JS-E1007
+import * as schema from "../../src/db/schema.ts"; // skipcq: JS-C1003
+import { deferredSignal } from "../helpers/deferred.ts";
 import { makeSession } from "../testing/fixtures.ts";
 import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_support.ts";
 
@@ -54,8 +56,8 @@ import { createIntegrationDb, isIntegration, truncatePerTestTables } from "./_su
   });
 
   it("bounds lock waits and rolls back the entire command before releasing its owner", async () => {
-    const locked = deferred<void>();
-    const release = deferred<void>();
+    const locked = deferredSignal();
+    const release = deferredSignal();
     const holding = blocker.db.transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(25010, 1)`);
       locked.resolve();

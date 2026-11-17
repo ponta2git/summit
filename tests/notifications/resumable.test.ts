@@ -1,11 +1,11 @@
-import * as Cause from "effect/Cause";
-import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause"; // skipcq: JS-C1003
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
+import * as Exit from "effect/Exit"; // skipcq: JS-C1003
 import { describe, expect, it, vi } from "vitest";
 import { deliverResumable, type ResumableDelivery } from "../../src/notifications/delivery/strategies/resumable.ts";
 import { promiseCall } from "../../src/runtime/effect.ts";
 import { runEffect } from "../helpers/assertions.ts";
-import { deferred } from "../helpers/deferred.ts";
+import { deferred, deferredSignal } from "../helpers/deferred.ts";
 
 const deliveryHarness = (): ResumableDelivery<string, never> & { readonly events: string[] } => {
   const events: string[] = [];
@@ -21,34 +21,34 @@ const deliveryHarness = (): ResumableDelivery<string, never> & { readonly events
 
 describe("resumable delivery strategy", () => {
   it("resumes missing parts in order without replaying delivered gaps", async () => {
-    const h = deliveryHarness();
-    await runEffect(deliverResumable(h));
-    expect(h.events).toEqual([
+    const harness = deliveryHarness();
+    await runEffect(deliverResumable(harness));
+    expect(harness.events).toEqual([
       "begin:1", "send:1:second", "complete:1:message-1",
       "begin:3", "send:3:fourth", "complete:3:message-3"
     ]);
   });
 
   it("waits for durable completion before consuming a yield request and starting no later part", async () => {
-    const h = deliveryHarness(); const completing = deferred<void>(); const complete = deferred<boolean>();
+    const harness = deliveryHarness(); const completing = deferredSignal(); const complete = deferred<boolean>();
     const consume = vi.fn(() => true);
-    const pending = runEffect(deliverResumable<string, unknown>({ ...h, consumeYieldRequest: consume,
+    const pending = runEffect(deliverResumable<string, unknown>({ ...harness, consumeYieldRequest: consume,
       complete: () => promiseCall(() => { completing.resolve(); return complete.promise; })
     }));
     await completing.promise;
-    expect(h.events).toEqual(["begin:1", "send:1:second"]);
+    expect(harness.events).toEqual(["begin:1", "send:1:second"]);
     expect(consume).not.toHaveBeenCalled();
     complete.resolve(true); await pending;
-    expect(h.events).toEqual(["begin:1", "send:1:second", "yield"]);
+    expect(harness.events).toEqual(["begin:1", "send:1:second", "yield"]);
     expect(consume).toHaveBeenCalledOnce();
   });
 
   it("records a started send when stopping and propagates interruption without completion", async () => {
-    const h = deliveryHarness(); let stopping = false;
-    await runEffect(deliverResumable({ ...h, shouldStop: () => stopping,
+    const harness = deliveryHarness(); let stopping = false;
+    await runEffect(deliverResumable({ ...harness, shouldStop: () => stopping,
       send: () => Effect.sync(() => { stopping = true; return "known-message"; })
     }));
-    expect(h.events).toEqual(["begin:1", "complete:1:known-message"]);
+    expect(harness.events).toEqual(["begin:1", "complete:1:known-message"]);
     const interrupted = deliveryHarness();
     const exit = await runEffect(Effect.exit(deliverResumable({ ...interrupted, send: () => Effect.interrupt })));
     expect(Exit.isFailure(exit)).toBe(true);

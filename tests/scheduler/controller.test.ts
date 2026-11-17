@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect"; // skipcq: JS-C1003
 import type { Client } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +20,7 @@ const silentLogger = {
 };
 
 const client = {} as Client;
-const okTask = () => Effect.succeed(undefined);
+const okTask = () => Effect.void;
 
 describe("SchedulerController", () => {
   afterEach(() => {
@@ -95,8 +95,7 @@ describe("SchedulerController", () => {
     const runReminderTick = vi.fn(() => {
       // Model the real reminder tick: enqueue succeeds, but the Session remains due
       // until the outbox worker delivers the intent.
-      void ctx.ports.outbox.enqueue(buildReminderIntent(decidedSession));
-      return okTask();
+      return Effect.promise(async () => { await ctx.ports.outbox.enqueue(buildReminderIntent(decidedSession)); });
     });
     const controller = createSchedulerController({
       client,

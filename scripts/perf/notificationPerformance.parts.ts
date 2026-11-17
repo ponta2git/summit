@@ -3,7 +3,7 @@ import type postgres from "postgres";
 import { capacityAnalysis } from "../verify/notificationCapacity.fixtures.ts";
 import { CapacityError } from "../verify/notificationCapacity.contract.ts";
 
-const partMatchId = (index: number): string => "界".repeat(195) + String(index).padStart(2, "0") + "::x";
+const partMatchId = (index: number): string => `${"界".repeat(195)}${String(index).padStart(2, "0")}::x`;
 const four = <T>(create: (index: 0 | 1 | 2 | 3) => T): Four<T> => [create(0), create(1), create(2), create(3)];
 const maximumRanks = (values: Four<RankComparison>): Four<RankComparison> => four(index => {
   const rank = values[index];

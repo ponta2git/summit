@@ -58,7 +58,9 @@ const memoryTrace = (run: Run) => {
   const values = [];
   for (let start = 0; start < samples.length; start += width) {
     const bucket = samples.slice(start, start + width);
-    values.push({ elapsedSeconds: bucket.at(-1)!.elapsedMs / 1000, samples: bucket.length,
+    const last = bucket.at(-1);
+    if (!last) { throw new Error("Missing memory trace bucket sample"); }
+    values.push({ elapsedSeconds: last.elapsedMs / 1000, samples: bucket.length,
       cgroupMiB: mib(Math.max(...bucket.map(value => value.cgroupCurrent))),
       rssMiB: mib(Math.max(...bucket.map(value => value.rss))),
       heapUsedMiB: mib(Math.max(...bucket.map(value => value.heapUsed))),
@@ -93,9 +95,9 @@ const analyze = async (): Promise<void> => {
   const scenarios = [];
   for (const scenario of performanceScenarios) {
     const baseline = runs.filter(run => run.run.scenario === scenario && !run.run.profiled && !run.metrics.databaseDiagnostics?.enabled);
-    if (!baseline.length) { continue; }
     const sorted = [...baseline].sort((left, right) => left.host.elapsedMilliseconds - right.host.elapsedMilliseconds);
-    const representative = sorted[Math.floor(sorted.length / 2)]!;
+    const representative = sorted[Math.floor(sorted.length / 2)];
+    if (!representative) { continue; }
     const httpSamples = baseline.flatMap(run => run.host.httpSamples);
     const http = Object.fromEntries([...new Set(httpSamples.map(value => `${value.kind}:${value.status}:${value.barrierHeld ? "held" : "unheld"}`))].map(key => [key,
       durationSummary(httpSamples.filter(value => key === `${value.kind}:${value.status}:${value.barrierHeld ? "held" : "unheld"}`).map(value => value.milliseconds))]));
@@ -124,11 +126,11 @@ const analyze = async (): Promise<void> => {
     durations: Object.fromEntries(Object.entries(run.metrics.operationDurationsMs).filter(([key]) => key.startsWith("database."))
       .map(([key, values]) => [key, durationSummary(values)]))
   }));
-  await writeFile(output, JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios, databaseDiagnostics,
+  await writeFile(output, `${JSON.stringify({ schemaVersion: 1, provenance, hashes, scenarios, databaseDiagnostics,
     interpretation: { percentileMethod: "nearest-rank over pooled raw observations; event-loop histograms remain per-run",
       profilesExcludedFromBaseline: true, databaseDiagnosticsExcludedFromBaseline: true,
       samplingHeapMeasures: "estimated cumulative allocation including collected objects",
-      postGcHeapIncludesRecorderArrays: true, memoryTrace: "at most 500 bucket maxima from 50ms samples" } }, null, 2) + "\n", { flag: "wx" });
+      postGcHeapIncludesRecorderArrays: true, memoryTrace: "at most 500 bucket maxima from 50ms samples" } }, null, 2)}\n`, { flag: "wx" });
   console.log(`Analyzed ${runs.length} runs across ${scenarios.length} scenarios.`);
 };
 

@@ -30,6 +30,14 @@ describe("notification performance harness", () => {
       .toMatchObject({ profile: false, profileOnly: true });
   });
 
+  it("accepts explicit measurement limits and all scenarios independent of flag order", () => {
+    expect(performanceOptions(["summit:perf", "--profile", "--rounds", "50", "--scenario", "all",
+      "--repetitions", "10", "--output", "/tmp/summit-limits"]))
+      .toStrictEqual({ image: "summit:perf", output: "/tmp/summit-limits", repetitions: 10, rounds: 50,
+        scenarios: ["normal", "unicode", "markdown", "parts", "overlap", "legacy", "soak", "mixed", "stream", "legacyqueue"],
+        profile: true, profileOnly: false, databaseDiagnostics: false });
+  });
+
   it("runs database diagnostics separately from profiler measurements", () => {
     expect(performanceOptions(["summit:perf", "--output", "/tmp/diagnostics", "--database-diagnostics", "--scenario", "mixed"]))
       .toMatchObject({ databaseDiagnostics: true, profile: false, profileOnly: false, scenarios: ["mixed"] });
@@ -44,9 +52,17 @@ describe("notification performance harness", () => {
     ["summit:perf", "--output", "/tmp/result", "--repetitions", "11"],
     ["summit:perf", "--output", "/tmp/result", "--rounds", "1.5"],
     ["summit:perf", "--output", "/tmp/result", "--rounds", "51"],
+    ["summit:perf", "--output", "/tmp/result", "--rounds", "9007199254740992"],
+    ["summit:perf", "--output", "/tmp/result", "--output", "/tmp/other"],
+    ["summit:perf", "--output", "--profile"],
+    ["summit:perf", "--output", ""],
+    ["summit:perf", "--output", "bad\0path"],
+    ["summit:perf", "--output", "/tmp/result", "--unknown", "value"],
+    ["summit:perf", "--output", "/tmp/result", "--profile", "value"],
     ["summit:perf", "--output", "/tmp/result", "--profile", "--profile"],
     ["summit:perf", "--output", "/tmp/result", "--profile-only", "--profile"],
-    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--repetitions", "1"]
+    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--repetitions", "1"],
+    ["summit:perf", "--output", "/tmp/result", "--profile-only", "--database-diagnostics"]
   ].map(args => ({ args })))("refuses unbounded or ambiguous options: $args", ({ args }) => {
     expect(() => performanceOptions(args)).toThrow("setup_or_measurement");
   });
@@ -56,6 +72,7 @@ describe("notification performance harness", () => {
     expect(durationSummary(values)).toStrictEqual({ count: 20, min: 1, max: 20, mean: 10.5,
       p50: 10, p95: 19, p99: 20, smallTailSample: true });
     expect(values[0]).toBe(20);
+    expect(durationSummary([0])).toMatchObject({ min: 0, max: 0, p50: 0, p95: 0, p99: 0 });
     expect(durationSummary([]).p99).toBeNull();
     expect(() => durationSummary([Number.NaN])).toThrow("setup_or_measurement");
     expect(() => durationSummary([-1])).toThrow("setup_or_measurement");
@@ -74,8 +91,13 @@ describe("notification performance harness", () => {
     await expect(writePerformanceArtifact(directory, "../outside.json", {})).rejects.toThrow("setup_or_measurement");
   });
 
-  it("keeps diagnostic errors static instead of exposing driver or request text", async () => {
-    await expect(performanceStage("database_setup", async () => { throw new Error("postgres://credential@example.invalid"); }))
+  it.each(["throw", "reject"] as const)("keeps diagnostic errors static for a synchronous or asynchronous %s", async mode => {
+    expect(await performanceStage("synchronous_value", () => 7)).toBe(7);
+    await expect(performanceStage("database_setup", () => {
+      const error = new Error("postgres://credential@example.invalid");
+      if (mode === "throw") { throw error; }
+      return Promise.reject(error);
+    }))
       .rejects.toMatchObject({ message: "setup_or_measurement", detail: "database_setup" });
   });
 

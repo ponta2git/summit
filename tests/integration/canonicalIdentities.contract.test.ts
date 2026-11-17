@@ -98,7 +98,7 @@ const sessionAlias = "Friday-session-old";
       choice: "POSTPONE_OK", saturday })).toMatchObject({ kind: "transitioned", outcome: "all_ok",
       session: { id: sessionAlias, status: "POSTPONED" },
       saturdaySession: { id: saturday.id, status: "ASKING", source: "postponed", parentSessionId: sessionAlias } });
-    const aliases = await client`SELECT DISTINCT session_id FROM discord_notification_attendance ORDER BY session_id`;
+    const aliases = await client<{ session_id: string }[]>`SELECT DISTINCT session_id FROM discord_notification_attendance ORDER BY session_id`;
     expect(aliases.map(row => row["session_id"]).sort()).toEqual([sessionAlias, saturday.id].sort());
     const before = await Promise.all([findSessionById(db, sessionAlias), findSessionById(db, saturday.id)]);
     const result = await cancelWeekAtomically(db, { weekKey: "2026-W17", channelId: "channel", now,

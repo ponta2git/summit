@@ -28,8 +28,8 @@ const extractHeldParticipantMemberIds = (
   responses: readonly ResponseRow[]
 ): readonly string[] =>
   responses
-    .filter((r) => TIME_CHOICES.has(r.choice))
-    .map((r) => r.memberId);
+    .filter((response) => TIME_CHOICES.has(response.choice))
+    .map((response) => response.memberId);
 
 export const buildReminderContent = (startAt: Date): string => {
   const body = reminderMessages.reminder.body({ startTimeLabel: formatJstHhmm(startAt) });

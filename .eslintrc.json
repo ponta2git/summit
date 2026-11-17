@@ -1,0 +1,9 @@
+{
+  "root": true,
+  "rules": {
+    "no-void": "off",
+    "consistent-return": "off",
+    "@typescript-eslint/consistent-return": "off",
+    "@typescript-eslint/no-invalid-void-type": "off"
+  }
+}
