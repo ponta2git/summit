@@ -136,3 +136,16 @@ PR 本文は日本語で、問題・変更後の挙動・理由・検証結果�
 業務仕様変更と文書構成変更など、異なる判断を要する変更は commit / PR を分ける。設計変更は現行の正本を同時に更新し、判断理由・非採用案・再評価条件を残す。完了済み計画や番号付き履歴文書は蓄積しない。
 
 Linear の実装・確認が完了し、merge で Done にする場合は PR に `Fixes <issue ID>`。merge 後も追加作業・受入確認が残る場合だけ `Refs <issue ID>` と残作業を書く。この記法はチケット更新・外部メッセージ・merge 自体の権限を与えない。
+
+### PR の指摘修正と完了確認
+
+PR の作成・更新を含む依頼は、許可された commit / push の範囲で、指摘の判断・修正・再検証と最新の必須 check の確認まで進める。PR を開いたことや push の成功だけで完了としない。merge の権限は前段の規則に従う。
+
+1. [テスト規約 §8](./test-rule.md#8-quality-gate)で差分に必要なローカル gate を選び、通過後に PR branch へ push する。GitHub Actions と DeepSource はそれぞれ自動実行される。
+2. PR の最新 head SHA を記録し、その変更に対する CI・DeepSource の結果と review 指摘を取得する。DeepSource は PR / run の指摘と default branch の残存指摘を分け、run の SHA・完了状態を先に確認する。MCP / CLI の取得結果が空でも、解析中・未実行・取得失敗なら指摘ゼロとしない。
+3. 指摘を仕様・実装・test と照合する。不具合は修正し、変更で守る契約に必要な回帰検証を行う。誤検知・意図した実装の例外は [品質モデル](./quality-assurance.md#静的解析と実行検証の分担)に従い、理由・代替検証・再評価条件を残す。失敗対象外の参考指摘も判断し、別課題にする場合は理由と残作業を PR 本文へ記録する。既存課題を切り分けても、必須 check の失敗を合格扱いにしない。
+4. 修正後は影響するローカル gate を通し、同じ PR branch へ追加 commit を push して再解析を待つ。Autofix を使う場合も差分を review し、PR branch に追加された変更をローカルへ取り込んで検証する。再 push ごとに head SHA を取り直す。
+5. merge 前に [必須 check](./test-rule.md#github-と-deepsource-の必須-check)とレビュー指摘への対応を確認する。PR 本文の検証結果には対象 head SHA、CI・DeepSource の run / 結果、修正・例外の根拠、未解決事項を残す。古い commit の成功やコメントの解決操作だけで解析成功としない。
+6. merge まで依頼された場合は、merge 後の `master` の SHA に対する CI・DeepSource の完了も確認する。default branch の Issues で残存指摘を確認し、PR の新規指摘ゼロと混同しない。追加の不具合・解析失敗は原因と残作業を報告する。
+
+DeepSource の [CLI](https://docs.deepsource.com/docs/developers/cli/usage) は既存の解析結果を取得する。`--pr` / `--commit` / `--default-branch` は用途に応じて一つ選び、機械処理は `--output json` を使う。`runs` は最新解析が pending の場合に直前の完了結果へ fallback するため、必ず返却された SHA と状態を照合する。ローカルの未 push の修正が解析済みとは扱わない。[追加 commit の再解析・Autofix](https://docs.deepsource.com/docs/platform/getting-started/fix-issues)と[PR 差分解析](https://docs.deepsource.com/docs/platform/reference/pr-analysis-diffing)は公式仕様を参照する。
