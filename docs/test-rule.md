@@ -122,7 +122,7 @@ real DB は repository・constraint・transaction・migration consumer 契約を
 
 AGENTS 変更時は `pnpm docs:sync-agent` で adapter を更新する。同 command は文書検査を含むため、後続の文書差分がなければ `verify:docs` を重ねない。未追跡の新規 file は `--include <path>` で指定する。command の入力範囲は [開発規約 §2](./dev-rule.md#2-主要command)。
 
-`pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
+`pnpm run ci` の構成は package.json が正本で、typecheck・lint・knip・unit test・build・文書・禁止 pattern・file-size advisory を含む。`pnpm test` は Vitest の dummy env と example YAML を使い、local secret / real DB を必要としない。CI の実行範囲は workflow が正本で、現在は文書変更でも canonical-database / static-baseline / integration-db / runtime-image が動く。ローカルの選択を理由に CI job / assertion を skip しない。
 
 runtime-image は実行権限・依存解決に加え、local PostgreSQL と容量検証用の256 MiB制限・swapなしで最大近傍の受付・配送を検証する。新規標準ケースは192 MiB以下の cgroup peak を必須とし、旧巨大通知の単独配送は別 container で計測する。容量 test の成功は代表ケースの再現性であり、全入力・外部 Discord・長期運用の SLA を証明しない。測定条件と稼働設定は [品質モデル](./quality-assurance.md#実行メモリの容量契約) を参照する。
 
@@ -131,6 +131,21 @@ runtime-image は実行権限・依存解決に加え、local PostgreSQL と容�
 編集中は対象 test で確認し、完了前に該当 gate を通す。**合格後、新しい差分・失敗・未解決の懸念がなければ検証を終える。** 再実行は前回結果を無効にする範囲から選ぶ。
 
 失敗は assertion、tool / 依存不足、接続 / 権限を区別する。baseline failure と呼ぶには同じ条件の変更前での再現が必要で、証拠がなければ原因未確定とする。command・対象・結果・再現条件を報告し、skip / 実行不能 / advisory を pass と混同しない。必須検証の失敗を黙って除外しない。
+
+### GitHub と DeepSource の必須 check
+
+`master` への merge は、[GitHub ruleset](https://github.com/ponta2git/summit/rules/15714743)で次の4 check を必須とする。GitHub Actions の `CI` は [workflow](../.github/workflows/ci.yml) 内の品質 job を集約し、DeepSource の3 status は [analyzer 設定](../.deepsource.toml)に従って外部で実行・報告される。外部 status の待合せを Actions に重複実装せず、ruleset で両者を merge 条件にする。
+
+| 必須 check 名 | 検証すること |
+|---|---|
+| `CI` | canonical DB・static baseline・integration DB・runtime image の全 job が成功したこと |
+| `DeepSource: JavaScript` | TypeScript を含む JavaScript analyzer の結果 |
+| `DeepSource: Docker` | Docker analyzer の結果 |
+| `DeepSource: Shell` | Shell analyzer の結果 |
+
+base branch の最新状態を要求する strict 設定を維持する。PR の最新 head に対する DeepSource の全 status と、GitHub がその PR に対して評価する CI の成功を確認する。base 更新・追加 commit で評価対象が変わった場合は更新後の結果を確認し、pending・missing・error・timeout・cancelled を成功扱いにしない。通常の merge で管理者 bypass を使って未完了・失敗した check を回避しない。
+
+DeepSource の合格は設定された品質 gate の通過であり、参考指摘や全体の残存指摘がゼロであることとは別に扱う。指摘修正・再解析・merge 後の確認は [開発規約 §9](./dev-rule.md#pr-の指摘修正と完了確認)、例外の判断は [品質モデル](./quality-assurance.md#静的解析と実行検証の分担)に従う。analyzer や check 名を変更するときは、実際に返される status と ruleset を合わせて更新し、存在しない check を必須のまま残さない。
 
 ## 9. テスト設計を見直す条件
 
