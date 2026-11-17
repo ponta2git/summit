@@ -4,7 +4,7 @@
 
 ## 検証結果
 
-<!-- docs/test-rule.md §8 で選んだ gate、実行した command と結果を書く。失敗・未実行・warning とその理由を区別する。 -->
+<!-- docs/test-rule.md §8 で選んだ gate、実行した command と結果を書く。docs/dev-rule.md §9 に従い、最新 head SHA、CI・DeepSource の run / 結果、指摘修正・例外の根拠も記す。失敗・解析中・未実行・warning とその理由を区別する。 -->
 
 ## 影響・未解決事項
 
